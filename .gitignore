@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.local
+*.tsbuildinfo
+.claude/settings.local.json
+package_summaries/
+.DS_Store
+*.log
+.admin.keystore
+.integration-trader.keystore
+test-results*.xml
+query-output/
+simulate-dumps/
+docs/
+waterx-contracts/

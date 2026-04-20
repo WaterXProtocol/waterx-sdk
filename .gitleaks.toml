@@ -1,0 +1,13 @@
+# Public Sui package / object IDs trigger generic-api-key false positives.
+title = "WaterX Perp SDK"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "On-chain IDs in SDK constants; local build/coverage trees"
+paths = [
+  '''src/constants\.ts$''',
+  '''(^|/)dist/''',
+  '''(^|/)coverage/''',
+]

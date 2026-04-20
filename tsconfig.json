@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": false,
+    "rootDirs": ["src", "test", "scripts"],
+    "paths": {
+      "@waterx/perp-sdk": ["./src/index.ts"]
+    }
+  },
+  "include": ["src", "test", "scripts"],
+  "exclude": ["node_modules", "**/__tests__/*"]
+}

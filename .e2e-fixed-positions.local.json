@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "accountId": "0x7d5f459101cc8076215707ef49c09789514f31a4407c4836b874c8700e6ecaf6",
+  "positions": {
+    "BTC": 33,
+    "DEEP": 8,
+    "ETH": 11,
+    "SOL": 12,
+    "SUI": 7,
+    "WAL": 5
+  },
+  "disclaimer": "Auto-generated from public on-chain position ids. Safe to commit. Re-run preflight/bootstrap after closes/liquidations."
+}

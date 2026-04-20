@@ -1,0 +1,233 @@
+# Single PR pipeline for `main`: replaces legacy `lint.yml` + `unit-test.yml` (no duplicate runs).
+# Core: pnpm lint, typecheck, build, test:ci (unit + coverage + JUnit, then simulate / e2e + JUnit).
+# Extra: Trivy, Semgrep, gitleaks, pnpm audit. Integration tests stay local (`pnpm test:integration`).
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    name: Setup
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Cache node_modules
+        id: cache-nm
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+  # Replaces former workflows/lint.yml (`pnpm lint` = eslint + prettier). Single ESLint run — no reviewdog duplicate.
+  lint:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: Lint
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm lint
+
+  typecheck:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: Typecheck
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm typecheck
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: Build
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm build
+
+  # Unit tests (coverage + JUnit) then strict e2e CI flow:
+  # preflight (no --allow-* relaxations) -> vitest e2e simulate.
+  test:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: Test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Vitest — unit + coverage + JUnit
+        run: pnpm test:ci:unit
+      - name: E2E CI flow — preflight + simulate (testnet, JUnit)
+        run: pnpm test:ci:e2e
+      - name: Test report
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: perp-sdk Test Results
+          path: test-results-*.xml
+          reporter: java-junit
+      - name: Coverage summary
+        if: always()
+        run: |
+          FILE="coverage/coverage-summary.json"
+          if [ -f "$FILE" ]; then
+            node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const c = JSON.parse(readFileSync(process.argv[1], "utf8")).total;
+              const f = (v) => v.pct + "%";
+              console.log("## @waterx/perp-sdk — Test coverage\n");
+              console.log("| Metric | Coverage |");
+              console.log("|--------|----------|");
+              console.log("| Statements | " + f(c.statements) + " |");
+              console.log("| Branches | " + f(c.branches) + " |");
+              console.log("| Functions | " + f(c.functions) + " |");
+              console.log("| Lines | " + f(c.lines) + " |");
+            ' "$FILE" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: coverage-perp-sdk
+          path: coverage/
+          retention-days: 7
+
+  trivy:
+    runs-on: ubuntu-latest
+    name: "Security: Trivy Scan"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Trivy scan (table — fail on CRITICAL)
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+      - name: Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@97e0b3872f55f89b95b2f65b3dbab56962816478 # v0.34.2
+        if: always()
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: CRITICAL
+          format: sarif
+          output: trivy-results.sarif
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-results.sarif
+
+  semgrep:
+    runs-on: ubuntu-latest
+    name: "Security: SAST"
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v5
+      - run: semgrep scan --config auto --error
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    name: "Security: Secret detection"
+    steps:
+      - uses: actions/checkout@v5
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" \
+            ghcr.io/gitleaks/gitleaks:v8.30.0 \
+            detect --source /repo --no-git --redact --verbose
+
+  audit:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: "Security: pnpm audit (advisory)"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: pnpm audit
+        id: audit
+        run: |
+          set +e
+          output=$(pnpm audit --prod --audit-level=high 2>&1)
+          exit_code=$?
+          echo "$output"
+          {
+            echo 'AUDIT_OUTPUT<<AUDIT_EOF'
+            echo "$output"
+            echo 'AUDIT_EOF'
+          } >> "$GITHUB_ENV"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Summary
+        env:
+          AUDIT_EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          if [ "$AUDIT_EXIT_CODE" = "0" ]; then
+            echo "### pnpm audit — no high+ prod issues" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### pnpm audit — findings (advisory, non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '<details><summary>Report</summary>' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$AUDIT_OUTPUT" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "nodenext",
+    "lib": ["dom", "esnext"],
+    "declaration": true,
+    "outDir": "./dist",
+    "downlevelIteration": true,
+    "rootDir": ".",
+    "moduleResolution": "nodenext",
+    "rewriteRelativeImportExtensions": true,
+    "baseUrl": "./",
+    "paths": {},
+    "rootDirs": ["src"],
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "strictPropertyInitialization": false,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "typeRoots": ["node_modules/@types"]
+  },
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "**/__tests__/*", "scripts", "test"]
+}
