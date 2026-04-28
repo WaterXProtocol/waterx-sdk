@@ -1,28 +1,20 @@
 /**
  * View/query tests (read-only via simulateTransaction).
  */
-import {
-  getMarketSummary,
-  getPoolSummary,
-  getTokenPoolSummary,
-  TESTNET_MARKETS,
-} from "@waterx/perp-sdk";
+import { getMarketSummary, getPoolSummary, getTokenPoolSummary } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
+import { client } from "../helpers/e2e/e2e-client.ts";
 import {
   expectMarketOiFieldsParsed,
   expectMarketSizeFieldsParsed,
-} from "../helpers/market-summary-assertions.ts";
-import { client } from "../helpers/testnet.ts";
+} from "../helpers/trading/market-summary-assertions.ts";
 
 describe("View Functions", () => {
   describe("getMarketSummary", () => {
     it("returns BTC market info", async () => {
-      const summary = await getMarketSummary(
-        client,
-        TESTNET_MARKETS.BTC.marketId,
-        TESTNET_MARKETS.BTC.baseType,
-      );
+      const m = client.getMarketEntry("BTC");
+      const summary = await getMarketSummary(client, m.marketId, m.baseType);
       expect(typeof summary.isActive).toBe("boolean");
       expectMarketOiFieldsParsed(summary);
       expect(summary.maxLeverageBps).toBeGreaterThan(0n);
@@ -31,11 +23,8 @@ describe("View Functions", () => {
     }, 30_000);
 
     it("returns ETH market info", async () => {
-      const summary = await getMarketSummary(
-        client,
-        TESTNET_MARKETS.ETH.marketId,
-        TESTNET_MARKETS.ETH.baseType,
-      );
+      const m = client.getMarketEntry("ETH");
+      const summary = await getMarketSummary(client, m.marketId, m.baseType);
       expect(summary.isActive).toBe(true);
       expectMarketOiFieldsParsed(summary);
       expectMarketSizeFieldsParsed(summary);

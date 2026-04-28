@@ -39,7 +39,6 @@ import {
   transferToAccount,
 } from "../../src/user/index.ts";
 import { updatePythPrices } from "../../src/utils/pyth.ts";
-import { computeLeverageDerivedSize } from "../helpers/compute-leverage-size";
 import {
   dummyBucketFloatPricePair,
   PTB_DUMMY_ACCOUNT_ID,
@@ -47,7 +46,8 @@ import {
   PTB_DUMMY_DEPOSIT_COIN,
   PTB_DUMMY_ID_CC,
   PTB_DUMMY_RECIPIENT,
-} from "../helpers/ptb-test-dummies.ts";
+} from "../helpers/fixtures/ptb-test-dummies.ts";
+import { computeLeverageDerivedSize } from "../helpers/trading/compute-leverage-size";
 
 const getAccountCoinsMock = vi.fn();
 

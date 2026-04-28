@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateTotalTradingFeeBps,
   expectedOpenTradingFeeRaw,
-} from "../helpers/expected-open-trading-fee.ts";
+} from "../helpers/trading/expected-open-trading-fee.ts";
 
 const PRECISION = 1_000_000_000n;
 

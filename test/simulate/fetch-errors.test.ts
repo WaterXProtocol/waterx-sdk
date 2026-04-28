@@ -1,5 +1,5 @@
 /**
- * Read-only testnet: error and edge-case behavior for fetch.ts helpers.
+ * Read-only: error and edge-case behavior for fetch.ts helpers (`WATERX_E2E_NETWORK`).
  */
 import {
   getAccountDelegates,
@@ -7,15 +7,12 @@ import {
   getPosition,
   getTokenPoolSummary,
   selectCoinsForAmount,
-  TESTNET_MARKETS,
-  TESTNET_OBJECTS,
-  TESTNET_TYPES,
 } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
-import { client } from "../helpers/testnet";
+import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 
-describe("fetch error / edge cases (testnet simulate)", () => {
+describe(`fetch error / edge cases (${e2eNetwork} simulate)`, () => {
   it("getAccountsByOwner(zero address) returns empty list", async () => {
     const accounts = await getAccountsByOwner(
       client,
@@ -26,9 +23,8 @@ describe("fetch error / edge cases (testnet simulate)", () => {
   });
 
   it("getPosition for very unlikely position id throws or fails simulate", async () => {
-    await expect(
-      getPosition(client, TESTNET_MARKETS.BTC.marketId, 999_999n, TESTNET_MARKETS.BTC.baseType),
-    ).rejects.toThrow();
+    const m = client.getMarketEntry("BTC");
+    await expect(getPosition(client, m.marketId, 999_999n, m.baseType)).rejects.toThrow();
   });
 
   it("getAccountDelegates for non-existent owner returns []", async () => {
@@ -45,9 +41,13 @@ describe("fetch error / edge cases (testnet simulate)", () => {
   });
 
   it("selectCoinsForAmount throws when balance insufficient", async () => {
-    // Use a shared object ID that is not a funded UserAccount — no USDC coins as TTO children.
     await expect(
-      selectCoinsForAmount(client, TESTNET_OBJECTS.GLOBAL_CONFIG, TESTNET_TYPES.USDC, 1n),
+      selectCoinsForAmount(
+        client,
+        client.config.globalConfig,
+        client.config.collaterals.USDC.type,
+        1n,
+      ),
     ).rejects.toThrow(/Insufficient balance/);
   }, 60_000);
 });

@@ -1,5 +1,5 @@
 # Single PR pipeline for `main`: replaces legacy `lint.yml` + `unit-test.yml` (no duplicate runs).
-# Core: pnpm lint, typecheck, build, test:ci (unit + coverage + JUnit, then simulate / e2e + JUnit).
+# Core: pnpm lint, typecheck, build, test:ci:unit + matrix e2e shards (Vitest --shard, parallel jobs).
 # Extra: Trivy, Semgrep, gitleaks, pnpm audit. Integration tests stay local (`pnpm test:integration`).
 
 name: CI
@@ -87,12 +87,11 @@ jobs:
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm build
 
-  # Unit tests (coverage + JUnit) then strict e2e CI flow:
-  # preflight (no --allow-* relaxations) -> vitest e2e simulate.
+  # Unit tests (coverage + JUnit). E2E simulate runs in matrix `test-e2e` for wall-clock parallelism.
   test:
     needs: setup
     runs-on: ubuntu-latest
-    name: Test
+    name: Test (unit)
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5
@@ -105,14 +104,12 @@ jobs:
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Vitest — unit + coverage + JUnit
         run: pnpm test:ci:unit
-      - name: E2E CI flow — preflight + simulate (testnet, JUnit)
-        run: pnpm test:ci:e2e
-      - name: Test report
+      - name: Test report (unit)
         uses: dorny/test-reporter@v2
         if: always()
         with:
-          name: perp-sdk Test Results
-          path: test-results-*.xml
+          name: perp-sdk Unit Tests
+          path: test-results-unit.xml
           reporter: java-junit
       - name: Coverage summary
         if: always()
@@ -138,6 +135,37 @@ jobs:
           name: coverage-perp-sdk
           path: coverage/
           retention-days: 7
+
+  # Simulate e2e: Vitest sharding across runners (~30–50% wall-clock vs single job). Requires each shard in branch protection if enforced.
+  test-e2e:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: E2E simulate (${{ matrix.shard }}/3)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Vitest e2e — shard ${{ matrix.shard }}/3 (dot + JUnit)
+        env:
+          NODE_NO_WARNINGS: "1"
+        run: pnpm exec tsx scripts/run-e2e.ts --reporter=dot --reporter=junit --outputFile=test-results-e2e-${{ matrix.shard }}.xml --shard=${{ matrix.shard }}/3
+      - name: Test report (e2e shard ${{ matrix.shard }})
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: perp-sdk E2E shard ${{ matrix.shard }}
+          path: test-results-e2e-${{ matrix.shard }}.xml
+          reporter: java-junit
 
   trivy:
     runs-on: ubuntu-latest

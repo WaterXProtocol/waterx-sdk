@@ -13,7 +13,7 @@ import {
   stakeRewardDistributor,
   unstakeRewardDistributor,
 } from "../../src/user/index.ts";
-import { PTB_DUMMY_ACCOUNT_ID, PTB_DUMMY_COIN_CC } from "../helpers/ptb-test-dummies.ts";
+import { PTB_DUMMY_ACCOUNT_ID, PTB_DUMMY_COIN_CC } from "../helpers/fixtures/ptb-test-dummies.ts";
 
 vi.mock("../../src/user/index.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/user/index.ts")>();

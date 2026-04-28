@@ -2,7 +2,7 @@
 
 TypeScript SDK for the WaterX perpetual protocol on Sui: build PTBs with **gRPC** (`@mysten/sui`), run read-only **simulateTransaction** queries, and optional **Pyth** helpers.
 
-> **ABI note:** PTB entry points follow the deployed `waterx_perp` package. **Read-only `view::*` helpers** resolve the module package from each **shared object’s on-chain type** (so `Market` / `WlpPool` can sit on a newer publish than `GlobalConfig` / `AccountRegistry`). BCS layouts for `MarketSummary`, `PositionInfo`, and `TokenPoolSummary` match the **deployed** `view` structs. Pin `WaterXConfig` to your environment’s package and object IDs.
+> **ABI note:** PTB entry points follow `contracts/waterx_perp` in this repo. **Read-only `view::*` helpers** resolve the module package from each **shared object’s on-chain type** (so `Market` / `WlpPool` can sit on a newer publish than `GlobalConfig` / `AccountRegistry`). BCS layouts for `MarketSummary`, `PositionInfo`, and `TokenPoolSummary` match the **deployed** `view` structs (see `contracts/waterx_perp/package_summaries/waterx_perp/view.json`). Pin `WaterXConfig` to your environment’s package and object IDs.
 
 ## Install & build
 
@@ -189,7 +189,7 @@ Param types: `OpenPositionParams`, `IncreasePositionParams`, `DecreasePositionPa
 ### Constants & Pyth
 
 Permission bits, order tags, testnet IDs, Pyth feeds: `src/constants.ts`.  
-On testnet, `TESTNET_TYPES.WLP` is the LP type wired to the live **`WlpPool` / `Market`** (`wlp_token::WLP_TOKEN`); `TESTNET_PACKAGE_IDS.WLP_STANDALONE` points at the standalone `wlp` publish for reference.  
+On testnet, `TESTNET_TYPES.WLP` is the LP type wired to the live **`WlpPool` / `Market`** (`wlp_token::WLP_TOKEN`); `TESTNET_PACKAGE_IDS.WLP_STANDALONE` points at the standalone `contracts/wlp` publish for reference.  
 Oracle wiring: `fetchPriceFeedsUpdateData`, `updatePythPrices`, `buildPythRuleFeedCalls`, `PythCache`, etc. in `src/utils/pyth.ts`.
 
 ---

@@ -1,7 +1,7 @@
 /**
  * Testnet integration helpers (`pnpm test:integration`). See `test/README.md`.
  * Set `WATERX_INTEGRATION_CLOSE_ONE_POSITION=1` to run the opt-in “close one perp” test (default
- * off — avoids closing an e2e persistent slot; see `e2e-persistent-state.ts`).
+ * off — avoids closing an e2e persistent slot; see `test/integration/helpers/e2e-persistent-state.ts`).
  */
 import { existsSync, readFileSync } from "fs";
 import path from "path";
@@ -11,6 +11,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 import {
   createTestnetConfig,
+  getAccountsByOwner,
   getMarketCooldownMs,
   TESTNET_OBJECTS,
   TESTNET_TYPES,
@@ -18,8 +19,8 @@ import {
 } from "@waterx/perp-sdk";
 import dotenv from "dotenv";
 
-import { normalizeIntegrationTxResult } from "../helpers/integration-tx-result";
-import { resolveE2eAccountForOwner } from "../helpers/resolve-e2e-reference-account.ts";
+import { normalizeIntegrationTxResult } from "../helpers/e2e/integration-tx-result";
+import { isOracleTransientFailureMessage } from "../helpers/e2e/simulate-assertions.ts";
 import { WATERX_PERP_ABORT } from "../helpers/waterx-perp-error-codes.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -101,13 +102,32 @@ export function loadIntegrationTraderKeypair(): Ed25519Keypair {
 
 export async function resolveDefaultIntegrationAccountId(trader: Ed25519Keypair): Promise<string> {
   const owner = trader.getPublicKey().toSuiAddress();
-  return resolveE2eAccountForOwner(client, owner);
+  const fromEnv = process.env.WATERX_INTEGRATION_ACCOUNT_ID?.trim();
+  const accounts = await getAccountsByOwner(client, owner);
+  if (!accounts.length) {
+    throw new Error(`No WaterX UserAccount for integration owner ${owner}`);
+  }
+  if (fromEnv) {
+    const match = accounts.find((a) => normAddr(a.accountId) === normAddr(fromEnv));
+    if (!match) {
+      throw new Error(
+        `WATERX_INTEGRATION_ACCOUNT_ID=${fromEnv} is not listed for owner ${owner}. ` +
+          `Remove it from .env to auto-pick the first account.`,
+      );
+    }
+    return match.accountId;
+  }
+  return accounts[0]!.accountId;
+}
+
+function normAddr(a: string): string {
+  return a.replace(/^0x/i, "").toLowerCase();
 }
 
 /**
- * Serialize every `signAndExecute` across Vitest workers. Integration often shares one trader key;
- * without a queue, parallel test files interleave nonces and fail. Read-only RPC (`simulate`,
- * `getObject`, `getMarketSummary`) is not serialized — only this path.
+ * Serialize `signAndExecute` **within this Node worker** only. With Vitest multi-fork, each worker
+ * has its own queue — use `singleFork` for integration-trader (see `vitest.config.ts`) so one
+ * process serializes all txs for the shared key. Read-only RPC is not serialized.
  */
 let integrationSignAndExecuteChain: Promise<void> = Promise.resolve();
 
@@ -204,12 +224,18 @@ export function isSupraOracleInfrastructureError(e: unknown): boolean {
   return s.includes("supra_rule::feed");
 }
 
+function isOracleTransientExecError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return isOracleTransientFailureMessage(msg);
+}
+
 /** Vitest `TestContext` slice — any object with `skip` works. */
 export type IntegrationSkipContext = { skip: (reason?: string) => void };
 
 /**
- * Runs an async integration action; on testnet Supra infra failure, marks the test skipped instead
- * of failing (same policy as simulate `isOracleTransientFailureMessage`).
+ * Runs an async integration action; on testnet oracle infra / transient aggregate failures, marks
+ * the test skipped instead of failing (same patterns as {@link isOracleTransientFailureMessage}
+ * and Supra feed errors in simulate suites).
  *
  * @returns `undefined` when skipped (caller should `return`); otherwise the action result.
  */
@@ -220,10 +246,13 @@ export async function execIntegrationOrSkipSupra<T>(
   try {
     return await run();
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     if (isSupraOracleInfrastructureError(e)) {
-      ctx.skip(
-        `Testnet Supra oracle unavailable (transient): ${e instanceof Error ? e.message : String(e)}`,
-      );
+      ctx.skip(`Testnet Supra oracle unavailable (transient): ${msg}`);
+      return undefined;
+    }
+    if (isOracleTransientExecError(e)) {
+      ctx.skip(`Oracle feed/aggregate failed (transient): ${msg}`);
       return undefined;
     }
     throw e;

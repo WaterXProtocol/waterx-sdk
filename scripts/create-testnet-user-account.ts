@@ -11,7 +11,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { getAccountsByOwner } from "../src/index.ts";
 import { createAccount } from "../src/user/account.ts";
-import { normalizeIntegrationTxResult } from "../test/helpers/integration-tx-result.ts";
+import { normalizeIntegrationTxResult } from "../test/helpers/e2e/integration-tx-result.ts";
 import { client, loadIntegrationTraderKeypair } from "../test/integration/setup.ts";
 
 function parseArgs(argv: string[]): { force: boolean; name: string } {

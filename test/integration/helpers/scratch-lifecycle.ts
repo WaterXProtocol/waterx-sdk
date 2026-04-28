@@ -10,16 +10,16 @@ import { expect } from "vitest";
 
 import type { BaseAsset } from "../../../src/constants.ts";
 import type { MarketData } from "../../../src/view-types.ts";
-import { activeLifecycleTestBases } from "../../helpers/lifecycle-test-markets.ts";
+import { activeLifecycleTestBases } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateSuccess,
   skipSimulateIfOracleTransient,
-} from "../../helpers/simulate-assertions.ts";
+} from "../../helpers/e2e/simulate-assertions.ts";
 import {
   buildResizeSizingProbeTransaction,
   parseResizeSizingProbeResult,
   type ResizeSizingProbeParams,
-} from "../../helpers/simulate-resize-size.ts";
+} from "../../helpers/trading/simulate-resize-size.ts";
 import { assertSuccess } from "../setup.ts";
 import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
 
@@ -76,17 +76,6 @@ export function leverageBpsFromPositionOpened(ev: unknown): bigint {
   if (typeof v === "number" && Number.isFinite(v)) return BigInt(Math.trunc(v));
   if (typeof v === "string" && v.trim() !== "") return BigInt(v);
   throw new Error("PositionOpened missing leverage_bps");
-}
-
-/**
- * Derive a partial-decrease step. v2 has no lot size; just return `sizeAmount / 2`
- * (caller ensures the position is large enough for a partial close).
- */
-export function decreaseStepSize(sizeAmount: bigint): bigint {
-  if (sizeAmount <= 1n) {
-    throw new Error(`Position size ${sizeAmount} too small for partial decrease`);
-  }
-  return sizeAmount / 2n;
 }
 
 /**

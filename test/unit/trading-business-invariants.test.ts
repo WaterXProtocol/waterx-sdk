@@ -20,7 +20,7 @@ import {
   assertPlaceOrderExecutePriceWiring,
   assertPlaceOrderRequestShape,
   assertTradingExecutePriceWiring,
-} from "../helpers/trading-ptb-assertions";
+} from "../helpers/trading/trading-ptb-assertions";
 
 const client = WaterXClient.testnet();
 

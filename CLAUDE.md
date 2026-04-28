@@ -4,18 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WaterX is a perpetual futures DEX on Sui blockchain. The SDK provides TypeScript transaction builders, BCS struct parsers, and query helpers for the WaterX perp protocol.
+WaterX is a perpetual futures DEX on Sui blockchain, built on top of the **Bucket Protocol** framework (oracle, framework libs). It follows Bucket naming conventions ("Bucket style") with similar architectural patterns.
+
+The SDK provides TypeScript transaction builders, BCS struct parsers, and query helpers for the WaterX perp protocol.
 
 ## Development Commands
 
 ```bash
 pnpm install              # Install dependencies
 pnpm build                # Build (rm dist, tsc -p tsconfig.build.json, tsc-alias)
-pnpm test                 # Run unit + e2e tests (vitest)
+pnpm test                 # Run unit + e2e tests (vitest; e2e defaults to mainnet)
 pnpm test:unit            # Unit tests only
-pnpm test:e2e             # E2E (simulate) tests only
+pnpm test:e2e             # E2E (simulate) tests only — mainnet by default
+pnpm test:e2e --testnet   # E2E against testnet (also: pnpm test:e2e:testnet)
+pnpm test:e2e --mainnet   # E2E against mainnet (explicit; also: pnpm test:e2e:mainnet)
 pnpm test:integration     # Integration tests (requires WATERX_INTEGRATION_PRIVATE_KEY)
-pnpm test:ci              # test:ci:unit (coverage + JUnit) then test:ci:simulate (e2e JUnit)
+pnpm test:ci              # test:ci:unit (coverage + JUnit) then test:ci:e2e (mainnet, JUnit)
 pnpm typecheck            # Type-check without emitting
 pnpm lint                 # Run ESLint + Prettier check (src/, test/, scripts/)
 pnpm lint:eslint          # ESLint only
@@ -36,12 +40,12 @@ cd waterx-contracts/waterx_perp && sui move test
 
 ## Architecture
 
-### Account Abstraction
+### Account Abstraction (Bucket V2 Pattern)
 
 All authenticated functions take `sender_request: &AccountRequest` from `bucket_v2_framework::account`. Two modes:
 
 - `account::request(ctx)` — identity is the tx sender (normal wallet)
-- `account::request_with_account(&Account)` — identity is an `Account` object address (multi-sig, shared)
+- `account::request_with_account(&Account)` — identity is a Bucket `Account` object address (multi-sig, shared)
 
 **Callers that need `AccountRequest`** (all trading + keeper + lifecycle functions):
 
@@ -74,7 +78,7 @@ PTB flow:
 
 ### Contract Modules (waterx-contracts/waterx_perp/sources/)
 
-- **trading.move** — Trading engine: `Market<BASE_TOKEN, LP_TOKEN>` shared object per pair (one per `market_symbol::<SYM>_USD`). All trading functions use request/response with `PriceResult<T>` from the oracle. Orders live in four `OrderBook` (limit_buys / limit_sells / stop_buys / stop_sells), each `OrderBook.levels: KeyedBigVector<u128, PriceLevel>` and `PriceLevel.orders: LinkedTable<u64, Order>`. Size is `Float` (1e9-scaled `u128`) end-to-end; public API accepts size as raw `u128` scaled value. No `lot_size` and no `size_decimal`.
+- **trading.move** — Trading engine: `Market<BASE_TOKEN, LP_TOKEN>` shared object per pair (one per `market_symbol::<SYM>_USD`). All trading functions use request/response with `PriceResult<T>` from Bucket Oracle. Orders live in four `OrderBook` (limit_buys / limit_sells / stop_buys / stop_sells), each `OrderBook.levels: KeyedBigVector<u128, PriceLevel>` and `PriceLevel.orders: LinkedTable<u64, Order>`. Size is `Float` (1e9-scaled `u128`) end-to-end; public API accepts size as raw `u128` scaled value. No `lot_size` and no `size_decimal`.
 - **position.move** — `Position` and `Order` structs, PnL calculation, fee tracking. `Position.size` / `Order.size` are `Float`. Collateral tracked in struct fields; actual balances in `GlobalVault`. `is_liquidatable()` takes `closing_fee: Float` (pre-computed USD value, NOT bps — callers inline `float::from_bps(bps).mul(notional)`). `math::fee_from_bps` was removed.
 - **market_config.move** — `MarketConfig<BASE_TOKEN>` per pair. Funding rate calculation, OI (`long_oi` / `short_oi` / `max_long_oi` / `max_short_oi` — all `Float`), reentrancy lock (`position_locker: VecSet<u64>`). Impact fee params (`max_impact_fee_bps`, `allocated_lp_exposure_bps`, `impact_fee_curvature`, `impact_fee_scale`) are **struct fields** in v2 (configurable per-market, not module constants). Floor is `min_coll_value` (USD threshold against collateral value) — `min_size` / `lot_size` / `size_decimal` removed. Order-price normalization uses `order_price_tick: Float`.
 - **lp_pool.move** — `WlpPool<LP_TOKEN>` (shared). Multi-token with target weights, dynamic fees, 3-slope borrow rates. `total_lp_supply` derives from the `TreasuryCap` (no separate field). Token balances live in `GlobalVault` on `GlobalConfig`, not on the pool. `mint_wlp`/`mint_wlp_to` and `settle_redeem` take `&mut GlobalConfig`. `request_redeem` takes `&GlobalConfig`. `cancel_redeem` returns `Coin<LP_TOKEN>`; `cancel_redeem_and_transfer` wraps it + transfers. `update_token_value<LP, TOKEN>` refreshes a single token pool's `last_price_refresh_timestamp`. `assert_prices_fresh` checks **every** pool token against `GlobalConfig.price_refresh_threshold_ms` — SDK must refresh all pool tokens in the same PTB before `mint_wlp` / `settle_redeem`.
@@ -106,7 +110,7 @@ PTB flow:
 - **trading.ts**: `openPosition` (supports `takeProfit` / `stopLoss`), `closePosition`, `increasePosition`, `decreasePosition`, `depositCollateral`, `withdrawCollateral`, `liquidate`, `matchOrders`, `updateFundingRate`, `executeTradingRequest`, `destroyTradingResponse`
 - **order.ts**: `placeOrder`, `cancelOrder`
 - **wlp.ts**: `mintWlp` (requires `priceResult`), `requestRedeemWlp` (takes `globalConfig` + `recipient`), `cancelRedeemWlp` (returns `Coin<WLP>` for composability; accepts optional `bucketAccount`), `settleRedeemWlp` (requires `priceResult`)
-- **account.ts**: `createAccount` (accepts string `name` or `{ name, bucketAccount? }` for external Account identity), `transferToAccount` (validates account via `transfer_coin`), `receiveCoin` (takes `coins: [{objectId, version, digest}]` + optional `amount?`), `addDelegate` / `removeDelegate` / `updateDelegatePermissions` (all build `AccountRequest`)
+- **account.ts**: `createAccount` (accepts string `name` or `{ name, bucketAccount? }` for Bucket Account identity), `transferToAccount` (validates account via `transfer_coin`), `receiveCoin` (takes `coins: [{objectId, version, digest}]` + optional `amount?`), `addDelegate` / `removeDelegate` / `updateDelegatePermissions` (all build `AccountRequest`)
 - **referral.ts**: `setReferralCode`, `useReferralCode` (both build `AccountRequest`)
 - **reward-distributor.ts**: `stakeRewardDistributor`, `unstakeRewardDistributor`, `redeemRewardDistributorCoin`, `claimRewardDistributor` — all accept optional `bucketAccount?: string | TransactionArgument` to toggle between `account::request(ctx)` and `account::request_with_account(&Account)` identities. Identities must match across the stake/redeem/claim of the same position.
 
@@ -185,8 +189,8 @@ SDK flow in `tx-builders.ts`: `buildOracleFeed(client, tx, tokenType, aggregator
 | `waterx_perp`        | Core protocol (trading, positions, markets, pool, accounts, view)                |
 | `market_symbol`      | Base-token witness structs: `BTC_USD`, `ETH_USD`, …, `TSLAX_USD` (one per pair)  |
 | `reward_distributor` | Reward vault using `AccountRequest` + `Double` precision (staking rewards)       |
-| `bucket_framework`   | v2 framework primitives (`Float`, `Double`, `Account`, `AccountRequest`, `Sheet`) |
-| `bucket_oracle`      | v2 oracle (`PriceAggregator`, `PriceResult`, `PriceCollector`)                    |
+| `bucket_framework`   | Bucket v2 framework (`Float`, `Double`, `Account`, `AccountRequest`, `Sheet`)    |
+| `bucket_oracle`      | Bucket v2 oracle (`PriceAggregator`, `PriceResult`, `PriceCollector`)            |
 | `pyth_rule`          | Pyth oracle rule (pull oracle, Hermes REST)                                      |
 | `pyth_sponsor_rule`  | (optional) Sponsor Pyth update fees; adds `PythSponsorRule` witness to requests  |
 | `wlp`                | WLP LP token (OTW + pool creation via `lp_pool::create_pool`)                    |
@@ -284,7 +288,7 @@ All setup scripts are admin-gated and assume `sui client active-address` owns th
 | `setup-keepers.ts` | Adds keeper addresses to `GlobalConfig`. |
 | `update-pyth-prices.ts` | Refreshes on-chain Pyth prices via Hermes for all configured feeds before running e2e / integration tests. |
 | `print-oracle-aggregates.ts` | Dry-runs oracle feed + aggregate for all markets/collaterals. Supports `--mainnet` flag (default testnet). |
-| `e2e-preflight.ts` / `e2e-prepare.ts` / `bootstrap-e2e-lifecycle-positions.ts` | E2E bring-up and fixture management. |
+| *(removed)* | Legacy `e2e-preflight` / fixture scripts were replaced by on-chain discovery in simulate tests (`test/helpers/e2e/discover-on-chain-position.ts`, `WATERX_E2E_NETWORK`). |
 
 ## Naming Conventions
 

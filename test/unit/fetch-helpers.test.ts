@@ -18,8 +18,8 @@ import {
   PTB_DUMMY_ACCOUNT_ID,
   PTB_DUMMY_DEPOSIT_COIN,
   PTB_DUMMY_ID_CC,
-} from "../helpers/ptb-test-dummies.ts";
-import { mockSuiAddress } from "../helpers/sui-mock-fixtures.ts";
+} from "../helpers/fixtures/ptb-test-dummies.ts";
+import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 
 describe("getAccountCoins", () => {
   const accountId = PTB_DUMMY_ACCOUNT_ID;

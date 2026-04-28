@@ -1,6 +1,7 @@
 /**
  * Pyth price feed integration for WaterX Perp DEX.
  *
+ * Adapted from Bucket Protocol SDK (bucket-protocol-sdk/src/utils/pyth.ts).
  * Fetches price update data from Hermes REST API, builds Move calls for Sui.
  * Does NOT depend on @pythnetwork/pyth-sui-js — uses direct Hermes REST + Move calls.
  */

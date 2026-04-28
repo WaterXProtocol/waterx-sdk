@@ -17,7 +17,7 @@ import {
   PTB_DUMMY_LP_COIN_DD,
   PTB_DUMMY_LP_COIN_EE,
   PTB_DUMMY_RECIPIENT,
-} from "../helpers/ptb-test-dummies.ts";
+} from "../helpers/fixtures/ptb-test-dummies.ts";
 
 const client = WaterXClient.testnet();
 

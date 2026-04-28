@@ -1,5 +1,5 @@
 /**
- * Numeric abort codes from the `waterx_perp` `error` module.
+ * Numeric abort codes from `contracts/waterx_perp/sources/error.move`.
  * Use in integration / simulate assertions when matching `MoveAbort` / gRPC error metadata.
  */
 export const WATERX_PERP_ABORT = {

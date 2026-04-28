@@ -2,7 +2,7 @@
  * Pyth oracle unit tests.
  *
  * - **Hermes**: all HTTP is via `MOCK_HERMES_URL` + mocked `globalThis.fetch` (no real network).
- * - **Object IDs**: use `../helpers/sui-mock-fixtures` for deterministic 32-byte hex strings.
+ * - **Object IDs**: use `../helpers/fixtures/sui-mock-fixtures` for deterministic 32-byte hex strings.
  */
 import { toHex } from "@mysten/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
@@ -32,7 +32,7 @@ import {
   mockPythPriceIdentifierType,
   mockSuiAddress,
   mockSuiAddrHeadPair,
-} from "../helpers/sui-mock-fixtures";
+} from "../helpers/fixtures/sui-mock-fixtures";
 
 describe("fetchPriceFeedsUpdateData", () => {
   const originalFetch = globalThis.fetch;

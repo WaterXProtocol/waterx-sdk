@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { BaseAsset } from "../../../src/constants.ts";
 import { getPosition, positionExists } from "../../../src/fetch.ts";
 import { buildClosePositionTx } from "../../../src/tx-builders.ts";
-import { activeLifecycleTestBases } from "../../helpers/lifecycle-test-markets.ts";
+import { activeLifecycleTestBases } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { listAccountPositionsInMarket } from "../helpers/list-account-positions.ts";
 import {
   assertSuccess,
@@ -65,7 +65,7 @@ async function tryPinnedPosition(
 /**
  * WATERX_INTEGRATION_CLOSE_BASE + optional WATERX_INTEGRATION_POSITION_ID,
  * or legacy WATERX_INTEGRATION_BTC_POSITION_ID (BTC pin, optional),
- * or auto-scan configured lifecycle bases (see `test/helpers/lifecycle-test-markets.ts`).
+ * or auto-scan configured lifecycle bases (see `test/helpers/e2e/lifecycle-test-markets.ts`).
  */
 async function resolvePositionToClose(
   ctx: SkipCtx,
@@ -106,7 +106,7 @@ async function resolvePositionToClose(
     "No open perp position in configured lifecycle markets (scan cap applies). " +
       "Open a position, or set WATERX_INTEGRATION_CLOSE_BASE (+ optional WATERX_INTEGRATION_POSITION_ID), " +
       "or legacy WATERX_INTEGRATION_BTC_POSITION_ID if closing BTC. " +
-      "Edit `test/helpers/lifecycle-test-markets.ts` to change which bases are scanned.",
+      "Edit `test/helpers/e2e/lifecycle-test-markets.ts` to change which bases are scanned.",
   );
   return null;
 }
