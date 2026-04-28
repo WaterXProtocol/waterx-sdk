@@ -1,12 +1,12 @@
 {
   "name": "@waterx/perp-sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "WaterX Perpetual Protocol SDK",
   "license": "MIT",
   "author": "WaterX",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Bucket-Protocol/waterx-sdk"
+    "url": "https://github.com/WaterXProtocol/waterx-sdk.git"
   },
   "type": "module",
   "main": "dist/src/index.js",
