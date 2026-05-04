@@ -43,7 +43,7 @@ import {
 } from "../helpers/e2e/e2e-funded-probe.ts";
 import { expectLeverageOpenSizingVsMarket } from "../helpers/e2e/e2e-open-sizing-expect.ts";
 import { lifecycleOracleUsdOrSkip } from "../helpers/e2e/e2e-oracle-context.ts";
-import { activeLifecycleTestBases, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateMoveAbort,
   assertSimulateSuccess,
@@ -357,7 +357,7 @@ describe(`on-chain market summary invariants (${e2eNetwork})`, () => {
   // No static manifest: assert only that live `getMarketSummary` looks like a
   // tradeable market. Testnet manifest parity stays in integration
   // `trader-market-onchain-config.test.ts`.
-  for (const base of activeLifecycleTestBases()) {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
     it(`${base}: active market with sane risk params from chain`, async () => {
       const entry = client.getMarketEntry(base);
       const summary = await getMarketSummary(client, entry.marketId, entry.baseType);
@@ -376,7 +376,7 @@ describe(`on-chain market summary invariants (${e2eNetwork})`, () => {
 });
 
 describe("PRD §2.3 — TC-TRADE-003: max leverage vs above-max (on-chain maxLeverageBps)", () => {
-  for (const base of activeLifecycleTestBases()) {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
     it(`${base}: open at exact max leverage (on-chain resolve_size)`, async (ctx) => {
       const d = await discoverActivePositionForNegativeOpen(client, base);
       if (!d) {

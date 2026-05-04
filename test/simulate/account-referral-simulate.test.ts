@@ -14,13 +14,13 @@ import { beforeAll, describe, it } from "vitest";
 
 import { discoverActivePosition } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client } from "../helpers/e2e/e2e-client.ts";
-import { activeLifecycleTestBases } from "../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient } from "../helpers/e2e/lifecycle-test-markets.ts";
 import { assertSimulateSuccess } from "../helpers/e2e/simulate-assertions.ts";
 
 let probe: { accountId: string; owner: string } | null = null;
 
 beforeAll(async () => {
-  for (const base of activeLifecycleTestBases()) {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
     let d = await discoverActivePosition(client, base, {
       minAccountUsdcBalance: 500_000n,
       maxPages: 24,

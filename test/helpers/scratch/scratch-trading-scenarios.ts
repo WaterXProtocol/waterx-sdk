@@ -2,11 +2,12 @@
  * Data-driven **scratch** perp scenarios: one row per enabled {@link LIFECYCLE_TEST_MARKETS} base.
  * Used by integration (full on-chain lifecycle) and e2e simulate (open dry-runs + optional stateful).
  *
- * To add a market: extend {@link LIFECYCLE_TEST_MARKETS}; iteration order is {@link activeLifecycleTestBases}.
+ * To add a market: extend {@link LIFECYCLE_TEST_MARKETS}; iteration uses {@link activeLifecycleTestBasesForClient}.
  */
 import type { BaseAsset } from "../../../src/constants.ts";
+import type { WaterXClient } from "@waterx/perp-sdk";
 import {
-  activeLifecycleTestBases,
+  activeLifecycleTestBasesForClient,
   LIFECYCLE_DEPOSIT_COLLATERAL_USDC,
   LIFECYCLE_INCREASE_COLLATERAL_USDC,
   LIFECYCLE_WITHDRAW_COLLATERAL_USDC,
@@ -68,10 +69,10 @@ export type ScratchTradingScenario = {
 };
 
 /**
- * All scratch scenarios for currently configured testnet markets (same set as `activeLifecycleTestBases()`).
+ * All scratch scenarios for lifecycle bases that exist on this client's network.
  */
-export function scratchTradingScenarios(): ScratchTradingScenario[] {
-  return activeLifecycleTestBases().map((base) => {
+export function scratchTradingScenarios(client: WaterXClient): ScratchTradingScenario[] {
+  return activeLifecycleTestBasesForClient(client).map((base) => {
     const row = lifecycleRow(base);
     const levSim = row.simulateLeverage ?? row.leverage;
     return {

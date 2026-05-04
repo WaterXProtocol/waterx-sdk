@@ -25,6 +25,22 @@ const BASE_LIFECYCLE_ORACLE_USD_PRICE_FALLBACKS: Partial<Record<BaseAsset, numbe
   QQQX: 490,
   SPYX: 560,
   TSLAX: 250,
+  // 200K-tier (table fallbacks when batch oracle simulate misses a base)
+  HYPE: 25,
+  XRP: 2.2,
+  BNB: 650,
+  ZEC: 150,
+  XAUT: 2500,
+  XAG: 28,
+  EURUSD: 1.05,
+  USDJPY: 150,
+  MSTRX: 400,
+  COINX: 300,
+  HOODX: 90,
+  CRCLX: 120,
+  NFLXX: 25,
+  WTI: 75,
+  BRENT: 78,
 };
 
 /** Offline / unit helpers: populate {@link basePriceCache} without RPC. */
@@ -59,8 +75,8 @@ export async function getOracleUsdPriceForBase(
 export async function getLifecycleOracleUsdPrices(
   client: WaterXClient,
 ): Promise<Record<BaseAsset, number>> {
-  const { activeLifecycleTestBases } = await import("./lifecycle-test-markets.ts");
-  const bases = activeLifecycleTestBases();
+  const { activeLifecycleTestBasesForClient } = await import("./lifecycle-test-markets.ts");
+  const bases = activeLifecycleTestBasesForClient(client);
   const out = {} as Record<BaseAsset, number>;
   for (const b of bases) {
     out[b] = await getOracleUsdPriceForBase(client, b);
@@ -69,12 +85,12 @@ export async function getLifecycleOracleUsdPrices(
 }
 
 /**
- * Populate the process-wide oracle USD cache for every {@link activeLifecycleTestBases} entry.
+ * Populate the process-wide oracle USD cache for every {@link activeLifecycleTestBasesForClient} entry.
  * Vitest e2e + integration-trader setup files call this before tests load.
  */
 export async function primeLifecycleOracleUsdPrices(client: WaterXClient): Promise<void> {
-  const { activeLifecycleTestBases } = await import("./lifecycle-test-markets.ts");
-  const bases = activeLifecycleTestBases();
+  const { activeLifecycleTestBasesForClient } = await import("./lifecycle-test-markets.ts");
+  const bases = activeLifecycleTestBasesForClient(client);
   if (bases.length === 0) return;
   const prices = await fetchSimulatedUsdPricesForBases(client, bases);
   const missing: BaseAsset[] = [];

@@ -34,7 +34,7 @@ import {
 
 function scenariosForIntegrationEnv() {
   const bases = new Set(selectedIntegrationLifecycleBasesFromEnv());
-  return scratchTradingScenarios().filter((s) => bases.has(s.base));
+  return scratchTradingScenarios(client).filter((s) => bases.has(s.base));
 }
 
 /**

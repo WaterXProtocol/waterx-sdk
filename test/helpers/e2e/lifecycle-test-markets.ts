@@ -1,11 +1,15 @@
 /**
  * Single source of truth for **integration** + **e2e** per-market lifecycle / open-position tests.
  *
- * - Add a `BaseAsset` key to run that market in both suites; **delete the key** (or comment block)
- *   to stop running it.
+ * - Add a `BaseAsset` key to run that market; **delete the key** to stop running it.
  * - Iteration order is {@link LIFECYCLE_TEST_BASE_ORDER} intersected with keys present in
  *   {@link LIFECYCLE_TEST_MARKETS}.
+ * - At runtime, {@link activeLifecycleTestBasesForClient} keeps **one list** but only iterates
+ *   bases that exist on the active `WaterXClient` deployment (`client.config.markets`), so
+ *   mainnet-only extended symbols are skipped automatically on testnet.
  */
+import { createTestnetConfig, WaterXClient } from "@waterx/perp-sdk";
+
 import type { BaseAsset } from "../../../src/constants.ts";
 import { getCachedOracleUsdPriceForBase } from "./lifecycle-oracle-usd-prices.ts";
 
@@ -67,7 +71,77 @@ export const LIFECYCLE_TEST_BASE_ORDER: readonly BaseAsset[] = [
   "QQQX",
   "SPYX",
   "TSLAX",
+  // 200K-tier — mainnet-only in SDK constants; filtered out on testnet via `activeLifecycleTestBasesForClient`.
+  "HYPE",
+  "XRP",
+  "BNB",
+  "ZEC",
+  "XAUT",
+  "XAG",
+  "EURUSD",
+  "USDJPY",
+  "MSTRX",
+  "COINX",
+  "HOODX",
+  "CRCLX",
+  "NFLXX",
+  "WTI",
+  "BRENT",
 ];
+
+/** Same PTB sizing template as other xStock lifecycle rows (Float-scale raw sizes). */
+function lifecycleRow200kXStock(): LifecycleTestMarketTableRow {
+  return {
+    leverage: 2,
+    openCollateral: 15_000_000n,
+    isLong: true,
+    sizeLot: 1000n,
+    simulateOpenCollateral: 10_000_000n,
+    e2ePtb: {
+      openCollateral: 10_000_000n,
+      increaseCollateral: 5_000_000n,
+      openSize: 100_000n,
+      increaseSize: 50_000n,
+      decreaseSize: 50_000n,
+    },
+  };
+}
+
+/** Tighter raw sizes for high-USD commodities / FX notionals. */
+function lifecycleRow200kTight(): LifecycleTestMarketTableRow {
+  return {
+    leverage: 2,
+    openCollateral: 15_000_000n,
+    isLong: true,
+    sizeLot: 1000n,
+    simulateOpenCollateral: 10_000_000n,
+    e2ePtb: {
+      openCollateral: 10_000_000n,
+      increaseCollateral: 5_000_000n,
+      openSize: 20_000n,
+      increaseSize: 10_000n,
+      decreaseSize: 10_000n,
+    },
+  };
+}
+
+/** Large-cap crypto 200K-tier — slightly higher simulate collateral headroom. */
+function lifecycleRow200kMajorCrypto(): LifecycleTestMarketTableRow {
+  return {
+    leverage: 3,
+    openCollateral: 20_000_000n,
+    isLong: true,
+    sizeLot: 1000n,
+    simulateOpenCollateral: 15_000_000n,
+    e2ePtb: {
+      openCollateral: 15_000_000n,
+      increaseCollateral: 5_000_000n,
+      openSize: 500_000n,
+      increaseSize: 250_000n,
+      decreaseSize: 250_000n,
+    },
+  };
+}
 
 /** Enable a market by adding a row; disable by removing the key. */
 export const LIFECYCLE_TEST_MARKETS: Partial<Record<BaseAsset, LifecycleTestMarketTableRow>> = {
@@ -253,11 +327,60 @@ export const LIFECYCLE_TEST_MARKETS: Partial<Record<BaseAsset, LifecycleTestMark
       decreaseSize: 40_000n,
     },
   },
+  HYPE: lifecycleRow200kMajorCrypto(),
+  XRP: {
+    ...lifecycleRow200kMajorCrypto(),
+    leverage: 4,
+    isLong: false,
+  },
+  BNB: lifecycleRow200kMajorCrypto(),
+  ZEC: {
+    ...lifecycleRow200kMajorCrypto(),
+    leverage: 3,
+    isLong: false,
+  },
+  XAUT: lifecycleRow200kTight(),
+  XAG: lifecycleRow200kTight(),
+  EURUSD: lifecycleRow200kTight(),
+  USDJPY: lifecycleRow200kTight(),
+  MSTRX: lifecycleRow200kXStock(),
+  COINX: lifecycleRow200kXStock(),
+  HOODX: lifecycleRow200kXStock(),
+  CRCLX: lifecycleRow200kXStock(),
+  NFLXX: lifecycleRow200kXStock(),
+  WTI: lifecycleRow200kTight(),
+  BRENT: lifecycleRow200kTight(),
 };
 
-/** Bases that have a row — in stable order. */
-export function activeLifecycleTestBases(): BaseAsset[] {
+let cachedTestnetLifecycleClient: WaterXClient | undefined;
+
+/** Shared testnet client for {@link activeLifecycleTestBasesIntegration} (no gRPC retry proxy). */
+export function getTestnetLifecycleProbeClient(): WaterXClient {
+  if (!cachedTestnetLifecycleClient) {
+    cachedTestnetLifecycleClient = new WaterXClient(createTestnetConfig());
+  }
+  return cachedTestnetLifecycleClient;
+}
+
+/** All bases that have a lifecycle table row (ignores deployed network). */
+export function activeLifecycleTestBasesConfigured(): BaseAsset[] {
   return LIFECYCLE_TEST_BASE_ORDER.filter((b) => LIFECYCLE_TEST_MARKETS[b] != null);
+}
+
+/**
+ * Lifecycle bases that exist on **this** client's network (testnet vs mainnet markets map).
+ * Use this for e2e simulate + discovery so one manifest covers extended mainnet-only assets.
+ */
+export function activeLifecycleTestBasesForClient(client: WaterXClient): BaseAsset[] {
+  const markets = client.config.markets as Record<string, unknown>;
+  return LIFECYCLE_TEST_BASE_ORDER.filter(
+    (b) => LIFECYCLE_TEST_MARKETS[b] != null && markets[b] !== undefined,
+  );
+}
+
+/** Integration scratch: published testnet deployment only. */
+export function activeLifecycleTestBasesIntegration(): BaseAsset[] {
+  return activeLifecycleTestBasesForClient(getTestnetLifecycleProbeClient());
 }
 
 export function lifecycleRow(base: BaseAsset): LifecycleTestMarketRow {

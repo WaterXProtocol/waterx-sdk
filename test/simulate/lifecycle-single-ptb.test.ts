@@ -11,7 +11,7 @@ import {
   e2eSkipReasonNoEligibleMarketPosition,
 } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client } from "../helpers/e2e/e2e-client.ts";
-import { activeLifecycleTestBases, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateAbortMatches,
   assertSimulateSuccess,
@@ -23,7 +23,7 @@ import { deriveTradingMatrixCases } from "../helpers/scratch/derive-simulate-sce
 import { MATRIX_SKIP_PREFIX } from "../helpers/trading/market-trading-size-constraints.ts";
 
 describe("discovery trading matrix (simulate)", () => {
-  for (const base of activeLifecycleTestBases()) {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
     const row = lifecycleRow(base);
 
     test(`${base} — matrix`, async (ctx) => {

@@ -15,7 +15,7 @@ import {
 import type { PositionDataView } from "../../../src/view-types.ts";
 import { resolveDefaultUsdcCoinProbeAttempts } from "./e2e-discovery-caps.ts";
 import { getAccountOwnerByAccountId } from "./fetch-read-helpers-for-tests.ts";
-import { activeLifecycleTestBases, lifecycleRow } from "./lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient, lifecycleRow } from "./lifecycle-test-markets.ts";
 import { runWithConcurrency } from "./run-with-concurrency.ts";
 
 export { resolveDefaultUsdcCoinProbeAttempts };
@@ -594,7 +594,7 @@ function mergeFundedProbeScanOpts(opts: DiscoverActivePositionOpts): DiscoverAct
 
 /**
  * Pick the first discoverable {@link DiscoveredPosition} across
- * {@link activeLifecycleTestBases} whose account satisfies
+ * {@link activeLifecycleTestBasesForClient} whose account satisfies
  * `minAccountUsdcBalance` (and other {@link DiscoverActivePositionOpts}).
  *
  * Intended for `beforeAll` probes in simulate suites that must dry-run
@@ -609,7 +609,7 @@ export async function discoverFundedProbe(
   client: WaterXClient,
   opts: DiscoverActivePositionOpts & { minAccountUsdcBalance: bigint },
 ): Promise<DiscoveredPosition | null> {
-  const bases = activeLifecycleTestBases();
+  const bases = activeLifecycleTestBasesForClient(client);
   if (bases.length === 0) return null;
 
   const scanOpts = mergeFundedProbeScanOpts(opts);
@@ -648,7 +648,7 @@ export async function discoverFundedProbeWithoutPositionOnBase(
   opts: DiscoverActivePositionOpts & { minAccountUsdcBalance: bigint },
 ): Promise<DiscoveredPosition | null> {
   const scanOpts = mergeFundedProbeScanOpts(opts);
-  const others = activeLifecycleTestBases().filter((b) => b !== openOnBase);
+  const others = activeLifecycleTestBasesForClient(client).filter((b) => b !== openOnBase);
   for (const scanBase of others) {
     const hit = await discoverActivePosition(client, scanBase, scanOpts);
     if (!hit) continue;
@@ -766,7 +766,7 @@ export async function discoverPositionsForAllActiveMarkets(
   client: WaterXClient,
 ): Promise<Map<BaseAsset, DiscoveredPosition>> {
   const out = new Map<BaseAsset, DiscoveredPosition>();
-  for (const base of activeLifecycleTestBases()) {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
     const hit = await discoverActivePosition(client, base, DISCOVERY_OPTS_STATEFUL_SIMULATE);
     if (hit) out.set(base, hit);
   }

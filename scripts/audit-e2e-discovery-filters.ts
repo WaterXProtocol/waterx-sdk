@@ -32,7 +32,8 @@ import {
 } from "../test/helpers/e2e/discover-on-chain-position.ts";
 import { primeLifecycleOracleUsdPrices } from "../test/helpers/e2e/lifecycle-oracle-usd-prices.ts";
 import {
-  activeLifecycleTestBases,
+  activeLifecycleTestBasesConfigured,
+  activeLifecycleTestBasesForClient,
   lifecycleRow,
 } from "../test/helpers/e2e/lifecycle-test-markets.ts";
 
@@ -47,7 +48,7 @@ function parseArgs(argv: string[]): { testnet: boolean; bases: BaseAsset[] | nul
       basesArg = argv[++i]!;
     }
   }
-  const all = activeLifecycleTestBases();
+  const all = activeLifecycleTestBasesConfigured();
   if (!basesArg) return { testnet, bases: null };
   const want = new Set(
     basesArg
@@ -209,7 +210,7 @@ async function main() {
   const client = testnet ? WaterXClient.testnet() : WaterXClient.mainnet();
   await primeLifecycleOracleUsdPrices(client);
   const network = testnet ? "testnet" : "mainnet";
-  const list = bases ?? activeLifecycleTestBases();
+  const list = bases ?? activeLifecycleTestBasesForClient(client);
 
   const scanPages = Math.max(
     20,

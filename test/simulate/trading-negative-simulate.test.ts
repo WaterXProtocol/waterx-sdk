@@ -11,7 +11,7 @@ import {
   type DiscoveredPosition,
 } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client } from "../helpers/e2e/e2e-client.ts";
-import { activeLifecycleTestBases, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateMoveAbort,
   simulateWithTransientRetry,
@@ -23,7 +23,7 @@ import { WATERX_PERP_ABORT } from "../helpers/waterx-perp-error-codes.ts";
 
 const TINY_COLLATERAL_RAW = 1n;
 
-describe.each(activeLifecycleTestBases())(
+describe.each(activeLifecycleTestBasesForClient(client))(
   "Simulate: trading expected failures (MoveAbort) — %s",
   (base) => {
     const row = lifecycleRow(base);
@@ -109,7 +109,7 @@ describe.each(activeLifecycleTestBases())(
 );
 
 describe("Simulate: withdrawCollateral exceeds max leverage (MoveAbort)", () => {
-  for (const base of activeLifecycleTestBases()) {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
     it(`${base}: withdraw nearly all collateral → err_exceed_max_leverage (104)`, async (ctx) => {
       const hit = await discoverActivePosition(client, base);
       if (!hit) {

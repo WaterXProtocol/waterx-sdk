@@ -49,7 +49,7 @@ beforeAll(async () => {
   probe = await loadFundedProbe(clientSim, PROBE_MIN_ACCOUNT_USDC);
 }, 180_000);
 
-const scenarios = scratchTradingScenarios();
+const scenarios = scratchTradingScenarios(clientSim);
 const ORDER_TRIGGER_PRICE_USD = 60_000n;
 const ORDER_COLLATERAL = 10_000_000n;
 const ORDER_SIZE = 2_000n;
@@ -73,7 +73,7 @@ async function trySimulate(
 }
 
 describe("tx-builders PTB dry-run simulate (discovery, no keys)", () => {
-  describe.each(scratchTradingScenarios())("$id", (scenario) => {
+  describe.each(scratchTradingScenarios(clientSim))("$id", (scenario) => {
     const setSender = (tx: import("@mysten/sui/transactions").Transaction) => {
       const p = probe;
       if (p) tx.setSender(p.owner);
@@ -81,14 +81,7 @@ describe("tx-builders PTB dry-run simulate (discovery, no keys)", () => {
 
     it("buildOpenPositionTx — approxPrice from oracle USD", async (ctx) => {
       const { accountId } = requireProbe(ctx);
-      await scratchSimulateOpenApproxOracle(
-        ctx,
-        clientSim,
-        accountId,
-        scenario,
-        setSender,
-        trySimulate,
-      );
+      await scratchSimulateOpenApproxOracle(ctx, clientSim, accountId, scenario, setSender);
     }, 120_000);
 
     it("buildOpenPositionTx — explicit size + open fee formula", async (ctx) => {
@@ -98,12 +91,12 @@ describe("tx-builders PTB dry-run simulate (discovery, no keys)", () => {
 
     it("buildOpenPositionTx — on-chain resize (leverage only)", async (ctx) => {
       const { accountId } = requireProbe(ctx);
-      await scratchSimulateOpenResize(ctx, clientSim, accountId, scenario, setSender, trySimulate);
+      await scratchSimulateOpenResize(ctx, clientSim, accountId, scenario, setSender);
     }, 120_000);
   });
 
   it("scratch-BTC — buildOpenPositionTx — table approxPrice (integration parity)", async (ctx) => {
-    const scenario = scratchTradingScenarios().find((s) => s.base === "BTC");
+    const scenario = scratchTradingScenarios(clientSim).find((s) => s.base === "BTC");
     if (!scenario) {
       throw new Error("scratchTradingScenarios(): expected BTC row from LIFECYCLE_TEST_MARKETS");
     }
@@ -124,7 +117,7 @@ describe("tx-builders PTB dry-run simulate (discovery, no keys)", () => {
 });
 
 describe("tx-builders stateful ops (simulate)", () => {
-  describe.each(scratchTradingScenarios())("$id — existing position", (scenario) => {
+  describe.each(scratchTradingScenarios(clientSim))("$id — existing position", (scenario) => {
     it("increase / decrease / deposit / withdraw / close (sequential simulates)", async (ctx) => {
       const hit = await discoverActivePositionFirstMatchingTiers(
         clientSim,

@@ -6,12 +6,12 @@ import { describe, expect, it } from "vitest";
 
 import { discoverActivePosition } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client } from "../helpers/e2e/e2e-client.ts";
-import { activeLifecycleTestBases } from "../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient } from "../helpers/e2e/lifecycle-test-markets.ts";
 
 describe("Discovery owner (simulate)", () => {
   it("getAccountsByOwner lists the account that owns a scanned position", async (ctx) => {
     let hit = null as Awaited<ReturnType<typeof discoverActivePosition>>;
-    for (const base of activeLifecycleTestBases()) {
+    for (const base of activeLifecycleTestBasesForClient(client)) {
       hit = await discoverActivePosition(client, base);
       if (hit) break;
     }

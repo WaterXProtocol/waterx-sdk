@@ -10,7 +10,7 @@ import { expect } from "vitest";
 
 import type { BaseAsset } from "../../../src/constants.ts";
 import type { MarketData } from "../../../src/view-types.ts";
-import { activeLifecycleTestBases } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesIntegration } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateSuccess,
   skipSimulateIfOracleTransient,
@@ -33,7 +33,7 @@ export type IntegrationExecTx = (
 }>;
 
 export function selectedIntegrationLifecycleBasesFromEnv(): BaseAsset[] {
-  const all = activeLifecycleTestBases();
+  const all = activeLifecycleTestBasesIntegration();
   const raw = process.env.WATERX_INTEGRATION_BASES?.trim();
   if (!raw) return all;
 

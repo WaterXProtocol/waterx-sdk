@@ -9,7 +9,7 @@ import {
 
 import type { BaseAsset } from "../../../src/constants.ts";
 import { DUMMY_SENDER } from "./e2e-client.ts";
-import { activeLifecycleTestBases } from "./lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient } from "./lifecycle-test-markets.ts";
 import { fetchSimulatedUsdPricesForBases } from "./oracle-simulate-multi-asset.ts";
 
 /**
@@ -74,7 +74,7 @@ export async function lifecycleOracleUsdOrSkip(
   ctx: { skip: (reason?: string) => void },
   attempts = 3,
 ): Promise<Record<BaseAsset, number> | null> {
-  const bases = activeLifecycleTestBases();
+  const bases = activeLifecycleTestBasesForClient(client);
   if (bases.length === 0) return {} as Record<BaseAsset, number>;
 
   let lastErrorMsg: string | null = null;

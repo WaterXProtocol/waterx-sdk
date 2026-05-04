@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { BaseAsset } from "../../../src/constants.ts";
 import { getPosition, positionExists } from "../../../src/fetch.ts";
 import { buildClosePositionTx } from "../../../src/tx-builders.ts";
-import { activeLifecycleTestBases } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { activeLifecycleTestBasesForClient } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { listAccountPositionsInMarket } from "../helpers/list-account-positions.ts";
 import {
   assertSuccess,
@@ -33,8 +33,8 @@ function parseBaseAsset(raw: string | undefined): BaseAsset | undefined {
   return bases.includes(u as BaseAsset) ? (u as BaseAsset) : undefined;
 }
 
-/** Same order as {@link activeLifecycleTestBases} — first open position wins. */
-const AUTO_CLOSE_SCAN_ORDER: BaseAsset[] = activeLifecycleTestBases();
+/** Same order as {@link activeLifecycleTestBasesForClient} on the integration client — first open position wins. */
+const AUTO_CLOSE_SCAN_ORDER: BaseAsset[] = activeLifecycleTestBasesForClient(client);
 
 type SkipCtx = { skip: (reason?: string) => void };
 

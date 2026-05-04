@@ -13,6 +13,7 @@ import {
   getPoolSummary,
 } from "@waterx/perp-sdk";
 
+import { maybeWriteScratchOpenSimulateDump } from "../e2e/scratch-open-simulate-dump.ts";
 import { expectLeverageOpenSizingVsMarket } from "../e2e/e2e-open-sizing-expect.ts";
 import { lifecycleOracleUsdOrSkip } from "../e2e/e2e-oracle-context.ts";
 import { fetchSimulatedCollateralUsdPrice } from "../e2e/oracle-simulate-multi-asset.ts";
@@ -56,11 +57,6 @@ export async function scratchSimulateOpenApproxOracle(
   accountId: string,
   scenario: ScratchTradingScenario,
   setSender: (tx: import("@mysten/sui/transactions").Transaction) => void,
-  trySimulate: (
-    ctx: SimulateScratchCtx,
-    tx: import("@mysten/sui/transactions").Transaction,
-    minCommands: number,
-  ) => Promise<void>,
 ): Promise<void> {
   const prices = await lifecycleOracleUsdOrSkip(client, ctx);
   if (!prices) return;
@@ -86,7 +82,16 @@ export async function scratchSimulateOpenApproxOracle(
     collateralAmount: scenario.simulateOpen.collateral,
   });
   setSender(tx);
-  await trySimulate(ctx, tx, SCRATCH_EXPECT.simulate.minCommandsOpenStandard);
+  const result = await simulateWithTransientRetry(() => grpcSimulateWithEvents(client, tx));
+  if (skipSimulateIfOracleTransient(ctx, result)) return;
+  assertSimulateSuccess(result, SCRATCH_EXPECT.simulate.minCommandsOpenStandard, {
+    transaction: tx,
+  });
+  maybeWriteScratchOpenSimulateDump({
+    base: scenario.base,
+    kind: "approx-oracle",
+    result,
+  });
 }
 
 /** `buildOpenPositionTx` + explicit `size`; asserts open fee vs formula when simulate succeeds. */
@@ -141,6 +146,11 @@ export async function scratchSimulateOpenExplicitSizeWithFee(
   assertSimulateSuccess(result, SCRATCH_EXPECT.simulate.minCommandsOpenStandard, {
     transaction: tx,
   });
+  maybeWriteScratchOpenSimulateDump({
+    base: scenario.base,
+    kind: "explicit-size",
+    result,
+  });
 
   assertSimulateOpenFeeMatchesFormula(result, {
     tradingFeeBps: marketBefore.tradingFeeBps,
@@ -160,11 +170,6 @@ export async function scratchSimulateOpenResize(
   accountId: string,
   scenario: ScratchTradingScenario,
   setSender: (tx: import("@mysten/sui/transactions").Transaction) => void,
-  trySimulate: (
-    ctx: SimulateScratchCtx,
-    tx: import("@mysten/sui/transactions").Transaction,
-    minCommands: number,
-  ) => Promise<void>,
 ): Promise<void> {
   const tx = await buildOpenPositionTx(client, {
     accountId,
@@ -174,7 +179,16 @@ export async function scratchSimulateOpenResize(
     collateralAmount: scenario.simulateOpen.collateral,
   });
   setSender(tx);
-  await trySimulate(ctx, tx, SCRATCH_EXPECT.simulate.minCommandsOpenResize);
+  const result = await simulateWithTransientRetry(() => grpcSimulateWithEvents(client, tx));
+  if (skipSimulateIfOracleTransient(ctx, result)) return;
+  assertSimulateSuccess(result, SCRATCH_EXPECT.simulate.minCommandsOpenResize, {
+    transaction: tx,
+  });
+  maybeWriteScratchOpenSimulateDump({
+    base: scenario.base,
+    kind: "resize",
+    result,
+  });
 }
 
 /** `approxPrice` = lifecycle table ballpark (integration opt-in parity). */
