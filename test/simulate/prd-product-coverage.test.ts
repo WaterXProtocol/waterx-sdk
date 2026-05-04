@@ -43,7 +43,10 @@ import {
 } from "../helpers/e2e/e2e-funded-probe.ts";
 import { expectLeverageOpenSizingVsMarket } from "../helpers/e2e/e2e-open-sizing-expect.ts";
 import { lifecycleOracleUsdOrSkip } from "../helpers/e2e/e2e-oracle-context.ts";
-import { activeLifecycleTestBasesForClient, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
+import {
+  activeLifecycleTestBasesForClient,
+  lifecycleRow,
+} from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateMoveAbort,
   assertSimulateSuccess,

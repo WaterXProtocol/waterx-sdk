@@ -11,7 +11,10 @@ import {
   e2eSkipReasonNoEligibleMarketPosition,
 } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client } from "../helpers/e2e/e2e-client.ts";
-import { activeLifecycleTestBasesForClient, lifecycleRow } from "../helpers/e2e/lifecycle-test-markets.ts";
+import {
+  activeLifecycleTestBasesForClient,
+  lifecycleRow,
+} from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateAbortMatches,
   assertSimulateSuccess,

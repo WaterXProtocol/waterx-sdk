@@ -11,11 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DUMP_DIR = path.resolve(__dirname, "..", "..", "simulate-dumps", "scratch-open-success");
 
 function safeJsonStringify(value: unknown): string {
-  return JSON.stringify(
-    value,
-    (_key, v) => (typeof v === "bigint" ? v.toString() : v),
-    2,
-  );
+  return JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v), 2);
 }
 
 export type ScratchOpenSimulateDumpKind = "approx-oracle" | "explicit-size" | "resize";

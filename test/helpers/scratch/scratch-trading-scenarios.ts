@@ -4,8 +4,9 @@
  *
  * To add a market: extend {@link LIFECYCLE_TEST_MARKETS}; iteration uses {@link activeLifecycleTestBasesForClient}.
  */
-import type { BaseAsset } from "../../../src/constants.ts";
 import type { WaterXClient } from "@waterx/perp-sdk";
+
+import type { BaseAsset } from "../../../src/constants.ts";
 import {
   activeLifecycleTestBasesForClient,
   LIFECYCLE_DEPOSIT_COLLATERAL_USDC,

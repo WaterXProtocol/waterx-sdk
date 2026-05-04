@@ -13,10 +13,10 @@ import {
   getPoolSummary,
 } from "@waterx/perp-sdk";
 
-import { maybeWriteScratchOpenSimulateDump } from "../e2e/scratch-open-simulate-dump.ts";
 import { expectLeverageOpenSizingVsMarket } from "../e2e/e2e-open-sizing-expect.ts";
 import { lifecycleOracleUsdOrSkip } from "../e2e/e2e-oracle-context.ts";
 import { fetchSimulatedCollateralUsdPrice } from "../e2e/oracle-simulate-multi-asset.ts";
+import { maybeWriteScratchOpenSimulateDump } from "../e2e/scratch-open-simulate-dump.ts";
 import {
   assertSimulateSuccess,
   simulateWithTransientRetry,
