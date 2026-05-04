@@ -24,6 +24,8 @@ import {
   TESTNET_TYPES,
   type BaseAsset,
   type CollateralAsset,
+  type ExtendedBaseAsset,
+  type LegacyBaseAsset,
   type Network,
 } from "./constants.ts";
 import type { PythConfig } from "./utils/pyth.ts";
@@ -85,8 +87,13 @@ export interface WaterXConfig {
   /** Shared WlpPool object ID */
   wlpPool: string;
 
-  /** All supported markets keyed by base asset symbol */
-  markets: Record<BaseAsset, MarketEntry>;
+  /**
+   * Markets keyed by base asset symbol. The 13 legacy markets are guaranteed
+   * present on every network; the 200K-tier batch (`ExtendedBaseAsset`) is
+   * mainnet-only, so those keys are optional.
+   */
+  markets: Record<LegacyBaseAsset, MarketEntry> &
+    Partial<Record<ExtendedBaseAsset, MarketEntry>>;
 
   /** Collateral token configs keyed by CollateralAsset */
   collaterals: Record<
