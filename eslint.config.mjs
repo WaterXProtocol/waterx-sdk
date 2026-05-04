@@ -14,6 +14,7 @@ export default tseslint.config(
       "node_modules/**",
       "src/generated/**",
       "eslint.config.mjs",
+      "contracts/**",
       "coverage/**",
     ],
   },

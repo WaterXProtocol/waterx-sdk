@@ -24,46 +24,151 @@ export interface MarketParams {
   fundingIntervalMs: number;
 }
 
-const DEFAULT_OI_CAP = 100_000_000_000_000n;
-const DEFAULT_MIN_COLL_VALUE = 10_000_000_000n; // $10
-
-function crypto(maxLeverageBps: number, overrides: Partial<MarketParams> = {}): MarketParams {
+/**
+ * Build a {@link MarketParams} row with arbitrary fields for per-network
+ * manifests (testnet / mainnet). All networks currently share
+ * `cooldownMs=0` / `basicFundingRateBps=1` / `fundingIntervalMs=1h`.
+ */
+function market(params: {
+  maxLeverageBps: number;
+  tradingFeeBps: number;
+  maintenanceMarginBps: number;
+  minCollValue: bigint;
+  maxLongOi: bigint;
+  maxShortOi: bigint;
+}): MarketParams {
   return {
-    maxLeverageBps,
-    minCollValue: DEFAULT_MIN_COLL_VALUE,
-    tradingFeeBps: 3,
-    maintenanceMarginBps: 150,
-    maxLongOi: DEFAULT_OI_CAP,
-    maxShortOi: DEFAULT_OI_CAP,
+    ...params,
     cooldownMs: 0,
     basicFundingRateBps: 1,
     fundingIntervalMs: 3_600_000,
-    ...overrides,
   };
 }
 
 /**
- * Legacy market definitions for the original 13 markets. Keyed by
- * `LegacyBaseAsset`; the 200K-tier batch lives in `MARKETS_200K_DEFINITIONS`
- * below (different fee / funding / cooldown profile).
+ * **Testnet** manifest — snapshot of `getMarketSummary` on the testnet
+ * deployment. Source of truth for `scripts/create-markets.ts` (testnet
+ * deployer) and `trader-market-onchain-config` (testnet config parity check).
+ * Also exported as {@link MARKET_DEFINITIONS} for back-compat.
+ *
+ * Update procedure: run a full-params probe against testnet and copy values
+ * here if an intentional on-chain config change has been made.
  */
-export const MARKET_DEFINITIONS: Record<LegacyBaseAsset, MarketParams> = {
-  // Crypto
-  BTC: crypto(500_000),
-  ETH: crypto(500_000),
-  SOL: crypto(500_000),
-  SUI: crypto(500_000),
-  DEEP: crypto(500_000),
-  WAL: crypto(500_000),
-  // xStock (cash-equities — tighter leverage by default)
-  AAPLX: crypto(100_000),
-  GOOGLX: crypto(100_000),
-  METAX: crypto(100_000),
-  NVDAX: crypto(100_000),
-  QQQX: crypto(100_000),
-  SPYX: crypto(100_000),
-  TSLAX: crypto(100_000),
+export const TESTNET_MARKET_DEFINITIONS: Record<LegacyBaseAsset, MarketParams> = {
+  BTC: market({
+    maxLeverageBps: 500_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 150,
+    minCollValue: 90_000_000n,
+    maxLongOi: 10_000_000_000n,
+    maxShortOi: 90_000_000n,
+  }),
+  ETH: market({
+    maxLeverageBps: 500_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 150,
+    minCollValue: 90_000_000n,
+    maxLongOi: 240_000_000_000n,
+    maxShortOi: 240_000_000_000n,
+  }),
+  SOL: market({
+    maxLeverageBps: 500_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 150,
+    minCollValue: 90_000_000n,
+    maxLongOi: 6_300_000_000_000n,
+    maxShortOi: 6_300_000_000_000n,
+  }),
+  SUI: market({
+    maxLeverageBps: 500_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 150,
+    minCollValue: 90_000_000n,
+    maxLongOi: 1_000_000_000_000_000n,
+    maxShortOi: 1_000_000_000_000_000n,
+  }),
+  DEEP: market({
+    maxLeverageBps: 500_000,
+    tradingFeeBps: 25,
+    maintenanceMarginBps: 150,
+    minCollValue: 90_000_000n,
+    maxLongOi: 180_000_000_000n,
+    maxShortOi: 180_000_000_000n,
+  }),
+  WAL: market({
+    maxLeverageBps: 500_000,
+    tradingFeeBps: 25,
+    maintenanceMarginBps: 150,
+    minCollValue: 90_000_000n,
+    maxLongOi: 150_000_000_000_000n,
+    maxShortOi: 150_000_000_000_000n,
+  }),
+  AAPLX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 4_000_000_000_000n,
+    maxShortOi: 4_000_000_000_000n,
+  }),
+  GOOGLX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 3_500_000_000_000n,
+    maxShortOi: 3_500_000_000_000n,
+  }),
+  METAX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 1_600_000_000_000n,
+    maxShortOi: 1_600_000_000_000n,
+  }),
+  NVDAX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 6_000_000_000_000n,
+    maxShortOi: 6_000_000_000_000n,
+  }),
+  QQQX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 1_700_000_000_000n,
+    maxShortOi: 1_700_000_000_000n,
+  }),
+  SPYX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 1_500_000_000_000n,
+    maxShortOi: 1_500_000_000_000n,
+  }),
+  TSLAX: market({
+    maxLeverageBps: 100_000,
+    tradingFeeBps: 10,
+    maintenanceMarginBps: 500,
+    minCollValue: 90_000_000n,
+    maxLongOi: 2_700_000_000_000n,
+    maxShortOi: 2_700_000_000_000n,
+  }),
 };
+
+/**
+ * Back-compat alias: `create-markets.ts` (testnet deployer) and the testnet
+ * integration config-parity test both consume the testnet manifest.
+ *
+ * Mainnet e2e simulate does **not** compare against a static manifest; it reads
+ * `getMarketSummary` and asserts on-chain invariants only.
+ */
+export const MARKET_DEFINITIONS = TESTNET_MARKET_DEFINITIONS;
 
 /**
  * 200K-tier batch markets sourced from `scripts/markets-200k-0.csv`.

@@ -4,45 +4,61 @@ import {
   addDelegate,
   createAccount,
   getAccountCoins,
-  getAccountsByOwner,
   receiveCoin,
   removeDelegate,
   setReferralCode,
-  TESTNET_TYPES,
   transferToAccount,
   updateDelegatePermissions,
 } from "@waterx/perp-sdk";
-import { describe, it } from "vitest";
+import { beforeAll, describe, it } from "vitest";
 
-import { INTEGRATION_REFERENCE_WALLET_ADDRESS as OWNER } from "../helpers/integration-reference-wallet.ts";
-import { pickE2eAccountIdForOwner } from "../helpers/resolve-e2e-reference-account.ts";
-import { assertSimulateSuccess } from "../helpers/simulate-assertions.ts";
-import { client } from "../helpers/testnet.ts";
+import { discoverActivePosition } from "../helpers/e2e/discover-on-chain-position.ts";
+import { client } from "../helpers/e2e/e2e-client.ts";
+import { activeLifecycleTestBasesForClient } from "../helpers/e2e/lifecycle-test-markets.ts";
+import { assertSimulateSuccess } from "../helpers/e2e/simulate-assertions.ts";
+
+let probe: { accountId: string; owner: string } | null = null;
+
+beforeAll(async () => {
+  for (const base of activeLifecycleTestBasesForClient(client)) {
+    let d = await discoverActivePosition(client, base, {
+      minAccountUsdcBalance: 500_000n,
+      maxPages: 24,
+      requireCooldownElapsed: false,
+    });
+    if (!d) {
+      d = await discoverActivePosition(client, base, {
+        maxPages: 24,
+        requireCooldownElapsed: false,
+      });
+    }
+    if (d) {
+      probe = { accountId: d.accountObjectAddress, owner: d.ownerAddress };
+      break;
+    }
+  }
+}, 180_000);
+
+function requireProbe(ctx: { skip: (reason?: string) => void }): {
+  accountId: string;
+  owner: string;
+} {
+  if (!probe) {
+    ctx.skip("No discovery probe (open position on any lifecycle market).");
+    return null as never;
+  }
+  return probe;
+}
 
 function randomCode(prefix = "e2e"): string {
   return `${prefix}${Date.now().toString(36).slice(-6)}`;
 }
 
-async function referenceAccountId(ctx: {
-  skip: (reason?: string) => void;
-}): Promise<string | null> {
-  const accounts = await getAccountsByOwner(client, OWNER);
-  if (!accounts.length) {
-    ctx.skip(`No WaterX UserAccount for ${OWNER}.`);
-    return null;
-  }
-  try {
-    return pickE2eAccountIdForOwner(OWNER, accounts);
-  } catch (e) {
-    ctx.skip(e instanceof Error ? e.message : String(e));
-    return null;
-  }
-}
-
 describe("account / delegate / referral wrappers (simulate)", () => {
-  it("createAccount wrapper", async () => {
+  it("createAccount wrapper", async (ctx) => {
+    const { owner } = requireProbe(ctx);
     const tx = new Transaction();
-    tx.setSender(OWNER);
+    tx.setSender(owner);
     tx.setGasBudget(120_000_000);
     createAccount(client, tx, `sim-${Date.now().toString(36).slice(-5)}`);
     const result = await client.simulate(tx);
@@ -50,12 +66,11 @@ describe("account / delegate / referral wrappers (simulate)", () => {
   }, 60_000);
 
   it("add/update/remove delegate wrappers in one PTB", async (ctx) => {
-    const accountId = await referenceAccountId(ctx);
-    if (!accountId) return;
+    const { accountId, owner } = requireProbe(ctx);
     const delegate = "0x1111111111111111111111111111111111111111111111111111111111111111";
 
     const tx = new Transaction();
-    tx.setSender(OWNER);
+    tx.setSender(owner);
     tx.setGasBudget(150_000_000);
 
     addDelegate(client, tx, {
@@ -78,19 +93,19 @@ describe("account / delegate / referral wrappers (simulate)", () => {
   }, 60_000);
 
   it("transferToAccount + receiveCoin wrappers", async (ctx) => {
-    const accountId = await referenceAccountId(ctx);
-    if (!accountId) return;
+    const { accountId, owner } = requireProbe(ctx);
+    const usdcType = client.config.collaterals.USDC.type;
 
     const walletUsdc = await client.listCoins({
-      owner: OWNER,
-      coinType: TESTNET_TYPES.USDC,
+      owner,
+      coinType: usdcType,
     });
     if (!walletUsdc.objects.length) {
-      ctx.skip(`No wallet-level USDC at ${OWNER}.`);
+      ctx.skip(`No wallet-level USDC at discovery owner.`);
       return;
     }
 
-    const accountUsdc = await getAccountCoins(client, accountId, TESTNET_TYPES.USDC);
+    const accountUsdc = await getAccountCoins(client, accountId, usdcType);
     if (!accountUsdc.length) {
       ctx.skip("No account-level USDC coin available for receiveCoin wrapper.");
       return;
@@ -98,29 +113,30 @@ describe("account / delegate / referral wrappers (simulate)", () => {
     const recv = accountUsdc[0]!;
 
     const tx = new Transaction();
-    tx.setSender(OWNER);
+    tx.setSender(owner);
     tx.setGasBudget(200_000_000);
 
     transferToAccount(client, tx, {
       accountObjectAddress: accountId,
       coin: walletUsdc.objects[0]!.objectId,
-      coinType: TESTNET_TYPES.USDC,
+      coinType: usdcType,
     });
 
     const received = receiveCoin(client, tx, {
       accountObjectAddress: accountId,
       coins: [{ objectId: recv.objectId, version: recv.version, digest: recv.digest }],
-      coinType: TESTNET_TYPES.USDC,
+      coinType: usdcType,
     });
-    tx.transferObjects([received], OWNER);
+    tx.transferObjects([received], owner);
 
     const result = await client.simulate(tx);
     assertSimulateSuccess(result, 2, { transaction: tx });
   }, 60_000);
 
-  it("setReferralCode wrapper", async () => {
+  it("setReferralCode wrapper", async (ctx) => {
+    const { owner } = requireProbe(ctx);
     const tx = new Transaction();
-    tx.setSender(OWNER);
+    tx.setSender(owner);
     tx.setGasBudget(80_000_000);
     setReferralCode(client, tx, { code: randomCode() });
     const result = await client.simulate(tx);

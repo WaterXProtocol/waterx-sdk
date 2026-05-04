@@ -1,5 +1,12 @@
 import {
+  createMainnetConfig,
   createTestnetConfig,
+  MAINNET_OBJECTS,
+  MAINNET_PACKAGE_IDS,
+  MAINNET_TYPES,
+  PYTH_HERMES_ENDPOINT,
+  PYTH_STATE_ID,
+  PYTH_WORMHOLE_STATE_ID,
   TESTNET_OBJECTS,
   TESTNET_PACKAGE_IDS,
   TESTNET_TYPES,
@@ -30,6 +37,31 @@ describe("createTestnetConfig", () => {
   });
 });
 
+describe("createMainnetConfig", () => {
+  it("returns NETWORK MAINNET wired to MAINNET_* constants", () => {
+    const c = createMainnetConfig();
+    expect(c.network).toBe("MAINNET");
+    expect(c.packageId).toBe(MAINNET_PACKAGE_IDS.WATERX_PERP);
+    expect(c.rewardDistributorPackageId).toBe(MAINNET_PACKAGE_IDS.REWARD_DISTRIBUTOR);
+    expect(c.bucketOraclePackageId).toBe(MAINNET_PACKAGE_IDS.BUCKET_ORACLE);
+    expect(c.bucketFrameworkPackageId).toBe(MAINNET_PACKAGE_IDS.BUCKET_FRAMEWORK);
+    expect(c.pythRulePackageId).toBe(MAINNET_PACKAGE_IDS.PYTH_RULE);
+    expect(c.pythRuleConfigId).toBe(MAINNET_OBJECTS.PYTH_RULE_CONFIG);
+    expect(c.pythSponsorRulePackageId).toBe(MAINNET_PACKAGE_IDS.PYTH_SPONSOR_RULE);
+    expect(c.pythSponsorId).toBe(MAINNET_OBJECTS.PYTH_SPONSOR);
+    expect(c.globalConfig).toBe(MAINNET_OBJECTS.GLOBAL_CONFIG);
+    expect(c.referralTable).toBe(MAINNET_OBJECTS.REFERRAL_TABLE);
+    expect(c.accountRegistry).toBe(MAINNET_OBJECTS.ACCOUNT_REGISTRY);
+    expect(c.wlpPool).toBe(MAINNET_OBJECTS.WLP_POOL);
+    expect(c.rewardDistributorId).toBe(MAINNET_OBJECTS.REWARD_DISTRIBUTOR);
+    expect(c.wlpType).toBe(MAINNET_TYPES.WLP);
+    expect(c.rewardDistributorRewardTokenTypes).toEqual([MAINNET_TYPES.SUI]);
+    expect(c.pythConfig?.pythStateId).toBe(PYTH_STATE_ID.MAINNET);
+    expect(c.pythConfig?.wormholeStateId).toBe(PYTH_WORMHOLE_STATE_ID.MAINNET);
+    expect(c.pythConfig?.hermesEndpoint).toBe(PYTH_HERMES_ENDPOINT.MAINNET);
+  });
+});
+
 describe("WaterXClient", () => {
   it("testnet() uses testnet config", () => {
     const client = WaterXClient.testnet();
@@ -42,6 +74,21 @@ describe("WaterXClient", () => {
     const url = "https://fullnode.custom.example:443";
     const client = WaterXClient.testnet({ grpcUrl: url });
     expect(client.config.grpcUrl).toBe(url);
+  });
+
+  it("mainnet() uses mainnet config", () => {
+    const client = WaterXClient.mainnet();
+    expect(client.config.network).toBe("MAINNET");
+    expect(client.config.packageId).toBe(createMainnetConfig().packageId);
+    expect(client.config.grpcUrl).toBeUndefined();
+    expect(client.grpcClient).toBeDefined();
+  });
+
+  it("mainnet({ grpcUrl }) overrides config.grpcUrl", () => {
+    const url = "https://fullnode.mainnet.example:443";
+    const client = WaterXClient.mainnet({ grpcUrl: url });
+    expect(client.config.grpcUrl).toBe(url);
+    expect(client.config.network).toBe("MAINNET");
   });
 
   it("getMarket returns BTC and ETH markets", () => {

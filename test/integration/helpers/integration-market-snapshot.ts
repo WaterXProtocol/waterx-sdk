@@ -1,6 +1,7 @@
 /**
- * Integration testnet market snapshot: one `getMarketSummary` per base per run, plus shared sizing
- * helpers so `lotSize` / `minSize` track the published `Market` without duplicating logic.
+ * Integration testnet market snapshot: one `getMarketSummary` per base per run.
+ * Note: SDK `MarketData` omits on-chain `min_size` / `lot_size`; e2e uses
+ * `getMarketTradingSizeConstraints` (gRPC object JSON) when sizing opens/decreases.
  */
 import type { WaterXClient } from "../../../src/client.ts";
 import type { BaseAsset } from "../../../src/constants.ts";
@@ -27,12 +28,11 @@ export async function fetchIntegrationMarketSummaries(
 /** Throws if snapshot is not usable for trading-style integration tests (no vitest dependency). */
 export function assertMarketSnapshotTradeable(snap: MarketData, label = "market"): void {
   if (!snap.isActive) throw new Error(`${label}: market inactive`);
-  // v2 removed `lot_size` / `min_size`. `min_coll_value` is a USD floor, not a size floor.
 }
 
 /**
- * v2: size is no longer lot-aligned or `min_size`-floored — return the requested size unchanged.
- * Kept as a no-op for call-site compatibility with legacy integration configs.
+ * Legacy no-op. On-chain trading still lot-aligns / min-floors **position size**; use
+ * `alignExplicitTradingSize` + `getMarketTradingSizeConstraints` in tests.
  */
 export function alignPositionSizeToMarket(size: bigint, _lot?: bigint, _min?: bigint): bigint {
   return size;

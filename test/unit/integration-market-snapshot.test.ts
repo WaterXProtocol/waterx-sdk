@@ -6,8 +6,8 @@ import {
 } from "../integration/helpers/integration-market-snapshot.ts";
 
 describe("alignPositionSizeToMarket", () => {
-  // v2 removed `lot_size` / `min_size`; helper is a no-op for legacy call-sites.
-  it("returns size unchanged (no-op in v2)", () => {
+  // Legacy no-op; real alignment lives in `market-trading-size-constraints.ts`.
+  it("returns size unchanged (no-op)", () => {
     expect(alignPositionSizeToMarket(2003n)).toBe(2003n);
     expect(alignPositionSizeToMarket(3n)).toBe(3n);
     expect(alignPositionSizeToMarket(2000n)).toBe(2000n);

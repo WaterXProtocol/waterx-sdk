@@ -7,9 +7,9 @@ import {
   LIFECYCLE_APPROX_PRICE_CHAIN_SMOKE_MIN_USDC,
   LIFECYCLE_MIN_ACCOUNT_USDC,
   lifecycleRow,
-} from "../../helpers/lifecycle-test-markets.ts";
-import { runScratchTradingScenarioIntegration } from "../../helpers/run-scratch-trading-scenario-integration.ts";
-import { scratchTradingScenarios } from "../../helpers/scratch-trading-scenarios.ts";
+} from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { runScratchTradingScenarioIntegration } from "../../helpers/scratch/run-scratch-trading-scenario-integration.ts";
+import { scratchTradingScenarios } from "../../helpers/scratch/scratch-trading-scenarios.ts";
 import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";
 import {
   assertMarketSnapshotTradeable,
@@ -34,12 +34,12 @@ import {
 
 function scenariosForIntegrationEnv() {
   const bases = new Set(selectedIntegrationLifecycleBasesFromEnv());
-  return scratchTradingScenarios().filter((s) => bases.has(s.base));
+  return scratchTradingScenarios(client).filter((s) => bases.has(s.base));
 }
 
 /**
  * Data-driven scratch lifecycle: {@link scratchTradingScenarios} × env-selected bases.
- * Opt-in `WATERX_INTEGRATION_APPROX_PRICE_CHAIN`: table-`approxPrice` open+close on first selected base.
+ * Opt-in `WATERX_INTEGRATION_APPROX_PRICE_CHAIN`: oracle-cached `approxPrice` open+close on first selected base.
  */
 describe.skipIf(!isIntegrationTraderConfigured())(
   "Integration: data-driven scratch lifecycle (testnet)",

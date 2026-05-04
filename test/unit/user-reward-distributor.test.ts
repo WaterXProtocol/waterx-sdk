@@ -14,7 +14,7 @@ import {
   PTB_DUMMY_COIN_CC,
   PTB_DUMMY_DEPOSIT_COIN,
   PTB_DUMMY_OBJECT_DD,
-} from "../helpers/ptb-test-dummies.ts";
+} from "../helpers/fixtures/ptb-test-dummies.ts";
 
 function getMoveCalls(tx: Transaction) {
   return (tx.getData().commands ?? [])

@@ -19,7 +19,7 @@ import {
   PositionData as PositionInfoBcs,
   TokenPoolData as TokenPoolDataBcs,
 } from "../../src/generated/waterx_perp/view.ts";
-import { mockSuiAddress } from "../helpers/sui-mock-fixtures.ts";
+import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 
 function clientWithViewPackageStub() {
   const client = WaterXClient.testnet();

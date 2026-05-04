@@ -16,14 +16,14 @@ import {
   buildReceiveCoinTx,
 } from "../../../src/tx-builders.ts";
 import {
-  activeE2ePersistentPerpBases,
-  E2E_PERSISTENT_WLP,
-  e2ePersistentPerpRow,
-} from "../../helpers/e2e-persistent-state.ts";
-import {
   buildDepositUsdcFromWalletTx,
   ensureUserAccountForIntegration,
 } from "../helpers/account-bootstrap.ts";
+import {
+  activeE2ePersistentPerpBases,
+  E2E_PERSISTENT_WLP,
+  e2ePersistentPerpRow,
+} from "../helpers/e2e-persistent-state.ts";
 import {
   alignPositionSizeToMarket,
   assertMarketSnapshotTradeable,

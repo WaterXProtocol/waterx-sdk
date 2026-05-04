@@ -23,7 +23,7 @@ import {
   PTB_DUMMY_ACCOUNT_ID,
   PTB_DUMMY_DEPOSIT_COIN,
   PTB_DUMMY_RECEIVING_COINS,
-} from "../helpers/ptb-test-dummies.ts";
+} from "../helpers/fixtures/ptb-test-dummies.ts";
 
 const client = WaterXClient.testnet();
 const accountId = PTB_DUMMY_ACCOUNT_ID;

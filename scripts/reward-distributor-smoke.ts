@@ -30,7 +30,7 @@ import {
   buildStakeRewardDistributorTx,
   buildUnstakeRewardDistributorTx,
 } from "../src/tx-builders.ts";
-import { normalizeIntegrationTxResult } from "../test/helpers/integration-tx-result.ts";
+import { normalizeIntegrationTxResult } from "../test/helpers/e2e/integration-tx-result.ts";
 import { client, loadIntegrationTraderKeypair, sleep } from "../test/integration/setup.ts";
 
 type ParsedArgs = {

@@ -4,7 +4,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import type { WaterXClient } from "../../../src/client.ts";
 import { getAccountsByOwner, selectCoinsForAmount } from "../../../src/fetch.ts";
 import { createAccount, transferToAccount } from "../../../src/user/account.ts";
-import { pickE2eAccountIdForOwner } from "../../helpers/resolve-e2e-reference-account.ts";
 import { assertSuccess } from "../setup.ts";
 
 function normAddr(a: string): string {
@@ -55,7 +54,7 @@ export async function ensureUserAccountForIntegration(
   }
 
   if (accounts.length > 0) {
-    return { accountId: pickE2eAccountIdForOwner(owner, accounts), created: false };
+    return { accountId: accounts[0]!.accountId, created: false };
   }
 
   const tx = new Transaction();

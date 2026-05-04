@@ -12,7 +12,7 @@ import {
 import { Double as RewardDistributorDoubleBcs } from "../../src/generated/reward_distributor/deps/bucket_v2_framework/double.ts";
 import { StakeDataDisplay as RewardDistributorStakeDataBcs } from "../../src/generated/reward_distributor/reward_distributor.ts";
 import { PoolData as PoolDataBcs } from "../../src/generated/waterx_perp/view.ts";
-import { mockSuiAddress } from "../helpers/sui-mock-fixtures.ts";
+import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 
 const DOUBLE_SCALE = 1_000_000_000_000_000_000n;
 
