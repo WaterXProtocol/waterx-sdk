@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check permission
-        if: ${{ !contains(fromJSON('["17008875","33892812","2819672","203853998"]'), github.actor_id) }}
+        if: ${{ !contains(fromJSON('["26142789"]'), github.actor_id) }}
         run: echo 'Permission denied' && exit 1
       - name: Checkout
         uses: actions/checkout@v5
