@@ -91,8 +91,8 @@ PTB flow:
 
 ### SDK Layers (src/)
 
-- **client.ts** — `WaterXClient` wraps `SuiGrpcClient`. Factories: `WaterXClient.mainnet()` and `WaterXClient.testnet()` (also `createMainnetConfig()` / `createTestnetConfig()`). `WaterXConfig` includes Pyth config (`pythRulePackageId`, `pythRuleConfigId`, `pythConfig`), shared objects (`globalConfig`, `referralTable`, `accountRegistry`, `wlpPool`, `rewardDistributorId`), `collaterals: Record<CollateralAsset, {type, aggregatorId, priceInfoId, feedKey}>`, and `markets: Record<BaseAsset, MarketEntry>`. **No Supra** (Pyth-only in v2). **No legacy `usdcAggregator` / `usdcPriceInfoId` / `usdcType` aliases** — always read via `client.config.collaterals.USDC.*`.
-- **constants.ts** — Package IDs (`MAINNET_PACKAGE_IDS` / `TESTNET_PACKAGE_IDS` — `WATERX_PERP`, `WLP`, `MARKET_SYMBOL`, `PYTH_RULE`, `PYTH_SPONSOR_RULE`, `BUCKET_ORACLE`, `BUCKET_FRAMEWORK`, `REWARD_DISTRIBUTOR`; testnet also has `MOCK_USDC`, `MOCK_USDSUI`). Shared object IDs (`MAINNET_OBJECTS` / `TESTNET_OBJECTS`), token types (`MAINNET_TYPES` / `TESTNET_TYPES`), per-market config (`MAINNET_MARKETS` / `TESTNET_MARKETS` keyed by `BaseAsset` with `marketId`, `aggregatorId`, `priceInfoId`, `baseType`, `feedKey`), per-collateral config (`MAINNET_COLLATERALS` / `TESTNET_COLLATERALS` keyed by `CollateralAsset`), Pyth feed IDs (`PYTH_PRICE_FEED_IDS` for mainnet, `PYTH_TESTNET_FEED_IDS`), permission constants. Base-token types are `market_symbol::<SYM>_USD` (not `waterx_coins::WATERX_*`). xStock Pyth feeds use `Crypto.*X/USD` (24/7 synthetic) on mainnet, NOT `Equity.US.*/USD` (market-hours only). **Price helpers**: `FLOAT_SCALE` (1e9), `rawPrice(usd)` converts human-readable USD to 1e9-scaled bigint for `Float` params (`triggerPrice`, `acceptablePrice`, `size`).
+- **client.ts** — `WaterXClient` wraps `SuiGrpcClient`. Factories: `WaterXClient.mainnet()` and `WaterXClient.testnet()` (also `createMainnetConfig()` / `createTestnetConfig()`). `WaterXConfig` includes Pyth config (`pythRulePackageId`, `pythRuleConfigId`, `pythConfig`), shared objects (`globalConfig`, `referralTable`, `accountRegistry`, `wlpPool`, `rewardDistributorId`), `collaterals: Record<CollateralAsset, {type, aggregatorId, priceInfoId, feedKey}>`, and `markets: Record<LegacyBaseAsset, MarketEntry> & Partial<Record<ExtendedBaseAsset, MarketEntry>>` — the 13 legacy markets are non-nullable on every network, the 200K-tier batch (`ExtendedBaseAsset`) is mainnet-only and resolves to `MarketEntry | undefined`. Use `client.getMarketEntry(base)` for a runtime-checked lookup that throws on missing. **No Supra** (Pyth-only in v2). **No legacy `usdcAggregator` / `usdcPriceInfoId` / `usdcType` aliases** — always read via `client.config.collaterals.USDC.*`.
+- **constants.ts** — Package IDs (`MAINNET_PACKAGE_IDS` / `TESTNET_PACKAGE_IDS` — `WATERX_PERP`, `WLP`, `MARKET_SYMBOL`, `MARKET_SYMBOL_V2` (mainnet only — host package for the 200K-tier witnesses), `PYTH_RULE`, `PYTH_SPONSOR_RULE`, `BUCKET_ORACLE`, `BUCKET_FRAMEWORK`, `REWARD_DISTRIBUTOR`; testnet also has `MOCK_USDC`, `MOCK_USDSUI`). Shared object IDs (`MAINNET_OBJECTS` / `TESTNET_OBJECTS`), token types (`MAINNET_TYPES` / `TESTNET_TYPES`). `BaseAsset` is split into two unions: `LegacyBaseAsset` (the original 13, deployed on both networks) and `ExtendedBaseAsset` (the 15 mainnet-only 200K-tier symbols — HYPE, XRP, BNB, ZEC, XAUT, XAG, EURUSD, USDJPY, MSTRX, COINX, HOODX, CRCLX, NFLXX, WTI, BRENT). Per-market config: `MAINNET_MARKETS: Record<BaseAsset, …>` (28 entries, full); `TESTNET_MARKETS: Record<LegacyBaseAsset, …>` (13 entries, strict). Per-collateral config (`MAINNET_COLLATERALS` / `TESTNET_COLLATERALS` keyed by `CollateralAsset`), Pyth feed IDs (`PYTH_PRICE_FEED_IDS` for mainnet, `PYTH_TESTNET_FEED_IDS`), permission constants. Most legacy base-token witnesses are `market_symbol::<SYM>_USD` under `MARKET_SYMBOL`; the 200K-tier batch lives under `MARKET_SYMBOL_V2` and the **FX pairs split** (`EUR_USD`, `USD_JPY` — not `EURUSD_USD` / `USDJPY_USD`), with feed keys `"EUR/USD"` and `"USD/JPY"`. xStock Pyth feeds use `Crypto.*X/USD` (24/7 synthetic) on mainnet, NOT `Equity.US.*/USD` (market-hours only). **Price helpers**: `FLOAT_SCALE` (1e9), `rawPrice(usd)` converts human-readable USD to 1e9-scaled bigint for `Float` params (`triggerPrice`, `acceptablePrice`, `size`).
 - **user/** — Transaction builders. Each takes `(client, tx, params)` and uses **generated moveCall wrappers** from `generated/` (not raw `tx.moveCall`). All `waterx_perp` / `bucket_v2_framework` / `bucket_v2_oracle` / `reward_distributor` calls use generated wrappers; only external packages (Pyth, Wormhole) use raw `tx.moveCall`.
 - **fetch.ts** — Read-only queries via simulateTransaction + BCS return-value parsing. Functions listed below under "View / Query Functions".
 - **tx-builders.ts** — High-level builders that handle oracle feeds automatically (Pyth-only). Return ready-to-sign `Transaction`. All builders accept optional `tx?: Transaction` to append to an existing PTB (gas budget only set when creating a new tx), `collateral?: CollateralAsset` (default `"USDC"`), and `updatePythPrice?: boolean` (opt-in Hermes REST update before feeding Pyth on-chain). Pyth on-chain price is always fed via `pyth_rule::feed<T>()`. `buildOpenPositionTx` / `buildPlaceOrderTx` require either `size` (exact) or `approxPrice` (for leverage-based calculation); omitting both throws. `buildOpenPositionTx` supports `takeProfit` / `stopLoss` params to place linked reduce-only TP/SL orders in the same PTB. `buildPlaceOrderTx` skips TTO coin fetch when `collateralAmount` is 0 (TP/SL), preventing double-receive in multi-order PTBs. `buildCancelOrderTx` defaults to `orderTypeTag: 255` (wildcard scan all 4 books by `orderId`) and `triggerPriceKey: 0` — callers only need `orderId`. `buildMintWlpTx` / `buildMintAndStakeWlpTx` / `buildRequestRedeemWlpTx` / `buildSettleRedeemWlpTx` refresh **every** pool collateral (`lp_pool::update_token_value` per token) before the mint/redeem/settle call to satisfy `assert_prices_fresh`. `buildCancelRedeemWlpTx` cancels the redeem and re-stakes the recovered WLP into the reward distributor atomically. Price conversion: `triggerPrice` and `acceptablePrice` in builder params accept human-readable USD — internally scaled via `rawPrice()` to 1e9. Network→feed ID mapping is explicit via `PYTH_FEED_IDS_BY_NETWORK: Record<Network, ...>`.
@@ -195,25 +195,29 @@ SDK flow in `tx-builders.ts`: `buildOracleFeed(client, tx, tokenType, aggregator
 
 ## Supported Markets
 
-Thirteen markets in two groups. Base-token type is `market_symbol::<SYM>_USD`. Size precision is uniform (`Float`, 1e9-scaled `u128` internally).
+28 mainnet markets in five groups (testnet has only the 13 legacy markets). Base-token witness is `market_symbol::<SYM>_USD` under `MAINNET_PACKAGE_IDS.MARKET_SYMBOL` (legacy 13) or `MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2` (200K-tier 15). FX pairs use the split form (`EUR_USD`, `USD_JPY`). Size precision is uniform (`Float`, 1e9-scaled `u128` internally).
 
-| Group | Asset | Max Leverage | Base Fee |
-| ----- | ----- | ------------ | -------- |
-| Crypto | BTC   | 50x  | 0.03% |
-| Crypto | ETH   | 50x  | 0.03% |
-| Crypto | SOL   | 50x  | 0.03% |
-| Crypto | SUI   | 50x  | 0.03% |
-| Crypto | DEEP  | 50x  | 0.03% |
-| Crypto | WAL   | 50x  | 0.03% |
-| xStock | AAPLX  | 10x  | 0.03% |
-| xStock | GOOGLX | 10x  | 0.03% |
-| xStock | METAX  | 10x  | 0.03% |
-| xStock | NVDAX  | 10x  | 0.03% |
-| xStock | QQQX   | 10x  | 0.03% |
-| xStock | SPYX   | 10x  | 0.03% |
-| xStock | TSLAX  | 10x  | 0.03% |
+**Legacy 13** (`LegacyBaseAsset` — both networks; base fee 0.03%, default funding/cooldown):
 
-Market creation parameters are in `scripts/market-params.ts`. Per-market object IDs, base types, aggregator IDs, and `priceInfoId`s are in `TESTNET_MARKETS` (`src/constants.ts`).
+| Group | Asset | Max Leverage |
+| ----- | ----- | ------------ |
+| Crypto | BTC, ETH, SOL, SUI, DEEP, WAL | 50x |
+| xStock | AAPLX, GOOGLX, METAX, NVDAX, QQQX, SPYX, TSLAX | 10x |
+
+**200K-tier 15** (`ExtendedBaseAsset` — mainnet only, created in tx [9wFypA7…rDooa](https://suiscan.xyz/mainnet/tx/9wFypA7ujpm4z8mDKxsWEz5FAU34z8gVVYasWqzrDooa); base fee 0.10%, `min_coll_value` $3, `cooldown_ms` 5000, `basic_funding_rate_bps` 7):
+
+| Group | Asset | Max Leverage |
+| ----- | ----- | ------------ |
+| Crypto | HYPE | 25x |
+| Crypto | XRP, ZEC | 20x |
+| Crypto | BNB | 25x |
+| xStock | MSTRX, COINX, HOODX, CRCLX, NFLXX | 10x |
+| Commodity | XAUT | 30x |
+| Commodity | XAG | 20x |
+| Commodity | WTI, BRENT | 15x |
+| FX | EURUSD, USDJPY | 50x |
+
+Market creation parameters: legacy 13 in `MARKET_DEFINITIONS` (keyed by `LegacyBaseAsset`), 200K-tier 15 in `MARKETS_200K_DEFINITIONS` (sourced from `scripts/markets-200k-0.csv`) — both in `scripts/market-params.ts`. Per-market object IDs, base types, aggregator IDs, and `priceInfoId`s are in `MAINNET_MARKETS` / `TESTNET_MARKETS` (`src/constants.ts`).
 
 ### Trading Fee Structure
 
@@ -277,8 +281,10 @@ All setup scripts are admin-gated and assume `sui client active-address` owns th
 | `setup-pyth-identifier.sh` | Updates `pyth_rule::set_identifier` only (no aggregator creation). Used when switching Pyth feed IDs (e.g. Equity→Crypto xStock feeds). |
 | `setup-wlp-tokens.sh` | Registers USDC + USDSUI as WLP deposit tokens via `lp_pool::add_token` (stablecoin defaults). |
 | `clear-supra-weights.sh` | Drops the legacy `SupraRule` weight from the USDC + USDSUI `PriceAggregator`s (Pyth-only in v2). |
-| `create-markets.ts` | Admin TS wrapper around `trading::create_market` for all 13 markets (superseded by `setup-markets.sh` for greenfield setup). |
-| `market-params.ts` | v2 schema: `minCollValue`, `u128` OI, no `lot_size` / `size_decimal`. |
+| `create-markets.ts` | One PTB that bundles aggregator setup + Pyth identifier + `trading::create_market` for all 15 200K-tier markets. Defaults to mainnet, uses `SuiGrpcClient`. Does **not** sign — outputs unsigned tx bytes (base64) on stdout for CLI signing (`sui keytool sign` + `sui client execute-signed-tx`). Sender comes from `SUI_SENDER` env or `sui client active-address`. |
+| `merge-coins.ts` | Builds a PTB that merges every coin of a given `COIN_TYPE` owned by the sender into one. Pages `client.core.listCoins` (50/page, capped at `MAX` env, default 1000). For SUI, pins `coins[0]` as `setGasPayment` and merges the rest into `tx.gas` to avoid gas-vs-merge collision; for other types, merges `coins[1..]` into `coins[0]`. Outputs unsigned base64 like `create-markets.ts`. |
+| `test-new-markets-open.ts` | Mainnet simulate-only smoke test: builds `buildOpenPositionTx` for each `ExtendedBaseAsset`, runs `client.simulate(tx)`, and classifies failures as `OK-AT-ORACLE` (account-side abort, oracle wiring fine) vs `ORACLE-FAIL` (Pyth/aggregator/market_symbol problem). Useful regression check after touching `MAINNET_MARKETS` or oracle config. |
+| `market-params.ts` | v2 schema: `minCollValue`, `u128` OI, no `lot_size` / `size_decimal`. Exports `MARKET_DEFINITIONS` (legacy 13) and `MARKETS_200K_DEFINITIONS` (200K-tier 15, sourced from `scripts/markets-200k-0.csv`). |
 | `setup-pyth-tolerance.sh` | Sets `pyth_rule::set_tolerance_sec<T>` per token type (crypto=310s, xStock=310s, stables=large). |
 | `set-min-coll-value.sh` | Sets `min_coll_value` on every market via `trading::update_market_config<B, WLP>`. |
 | `setup-keepers.ts` | Adds keeper addresses to `GlobalConfig`. |
