@@ -92,8 +92,7 @@ export interface WaterXConfig {
    * present on every network; the 200K-tier batch (`ExtendedBaseAsset`) is
    * mainnet-only, so those keys are optional.
    */
-  markets: Record<LegacyBaseAsset, MarketEntry> &
-    Partial<Record<ExtendedBaseAsset, MarketEntry>>;
+  markets: Record<LegacyBaseAsset, MarketEntry> & Partial<Record<ExtendedBaseAsset, MarketEntry>>;
 
   /** Collateral token configs keyed by CollateralAsset */
   collaterals: Record<
