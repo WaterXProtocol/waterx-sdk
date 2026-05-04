@@ -39,7 +39,12 @@ export {
   ORDER_STOP_BUY,
   ORDER_STOP_SELL,
 } from "./constants.ts";
-export type { BaseAsset, CollateralAsset } from "./constants.ts";
+export type {
+  BaseAsset,
+  CollateralAsset,
+  ExtendedBaseAsset,
+  LegacyBaseAsset,
+} from "./constants.ts";
 
 // ======== Transaction Builders (User Actions) ========
 export {

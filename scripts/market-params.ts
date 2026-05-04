@@ -8,7 +8,7 @@
  * `float::from_scaled_val`.
  */
 
-import type { BaseAsset } from "../src/constants.ts";
+import type { LegacyBaseAsset } from "../src/constants.ts";
 
 export interface MarketParams {
   maxLeverageBps: number;
@@ -54,7 +54,7 @@ function market(params: {
  * Update procedure: run a full-params probe against testnet and copy values
  * here if an intentional on-chain config change has been made.
  */
-export const TESTNET_MARKET_DEFINITIONS: Record<BaseAsset, MarketParams> = {
+export const TESTNET_MARKET_DEFINITIONS: Record<LegacyBaseAsset, MarketParams> = {
   BTC: market({
     maxLeverageBps: 500_000,
     tradingFeeBps: 10,
@@ -169,3 +169,66 @@ export const TESTNET_MARKET_DEFINITIONS: Record<BaseAsset, MarketParams> = {
  * `getMarketSummary` and asserts on-chain invariants only.
  */
 export const MARKET_DEFINITIONS = TESTNET_MARKET_DEFINITIONS;
+
+/**
+ * 200K-tier batch markets sourced from `scripts/markets-200k-0.csv`.
+ * Used by `scripts/create-markets.ts` to create the new HYPE / XRP / BNB / ZEC /
+ * MSTRX / COINX / HOODX / CRCLX / NFLXX / XAUT / XAG / WTI / BRENT / EURUSD /
+ * USDJPY markets in one PTB.
+ *
+ * CSV defaults applied to every entry: minCollValue=$3, tradingFeeBps=10,
+ * cooldownMs=5000, basicFundingRateBps=7, fundingIntervalMs=3_600_000.
+ * `maxLongOi` / `maxShortOi` are CSV base-token counts × 1e9 (Float scale).
+ */
+export interface BatchMarketEntry {
+  symbol: string;
+  params: MarketParams;
+}
+
+const BATCH_MIN_COLL_VALUE = 3_000_000_000n; // $3
+const FLOAT_SCALE_BIG = 1_000_000_000n;
+const oi = (units: number) => BigInt(units) * FLOAT_SCALE_BIG;
+
+function batchEntry(
+  symbol: string,
+  maxLeverageBps: number,
+  maintenanceMarginBps: number,
+  oiUnits: number,
+): BatchMarketEntry {
+  return {
+    symbol,
+    params: {
+      maxLeverageBps,
+      minCollValue: BATCH_MIN_COLL_VALUE,
+      tradingFeeBps: 10,
+      maintenanceMarginBps,
+      maxLongOi: oi(oiUnits),
+      maxShortOi: oi(oiUnits),
+      cooldownMs: 5000,
+      basicFundingRateBps: 7,
+      fundingIntervalMs: 3_600_000,
+    },
+  };
+}
+
+export const MARKETS_200K_DEFINITIONS: BatchMarketEntry[] = [
+  // Crypto
+  batchEntry("HYPE", 250_000, 100, 400),
+  batchEntry("XRP", 200_000, 250, 4_000),
+  batchEntry("BNB", 250_000, 100, 5),
+  batchEntry("ZEC", 200_000, 250, 30),
+  // xStock (cash-equities)
+  batchEntry("MSTRX", 100_000, 500, 30),
+  batchEntry("COINX", 100_000, 500, 20),
+  batchEntry("HOODX", 100_000, 500, 60),
+  batchEntry("CRCLX", 100_000, 500, 50),
+  batchEntry("NFLXX", 100_000, 500, 5),
+  // Commodities
+  batchEntry("XAUT", 300_000, 50, 5),
+  batchEntry("XAG", 200_000, 250, 250),
+  batchEntry("WTI", 150_000, 300, 350),
+  batchEntry("BRENT", 150_000, 300, 200),
+  // FX
+  batchEntry("EURUSD", 500_000, 50, 3_000),
+  batchEntry("USDJPY", 500_000, 50, 30),
+];

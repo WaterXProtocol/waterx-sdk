@@ -1,7 +1,8 @@
 export type Network = "MAINNET" | "TESTNET";
 
 // ======== Base Asset Identifiers ========
-export type BaseAsset =
+/** The original 13 markets — deployed on both mainnet and testnet. */
+export type LegacyBaseAsset =
   | "BTC"
   | "ETH"
   | "SOL"
@@ -15,6 +16,29 @@ export type BaseAsset =
   | "QQQX"
   | "SPYX"
   | "TSLAX";
+
+/**
+ * 200K-tier batch (mainnet only — tx 9wFypA7ujpm4z8mDKxsWEz5FAU34z8gVVYasWqzrDooa).
+ * Witness types live in `MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2`.
+ */
+export type ExtendedBaseAsset =
+  | "HYPE"
+  | "XRP"
+  | "BNB"
+  | "ZEC"
+  | "XAUT"
+  | "XAG"
+  | "EURUSD"
+  | "USDJPY"
+  | "MSTRX"
+  | "COINX"
+  | "HOODX"
+  | "CRCLX"
+  | "NFLXX"
+  | "WTI"
+  | "BRENT";
+
+export type BaseAsset = LegacyBaseAsset | ExtendedBaseAsset;
 export type CollateralAsset = "USDC" | "USDSUI";
 
 // ======== Permission Constants ========
@@ -49,6 +73,8 @@ export const MAINNET_PACKAGE_IDS = {
   WLP: "0x00381bd74749ccc1290e448dd5514f83716b330cba3481029fbacb00078f06a5",
   PYTH_RULE: "0x98867517245a2833cc742c731d331133cf0eee221ea9db6950d567ad68950a3f",
   MARKET_SYMBOL: "0xe5a95e2eb52a8ea594d295db9f4930cf07cc84871a584bfc7569946a5408c998",
+  /** market_symbol package for the 200K-tier batch (HYPE/XRP/BNB/ZEC/xStocks/Commodities/FX). */
+  MARKET_SYMBOL_V2: "0xe006e86055ba0bb937793f372d03d0815c7ee0683fc88d5790d069c7dbee7d61",
   PYTH_SPONSOR_RULE: "0x5feea5debebf3cb15fbfd886e7c70b80658346cd92ce747bdec6caffa4d8ee68",
 } as const;
 
@@ -74,6 +100,22 @@ export const MAINNET_TYPES = {
   QQQX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL}::market_symbol::QQQX_USD` as const,
   SPYX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL}::market_symbol::SPYX_USD` as const,
   TSLAX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL}::market_symbol::TSLAX_USD` as const,
+  // 200K-tier batch — witness types in MARKET_SYMBOL_V2.
+  HYPE_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::HYPE_USD` as const,
+  XRP_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::XRP_USD` as const,
+  BNB_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::BNB_USD` as const,
+  ZEC_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::ZEC_USD` as const,
+  XAUT_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::XAUT_USD` as const,
+  XAG_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::XAG_USD` as const,
+  EUR_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::EUR_USD` as const,
+  USD_JPY: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::USD_JPY` as const,
+  MSTRX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::MSTRX_USD` as const,
+  COINX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::COINX_USD` as const,
+  HOODX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::HOODX_USD` as const,
+  CRCLX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::CRCLX_USD` as const,
+  NFLXX_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::NFLXX_USD` as const,
+  WTI_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::WTI_USD` as const,
+  BRENT_USD: `${MAINNET_PACKAGE_IDS.MARKET_SYMBOL_V2}::market_symbol::BRENT_USD` as const,
 } as const;
 
 // ======== Mainnet Shared Objects ========
@@ -193,6 +235,112 @@ export const MAINNET_MARKETS: Record<
     baseType: MAINNET_TYPES.METAX_USD,
     feedKey: "METAX/USD",
   },
+  // 200K-tier batch (mainnet tx 9wFypA7ujpm4z8mDKxsWEz5FAU34z8gVVYasWqzrDooa).
+  HYPE: {
+    marketId: "0x85e28cb144b9534749cc235e757f90be91a017d43f2c58ab831324e77b35dd44",
+    aggregatorId: "0xdc5945b8ec7b9f639ab5f726a2413af300736ba48c72fab56a0a78f306ba7d0f",
+    priceInfoId: "0x1c047be615eaa5a87afa0e111b20a512dd6c0f4a1f0f691693cf852c1768f35d",
+    baseType: MAINNET_TYPES.HYPE_USD,
+    feedKey: "HYPE/USD",
+  },
+  XRP: {
+    marketId: "0xdd83a940ec8199ee4bc0aed0601b3ff25a2adc056e543317b7dc3bb7167cfe40",
+    aggregatorId: "0x42baf02d68f85fa99b359e472c31b5227e4e7847f4cc2573d3decfb6123ae916",
+    priceInfoId: "0x93bfda25cb6b1653a9c769e8216014bd2c06997f3edb479566761fbf2abf6ac2",
+    baseType: MAINNET_TYPES.XRP_USD,
+    feedKey: "XRP/USD",
+  },
+  BNB: {
+    marketId: "0x6c289fd9a521c0d4258c13d037b9197634e6e5ab5e0aea4384d895a1efea8fa9",
+    aggregatorId: "0x8bdf4f88daa5f105517a269136c23decf74ab07e01ebe3b7a9bab159d223d2c4",
+    priceInfoId: "0x9c6e77f0ecfc46aac395e21c52ccb96518f85acacae743c5b47f4ca5e29826c3",
+    baseType: MAINNET_TYPES.BNB_USD,
+    feedKey: "BNB/USD",
+  },
+  ZEC: {
+    marketId: "0x6eac6761fbcfff76acf565c5211078a53376de731b4befba27d1903ecf512a2e",
+    aggregatorId: "0xfb65cda1f3304a210a28aaab93cee94cf7f5db15a9b05fda369824a0edf8777c",
+    priceInfoId: "0xcc0f04f341b08fa9f1079f760d6dee779e6fdd46e50594eb931bce07f80c05d3",
+    baseType: MAINNET_TYPES.ZEC_USD,
+    feedKey: "ZEC/USD",
+  },
+  XAUT: {
+    marketId: "0x0f83040cc22fa6842b606cce940a9dd2dfbb97e258fe8fbbb36e4cb247f76342",
+    aggregatorId: "0x50cc13e0ca4c228d02d20380dcb010e70547064ee67f840266fd2b10d8815f4d",
+    priceInfoId: "0x96e73131630c4476aab2a467f57585456a8f063e9403b3caa5d013a3691c9400",
+    baseType: MAINNET_TYPES.XAUT_USD,
+    feedKey: "XAUT/USD",
+  },
+  XAG: {
+    marketId: "0xc8e6b173eb41a59bee2c76d1ceafb5ebd21f38a45a1a31df716af8547cfe32ed",
+    aggregatorId: "0xbb208e15508f552d8634f0ff3c62b916a108ad0447149bb730f39d1977829a76",
+    priceInfoId: "0xd5c5afce92e988bf0a0940d618443c36c31dd7f239a545982db3166e963c9aa4",
+    baseType: MAINNET_TYPES.XAG_USD,
+    feedKey: "XAG/USD",
+  },
+  EURUSD: {
+    marketId: "0xe9f30b16218827a52928d2799698c2800cbcc24933b038353068429f7a857e1e",
+    aggregatorId: "0x5a403826990b9449afc015d615dc0dd8cd30b34016706bf14be8a4d8f4aaa6f2",
+    priceInfoId: "0xe3dfb7a7682ed51c9ba78e027ba92d2a27a59f4c574ebe03b543a544fc04fab7",
+    baseType: MAINNET_TYPES.EUR_USD,
+    feedKey: "EUR/USD",
+  },
+  USDJPY: {
+    marketId: "0x7858288e3418bb489a357c7e6c5c92c654a15d2f195cc0e1a842be631f3d649d",
+    aggregatorId: "0x8c9262cdb481b01c05a9eec26e44250e2962f40948f201243ed2fb88aa646222",
+    priceInfoId: "0xde0e6088e7292f50738ecbdebd4502415d4f8de4cfe001918e29b3f4faf15baa",
+    baseType: MAINNET_TYPES.USD_JPY,
+    feedKey: "USD/JPY",
+  },
+  MSTRX: {
+    marketId: "0xfb24d0de58bf3f7bad679e8922e78a2472865a122d04ae108da340d078759544",
+    aggregatorId: "0xd1dc98e6c251e4613d78d31a9e7dd5c96abdebf5636b4e699ddc75291bf2f561",
+    priceInfoId: "0xab35f27f1118959cbf82e5ab907808df40b25c16c5745c21a1af721a2e0a926e",
+    baseType: MAINNET_TYPES.MSTRX_USD,
+    feedKey: "MSTRX/USD",
+  },
+  COINX: {
+    marketId: "0xad97a2deb50154a2de5a8ab9fce69413cd034532e38352b640347fd55efae7d5",
+    aggregatorId: "0x9659b6914799bb7734668bfd0d56a2cfbf4eb67a8b364a22e50eb435c007d89d",
+    priceInfoId: "0xf19da6da74181c159f3619cc50fdd4dcc62d15538c707175464968a14cbb0464",
+    baseType: MAINNET_TYPES.COINX_USD,
+    feedKey: "COINX/USD",
+  },
+  HOODX: {
+    marketId: "0xc0198d25e767c085dbf659f5fece8cbfbcb3862c0cf102f9192200917361a0dd",
+    aggregatorId: "0x8359369f8f3ec60a0f34dd7cf21599dae71bfbf7e7ef2e736254c09dc3260e2d",
+    priceInfoId: "0x1f0a01610d47dfe0506bb4cfd903335bf2d148adc86459c06385b97309e51d2a",
+    baseType: MAINNET_TYPES.HOODX_USD,
+    feedKey: "HOODX/USD",
+  },
+  CRCLX: {
+    marketId: "0xd7777007cadbf432e86af22c666b93220b012973772223bcffb317e66b56775f",
+    aggregatorId: "0x8ec2f6729a5dd099f0ff4f8a498a838c3c8d85e20230c2b8a12369aa39585057",
+    priceInfoId: "0x299b647faef2456b93155b5609ac5edc9ba18bb4f5f6a27383920a528b2ff052",
+    baseType: MAINNET_TYPES.CRCLX_USD,
+    feedKey: "CRCLX/USD",
+  },
+  NFLXX: {
+    marketId: "0x86eb0e8a93992940fe3b5f8bd8e8a579262b0d68cd9a571645d12dc7ca04b400",
+    aggregatorId: "0x0a0b9e13644f22e7da6af2f902f1348159c4300c9fba453b68cb60d7ce7b0ec1",
+    priceInfoId: "0x15a9c98690cc7c97c96208064d4de360fafd42f5bbc7d87a2990d5b5aca22548",
+    baseType: MAINNET_TYPES.NFLXX_USD,
+    feedKey: "NFLXX/USD",
+  },
+  WTI: {
+    marketId: "0x23086f255ae54e3e09552d26dc983d2e8fa76dea8651cc5965f8f078f7b10e56",
+    aggregatorId: "0x7970554f2712027da8d0a456d212b8e688b9841366cfec3229c4d9555f524551",
+    priceInfoId: "0x71e40a6e2af5a194e149a761ae11d43e987b9ecbee1834d65d61103721c72e02",
+    baseType: MAINNET_TYPES.WTI_USD,
+    feedKey: "WTI/USD",
+  },
+  BRENT: {
+    marketId: "0xe2e4fdc746848f55a65150ba97cf1d6358b8958abb118c3e30192bfb1749261a",
+    aggregatorId: "0x32f236d1cdb28a4f8d6b5cbc1486b50c77b1d5cc18eb5d53ac709bf575d58879",
+    priceInfoId: "0x65fcc9fea8b03bb93bb1b99e29ead4f49dd5ab6d4f0c5734104a224008b7f322",
+    baseType: MAINNET_TYPES.BRENT_USD,
+    feedKey: "BRENT/USD",
+  },
 };
 
 /** All mainnet collateral token configs keyed by CollateralAsset. */
@@ -275,9 +423,13 @@ export const TESTNET_OBJECTS = {
 } as const;
 
 // ======== Testnet Per-Market Config ========
-/** All per-market object IDs, token types, and oracle info keyed by BaseAsset. */
+/**
+ * Per-market object IDs, token types, and oracle info keyed by `LegacyBaseAsset`.
+ * The 200K-tier batch (HYPE/XRP/BNB/ZEC/MSTRX/COINX/HOODX/CRCLX/NFLXX/XAUT/XAG/
+ * WTI/BRENT/EURUSD/USDJPY) is mainnet-only and lives in `MAINNET_MARKETS`.
+ */
 export const TESTNET_MARKETS: Record<
-  BaseAsset,
+  LegacyBaseAsset,
   {
     marketId: string;
     aggregatorId: string;
@@ -437,6 +589,22 @@ export const PYTH_PRICE_FEED_IDS: Record<string, string> = {
   "QQQX/USD": "0x178a6f73a5aede9d0d682e86b0047c9f333ed0efe5c6537ca937565219c4054d",
   "SPYX/USD": "0x2817b78438c769357182c04346fddaad1178c82f4048828fe0997c3c64624e14",
   "TSLAX/USD": "0x47a156470288850a440df3a6ce85a55917b813a19bb5b31128a33a986566a362",
+  // 200K-tier batch
+  "HYPE/USD": "0x4279e31cc369bbcc2faf022b382b080e32a8e689ff20fbc530d2a603eb6cd98b",
+  "XRP/USD": "0xec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8",
+  "BNB/USD": "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f",
+  "ZEC/USD": "0xbe9b59d178f0d6a97ab4c343bff2aa69caa1eaae3e9048a65788c529b125bb24",
+  "XAUT/USD": "0x44465e17d2e9d390e70c999d5a11fda4f092847fcd2e3e5aa089d96c98a30e67",
+  "XAG/USD": "0xf2fb02c32b055c805e7238d628e5e9dadef274376114eb1f012337cabe93871e",
+  "EUR/USD": "0xa995d00bb36a63cef7fd2c287dc105fc8f3d93779f062f09551b0af3e81ec30b",
+  "USD/JPY": "0xef2c98c804ba503c6a707e38be4dfbb16683775f195b091252bf24693042fd52",
+  "MSTRX/USD": "0x53f95ba4e23ed15ea56083e2ee9a5eec48055d6f59033d4bb95f1ca2a2349c28",
+  "COINX/USD": "0x641435d5dffb5311140b480517c79986d8488d5cf08a11eec53b83ad02cab33f",
+  "HOODX/USD": "0xdd49a9ac6df5cbfa9d8fc6371f7ae927a74d5c6763c1c01b4220d70314c647f9",
+  "CRCLX/USD": "0xc13184461c0c80d98ffcd89be627c2220b94a96c7c67f0c4b16bc12fd3b17758",
+  "NFLXX/USD": "0x02a67e6184e6c9dd65e14745a2a80df8b2b3d2ca91b4b191404936003d9929ae",
+  "WTI/USD": "0x925ca92ff005ae943c158e3563f59698ce7e75c5a8c8dd43303a0a154887b3e6",
+  "BRENT/USD": "0x27f0d5e09a830083e5491795cac9ca521399c8f7fd56240d09484b14e614d57a",
 };
 
 export const PYTH_TESTNET_FEED_IDS: Record<string, string> = {
