@@ -58,7 +58,10 @@ function cooldownElapsed(updateTimestampMs: bigint, cooldownMs: bigint, slackMs 
   return Date.now() >= eligibleAt;
 }
 
-/** Histogram / audit labels — keep stable for `pnpm audit:e2e-discovery`. */
+/**
+ * Histogram / audit labels — keep stable for `pnpm audit:e2e-discovery`.
+ * `wallet_usdc_*` — {@link DiscoverActivePositionOpts.minWalletUsdcTotal} gate.
+ */
 export type DiscoverPositionGateResult =
   | { ok: true; ownerAddress: string }
   | { ok: false; code: string; detail?: string };
@@ -172,6 +175,30 @@ export async function evaluatePositionAgainstDiscoverOpts(
     }
   }
 
+  const minWalletUsdcTotal = opts.minWalletUsdcTotal;
+  if (minWalletUsdcTotal != null && minWalletUsdcTotal > 0n) {
+    try {
+      const { objects } = await client.listCoins({
+        owner: ownerAddress,
+        coinType: ctx.usdcType,
+      });
+      const total = objects.reduce((s, o) => s + BigInt(o.balance ?? "0"), 0n);
+      if (total < minWalletUsdcTotal) {
+        return {
+          ok: false,
+          code: "wallet_usdc_below_min",
+          detail: `have=${total} need>=${minWalletUsdcTotal}`,
+        };
+      }
+    } catch (e) {
+      return {
+        ok: false,
+        code: "wallet_usdc_list_error",
+        detail: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
+
   if (
     minUsdcObjects != null &&
     minUsdcObjects >= 1 &&
@@ -253,6 +280,13 @@ export type DiscoverActivePositionOpts = {
    * Override with `WATERX_E2E_DISCOVERY_MAX_USDC_COIN_PROBES` (1–500; default **90**).
    */
   maxUsdcCoinProbeAttempts?: number;
+  /**
+   * When set to a value greater than zero, require the wallet `owner` (registry owner of the
+   * position account) to hold **wallet-level** `Coin<USDC>` objects whose `listCoins` balances sum
+   * to at least this amount (raw units). For PTBs that merge/split wallet `Coin<USDC>` (e.g.
+   * `buildMintWlpTx`).
+   */
+  minWalletUsdcTotal?: bigint;
   /**
    * Require `position.size` (u128 from `view::PositionData`) ≥ this value.
    * Use on shared mainnet where microscopic positions cannot satisfy v2 partial-close dust rules.
