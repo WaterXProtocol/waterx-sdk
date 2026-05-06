@@ -43,6 +43,7 @@ import {
 } from "../helpers/e2e/e2e-funded-probe.ts";
 import { expectLeverageOpenSizingVsMarket } from "../helpers/e2e/e2e-open-sizing-expect.ts";
 import { lifecycleOracleUsdOrSkip } from "../helpers/e2e/e2e-oracle-context.ts";
+import { getWlpMinDepositForCollateral } from "../helpers/e2e/fetch-read-helpers-for-tests.ts";
 import {
   activeLifecycleTestBasesForClient,
   lifecycleRow,
@@ -67,7 +68,10 @@ import { WATERX_PERP_ABORT } from "../helpers/waterx-perp-error-codes.ts";
 let probe: FundedProbe | null = null;
 
 beforeAll(async () => {
-  probe = await loadFundedProbe(client, PROBE_MIN_ACCOUNT_USDC);
+  const minWalletUsdc = await getWlpMinDepositForCollateral(client, "USDC");
+  probe = await loadFundedProbe(client, PROBE_MIN_ACCOUNT_USDC, {
+    minWalletUsdcTotal: minWalletUsdc,
+  });
 }, 180_000);
 
 const ORDER_COLLATERAL = 10_000_000n;
@@ -654,7 +658,7 @@ describe("PRD §4 — TC-WLP-001: mint (simulate)", () => {
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("min_deposit")) {
+      if (msg.includes("min_deposit") || msg.includes("need at least one coin with balance > 0")) {
         ctx.skip(`PRD WLP mint: ${msg}`);
         return;
       }

@@ -1,6 +1,9 @@
 import type { WaterXClient } from "@waterx/perp-sdk";
 
-import { discoverFundedProbe } from "./discover-on-chain-position.ts";
+import {
+  discoverFundedProbe,
+  type DiscoverActivePositionOpts,
+} from "./discover-on-chain-position.ts";
 import { PROBE_MIN_ACCOUNT_USDC } from "./e2e-client.ts";
 
 /** Subset of {@link discoverFundedProbe} result needed for `setSender` / `accountId` wiring in e2e. */
@@ -13,8 +16,12 @@ export type FundedProbe = {
 export async function loadFundedProbe(
   client: WaterXClient,
   minAccountUsdcBalance: bigint = PROBE_MIN_ACCOUNT_USDC,
+  extraDiscoverOpts?: Omit<DiscoverActivePositionOpts, "minAccountUsdcBalance">,
 ): Promise<FundedProbe | null> {
-  const d = await discoverFundedProbe(client, { minAccountUsdcBalance });
+  const d = await discoverFundedProbe(client, {
+    minAccountUsdcBalance,
+    ...extraDiscoverOpts,
+  });
   if (!d) return null;
   return { accountId: d.accountObjectAddress, owner: d.ownerAddress };
 }
