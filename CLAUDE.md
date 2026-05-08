@@ -253,8 +253,8 @@ Do not change public function signatures in upgrades.
 | `PERM_CLOSE_POSITION`      | 2     | Close position                     |
 | `PERM_PLACE_ORDER`         | 4     | Place limit/stop orders            |
 | `PERM_CANCEL_ORDER`        | 8     | Cancel orders                      |
-| `PERM_INCREASE_COLLATERAL` | 16    | Deposit collateral                 |
-| `PERM_RELEASE_COLLATERAL`  | 32    | Withdraw collateral                |
+| `PERM_DEPOSIT_COLLATERAL`  | 16    | Deposit collateral                 |
+| `PERM_WITHDRAW_COLLATERAL` | 32    | Withdraw collateral                |
 | `PERM_DEPOSIT`             | 64    | Deposit tokens into account        |
 | `PERM_WITHDRAW`            | 128   | Withdraw tokens from account       |
 | `PERM_TRANSFER`            | 256   | Transfer between own accounts      |
