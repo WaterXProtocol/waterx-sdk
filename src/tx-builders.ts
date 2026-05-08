@@ -1416,8 +1416,8 @@ export function buildUnstakeAndRequestRedeemWlpTx(
 // ============================================================================
 
 export interface BuildTransferToAccountParams {
-  /** UserAccount object address (deposit target) */
-  accountObjectAddress: string;
+  /** UserAccount object address (deposit target), or a PTB result from `createAccount` */
+  accountObjectAddress: string | TransactionArgument;
   /** Coin object ID to transfer. Omit if using `amount`. */
   coinObjectId?: string;
   /** Amount in raw units. Uses `tx.coinWithBalance()` to create the coin from gas. Omit if using `coinObjectId`. */

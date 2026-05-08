@@ -5,7 +5,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
 import { WaterXClient } from "../../src/client";
-import { PERM_OPEN_POSITION, TESTNET_TYPES } from "../../src/constants";
+import { PERM_ALL_TRADING, PERM_OPEN_POSITION, TESTNET_TYPES } from "../../src/constants";
 import {
   addDelegate,
   createAccount,
@@ -135,5 +135,26 @@ describe("user/account PTB builders", () => {
       newPermissions: 0x0003,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("single PTB: createAccount → addDelegate → transferToAccount with TransactionArgument", () => {
+    const tx = new Transaction();
+    const newAccountId = createAccount(client, tx, "onboard");
+    addDelegate(client, tx, {
+      accountObjectAddress: newAccountId,
+      delegate: addr,
+      permissions: PERM_ALL_TRADING,
+    });
+    const coin = tx.object(PTB_DUMMY_COIN_CC);
+    transferToAccount(client, tx, {
+      accountObjectAddress: newAccountId,
+      coin,
+      coinType: TESTNET_TYPES.USDC,
+    });
+    const data = tx.getData();
+    // createAccount: account::request + create_account = 2
+    // addDelegate:   account::request + add_delegate    = 2
+    // transferToAccount: transfer_coin                  = 1
+    expect(data.commands?.length).toBe(5);
   });
 });

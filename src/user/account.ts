@@ -97,7 +97,7 @@ export function transferToAccount(
   client: WaterXClient,
   tx: Transaction,
   params: {
-    accountObjectAddress: string;
+    accountObjectAddress: string | TransactionArgument;
     coin: string | TransactionObjectArgument;
     coinType: string;
   },
@@ -199,8 +199,8 @@ export function receiveCoin(
 // ======== Add Delegate ========
 
 export interface AddDelegateParams {
-  /** UserAccount object id */
-  accountObjectAddress: string;
+  /** UserAccount object id (or PTB result from `createAccount`) */
+  accountObjectAddress: string | TransactionArgument;
   /** Delegate address to add */
   delegate: string;
   /** Permission bitmask (use PERM_* constants) */
@@ -234,8 +234,8 @@ export function addDelegate(
 // ======== Remove Delegate ========
 
 export interface RemoveDelegateParams {
-  /** UserAccount object id */
-  accountObjectAddress: string;
+  /** UserAccount object id (or PTB result from `createAccount`) */
+  accountObjectAddress: string | TransactionArgument;
   /** Delegate address to remove */
   delegate: string;
 }
@@ -266,8 +266,8 @@ export function removeDelegate(
 // ======== Update Delegate Permissions ========
 
 export interface UpdateDelegatePermissionsParams {
-  /** UserAccount object id */
-  accountObjectAddress: string;
+  /** UserAccount object id (or PTB result from `createAccount`) */
+  accountObjectAddress: string | TransactionArgument;
   /** Delegate address */
   delegate: string;
   /** New permission bitmask */
