@@ -1165,6 +1165,13 @@ export async function buildRequestRedeemWlpTx(
 export interface BuildCancelRedeemWlpParams {
   requestId: bigint | number;
   /**
+   * Collateral token used to select the deposit pool entry when refreshing
+   * pool token prices. `cancel_redeem` does not pay out a collateral coin —
+   * this only steers `refreshAllPoolTokensAndGetDepositPriceResult` (default:
+   * "USDC").
+   */
+  collateral?: CollateralAsset;
+  /**
    * Optional Bucket framework `Account` object ID. Set this when the original
    * `request_redeem` recipient was the Account object address (shared /
    * multi-sig scenario). Defaults to wallet sender.
@@ -1176,6 +1183,9 @@ export interface BuildCancelRedeemWlpParams {
   rewardDistributorPackageId?: string;
   /** Override for the shared RewardDistributor object ID. */
   distributorId?: string;
+  /** Fetch fresh Hermes update before feeding Pyth on-chain (default false). */
+  updatePythPrice?: boolean;
+  pythCache?: PythCache;
   gasBudget?: number;
   /** Optional existing Transaction to append commands to. */
   tx?: Transaction;
@@ -1185,13 +1195,23 @@ export interface BuildCancelRedeemWlpParams {
  * Cancels a pending WLP redeem and re-stakes the recovered WLP into
  * the reward distributor in one atomic PTB.
  */
-export function buildCancelRedeemWlpTx(
+export async function buildCancelRedeemWlpTx(
   client: WaterXClient,
   params: BuildCancelRedeemWlpParams,
-): Transaction {
+): Promise<Transaction> {
   const tx = params.tx ?? new Transaction();
   if (!params.tx) tx.setGasBudget(params.gasBudget ?? 200_000_000);
   const cfg = client.config;
+
+  // `cancel_redeem` internally calls `assert_prices_fresh` which checks every
+  // pool token, not just the deposit one — refresh all before the cancel.
+  await refreshAllPoolTokensAndGetDepositPriceResult(
+    client,
+    tx,
+    params.collateral ?? "USDC",
+    params.pythCache,
+    params.updatePythPrice,
+  );
 
   const lpCoin = cancelRedeemWlp(client, tx, {
     lpTokenType: cfg.wlpType,
@@ -1378,19 +1398,34 @@ export interface BuildUnstakeAndRequestRedeemWlpTxParams {
    * used to stake into the position being redeemed.
    */
   bucketAccount?: string | TransactionArgument;
+  /** Fetch fresh Hermes update before feeding Pyth on-chain (default false). */
+  updatePythPrice?: boolean;
+  pythCache?: PythCache;
   gasBudget?: number;
   /** Optional existing Transaction to append commands to. */
   tx?: Transaction;
 }
 
-export function buildUnstakeAndRequestRedeemWlpTx(
+export async function buildUnstakeAndRequestRedeemWlpTx(
   client: WaterXClient,
   params: BuildUnstakeAndRequestRedeemWlpTxParams,
-): Transaction {
+): Promise<Transaction> {
   const tx = params.tx ?? new Transaction();
   if (!params.tx) tx.setGasBudget(params.gasBudget ?? 250_000_000);
   const cfg = client.config;
-  const collateral = client.getCollateral(params.collateral ?? "USDC");
+  const coll = params.collateral ?? "USDC";
+
+  // Both `settle_rewarder_on_withdraw` and `request_redeem` call
+  // `assert_prices_fresh` against every pool token — refresh them all first.
+  await refreshAllPoolTokensAndGetDepositPriceResult(
+    client,
+    tx,
+    coll,
+    params.pythCache,
+    params.updatePythPrice,
+  );
+
+  const collateral = client.getCollateral(coll);
 
   const lpCoin = redeemRewardDistributorCoin(client, tx, {
     distributorId: params.distributorId,

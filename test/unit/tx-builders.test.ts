@@ -672,9 +672,30 @@ describe("WLP tx-builders (async + Pyth)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThan(0);
   });
 
-  it("buildCancelRedeemWlpTx", () => {
-    const tx = buildCancelRedeemWlpTx(client, { requestId: 1n });
-    expect(tx.getData().commands?.length).toBeGreaterThan(0);
+  it("buildCancelRedeemWlpTx refreshes every pool token before cancel + re-stake", async () => {
+    const tx = await buildCancelRedeemWlpTx(client, { requestId: 1n });
+
+    // Like the mint/redeem builders, cancel must refresh every pool token's
+    // `last_price_refresh_timestamp` so `assert_prices_fresh` in `cancel_redeem`
+    // does not abort with err_stale_price (501).
+    expect(getMoveCallFunctions(tx)).toEqual([
+      // USDC refresh
+      "collector::new",
+      "aggregator::aggregate",
+      "lp_pool::update_token_value",
+      // USDSUI refresh
+      "collector::new",
+      "aggregator::aggregate",
+      "lp_pool::update_token_value",
+      // cancel redeem
+      "account::request",
+      "lp_pool::cancel_redeem",
+      // re-stake the recovered WLP
+      "account::request",
+      "reward_distributor::deposit",
+      "reward_distributor::settle_rewarder_on_deposit",
+      "reward_distributor::destroy_deposit_checker",
+    ]);
   });
 
   it("buildSettleRedeemWlpTx", async () => {
@@ -688,13 +709,24 @@ describe("WLP tx-builders (async + Pyth)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThan(0);
   });
 
-  it("buildUnstakeAndRequestRedeemWlpTx redeems from rewarder and opens a WLP redeem request", () => {
-    const tx = buildUnstakeAndRequestRedeemWlpTx(client, {
+  it("buildUnstakeAndRequestRedeemWlpTx refreshes every pool token then redeems and opens a WLP redeem request", async () => {
+    const tx = await buildUnstakeAndRequestRedeemWlpTx(client, {
       withdrawalAmount: 1_000n,
       recipient: PTB_DUMMY_RECIPIENT,
     });
 
+    // settle_rewarder_on_withdraw and request_redeem both call
+    // assert_prices_fresh — every pool token must be refreshed first.
     expect(getMoveCallFunctions(tx)).toEqual([
+      // USDC refresh
+      "collector::new",
+      "aggregator::aggregate",
+      "lp_pool::update_token_value",
+      // USDSUI refresh
+      "collector::new",
+      "aggregator::aggregate",
+      "lp_pool::update_token_value",
+      // unstake from rewarder + open redeem request
       "account::request",
       "reward_distributor::redeem",
       "reward_distributor::settle_rewarder_on_withdraw",

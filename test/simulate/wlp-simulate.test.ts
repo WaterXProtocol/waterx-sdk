@@ -179,8 +179,9 @@ describe("WLP SDK builders (simulate) — request + cancel", () => {
         collateral,
         recipient,
       });
-      buildCancelRedeemWlpTx(client, {
+      await buildCancelRedeemWlpTx(client, {
         requestId: nextRedeemId,
+        collateral,
         tx,
       });
       tx.setSender(recipient);
