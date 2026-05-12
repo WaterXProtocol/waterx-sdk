@@ -184,7 +184,7 @@ Param types: `OpenPositionParams`, `IncreasePositionParams`, `DecreasePositionPa
 
 ### High-level PTB helpers
 
-`buildOpenPositionTx`, `buildClosePositionTx`, `buildIncreasePositionTx`, `buildDecreasePositionTx`, `buildDepositCollateralTx`, `buildWithdrawCollateralTx` (`buildIncreaseCollateralTx` / `buildReleaseCollateralTx` deprecated), `buildPlaceOrderTx`, `buildCancelOrderTx` (all `async`, Pyth-backed). `buildMintWlpTx` and `buildSettleRedeemWlpTx` are also `async` (deposit / redeem coin oracle). `buildRequestRedeemWlpTx` (requires `recipient`), `buildCancelRedeemWlpTx`.
+`buildOpenPositionTx`, `buildClosePositionTx`, `buildIncreasePositionTx`, `buildDecreasePositionTx`, `buildDepositCollateralTx`, `buildWithdrawCollateralTx` (`buildIncreaseCollateralTx` / `buildReleaseCollateralTx` deprecated), `buildPlaceOrderTx`, `buildCancelOrderTx` (all `async`, Pyth-backed). All WLP builders are `async` and refresh every pool token's Pyth feed before the call (required by `assert_prices_fresh`): `buildMintWlpTx`, `buildMintAndStakeWlpTx`, `buildRequestRedeemWlpTx` (requires `recipient`), `buildSettleRedeemWlpTx`, `buildCancelRedeemWlpTx`, `buildUnstakeAndRequestRedeemWlpTx`.
 
 ### Constants & Pyth
 
