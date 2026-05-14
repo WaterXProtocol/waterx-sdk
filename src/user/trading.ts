@@ -1,745 +1,471 @@
-import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
-
-import { WaterXClient } from "../client.ts";
-import { request as accountRequestCall } from "../generated/bucket_v2_framework/account.ts";
-import { fromScaledVal as floatFromScaledValCall } from "../generated/bucket_v2_framework/float.ts";
-import { positionId as positionIdCall } from "../generated/waterx_perp/response.ts";
-import {
-  closePositionRequest as closePositionRequestCall,
-  decreasePositionRequest as decreasePositionRequestCall,
-  depositCollateralRequest as depositCollateralRequestCall,
-  destroyResponse as destroyResponseCall,
-  execute as executeCall,
-  increasePositionRequest as increasePositionRequestCall,
-  liquidateRequest as liquidateRequestCall,
-  matchOrders as matchOrdersCall,
-  openPositionRequest as openPositionRequestCall,
-  placeOrderRequest as placeOrderRequestCall,
-  updateFundingRateV2 as updateFundingRateCall,
-  withdrawCollateralRequest as withdrawCollateralRequestCall,
-} from "../generated/waterx_perp/trading.ts";
-import { transferCoin as transferCoinCall } from "../generated/waterx_perp/user_account.ts";
-import { buildReceivingVector, type CoinForReceiving } from "../utils/receiving.ts";
-import { reimburseSponsorFund } from "../utils/sponsor.ts";
-
-// Re-export CoinForReceiving from utils for backward compat
-export type { CoinForReceiving } from "../utils/receiving.ts";
-
 /**
- * Creates an AccountRequest from the transaction sender.
- * All trading and keeper functions require this.
+ * Trading builders for `waterx_perp`.
+ *
+ * Each user-side flow has two phases:
+ *   1. `*Request(...)` constructs a `TradingRequest<C_TOKEN>` hot potato
+ *      and returns the raw transaction argument.
+ *   2. `executeTrading(...)` consumes the hot potato via `trading::execute`.
+ *
+ * Keeper flows (`liquidate`, `batchLiquidate`, `matchOrders`,
+ * `updateFundingRate`, `openByKeeper`, `closeByKeeper`) are single-call:
+ * they do the work inline and return `()`.
  */
-function createAccountRequest(tx: Transaction, bucketFrameworkPkg: string): TransactionArgument {
-  const [request] = accountRequestCall({ package: bucketFrameworkPkg })(tx);
-  return request;
-}
 
-/** Executes a TradingRequest. Returns [changeCoin, response]. */
-export function executeTradingRequest(
-  client: WaterXClient,
-  tx: Transaction,
-  params: {
-    collateralTokenType: string;
-    baseTokenType: string;
-    lpTokenType: string;
-    market: string;
-    request: TransactionArgument;
-    basePriceResult: TransactionArgument;
-    collateralPriceResult: TransactionArgument;
-  },
-): [TransactionArgument, TransactionArgument] {
-  const [coin, response] = executeCall({
-    package: client.config.packageId,
-    arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      pool: client.config.wlpPool,
-      req: params.request,
-      priceResult: params.basePriceResult,
-      collateralPriceResult: params.collateralPriceResult,
-    },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
-  })(tx);
-  return [coin, response];
-}
+import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-/** Destroys a TradingResponse. */
-export function destroyTradingResponse(
-  client: WaterXClient,
-  tx: Transaction,
-  params: {
-    baseTokenType: string;
-    lpTokenType: string;
-    market: string;
-    response: TransactionArgument;
-  },
-): void {
-  destroyResponseCall({
-    package: client.config.packageId,
-    arguments: {
-      GlobalConfig: client.config.globalConfig,
-      market: params.market,
-      response: params.response,
-    },
-    typeArguments: [params.baseTokenType, params.lpTokenType],
-  })(tx);
-}
+import type { WaterXClient } from "../client.ts";
+import { ORDER_TAG_WILDCARD } from "../constants.ts";
+import {
+  request as accountRequest,
+  requestWithAccount as accountRequestWithAccount,
+} from "../generated/bucket_v2_framework/account.ts";
+import * as trading from "../generated/waterx_perp/trading.ts";
 
-/** Common 3-step suffix: reimburse sponsor → execute → destroy_response → transfer coin to account. */
-function executeAndDestroy(
-  tx: Transaction,
-  client: WaterXClient,
-  params: {
-    collateralTokenType: string;
-    baseTokenType: string;
-    lpTokenType: string;
-    market: string;
-    accountId: string;
-    request: TransactionArgument;
-    basePriceResult: TransactionArgument;
-    collateralPriceResult: TransactionArgument;
-    isRecipient?: boolean;
-    sponsorFund?: TransactionArgument;
-  },
-): void {
-  const pkg = client.config.packageId;
+// ============================================================================
+// Common helpers
+// ============================================================================
 
-  reimburseSponsorFund(client, tx, params.sponsorFund, params.request, params.collateralTokenType);
+type BucketAccount = string | TransactionArgument | undefined;
 
-  const [coin, response] = executeCall({
-    package: pkg,
-    arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      pool: client.config.wlpPool,
-      req: params.request,
-      priceResult: params.basePriceResult,
-      collateralPriceResult: params.collateralPriceResult,
-    },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
-  })(tx);
-
-  destroyResponseCall({
-    package: pkg,
-    arguments: {
-      GlobalConfig: client.config.globalConfig,
-      market: params.market,
-      response,
-    },
-    typeArguments: [params.baseTokenType, params.lpTokenType],
-  })(tx);
-
-  if (params.isRecipient) {
-    tx.transferObjects([coin], params.accountId);
-  } else {
-    transferCoinCall({
-      package: pkg,
-      arguments: {
-        registry: client.config.accountRegistry,
-        accountId: params.accountId,
-        coin,
-      },
-      typeArguments: [params.collateralTokenType],
-    })(tx);
+function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
+  if (bucketAccount === undefined) {
+    return accountRequest({})(tx) as unknown as TransactionArgument;
   }
+  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
+  return accountRequestWithAccount({
+    arguments: { account: accArg as unknown as string },
+  })(tx) as unknown as TransactionArgument;
 }
 
-// ======== Open Position ========
-
-/** TP/SL order params for attaching to an open position in the same PTB. */
-export interface TpSlOrderParams {
-  /** Trigger price as 1e9-scaled bigint (e.g. 75000_000_000_000n for $75K). */
-  triggerPrice: bigint;
-  /** Size of the TP/SL order. Uses position size if omitted (full close). */
-  size?: bigint | number | TransactionArgument;
-  /** Collateral for the order (raw units). Usually 0 for reduce-only. */
-  collateralAmount?: bigint | number;
-  /** Coins to receive for collateral. Usually empty for reduce-only. */
-  receivingCoins?: CoinForReceiving[];
+export interface TradingTypeArgs {
+  /** Collateral coin type (e.g. `0x…::usdc::USDC`). */
+  collateralType: string;
+  /** Defaults to `client.wlpType()`. */
+  lpType?: string;
 }
 
-export interface OpenPositionParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
+function typeArgs(client: WaterXClient, t: TradingTypeArgs): [string, string] {
+  return [t.collateralType, t.lpType ?? client.wlpType()];
+}
+
+export interface CommonTradingParams extends TradingTypeArgs {
+  /** Market ticker (e.g. `"BTC/USD"`). */
+  ticker: string;
+  /** wxa `Account` ID acting as sender / collateral source. */
   accountId: string;
-  receivingCoins: CoinForReceiving[];
-  collateralAmount: bigint | number;
-  isLong: boolean;
-  size: bigint | number | TransactionArgument;
-  acceptablePrice?: bigint;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  /** Take-profit order — placed as reduce-only limit order linked to the new position. */
-  takeProfit?: TpSlOrderParams;
-  /** Stop-loss order — placed as reduce-only stop order linked to the new position. */
-  stopLoss?: TpSlOrderParams;
-  /** Sponsor fund for Pyth fee reimbursement. */
-  sponsorFund?: TransactionArgument;
+  /** Optional Bucket Account to act through (`request_with_account(&Account)`). */
+  bucketAccount?: string | TransactionArgument;
 }
 
-export function openPosition(
+function commonObjects(client: WaterXClient) {
+  const perp = client.config.packages.waterx_perp;
+  return {
+    perpPackage: perp.published_at,
+    globalConfig: perp.global_config,
+    wxaRegistry: client.config.packages.waterx_account.account_registry,
+    marketRegistry: perp.market_registry_wlp,
+    wlpPool: client.config.packages.wlp.wlp_pool,
+    oracle: client.config.packages.waterx_oracle.oracle,
+  };
+}
+
+// ============================================================================
+// Close position
+// ============================================================================
+
+export interface ClosePositionRequestParams extends CommonTradingParams {
+  positionId: bigint | number;
+  /** Raw scaled `Float` (1e9). Use `rawPrice(usd)` to convert. */
+  acceptablePrice: bigint | number;
+}
+
+export function closePositionRequest(
   client: WaterXClient,
   tx: Transaction,
-  params: OpenPositionParams,
-): Transaction {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  const receivingVec = buildReceivingVector(tx, params.receivingCoins, params.collateralTokenType);
-
-  const [request] = openPositionRequestCall({
-    package: client.config.packageId,
+  params: ClosePositionRequestParams,
+): TransactionArgument {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  const [tr] = trading.closePositionRequest({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      senderRequest,
-      accountObjectAddress: params.accountId,
-      receivings: receivingVec,
-      collateralAmount: BigInt(params.collateralAmount),
-      isLong: params.isLong,
-      size:
-        typeof params.size === "bigint" || typeof params.size === "number"
-          ? BigInt(params.size)
-          : params.size,
-      acceptablePrice: params.acceptablePrice ?? 0n,
-    },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
-  })(tx);
-
-  reimburseSponsorFund(client, tx, params.sponsorFund, request, params.collateralTokenType);
-
-  const [coin, response] = executeTradingRequest(client, tx, { ...params, request });
-
-  const [positionIdOpt] = positionIdCall({
-    package: client.config.packageId,
-    arguments: {
-      self: response,
-    },
-  })(tx);
-  const [positionId] = tx.moveCall({
-    target: `0x1::option::destroy_some`,
-    typeArguments: ["u64"],
-    arguments: [positionIdOpt],
-  });
-
-  destroyTradingResponse(client, tx, {
-    baseTokenType: params.baseTokenType,
-    lpTokenType: params.lpTokenType,
-    market: params.market,
-    response,
-  });
-
-  transferCoinCall({
-    package: client.config.packageId,
-    arguments: {
-      registry: client.config.accountRegistry,
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      senderRequest: req as unknown as string,
       accountId: params.accountId,
-      coin,
+      positionId: params.positionId,
+      acceptablePrice: params.acceptablePrice,
     },
-    typeArguments: [params.collateralTokenType],
+    typeArguments: typeArgs(client, params),
   })(tx);
-
-  // Place TP/SL orders linked to the new position
-  if (params.takeProfit) {
-    placeTpSlOrder(client, tx, params, positionId, params.takeProfit, false);
-  }
-  if (params.stopLoss) {
-    placeTpSlOrder(client, tx, params, positionId, params.stopLoss, true);
-  }
-
-  return tx;
+  return tr as unknown as TransactionArgument;
 }
 
-/** Internal: places a TP or SL order linked to a position. */
-function placeTpSlOrder(
-  client: WaterXClient,
-  tx: Transaction,
-  positionParams: OpenPositionParams,
-  linkedPositionId: TransactionArgument,
-  order: TpSlOrderParams,
-  isStopOrder: boolean,
-): void {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
+// ============================================================================
+// Increase / decrease position
+// ============================================================================
 
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  const [triggerPriceFloat] = floatFromScaledValCall({
-    package: fwPkg,
-    arguments: { v: order.triggerPrice },
-  })(tx);
-
-  const receivingCoins = order.receivingCoins ?? [];
-  const receivingVec = buildReceivingVector(tx, receivingCoins, positionParams.collateralTokenType);
-
-  const size =
-    order.size !== undefined
-      ? typeof order.size === "bigint" || typeof order.size === "number"
-        ? BigInt(order.size)
-        : order.size
-      : positionParams.size;
-
-  const [request] = placeOrderRequestCall({
-    package: pkg,
-    arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: positionParams.market,
-      senderRequest,
-      accountObjectAddress: positionParams.accountId,
-      receivings: receivingVec,
-      collateralAmount: BigInt(order.collateralAmount ?? 0),
-      isLong: !positionParams.isLong,
-      isStopOrder,
-      reduceOnly: true,
-      size,
-      triggerPrice: triggerPriceFloat,
-      linkedPositionId: tx.moveCall({
-        target: "0x1::option::some",
-        typeArguments: ["u64"],
-        arguments: [linkedPositionId],
-      })[0],
-    },
-    typeArguments: [
-      positionParams.collateralTokenType,
-      positionParams.baseTokenType,
-      positionParams.lpTokenType,
-    ],
-  })(tx);
-
-  const [orderCoin, orderResponse] = executeTradingRequest(client, tx, {
-    ...positionParams,
-    request,
-  });
-
-  destroyTradingResponse(client, tx, {
-    baseTokenType: positionParams.baseTokenType,
-    lpTokenType: positionParams.lpTokenType,
-    market: positionParams.market,
-    response: orderResponse,
-  });
-
-  transferCoinCall({
-    package: pkg,
-    arguments: {
-      registry: client.config.accountRegistry,
-      accountId: positionParams.accountId,
-      coin: orderCoin,
-    },
-    typeArguments: [positionParams.collateralTokenType],
-  })(tx);
-}
-
-// ======== Open Position By Manager (Keeper) ========
-
-export interface OpenPositionByManagerParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  /** The user account address the position will belong to */
-  accountId: string;
-  /** A Coin<C_TOKEN> object ID or TransactionArgument — the entire coin is consumed as collateral */
-  collateralCoin: string | TransactionArgument;
-  isLong: boolean;
-  size: bigint | number | TransactionArgument;
-  acceptablePrice?: bigint;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
-}
-
-export function openPositionByManager(
-  client: WaterXClient,
-  tx: Transaction,
-  params: OpenPositionByManagerParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  const collateralCoinArg =
-    typeof params.collateralCoin === "string"
-      ? tx.object(params.collateralCoin)
-      : params.collateralCoin;
-
-  const [request] = tx.moveCall({
-    target: `${pkg}::trading::open_position_request_by_keeper`,
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
-    arguments: [
-      tx.object(client.config.globalConfig),
-      tx.object(client.config.accountRegistry),
-      tx.object(params.market),
-      senderRequest,
-      tx.pure.address(params.accountId),
-      collateralCoinArg,
-      tx.pure.bool(params.isLong),
-      typeof params.size === "bigint" || typeof params.size === "number"
-        ? tx.pure.u64(BigInt(params.size))
-        : params.size,
-      tx.pure.u64(params.acceptablePrice ?? 0n),
-    ],
-  });
-
-  executeAndDestroy(tx, client, { ...params, request, sponsorFund: params.sponsorFund });
-  return tx;
-}
-
-// ======== Close Position ========
-
-export interface ClosePositionParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  accountId: string;
+export interface IncreasePositionRequestParams extends CommonTradingParams {
   positionId: bigint | number;
-  acceptablePrice?: bigint;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
-}
-
-export function closePosition(
-  client: WaterXClient,
-  tx: Transaction,
-  params: ClosePositionParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  const [request] = closePositionRequestCall({
-    package: pkg,
-    arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      senderRequest,
-      accountObjectAddress: params.accountId,
-      positionId: BigInt(params.positionId),
-      acceptablePrice: params.acceptablePrice ?? 0n,
-    },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
-  })(tx);
-
-  executeAndDestroy(tx, client, { ...params, request, sponsorFund: params.sponsorFund });
-  return tx;
-}
-
-// ======== Increase Position (add collateral + increase size) ========
-
-export interface IncreasePositionParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  accountId: string;
-  positionId: bigint | number;
-  receivingCoins: CoinForReceiving[];
   collateralAmount: bigint | number;
-  size: bigint | number | TransactionArgument;
-  acceptablePrice?: bigint;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
-}
-
-export function increasePosition(
-  client: WaterXClient,
-  tx: Transaction,
-  params: IncreasePositionParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  const receivingVec = buildReceivingVector(tx, params.receivingCoins, params.collateralTokenType);
-
-  const [request] = increasePositionRequestCall({
-    package: pkg,
-    arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      senderRequest,
-      accountObjectAddress: params.accountId,
-      positionId: BigInt(params.positionId),
-      receivings: receivingVec,
-      collateralAmount: BigInt(params.collateralAmount),
-      size:
-        typeof params.size === "bigint" || typeof params.size === "number"
-          ? BigInt(params.size)
-          : params.size,
-      acceptablePrice: params.acceptablePrice ?? 0n,
-    },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
-  })(tx);
-
-  executeAndDestroy(tx, client, { ...params, request, sponsorFund: params.sponsorFund });
-  return tx;
-}
-
-// ======== Decrease Position (reduce size) ========
-
-export interface DecreasePositionParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  accountId: string;
-  positionId: bigint | number;
+  /** Raw 1e9-scaled `Float` size. */
   size: bigint | number;
-  acceptablePrice?: bigint;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
+  /** Raw 1e9-scaled `Float` slippage cap. */
+  acceptablePrice: bigint | number;
+  /** Optional opener order id (rare). */
+  orderId?: bigint | number;
 }
 
-export function decreasePosition(
+export function increasePositionRequest(
   client: WaterXClient,
   tx: Transaction,
-  params: DecreasePositionParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  const [request] = decreasePositionRequestCall({
-    package: pkg,
+  params: IncreasePositionRequestParams,
+): TransactionArgument {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  const [tr] = trading.increasePositionRequest({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      senderRequest,
-      accountObjectAddress: params.accountId,
-      positionId: BigInt(params.positionId),
-      size:
-        typeof params.size === "bigint" || typeof params.size === "number"
-          ? BigInt(params.size)
-          : params.size,
-      acceptablePrice: params.acceptablePrice ?? 0n,
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      orderId: params.orderId ?? null,
+      positionId: params.positionId,
+      collateralAmount: params.collateralAmount,
+      size: params.size,
+      acceptablePrice: params.acceptablePrice,
     },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
+    typeArguments: typeArgs(client, params),
   })(tx);
-
-  executeAndDestroy(tx, client, { ...params, request, sponsorFund: params.sponsorFund });
-  return tx;
+  return tr as unknown as TransactionArgument;
 }
 
-// ======== Deposit Collateral (add collateral without changing size) ========
-
-export interface DepositCollateralParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  accountId: string;
+export interface DecreasePositionRequestParams extends CommonTradingParams {
   positionId: bigint | number;
-  receivingCoins: CoinForReceiving[];
-  collateralAmount: bigint | number;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
+  /** Raw 1e9-scaled `Float` size to reduce by. */
+  size: bigint | number;
+  acceptablePrice: bigint | number;
 }
 
-export function depositCollateral(
+export function decreasePositionRequest(
   client: WaterXClient,
   tx: Transaction,
-  params: DepositCollateralParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  const receivingVec = buildReceivingVector(tx, params.receivingCoins, params.collateralTokenType);
-
-  const [request] = depositCollateralRequestCall({
-    package: pkg,
+  params: DecreasePositionRequestParams,
+): TransactionArgument {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  const [tr] = trading.decreasePositionRequest({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      senderRequest,
-      accountObjectAddress: params.accountId,
-      positionId: BigInt(params.positionId),
-      receivings: receivingVec,
-      collateralAmount: BigInt(params.collateralAmount),
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      positionId: params.positionId,
+      size: params.size,
+      acceptablePrice: params.acceptablePrice,
     },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
+    typeArguments: typeArgs(client, params),
   })(tx);
-
-  executeAndDestroy(tx, client, { ...params, request, sponsorFund: params.sponsorFund });
-  return tx;
+  return tr as unknown as TransactionArgument;
 }
 
-// ======== Withdraw Collateral (remove collateral without changing size) ========
+// ============================================================================
+// Deposit / withdraw collateral
+// ============================================================================
 
-export interface WithdrawCollateralParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  accountId: string;
+export interface DepositCollateralRequestParams extends CommonTradingParams {
+  positionId: bigint | number;
+  collateralAmount: bigint | number;
+}
+
+export function depositCollateralRequest(
+  client: WaterXClient,
+  tx: Transaction,
+  params: DepositCollateralRequestParams,
+): TransactionArgument {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  const [tr] = trading.depositCollateralRequest({
+    package: client.config.packages.waterx_perp.published_at,
+    arguments: {
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      positionId: params.positionId,
+      collateralAmount: params.collateralAmount,
+    },
+    typeArguments: typeArgs(client, params),
+  })(tx);
+  return tr as unknown as TransactionArgument;
+}
+
+export interface WithdrawCollateralRequestParams extends CommonTradingParams {
   positionId: bigint | number;
   amount: bigint | number;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
 }
 
-export function withdrawCollateral(
+export function withdrawCollateralRequest(
   client: WaterXClient,
   tx: Transaction,
-  params: WithdrawCollateralParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  const [request] = withdrawCollateralRequestCall({
-    package: pkg,
+  params: WithdrawCollateralRequestParams,
+): TransactionArgument {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  const [tr] = trading.withdrawCollateralRequest({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      senderRequest,
-      accountObjectAddress: params.accountId,
-      positionId: BigInt(params.positionId),
-      amount: BigInt(params.amount),
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      positionId: params.positionId,
+      amount: params.amount,
     },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
+    typeArguments: typeArgs(client, params),
   })(tx);
-
-  executeAndDestroy(tx, client, { ...params, request, sponsorFund: params.sponsorFund });
-  return tx;
+  return tr as unknown as TransactionArgument;
 }
 
-// ======== Liquidate ========
+// ============================================================================
+// Execute (consumes the TradingRequest hot potato)
+// ============================================================================
 
-export interface LiquidateParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  /** Account that receives the liquidation reward (keeper's account) */
-  accountId: string;
+export interface ExecuteTradingParams extends TradingTypeArgs {
+  ticker: string;
+  request: TransactionArgument;
+}
+
+export function executeTrading(
+  client: WaterXClient,
+  tx: Transaction,
+  params: ExecuteTradingParams,
+): void {
+  const obj = commonObjects(client);
+  trading.execute({
+    package: client.config.packages.waterx_perp.published_at,
+    arguments: {
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      req: params.request as unknown as string,
+      oracle: tx.object(obj.oracle),
+    },
+    typeArguments: typeArgs(client, params),
+  })(tx);
+}
+
+// ============================================================================
+// Keeper paths — single-call (no request/execute split)
+// ============================================================================
+
+export interface LiquidateParams extends TradingTypeArgs {
+  ticker: string;
   positionId: bigint | number;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
-  sponsorFund?: TransactionArgument;
+  /** Optional Bucket Account to act through. */
+  bucketAccount?: string | TransactionArgument;
 }
 
-export function liquidate(
+export function liquidate(client: WaterXClient, tx: Transaction, params: LiquidateParams): void {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  trading.liquidate({
+    package: client.config.packages.waterx_perp.published_at,
+    arguments: {
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      senderRequest: req as unknown as string,
+      positionId: params.positionId,
+      oracle: tx.object(obj.oracle),
+    },
+    typeArguments: typeArgs(client, params),
+  })(tx);
+}
+
+export interface BatchLiquidateParams extends TradingTypeArgs {
+  ticker: string;
+  pageSize: bigint | number;
+  pageIndex: bigint | number;
+  bucketAccount?: string | TransactionArgument;
+}
+
+export function batchLiquidate(
   client: WaterXClient,
   tx: Transaction,
-  params: LiquidateParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  const [request] = liquidateRequestCall({
-    package: pkg,
+  params: BatchLiquidateParams,
+): void {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  trading.batchLiquidate({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      market: params.market,
-      senderRequest,
-      positionId: BigInt(params.positionId),
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      senderRequest: req as unknown as string,
+      oracle: tx.object(obj.oracle),
+      pageSize: params.pageSize,
+      pageIndex: params.pageIndex,
     },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
+    typeArguments: typeArgs(client, params),
   })(tx);
-
-  executeAndDestroy(tx, client, {
-    ...params,
-    request,
-    isRecipient: true,
-    sponsorFund: params.sponsorFund,
-  });
-  return tx;
 }
 
-// ======== Match Orders (Keeper) ========
-
-export interface MatchOrdersParams {
-  collateralTokenType: string;
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
+export interface MatchOrdersParams extends TradingTypeArgs {
+  ticker: string;
+  /** Order book to scan: `ORDER_LIMIT_BUY` / `ORDER_LIMIT_SELL` / etc. */
   orderTypeTag: number;
-  triggerPrice: bigint;
+  /** Raw 1e9-scaled trigger price to start from (`0` = scan from best). */
+  triggerPrice: bigint | number;
   maxFills: bigint | number;
-  basePriceResult: TransactionArgument;
-  collateralPriceResult: TransactionArgument;
+  bucketAccount?: string | TransactionArgument;
 }
 
 export function matchOrders(
   client: WaterXClient,
   tx: Transaction,
   params: MatchOrdersParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  matchOrdersCall({
-    package: pkg,
+): void {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  trading.matchOrders({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      accountRegistry: client.config.accountRegistry,
-      market: params.market,
-      pool: client.config.wlpPool,
-      senderRequest,
-      priceResult: params.basePriceResult,
-      collateralPriceResult: params.collateralPriceResult,
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      senderRequest: req as unknown as string,
+      oracle: tx.object(obj.oracle),
       orderTypeTag: params.orderTypeTag,
-      triggerPrice: BigInt(params.triggerPrice),
-      maxFills: BigInt(params.maxFills),
+      triggerPrice: params.triggerPrice,
+      maxFills: params.maxFills,
     },
-    typeArguments: [params.collateralTokenType, params.baseTokenType, params.lpTokenType],
+    typeArguments: typeArgs(client, params),
   })(tx);
-
-  return tx;
 }
 
-// ======== Update Funding Rate (Keeper) ========
-
 export interface UpdateFundingRateParams {
-  baseTokenType: string;
-  lpTokenType: string;
-  market: string;
-  basePriceResult: TransactionArgument;
+  ticker: string;
+  /** Defaults to `client.wlpType()`. */
+  lpType?: string;
+  bucketAccount?: string | TransactionArgument;
 }
 
 export function updateFundingRate(
   client: WaterXClient,
   tx: Transaction,
   params: UpdateFundingRateParams,
-): Transaction {
-  const pkg = client.config.packageId;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  updateFundingRateCall({
-    package: pkg,
+): void {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  trading.updateFundingRate({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: client.config.globalConfig,
-      market: params.market,
-      pool: client.config.wlpPool,
-      priceResult: params.basePriceResult,
-      senderRequest,
+      globalConfig: tx.object(obj.globalConfig),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      oracle: tx.object(obj.oracle),
+      senderRequest: req as unknown as string,
     },
-    typeArguments: [params.baseTokenType, params.lpTokenType],
+    typeArguments: [params.lpType ?? client.wlpType()],
   })(tx);
-  return tx;
 }
+
+export interface OpenPositionByKeeperParams extends TradingTypeArgs {
+  ticker: string;
+  /** Address of the user-side account (the position will be owned by this address). */
+  accountObjectAddress: string;
+  /** Collateral `Coin<C_TOKEN>` argument the keeper is funding from its treasury. */
+  collateralCoin: TransactionArgument;
+  isLong: boolean;
+  /** Raw 1e9-scaled `Float`. */
+  size: bigint | number;
+  acceptablePrice: bigint | number;
+  bucketAccount?: string | TransactionArgument;
+}
+
+export function openPositionByKeeper(
+  client: WaterXClient,
+  tx: Transaction,
+  params: OpenPositionByKeeperParams,
+): void {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  trading.openPositionByKeeper({
+    package: client.config.packages.waterx_perp.published_at,
+    arguments: {
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      keeperRequest: req as unknown as string,
+      accountObjectAddress: params.accountObjectAddress,
+      collateralCoin: params.collateralCoin as unknown as string,
+      isLong: params.isLong,
+      size: params.size,
+      acceptablePrice: params.acceptablePrice,
+      oracle: tx.object(obj.oracle),
+    },
+    typeArguments: typeArgs(client, params),
+  })(tx);
+}
+
+export interface ClosePositionByKeeperParams extends TradingTypeArgs {
+  ticker: string;
+  positionId: bigint | number;
+  acceptablePrice: bigint | number;
+  bucketAccount?: string | TransactionArgument;
+}
+
+export function closePositionByKeeper(
+  client: WaterXClient,
+  tx: Transaction,
+  params: ClosePositionByKeeperParams,
+): void {
+  const obj = commonObjects(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  trading.closePositionByKeeper({
+    package: client.config.packages.waterx_perp.published_at,
+    arguments: {
+      globalConfig: tx.object(obj.globalConfig),
+      wxaRegistry: tx.object(obj.wxaRegistry),
+      marketRegistry: tx.object(obj.marketRegistry),
+      ticker: params.ticker,
+      pool: tx.object(obj.wlpPool),
+      keeperRequest: req as unknown as string,
+      positionId: params.positionId,
+      acceptablePrice: params.acceptablePrice,
+      oracle: tx.object(obj.oracle),
+    },
+    typeArguments: typeArgs(client, params),
+  })(tx);
+}
+
+// ============================================================================
+// Cancel order wildcard helper (re-exported for symmetry with v2)
+// ============================================================================
+
+export const ORDER_TAG_WILDCARD_VALUE = ORDER_TAG_WILDCARD;

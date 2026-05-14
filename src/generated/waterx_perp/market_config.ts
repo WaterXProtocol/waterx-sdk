@@ -12,55 +12,69 @@ import * as float from './deps/bucket_v2_framework/float.ts';
 import * as float_1 from './deps/bucket_v2_framework/float.ts';
 import * as float_2 from './deps/bucket_v2_framework/float.ts';
 import * as float_3 from './deps/bucket_v2_framework/float.ts';
-import * as type_name from './deps/std/type_name.ts';
-import * as type_name_1 from './deps/std/type_name.ts';
-import * as vec_set from './deps/sui/vec_set.ts';
 import * as float_4 from './deps/bucket_v2_framework/float.ts';
 import * as float_5 from './deps/bucket_v2_framework/float.ts';
+import * as float_6 from './deps/bucket_v2_framework/float.ts';
+import * as type_name from './deps/std/type_name.ts';
+import * as vec_set from './deps/sui/vec_set.ts';
+import * as float_7 from './deps/bucket_v2_framework/float.ts';
+import * as float_8 from './deps/bucket_v2_framework/float.ts';
+import * as float_9 from './deps/bucket_v2_framework/float.ts';
+import * as float_10 from './deps/bucket_v2_framework/float.ts';
 import * as double from './deps/bucket_v2_framework/double.ts';
 const $moduleName = '@waterx/perp::market_config';
-export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig<phantom BASE_TOKEN>`, fields: {
+export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig`, fields: {
         id: bcs.Address,
-        /** Whether this market is active. */
-        is_active: bcs.bool(),
+        /** Ticker symbol (e.g., `b"BTC_USD".to_string()`). Doubles as the oracle key. */
+        symbol: bcs.string(),
+        /** Whether this market is paused. When true, trading actions abort. */
+        is_paused: bcs.bool(),
         /** Maximum leverage in bps (e.g., 100x = 1_000_000 bps). */
         max_leverage_bps: bcs.u64(),
         /** Minimum position collateral value in USD, scaled by 1e9. */
         min_coll_value: bcs.u64(),
-        /** Base trading fee in bps. */
-        trading_fee_bps: bcs.u64(),
-        /** Maximum additional impact fee in bps. */
-        max_impact_fee_bps: bcs.u64(),
+        /** Base trading fee as Float rate (e.g. 0.0005 = 5 bps). */
+        trading_fee: float.Float,
+        /** Maximum additional impact fee as Float rate. */
+        max_impact_fee: float_1.Float,
         /** Share of LP TVL allocated to net exposure before impact hits max, in bps. */
         allocated_lp_exposure_bps: bcs.u64(),
         /** Curvature exponent for the impact fee curve. */
         impact_fee_curvature: bcs.u64(),
         /** Scale divisor applied to the exposure ratio before curvature. */
         impact_fee_scale: bcs.u64(),
-        /** Maintenance margin rate in bps (default 150). */
-        maintenance_margin_bps: bcs.u64(),
+        /** Maintenance margin rate as Float (e.g. 0.015 = 150 bps). */
+        maintenance_margin: float_2.Float,
         /** Maximum long open interest as Float (in base tokens). */
-        max_long_oi: float.Float,
+        max_long_oi: float_3.Float,
         /** Maximum short open interest as Float (in base tokens). */
-        max_short_oi: float_1.Float,
+        max_short_oi: float_4.Float,
         /** Cooldown between position updates in ms. */
         cooldown_ms: bcs.u64(),
         /** Bucket size for order book trigger price normalization. */
-        order_price_tick: float_2.Float,
+        order_price_tick: float_5.Float,
+        /**
+         * Maximum number of TP / SL pre-orders reservable against a single unfilled main
+         * order. Defaults to `DEFAULT_MAX_PRE_ORDERS`; admin may tune via
+         * `update_market_config`. Enforced at place / update / add pre-order paths.
+         */
+        max_pre_orders: bcs.u64(),
         /** Basic funding rate per interval (Float, typically ~0.01% = 1 bps). */
-        basic_funding_rate: float_3.Float,
+        basic_funding_rate: float_6.Float,
         /** Funding interval in milliseconds (default 3600000 = 1 hour). */
         funding_interval_ms: bcs.u64(),
         /** Required witness types before execution. */
         request_checklist: bcs.vector(type_name.TypeName),
-        /** Required witness types before response destruction. */
-        response_checklist: bcs.vector(type_name_1.TypeName),
-        /** Prevents reentrancy: locked during request→response lifecycle. */
+        /** Prevents reentrancy: locked during the request→execute lifecycle. */
         position_locker: vec_set.VecSet(bcs.u64()),
         /** Current long open interest as Float. */
-        long_oi: float_4.Float,
+        long_oi: float_7.Float,
         /** Current short open interest as Float. */
-        short_oi: float_5.Float,
+        short_oi: float_8.Float,
+        /** Aggregate long average entry price. */
+        long_avg_entry_price: float_9.Float,
+        /** Aggregate short average entry price. */
+        short_avg_entry_price: float_10.Float,
         /** Next position ID counter. */
         next_position_id: bcs.u64(),
         /** Next order ID counter. */
@@ -69,104 +83,109 @@ export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig
         last_funding_timestamp: bcs.u64(),
         /** Sign of cumulative funding rate index (true = longs pay). */
         cumulative_funding_sign: bcs.bool(),
-        /** Cumulative funding rate index (Double precision). */
+        /** Cumulative funding index in USD per one base token (Double precision). */
         cumulative_funding_index: double.Double
     } });
 export interface NewMarketConfigArguments {
+    symbol: RawTransactionArgument<string>;
     maxLeverageBps: RawTransactionArgument<number | bigint>;
     minCollValue: RawTransactionArgument<number | bigint>;
-    tradingFeeBps: RawTransactionArgument<number | bigint>;
-    maintenanceMarginBps: RawTransactionArgument<number | bigint>;
+    tradingFee: RawTransactionArgument<number | bigint>;
+    maintenanceMargin: RawTransactionArgument<number | bigint>;
     maxLongOi: RawTransactionArgument<string>;
     maxShortOi: RawTransactionArgument<string>;
     cooldownMs: RawTransactionArgument<number | bigint>;
-    basicFundingRateBps: RawTransactionArgument<number | bigint>;
+    basicFundingRate: RawTransactionArgument<number | bigint>;
     fundingIntervalMs: RawTransactionArgument<number | bigint>;
 }
 export interface NewMarketConfigOptions {
     package?: string;
     arguments: NewMarketConfigArguments | [
+        symbol: RawTransactionArgument<string>,
         maxLeverageBps: RawTransactionArgument<number | bigint>,
         minCollValue: RawTransactionArgument<number | bigint>,
-        tradingFeeBps: RawTransactionArgument<number | bigint>,
-        maintenanceMarginBps: RawTransactionArgument<number | bigint>,
+        tradingFee: RawTransactionArgument<number | bigint>,
+        maintenanceMargin: RawTransactionArgument<number | bigint>,
         maxLongOi: RawTransactionArgument<string>,
         maxShortOi: RawTransactionArgument<string>,
         cooldownMs: RawTransactionArgument<number | bigint>,
-        basicFundingRateBps: RawTransactionArgument<number | bigint>,
+        basicFundingRate: RawTransactionArgument<number | bigint>,
         fundingIntervalMs: RawTransactionArgument<number | bigint>
     ];
-    typeArguments: [
-        string
-    ];
 }
-/** Creates a new MarketConfig (called by trading::create_market). */
+/**
+ * Creates a new MarketConfig (called by trading::create_market). `trading_fee`,
+ * `maintenance_margin`, and `basic_funding_rate` are scaled Float values (1e9
+ * scale). For example, a 5 bps fee = `500_000`.
+ */
 export function newMarketConfig(options: NewMarketConfigOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
+        '0x1::string::String',
         'u64',
         'u64',
-        'u64',
-        'u64',
+        'u128',
+        'u128',
         null,
         null,
         'u64',
-        'u64',
+        'u128',
         'u64',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["maxLeverageBps", "minCollValue", "tradingFeeBps", "maintenanceMarginBps", "maxLongOi", "maxShortOi", "cooldownMs", "basicFundingRateBps", "fundingIntervalMs"];
+    const parameterNames = ["symbol", "maxLeverageBps", "minCollValue", "tradingFee", "maintenanceMargin", "maxLongOi", "maxShortOi", "cooldownMs", "basicFundingRate", "fundingIntervalMs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
         function: 'new_market_config',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface UpdateMarketConfigArguments {
-    Cap: RawTransactionArgument<string>;
     marketConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     maxLeverageBps: RawTransactionArgument<number | bigint | null>;
     minCollValue: RawTransactionArgument<number | bigint | null>;
-    tradingFeeBps: RawTransactionArgument<number | bigint | null>;
-    maxImpactFeeBps: RawTransactionArgument<number | bigint | null>;
+    tradingFee: RawTransactionArgument<number | bigint | null>;
+    maxImpactFee: RawTransactionArgument<number | bigint | null>;
     allocatedLpExposureBps: RawTransactionArgument<number | bigint | null>;
     impactFeeCurvature: RawTransactionArgument<number | bigint | null>;
     impactFeeScale: RawTransactionArgument<number | bigint | null>;
-    maintenanceMarginBps: RawTransactionArgument<number | bigint | null>;
+    maintenanceMargin: RawTransactionArgument<number | bigint | null>;
     maxLongOi: RawTransactionArgument<number | bigint | null>;
     maxShortOi: RawTransactionArgument<number | bigint | null>;
     cooldownMs: RawTransactionArgument<number | bigint | null>;
     orderPriceTick: RawTransactionArgument<string | null>;
-    basicFundingRateBps: RawTransactionArgument<number | bigint | null>;
+    maxPreOrders: RawTransactionArgument<number | bigint | null>;
+    basicFundingRate: RawTransactionArgument<number | bigint | null>;
     fundingIntervalMs: RawTransactionArgument<number | bigint | null>;
 }
 export interface UpdateMarketConfigOptions {
     package?: string;
     arguments: UpdateMarketConfigArguments | [
-        Cap: RawTransactionArgument<string>,
         marketConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         maxLeverageBps: RawTransactionArgument<number | bigint | null>,
         minCollValue: RawTransactionArgument<number | bigint | null>,
-        tradingFeeBps: RawTransactionArgument<number | bigint | null>,
-        maxImpactFeeBps: RawTransactionArgument<number | bigint | null>,
+        tradingFee: RawTransactionArgument<number | bigint | null>,
+        maxImpactFee: RawTransactionArgument<number | bigint | null>,
         allocatedLpExposureBps: RawTransactionArgument<number | bigint | null>,
         impactFeeCurvature: RawTransactionArgument<number | bigint | null>,
         impactFeeScale: RawTransactionArgument<number | bigint | null>,
-        maintenanceMarginBps: RawTransactionArgument<number | bigint | null>,
+        maintenanceMargin: RawTransactionArgument<number | bigint | null>,
         maxLongOi: RawTransactionArgument<number | bigint | null>,
         maxShortOi: RawTransactionArgument<number | bigint | null>,
         cooldownMs: RawTransactionArgument<number | bigint | null>,
         orderPriceTick: RawTransactionArgument<string | null>,
-        basicFundingRateBps: RawTransactionArgument<number | bigint | null>,
+        maxPreOrders: RawTransactionArgument<number | bigint | null>,
+        basicFundingRate: RawTransactionArgument<number | bigint | null>,
         fundingIntervalMs: RawTransactionArgument<number | bigint | null>
     ];
-    typeArguments: [
-        string
-    ];
 }
-/** Updates MarketConfig fields. */
+/**
+ * Updates MarketConfig fields. `trading_fee`, `max_impact_fee`, and
+ * `maintenance_margin` are scaled Float values (1e9 scale).
+ */
 export function updateMarketConfig(options: UpdateMarketConfigOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -174,100 +193,122 @@ export function updateMarketConfig(options: UpdateMarketConfigOptions) {
         null,
         '0x1::option::Option<u64>',
         '0x1::option::Option<u64>',
+        '0x1::option::Option<u128>',
+        '0x1::option::Option<u128>',
         '0x1::option::Option<u64>',
         '0x1::option::Option<u64>',
         '0x1::option::Option<u64>',
-        '0x1::option::Option<u64>',
-        '0x1::option::Option<u64>',
-        '0x1::option::Option<u64>',
+        '0x1::option::Option<u128>',
         '0x1::option::Option<u128>',
         '0x1::option::Option<u128>',
         '0x1::option::Option<u64>',
         '0x1::option::Option<null>',
         '0x1::option::Option<u64>',
+        '0x1::option::Option<u128>',
         '0x1::option::Option<u64>'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig", "maxLeverageBps", "minCollValue", "tradingFeeBps", "maxImpactFeeBps", "allocatedLpExposureBps", "impactFeeCurvature", "impactFeeScale", "maintenanceMarginBps", "maxLongOi", "maxShortOi", "cooldownMs", "orderPriceTick", "basicFundingRateBps", "fundingIntervalMs"];
+    const parameterNames = ["marketConfig", "Cap", "maxLeverageBps", "minCollValue", "tradingFee", "maxImpactFee", "allocatedLpExposureBps", "impactFeeCurvature", "impactFeeScale", "maintenanceMargin", "maxLongOi", "maxShortOi", "cooldownMs", "orderPriceTick", "maxPreOrders", "basicFundingRate", "fundingIntervalMs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
         function: 'update_market_config',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface SuspendMarketArguments {
-    Cap: RawTransactionArgument<string>;
+export interface UpdateFundingConfigArguments {
     marketConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    basicFundingRate: RawTransactionArgument<number | bigint | null>;
+    fundingIntervalMs: RawTransactionArgument<number | bigint | null>;
 }
-export interface SuspendMarketOptions {
+export interface UpdateFundingConfigOptions {
     package?: string;
-    arguments: SuspendMarketArguments | [
+    arguments: UpdateFundingConfigArguments | [
+        marketConfig: RawTransactionArgument<string>,
         Cap: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
+        basicFundingRate: RawTransactionArgument<number | bigint | null>,
+        fundingIntervalMs: RawTransactionArgument<number | bigint | null>
     ];
 }
-/** Suspends a market config. */
-export function suspendMarket(options: SuspendMarketOptions) {
+export function updateFundingConfig(options: UpdateFundingConfigOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x1::option::Option<u128>',
+        '0x1::option::Option<u64>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketConfig", "Cap", "basicFundingRate", "fundingIntervalMs"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'update_funding_config',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PauseMarketArguments {
+    marketConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+}
+export interface PauseMarketOptions {
+    package?: string;
+    arguments: PauseMarketArguments | [
+        marketConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
+    ];
+}
+/** Pauses a market config (blocks trading actions). */
+export function pauseMarket(options: PauseMarketOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig"];
+    const parameterNames = ["marketConfig", "Cap"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'suspend_market',
+        function: 'pause_market',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface ResumeMarketArguments {
-    Cap: RawTransactionArgument<string>;
+export interface UnpauseMarketArguments {
     marketConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
 }
-export interface ResumeMarketOptions {
+export interface UnpauseMarketOptions {
     package?: string;
-    arguments: ResumeMarketArguments | [
-        Cap: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
+    arguments: UnpauseMarketArguments | [
+        marketConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
     ];
 }
-/** Resumes a market config. */
-export function resumeMarket(options: ResumeMarketOptions) {
+/** Resumes a paused market. */
+export function unpauseMarket(options: UnpauseMarketOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig"];
+    const parameterNames = ["marketConfig", "Cap"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'resume_market',
+        function: 'unpause_market',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface AddRequestRuleArguments {
-    Cap: RawTransactionArgument<string>;
     marketConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
 }
 export interface AddRequestRuleOptions {
     package?: string;
     arguments: AddRequestRuleArguments | [
-        Cap: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>
+        marketConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
     ];
     typeArguments: [
-        string,
         string
     ];
 }
@@ -278,7 +319,7 @@ export function addRequestRule(options: AddRequestRuleOptions) {
         null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig"];
+    const parameterNames = ["marketConfig", "Cap"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
@@ -288,17 +329,16 @@ export function addRequestRule(options: AddRequestRuleOptions) {
     });
 }
 export interface RemoveRequestRuleArguments {
-    Cap: RawTransactionArgument<string>;
     marketConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
 }
 export interface RemoveRequestRuleOptions {
     package?: string;
     arguments: RemoveRequestRuleArguments | [
-        Cap: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>
+        marketConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
     ];
     typeArguments: [
-        string,
         string
     ];
 }
@@ -309,73 +349,11 @@ export function removeRequestRule(options: RemoveRequestRuleOptions) {
         null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig"];
+    const parameterNames = ["marketConfig", "Cap"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
         function: 'remove_request_rule',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
-export interface AddResponseRuleArguments {
-    Cap: RawTransactionArgument<string>;
-    marketConfig: RawTransactionArgument<string>;
-}
-export interface AddResponseRuleOptions {
-    package?: string;
-    arguments: AddResponseRuleArguments | [
-        Cap: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string,
-        string
-    ];
-}
-/** Adds a witness type to the response checklist. */
-export function addResponseRule(options: AddResponseRuleOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'market_config',
-        function: 'add_response_rule',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
-export interface RemoveResponseRuleArguments {
-    Cap: RawTransactionArgument<string>;
-    marketConfig: RawTransactionArgument<string>;
-}
-export interface RemoveResponseRuleOptions {
-    package?: string;
-    arguments: RemoveResponseRuleArguments | [
-        Cap: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string,
-        string
-    ];
-}
-/** Removes a witness type from the response checklist. */
-export function removeResponseRule(options: RemoveResponseRuleOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "marketConfig"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'market_config',
-        function: 'remove_response_rule',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -389,9 +367,6 @@ export interface LockPositionOptions {
     arguments: LockPositionArguments | [
         m: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>
-    ];
-    typeArguments: [
-        string
     ];
 }
 /** Locks a position by ID (prevents reentrancy). */
@@ -407,7 +382,6 @@ export function lockPosition(options: LockPositionOptions) {
         module: 'market_config',
         function: 'lock_position',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface UnlockPositionArguments {
@@ -420,11 +394,8 @@ export interface UnlockPositionOptions {
         m: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>
     ];
-    typeArguments: [
-        string
-    ];
 }
-/** Unlocks a position after response destruction. */
+/** Unlocks a position at the tail of `execute`. */
 export function unlockPosition(options: UnlockPositionOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -437,7 +408,6 @@ export function unlockPosition(options: UnlockPositionOptions) {
         module: 'market_config',
         function: 'unlock_position',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface RequestChecklistArguments {
@@ -447,9 +417,6 @@ export interface RequestChecklistOptions {
     package?: string;
     arguments: RequestChecklistArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function requestChecklist(options: RequestChecklistOptions) {
@@ -463,22 +430,18 @@ export function requestChecklist(options: RequestChecklistOptions) {
         module: 'market_config',
         function: 'request_checklist',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface ResponseChecklistArguments {
+export interface MarketConfigSymbolArguments {
     m: RawTransactionArgument<string>;
 }
-export interface ResponseChecklistOptions {
+export interface MarketConfigSymbolOptions {
     package?: string;
-    arguments: ResponseChecklistArguments | [
+    arguments: MarketConfigSymbolArguments | [
         m: RawTransactionArgument<string>
     ];
-    typeArguments: [
-        string
-    ];
 }
-export function responseChecklist(options: ResponseChecklistOptions) {
+export function marketConfigSymbol(options: MarketConfigSymbolOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -487,24 +450,20 @@ export function responseChecklist(options: ResponseChecklistOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'response_checklist',
+        function: 'market_config_symbol',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface MarketConfigIsActiveArguments {
+export interface MarketConfigIsPausedArguments {
     m: RawTransactionArgument<string>;
 }
-export interface MarketConfigIsActiveOptions {
+export interface MarketConfigIsPausedOptions {
     package?: string;
-    arguments: MarketConfigIsActiveArguments | [
+    arguments: MarketConfigIsPausedArguments | [
         m: RawTransactionArgument<string>
     ];
-    typeArguments: [
-        string
-    ];
 }
-export function marketConfigIsActive(options: MarketConfigIsActiveOptions) {
+export function marketConfigIsPaused(options: MarketConfigIsPausedOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -513,9 +472,8 @@ export function marketConfigIsActive(options: MarketConfigIsActiveOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'market_config_is_active',
+        function: 'market_config_is_paused',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigMaxLeverageBpsArguments {
@@ -525,9 +483,6 @@ export interface MarketConfigMaxLeverageBpsOptions {
     package?: string;
     arguments: MarketConfigMaxLeverageBpsArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigMaxLeverageBps(options: MarketConfigMaxLeverageBpsOptions) {
@@ -541,7 +496,6 @@ export function marketConfigMaxLeverageBps(options: MarketConfigMaxLeverageBpsOp
         module: 'market_config',
         function: 'market_config_max_leverage_bps',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigMinCollValueArguments {
@@ -551,9 +505,6 @@ export interface MarketConfigMinCollValueOptions {
     package?: string;
     arguments: MarketConfigMinCollValueArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigMinCollValue(options: MarketConfigMinCollValueOptions) {
@@ -567,22 +518,18 @@ export function marketConfigMinCollValue(options: MarketConfigMinCollValueOption
         module: 'market_config',
         function: 'market_config_min_coll_value',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface MarketConfigTradingFeeBpsArguments {
+export interface MarketConfigTradingFeeArguments {
     m: RawTransactionArgument<string>;
 }
-export interface MarketConfigTradingFeeBpsOptions {
+export interface MarketConfigTradingFeeOptions {
     package?: string;
-    arguments: MarketConfigTradingFeeBpsArguments | [
+    arguments: MarketConfigTradingFeeArguments | [
         m: RawTransactionArgument<string>
     ];
-    typeArguments: [
-        string
-    ];
 }
-export function marketConfigTradingFeeBps(options: MarketConfigTradingFeeBpsOptions) {
+export function marketConfigTradingFee(options: MarketConfigTradingFeeOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -591,24 +538,20 @@ export function marketConfigTradingFeeBps(options: MarketConfigTradingFeeBpsOpti
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'market_config_trading_fee_bps',
+        function: 'market_config_trading_fee',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface MarketConfigMaxImpactFeeBpsArguments {
+export interface MarketConfigMaxImpactFeeArguments {
     m: RawTransactionArgument<string>;
 }
-export interface MarketConfigMaxImpactFeeBpsOptions {
+export interface MarketConfigMaxImpactFeeOptions {
     package?: string;
-    arguments: MarketConfigMaxImpactFeeBpsArguments | [
+    arguments: MarketConfigMaxImpactFeeArguments | [
         m: RawTransactionArgument<string>
     ];
-    typeArguments: [
-        string
-    ];
 }
-export function marketConfigMaxImpactFeeBps(options: MarketConfigMaxImpactFeeBpsOptions) {
+export function marketConfigMaxImpactFee(options: MarketConfigMaxImpactFeeOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -617,9 +560,8 @@ export function marketConfigMaxImpactFeeBps(options: MarketConfigMaxImpactFeeBps
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'market_config_max_impact_fee_bps',
+        function: 'market_config_max_impact_fee',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigAllocatedLpExposureBpsArguments {
@@ -629,9 +571,6 @@ export interface MarketConfigAllocatedLpExposureBpsOptions {
     package?: string;
     arguments: MarketConfigAllocatedLpExposureBpsArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigAllocatedLpExposureBps(options: MarketConfigAllocatedLpExposureBpsOptions) {
@@ -645,7 +584,6 @@ export function marketConfigAllocatedLpExposureBps(options: MarketConfigAllocate
         module: 'market_config',
         function: 'market_config_allocated_lp_exposure_bps',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigImpactFeeCurvatureArguments {
@@ -655,9 +593,6 @@ export interface MarketConfigImpactFeeCurvatureOptions {
     package?: string;
     arguments: MarketConfigImpactFeeCurvatureArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigImpactFeeCurvature(options: MarketConfigImpactFeeCurvatureOptions) {
@@ -671,7 +606,6 @@ export function marketConfigImpactFeeCurvature(options: MarketConfigImpactFeeCur
         module: 'market_config',
         function: 'market_config_impact_fee_curvature',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigImpactFeeScaleArguments {
@@ -681,9 +615,6 @@ export interface MarketConfigImpactFeeScaleOptions {
     package?: string;
     arguments: MarketConfigImpactFeeScaleArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigImpactFeeScale(options: MarketConfigImpactFeeScaleOptions) {
@@ -697,22 +628,18 @@ export function marketConfigImpactFeeScale(options: MarketConfigImpactFeeScaleOp
         module: 'market_config',
         function: 'market_config_impact_fee_scale',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface MarketConfigMaintenanceMarginBpsArguments {
+export interface MarketConfigMaintenanceMarginArguments {
     m: RawTransactionArgument<string>;
 }
-export interface MarketConfigMaintenanceMarginBpsOptions {
+export interface MarketConfigMaintenanceMarginOptions {
     package?: string;
-    arguments: MarketConfigMaintenanceMarginBpsArguments | [
+    arguments: MarketConfigMaintenanceMarginArguments | [
         m: RawTransactionArgument<string>
     ];
-    typeArguments: [
-        string
-    ];
 }
-export function marketConfigMaintenanceMarginBps(options: MarketConfigMaintenanceMarginBpsOptions) {
+export function marketConfigMaintenanceMargin(options: MarketConfigMaintenanceMarginOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -721,9 +648,8 @@ export function marketConfigMaintenanceMarginBps(options: MarketConfigMaintenanc
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'market_config_maintenance_margin_bps',
+        function: 'market_config_maintenance_margin',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigMaxLongOiArguments {
@@ -733,9 +659,6 @@ export interface MarketConfigMaxLongOiOptions {
     package?: string;
     arguments: MarketConfigMaxLongOiArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigMaxLongOi(options: MarketConfigMaxLongOiOptions) {
@@ -749,7 +672,6 @@ export function marketConfigMaxLongOi(options: MarketConfigMaxLongOiOptions) {
         module: 'market_config',
         function: 'market_config_max_long_oi',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigMaxShortOiArguments {
@@ -759,9 +681,6 @@ export interface MarketConfigMaxShortOiOptions {
     package?: string;
     arguments: MarketConfigMaxShortOiArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigMaxShortOi(options: MarketConfigMaxShortOiOptions) {
@@ -775,7 +694,6 @@ export function marketConfigMaxShortOi(options: MarketConfigMaxShortOiOptions) {
         module: 'market_config',
         function: 'market_config_max_short_oi',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigCooldownMsArguments {
@@ -785,9 +703,6 @@ export interface MarketConfigCooldownMsOptions {
     package?: string;
     arguments: MarketConfigCooldownMsArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigCooldownMs(options: MarketConfigCooldownMsOptions) {
@@ -801,7 +716,6 @@ export function marketConfigCooldownMs(options: MarketConfigCooldownMsOptions) {
         module: 'market_config',
         function: 'market_config_cooldown_ms',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigOrderPriceTickArguments {
@@ -811,9 +725,6 @@ export interface MarketConfigOrderPriceTickOptions {
     package?: string;
     arguments: MarketConfigOrderPriceTickArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigOrderPriceTick(options: MarketConfigOrderPriceTickOptions) {
@@ -827,7 +738,28 @@ export function marketConfigOrderPriceTick(options: MarketConfigOrderPriceTickOp
         module: 'market_config',
         function: 'market_config_order_price_tick',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
+    });
+}
+export interface MarketConfigMaxPreOrdersArguments {
+    m: RawTransactionArgument<string>;
+}
+export interface MarketConfigMaxPreOrdersOptions {
+    package?: string;
+    arguments: MarketConfigMaxPreOrdersArguments | [
+        m: RawTransactionArgument<string>
+    ];
+}
+export function marketConfigMaxPreOrders(options: MarketConfigMaxPreOrdersOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["m"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'market_config_max_pre_orders',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
 export interface MarketConfigBasicFundingRateArguments {
@@ -837,9 +769,6 @@ export interface MarketConfigBasicFundingRateOptions {
     package?: string;
     arguments: MarketConfigBasicFundingRateArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigBasicFundingRate(options: MarketConfigBasicFundingRateOptions) {
@@ -853,7 +782,6 @@ export function marketConfigBasicFundingRate(options: MarketConfigBasicFundingRa
         module: 'market_config',
         function: 'market_config_basic_funding_rate',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigFundingIntervalMsArguments {
@@ -863,9 +791,6 @@ export interface MarketConfigFundingIntervalMsOptions {
     package?: string;
     arguments: MarketConfigFundingIntervalMsArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigFundingIntervalMs(options: MarketConfigFundingIntervalMsOptions) {
@@ -879,7 +804,6 @@ export function marketConfigFundingIntervalMs(options: MarketConfigFundingInterv
         module: 'market_config',
         function: 'market_config_funding_interval_ms',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigLongOiArguments {
@@ -889,9 +813,6 @@ export interface MarketConfigLongOiOptions {
     package?: string;
     arguments: MarketConfigLongOiArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigLongOi(options: MarketConfigLongOiOptions) {
@@ -905,7 +826,6 @@ export function marketConfigLongOi(options: MarketConfigLongOiOptions) {
         module: 'market_config',
         function: 'market_config_long_oi',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigShortOiArguments {
@@ -915,9 +835,6 @@ export interface MarketConfigShortOiOptions {
     package?: string;
     arguments: MarketConfigShortOiArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigShortOi(options: MarketConfigShortOiOptions) {
@@ -931,7 +848,50 @@ export function marketConfigShortOi(options: MarketConfigShortOiOptions) {
         module: 'market_config',
         function: 'market_config_short_oi',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
+    });
+}
+export interface MarketConfigLongAvgEntryPriceArguments {
+    m: RawTransactionArgument<string>;
+}
+export interface MarketConfigLongAvgEntryPriceOptions {
+    package?: string;
+    arguments: MarketConfigLongAvgEntryPriceArguments | [
+        m: RawTransactionArgument<string>
+    ];
+}
+export function marketConfigLongAvgEntryPrice(options: MarketConfigLongAvgEntryPriceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["m"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'market_config_long_avg_entry_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface MarketConfigShortAvgEntryPriceArguments {
+    m: RawTransactionArgument<string>;
+}
+export interface MarketConfigShortAvgEntryPriceOptions {
+    package?: string;
+    arguments: MarketConfigShortAvgEntryPriceArguments | [
+        m: RawTransactionArgument<string>
+    ];
+}
+export function marketConfigShortAvgEntryPrice(options: MarketConfigShortAvgEntryPriceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["m"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'market_config_short_avg_entry_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
 export interface MarketConfigNextPositionIdArguments {
@@ -941,9 +901,6 @@ export interface MarketConfigNextPositionIdOptions {
     package?: string;
     arguments: MarketConfigNextPositionIdArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigNextPositionId(options: MarketConfigNextPositionIdOptions) {
@@ -957,7 +914,6 @@ export function marketConfigNextPositionId(options: MarketConfigNextPositionIdOp
         module: 'market_config',
         function: 'market_config_next_position_id',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigNextOrderIdArguments {
@@ -967,9 +923,6 @@ export interface MarketConfigNextOrderIdOptions {
     package?: string;
     arguments: MarketConfigNextOrderIdArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigNextOrderId(options: MarketConfigNextOrderIdOptions) {
@@ -983,7 +936,6 @@ export function marketConfigNextOrderId(options: MarketConfigNextOrderIdOptions)
         module: 'market_config',
         function: 'market_config_next_order_id',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigCumulativeFundingSignArguments {
@@ -993,9 +945,6 @@ export interface MarketConfigCumulativeFundingSignOptions {
     package?: string;
     arguments: MarketConfigCumulativeFundingSignArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigCumulativeFundingSign(options: MarketConfigCumulativeFundingSignOptions) {
@@ -1009,7 +958,6 @@ export function marketConfigCumulativeFundingSign(options: MarketConfigCumulativ
         module: 'market_config',
         function: 'market_config_cumulative_funding_sign',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigCumulativeFundingIndexArguments {
@@ -1019,9 +967,6 @@ export interface MarketConfigCumulativeFundingIndexOptions {
     package?: string;
     arguments: MarketConfigCumulativeFundingIndexArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigCumulativeFundingIndex(options: MarketConfigCumulativeFundingIndexOptions) {
@@ -1035,7 +980,6 @@ export function marketConfigCumulativeFundingIndex(options: MarketConfigCumulati
         module: 'market_config',
         function: 'market_config_cumulative_funding_index',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface MarketConfigLastFundingTimestampArguments {
@@ -1045,9 +989,6 @@ export interface MarketConfigLastFundingTimestampOptions {
     package?: string;
     arguments: MarketConfigLastFundingTimestampArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function marketConfigLastFundingTimestamp(options: MarketConfigLastFundingTimestampOptions) {
@@ -1061,7 +1002,6 @@ export function marketConfigLastFundingTimestamp(options: MarketConfigLastFundin
         module: 'market_config',
         function: 'market_config_last_funding_timestamp',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface IncrementNextPositionIdArguments {
@@ -1071,9 +1011,6 @@ export interface IncrementNextPositionIdOptions {
     package?: string;
     arguments: IncrementNextPositionIdArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function incrementNextPositionId(options: IncrementNextPositionIdOptions) {
@@ -1087,7 +1024,6 @@ export function incrementNextPositionId(options: IncrementNextPositionIdOptions)
         module: 'market_config',
         function: 'increment_next_position_id',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface IncrementNextOrderIdArguments {
@@ -1097,9 +1033,6 @@ export interface IncrementNextOrderIdOptions {
     package?: string;
     arguments: IncrementNextOrderIdArguments | [
         m: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 export function incrementNextOrderId(options: IncrementNextOrderIdOptions) {
@@ -1113,42 +1046,118 @@ export function incrementNextOrderId(options: IncrementNextOrderIdOptions) {
         module: 'market_config',
         function: 'increment_next_order_id',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
-export interface AdjustOiArguments {
+export interface IncreaseOiArguments {
     m: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    increase: RawTransactionArgument<boolean>;
     amount: RawTransactionArgument<string>;
+    entryPrice: RawTransactionArgument<string>;
 }
-export interface AdjustOiOptions {
+export interface IncreaseOiOptions {
     package?: string;
-    arguments: AdjustOiArguments | [
+    arguments: IncreaseOiArguments | [
         m: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        increase: RawTransactionArgument<boolean>,
-        amount: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
+        amount: RawTransactionArgument<string>,
+        entryPrice: RawTransactionArgument<string>
     ];
 }
-export function adjustOi(options: AdjustOiOptions) {
+export function increaseOi(options: IncreaseOiOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         'bool',
-        'bool',
+        null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["m", "isLong", "increase", "amount"];
+    const parameterNames = ["m", "isLong", "amount", "entryPrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'adjust_oi',
+        function: 'increase_oi',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
+    });
+}
+export interface DecreaseOiArguments {
+    m: RawTransactionArgument<string>;
+    isLong: RawTransactionArgument<boolean>;
+    amount: RawTransactionArgument<string>;
+}
+export interface DecreaseOiOptions {
+    package?: string;
+    arguments: DecreaseOiArguments | [
+        m: RawTransactionArgument<string>,
+        isLong: RawTransactionArgument<boolean>,
+        amount: RawTransactionArgument<string>
+    ];
+}
+export function decreaseOi(options: DecreaseOiOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'bool',
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["m", "isLong", "amount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'decrease_oi',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface UnrealizedTraderPnlArguments {
+    m: RawTransactionArgument<string>;
+    currentPrice: RawTransactionArgument<string>;
+}
+export interface UnrealizedTraderPnlOptions {
+    package?: string;
+    arguments: UnrealizedTraderPnlArguments | [
+        m: RawTransactionArgument<string>,
+        currentPrice: RawTransactionArgument<string>
+    ];
+}
+export function unrealizedTraderPnl(options: UnrealizedTraderPnlOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["m", "currentPrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'unrealized_trader_pnl',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface LpEquityUsdArguments {
+    m: RawTransactionArgument<string>;
+    poolTvlUsd: RawTransactionArgument<string>;
+    currentPrice: RawTransactionArgument<string>;
+}
+export interface LpEquityUsdOptions {
+    package?: string;
+    arguments: LpEquityUsdArguments | [
+        m: RawTransactionArgument<string>,
+        poolTvlUsd: RawTransactionArgument<string>,
+        currentPrice: RawTransactionArgument<string>
+    ];
+}
+export function lpEquityUsd(options: LpEquityUsdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["m", "poolTvlUsd", "currentPrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'lp_equity_usd',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
 export interface UpdateFundingStateArguments {
@@ -1165,9 +1174,6 @@ export interface UpdateFundingStateOptions {
         index: RawTransactionArgument<string>,
         timestamp: RawTransactionArgument<number | bigint>
     ];
-    typeArguments: [
-        string
-    ];
 }
 export function updateFundingState(options: UpdateFundingStateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -1183,7 +1189,6 @@ export function updateFundingState(options: UpdateFundingStateOptions) {
         module: 'market_config',
         function: 'update_funding_state',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface UpdateFundingRateArguments {
@@ -1201,9 +1206,6 @@ export interface UpdateFundingRateOptions {
         nowMs: RawTransactionArgument<number | bigint>,
         basePrice: RawTransactionArgument<string>,
         tvlUsd: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
     ];
 }
 /**
@@ -1225,50 +1227,17 @@ export function updateFundingRate(options: UpdateFundingRateOptions) {
         module: 'market_config',
         function: 'update_funding_rate',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface CalculateFundingRateArguments {
-    longOi: RawTransactionArgument<string>;
-    shortOi: RawTransactionArgument<string>;
-    basicRate: RawTransactionArgument<string>;
-}
-export interface CalculateFundingRateOptions {
-    package?: string;
-    arguments: CalculateFundingRateArguments | [
-        longOi: RawTransactionArgument<string>,
-        shortOi: RawTransactionArgument<string>,
-        basicRate: RawTransactionArgument<string>
-    ];
-}
-/**
- * @deprecated Use `calculate_funding_rate_v2` instead. Uses OI-ratio formula: rate
- * = basic_rate \* |long - short| / max(long, short).
- */
-export function calculateFundingRate(options: CalculateFundingRateOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null,
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["longOi", "shortOi", "basicRate"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'market_config',
-        function: 'calculate_funding_rate',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-    });
-}
-export interface CalculateFundingRateV2Arguments {
     longOiUsd: RawTransactionArgument<string>;
     shortOiUsd: RawTransactionArgument<string>;
     basicRate: RawTransactionArgument<string>;
     tvlUsd: RawTransactionArgument<string>;
 }
-export interface CalculateFundingRateV2Options {
+export interface CalculateFundingRateOptions {
     package?: string;
-    arguments: CalculateFundingRateV2Arguments | [
+    arguments: CalculateFundingRateArguments | [
         longOiUsd: RawTransactionArgument<string>,
         shortOiUsd: RawTransactionArgument<string>,
         basicRate: RawTransactionArgument<string>,
@@ -1280,7 +1249,7 @@ export interface CalculateFundingRateV2Options {
  * should be in USD (caller converts via base_price). Returns (sign, rate) where
  * sign=true means longs pay.
  */
-export function calculateFundingRateV2(options: CalculateFundingRateV2Options) {
+export function calculateFundingRate(options: CalculateFundingRateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
@@ -1292,12 +1261,12 @@ export function calculateFundingRateV2(options: CalculateFundingRateV2Options) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
-        function: 'calculate_funding_rate_v2',
+        function: 'calculate_funding_rate',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
 export interface AssertValidImpactFeeConfigArguments {
-    maxImpactFeeBps: RawTransactionArgument<number | bigint>;
+    maxImpactFee: RawTransactionArgument<string>;
     allocatedLpExposureBps: RawTransactionArgument<number | bigint>;
     impactFeeCurvature: RawTransactionArgument<number | bigint>;
     impactFeeScale: RawTransactionArgument<number | bigint>;
@@ -1305,7 +1274,7 @@ export interface AssertValidImpactFeeConfigArguments {
 export interface AssertValidImpactFeeConfigOptions {
     package?: string;
     arguments: AssertValidImpactFeeConfigArguments | [
-        maxImpactFeeBps: RawTransactionArgument<number | bigint>,
+        maxImpactFee: RawTransactionArgument<string>,
         allocatedLpExposureBps: RawTransactionArgument<number | bigint>,
         impactFeeCurvature: RawTransactionArgument<number | bigint>,
         impactFeeScale: RawTransactionArgument<number | bigint>
@@ -1314,16 +1283,47 @@ export interface AssertValidImpactFeeConfigOptions {
 export function assertValidImpactFeeConfig(options: AssertValidImpactFeeConfigOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
-        'u64',
+        null,
         'u64',
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["maxImpactFeeBps", "allocatedLpExposureBps", "impactFeeCurvature", "impactFeeScale"];
+    const parameterNames = ["maxImpactFee", "allocatedLpExposureBps", "impactFeeCurvature", "impactFeeScale"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
         function: 'assert_valid_impact_fee_config',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface WeightedAveragePriceArguments {
+    currentSize: RawTransactionArgument<string>;
+    currentAveragePrice: RawTransactionArgument<string>;
+    addSize: RawTransactionArgument<string>;
+    addPrice: RawTransactionArgument<string>;
+}
+export interface WeightedAveragePriceOptions {
+    package?: string;
+    arguments: WeightedAveragePriceArguments | [
+        currentSize: RawTransactionArgument<string>,
+        currentAveragePrice: RawTransactionArgument<string>,
+        addSize: RawTransactionArgument<string>,
+        addPrice: RawTransactionArgument<string>
+    ];
+}
+export function weightedAveragePrice(options: WeightedAveragePriceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["currentSize", "currentAveragePrice", "addSize", "addPrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'weighted_average_price',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

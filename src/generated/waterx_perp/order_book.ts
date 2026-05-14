@@ -160,6 +160,34 @@ export function borrowOrder(options: BorrowOrderOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface BorrowOrderMutArguments {
+    book: RawTransactionArgument<string>;
+    priceKey: RawTransactionArgument<number | bigint>;
+    orderId: RawTransactionArgument<number | bigint>;
+}
+export interface BorrowOrderMutOptions {
+    package?: string;
+    arguments: BorrowOrderMutArguments | [
+        book: RawTransactionArgument<string>,
+        priceKey: RawTransactionArgument<number | bigint>,
+        orderId: RawTransactionArgument<number | bigint>
+    ];
+}
+export function borrowOrderMut(options: BorrowOrderMutOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u128',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["book", "priceKey", "orderId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'order_book',
+        function: 'borrow_order_mut',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface BorrowLevelByIndexArguments {
     book: RawTransactionArgument<string>;
     levelIndex: RawTransactionArgument<number | bigint>;

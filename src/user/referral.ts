@@ -1,77 +1,85 @@
-import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
+/**
+ * Referral builders — backed by the standalone `bucket_v2_referral` package
+ * (kept from v2; not part of `waterx-contract/`). Requires
+ * `config.packages.bucketReferral` and `config.objects.referralTable` to be
+ * populated; otherwise the builder throws so misconfigured deployments fail
+ * loudly instead of silently aborting on-chain.
+ */
 
-import { WaterXClient } from "../client.ts";
-import { request as accountRequestCall } from "../generated/bucket_v2_framework/account.ts";
+import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+
+import type { WaterXClient } from "../client.ts";
 import {
-  setReferralCode as setReferralCodeCall,
-  useReferralCode as useReferralCodeCall,
-} from "../generated/waterx_perp/referral_table.ts";
+  request as accountRequest,
+  requestWithAccount as accountRequestWithAccount,
+} from "../generated/bucket_v2_framework/account.ts";
+import * as referral from "../generated/bucket_v2_referral/referral_table.ts";
 
-function createAccountRequest(tx: Transaction, bucketFrameworkPkg: string): TransactionArgument {
-  const [request] = accountRequestCall({ package: bucketFrameworkPkg })(tx);
-  return request;
+type BucketAccount = string | TransactionArgument | undefined;
+
+function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
+  if (bucketAccount === undefined) {
+    return accountRequest({})(tx) as unknown as TransactionArgument;
+  }
+  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
+  return accountRequestWithAccount({
+    arguments: { account: accArg as unknown as string },
+  })(tx) as unknown as TransactionArgument;
 }
 
-// ======== Validation ========
-
-/** Matches on-chain `is_valid_referral_code`: only lowercase a-z and 0-9. */
-export function isValidReferralCode(code: string): boolean {
-  return /^[a-z0-9]+$/.test(code);
+function requireReferralConfig(client: WaterXClient): { pkg: string; table: string } {
+  const pkg = client.config.packages.bucket_referral?.published_at;
+  const table = client.config.packages.bucket_referral?.referral_table;
+  if (!pkg || !table) {
+    throw new Error(
+      "referral package not configured: set config.packages.bucketReferral and config.objects.referralTable",
+    );
+  }
+  return { pkg, table };
 }
-
-// ======== Set Referral Code ========
 
 export interface SetReferralCodeParams {
-  /** The referral code string to register (lowercase a-z, 0-9 only) */
+  /** Referral code string the caller wants to claim. */
   code: string;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to register a referral code for the sender.
- * V13.1: Uses referral_table module with string-based codes.
- * @throws Error if code contains invalid characters (must be [a-z0-9]+).
- */
 export function setReferralCode(
   client: WaterXClient,
   tx: Transaction,
   params: SetReferralCodeParams,
-): Transaction {
-  if (!isValidReferralCode(params.code)) {
-    throw new Error(
-      `Invalid referral code "${params.code}": must be non-empty and contain only lowercase letters (a-z) and digits (0-9).`,
-    );
-  }
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  setReferralCodeCall({
-    package: client.config.packageId,
-    arguments: { table: client.config.referralTable, senderRequest, code: params.code },
+): void {
+  const { pkg, table } = requireReferralConfig(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  referral.setReferralCode({
+    package: pkg,
+    arguments: {
+      table: tx.object(table),
+      req: req as unknown as string,
+      code: params.code,
+    },
   })(tx);
-  return tx;
 }
-
-// ======== Use Referral Code ========
 
 export interface UseReferralCodeParams {
-  /** The referral code string to bind to */
+  /** Referral code to bind to the caller's address. */
   code: string;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to bind a referral code to the sender.
- * V13.1: Uses referral_table module with string-based codes.
- * Permanent, first-touch binding. Cannot self-refer.
- */
 export function useReferralCode(
   client: WaterXClient,
   tx: Transaction,
   params: UseReferralCodeParams,
-): Transaction {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  useReferralCodeCall({
-    package: client.config.packageId,
-    arguments: { table: client.config.referralTable, senderRequest, code: params.code },
+): void {
+  const { pkg, table } = requireReferralConfig(client);
+  const req = senderRequest(tx, params.bucketAccount);
+  referral.useReferralCode({
+    package: pkg,
+    arguments: {
+      table: tx.object(table),
+      req: req as unknown as string,
+      code: params.code,
+    },
   })(tx);
-  return tx;
 }

@@ -1,9 +1,15 @@
 /**
- * Pyth price feed integration for WaterX Perp DEX.
+ * Pyth price feed integration for the WaterX v3 oracle (ticker-based).
  *
- * Adapted from Bucket Protocol SDK (bucket-protocol-sdk/src/utils/pyth.ts).
- * Fetches price update data from Hermes REST API, builds Move calls for Sui.
- * Does NOT depend on @pythnetwork/pyth-sui-js — uses direct Hermes REST + Move calls.
+ * Hermes REST fetches price update VAAs; on-chain a single PTB:
+ *   1. wormhole::vaa::parse_and_verify
+ *   2. pyth::create_authenticated_price_infos_using_accumulator
+ *   3. pyth::update_single_price_feed (one per feed)
+ *   4. for each ticker: oracle::new_collector(symbol) → pyth_rule::feed → oracle::aggregate
+ *
+ * No type parameters on `feed` / `aggregate` anymore — the oracle is one
+ * shared object keyed by ticker. `pyth_rule::feed` looks up the on-chain
+ * `PriceInfoObject` ID by ticker via the `pyth_rule::Config` identifier map.
  */
 
 import { fromHex, toHex } from "@mysten/bcs";
@@ -11,26 +17,16 @@ import { bcs } from "@mysten/sui/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import { aggregate as aggregateCall } from "../generated/bucket_v2_oracle/aggregator.ts";
-import { _new as collectorNewCall } from "../generated/bucket_v2_oracle/collector.ts";
+import type { WaterXClient } from "../client.ts";
+import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
+import { feed as pythRuleFeed } from "../generated/waterx_pyth_rule/pyth_rule.ts";
 
 // ============================================================================
-// Types
+// Cache — share across builders to avoid redundant Pyth state reads
 // ============================================================================
-
-export type PythConfig = {
-  pythStateId: string;
-  wormholeStateId: string;
-  /** Hermes REST endpoint. Defaults to stable (mainnet) or beta (testnet). */
-  hermesEndpoint: string;
-};
 
 type PriceTableInfo = { id: string; fieldType: string };
 type PythStateInfo = { packageId: string; baseUpdateFee: bigint };
-
-// ============================================================================
-// Cache — one per client instance to avoid redundant RPC reads
-// ============================================================================
 
 export class PythCache {
   pythStateInfo?: PythStateInfo;
@@ -40,98 +36,44 @@ export class PythCache {
 }
 
 // ============================================================================
-// Hermes REST fetch (no SDK required)
+// Hermes REST
 // ============================================================================
 
-/**
- * Fetches latest price update data from Hermes (public REST; no API key).
- * Returns raw accumulator message buffers for Pyth Move update.
- */
 export async function fetchPriceFeedsUpdateData(
   endpoint: string,
   priceIds: string[],
 ): Promise<Uint8Array[]> {
   if (priceIds.length === 0) return [];
-
   const url = new URL("/v2/updates/price/latest", endpoint);
   priceIds.forEach((id) => url.searchParams.append("ids[]", id));
-
-  const res = await fetch(url.toString(), {
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Hermes price fetch failed: ${res.status} ${text}`);
-  }
-
-  const json = (await res.json()) as {
-    binary?: { encoding?: string; data?: string[] };
-  };
-
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
+  const json = (await res.json()) as { binary?: { data?: string[] } };
   const data = json.binary?.data;
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error("Hermes returned no binary price data");
   }
-
-  return data.map((hexStr: string) => fromHex(hexStr));
+  return data.map((hex) => fromHex(hex));
 }
 
 // ============================================================================
-// Accumulator message parsing
+// On-chain helpers (cached)
 // ============================================================================
 
-/**
- * Extracts the VAA bytes from an accumulator message.
- * Layout: [magic:4][major:1][minor:1][trailingSize:1][trailing:N][proof_type:1][vaaSize:2][vaa:M]...
- */
-function extractVaaBytesFromAccumulatorMessage(accumulatorMessage: Uint8Array): Uint8Array {
-  const view = new DataView(
-    accumulatorMessage.buffer,
-    accumulatorMessage.byteOffset,
-    accumulatorMessage.byteLength,
-  );
-  const trailingPayloadSize = view.getUint8(6);
-  const vaaSizeOffset = 7 + trailingPayloadSize + 1; // +1 for proof_type
-  const vaaSize = view.getUint16(vaaSizeOffset, false); // big-endian
-  const vaaOffset = vaaSizeOffset + 2;
-  return accumulatorMessage.subarray(vaaOffset, vaaOffset + vaaSize);
-}
-
-// ============================================================================
-// On-chain reads (cached)
-// ============================================================================
-
-function getPackageIdFromObjectJson(json: Record<string, unknown>, objectId: string): string {
+function pkgFromUpgradeCap(json: Record<string, unknown>, objectId: string): string {
   const upgradeCap =
     (json.upgrade_cap as Record<string, unknown> | undefined) ??
     ((json.fields as Record<string, unknown> | undefined)?.upgrade_cap as
       | Record<string, unknown>
       | undefined);
-  const fromFields = (upgradeCap?.fields as Record<string, unknown> | undefined)?.package;
+  const nested = (upgradeCap?.fields as Record<string, unknown> | undefined)?.package;
   const pkg =
     typeof upgradeCap?.package === "string"
       ? upgradeCap.package
-      : typeof fromFields === "string"
-        ? fromFields
+      : typeof nested === "string"
+        ? nested
         : undefined;
-  if (!pkg) throw new Error(`Cannot get package id for object ${objectId}`);
-  return pkg;
-}
-
-async function getWormholePackageId(
-  client: SuiGrpcClient,
-  wormholeStateId: string,
-  cache?: PythCache,
-): Promise<string> {
-  if (cache?.wormholePackageId) return cache.wormholePackageId;
-  const result = await client.getObject({
-    objectId: wormholeStateId,
-    include: { json: true },
-  });
-  const json = result.object?.json as Record<string, unknown> | null | undefined;
-  if (!json) throw new Error(`Cannot get package id for object ${wormholeStateId}`);
-  const pkg = getPackageIdFromObjectJson(json, wormholeStateId);
-  if (cache) cache.wormholePackageId = pkg;
+  if (!pkg) throw new Error(`Cannot resolve package id for object ${objectId}`);
   return pkg;
 }
 
@@ -141,19 +83,30 @@ async function getPythStateInfo(
   cache?: PythCache,
 ): Promise<PythStateInfo> {
   if (cache?.pythStateInfo) return cache.pythStateInfo;
-  const result = await client.getObject({
-    objectId: pythStateId,
-    include: { json: true },
-  });
+  const result = await client.getObject({ objectId: pythStateId, include: { json: true } });
   const json = result.object?.json as Record<string, unknown> | null | undefined;
   if (!json) throw new Error("Unable to fetch pyth state");
-  const packageId = getPackageIdFromObjectJson(json, pythStateId);
+  const packageId = pkgFromUpgradeCap(json, pythStateId);
   const fields = json.fields as Record<string, unknown> | undefined;
   const fee = (fields?.base_update_fee ?? json.base_update_fee) as string | undefined;
   if (fee === undefined) throw new Error("Unable to fetch pyth state base_update_fee");
   const info: PythStateInfo = { packageId, baseUpdateFee: BigInt(fee) };
   if (cache) cache.pythStateInfo = info;
   return info;
+}
+
+async function getWormholePackageId(
+  client: SuiGrpcClient,
+  wormholeStateId: string,
+  cache?: PythCache,
+): Promise<string> {
+  if (cache?.wormholePackageId) return cache.wormholePackageId;
+  const result = await client.getObject({ objectId: wormholeStateId, include: { json: true } });
+  const json = result.object?.json as Record<string, unknown> | null | undefined;
+  if (!json) throw new Error(`Cannot resolve wormhole package id from ${wormholeStateId}`);
+  const pkg = pkgFromUpgradeCap(json, wormholeStateId);
+  if (cache) cache.wormholePackageId = pkg;
+  return pkg;
 }
 
 async function getPriceTableInfo(
@@ -163,9 +116,6 @@ async function getPriceTableInfo(
 ): Promise<PriceTableInfo> {
   if (cache?.priceTableInfo) return cache.priceTableInfo;
 
-  let childId: string | undefined;
-  let typeStr: string;
-
   interface DynamicFieldEntry {
     childId?: string;
     objectId?: string;
@@ -174,43 +124,17 @@ async function getPriceTableInfo(
     name?: { type?: string };
   }
 
-  if ("listDynamicFields" in client && typeof client.listDynamicFields === "function") {
-    // gRPC path
-    const list = await client.listDynamicFields({ parentId: pythStateId });
-    const entry = (list.dynamicFields as DynamicFieldEntry[]).find((e) => {
-      const vt = e.valueType || e.objectType || "";
-      return vt.includes("PriceIdentifier") || vt.includes("price_info");
-    });
-    if (!entry) throw new Error("Price table not found in Pyth state dynamic fields");
-    childId = entry.childId ?? entry.objectId;
-    typeStr = entry.valueType || entry.objectType || "";
-  } else if (
-    "getDynamicFields" in client &&
-    typeof (client as Record<string, unknown>)["getDynamicFields"] === "function"
-  ) {
-    // JSON-RPC fallback
-    const getDynFields = (client as Record<string, (...args: unknown[]) => unknown>)[
-      "getDynamicFields"
-    ];
-    const list = await getDynFields.call(client, { parentId: pythStateId });
-    const rows: DynamicFieldEntry[] = (list as { data?: DynamicFieldEntry[] })?.data ?? [];
-    const entry = rows.find((e) => {
-      const vt = e.objectType || e.name?.type || "";
-      return vt.includes("PriceIdentifier") || vt.includes("price_info");
-    });
-    if (!entry) throw new Error("Price table not found in Pyth state dynamic fields");
-    childId = entry.objectId;
-    typeStr = entry.objectType || entry.name?.type || "";
-  } else {
-    throw new Error("Client does not support listDynamicFields or getDynamicFields");
-  }
-
-  if (!childId) throw new Error("Price table not found in Pyth state dynamic fields");
-
+  const list = await client.listDynamicFields({ parentId: pythStateId });
+  const entry = (list.dynamicFields as DynamicFieldEntry[]).find((e) => {
+    const vt = e.valueType || e.objectType || "";
+    return vt.includes("PriceIdentifier") || vt.includes("price_info");
+  });
+  if (!entry) throw new Error("Price table not found in Pyth state dynamic fields");
+  const childId = entry.childId ?? entry.objectId;
+  const typeStr = entry.valueType || entry.objectType || "";
+  if (!childId) throw new Error("Price table missing childId");
   const pkgMatch = typeStr.match(/(0x[a-fA-F0-9]+)::price_identifier::PriceIdentifier/);
-  if (!pkgMatch) {
-    throw new Error(`Cannot extract package address from price table type: ${typeStr}`);
-  }
+  if (!pkgMatch) throw new Error(`Cannot extract package from price table type: ${typeStr}`);
   const info: PriceTableInfo = { id: childId, fieldType: pkgMatch[1]! };
   if (cache) cache.priceTableInfo = info;
   return info;
@@ -228,129 +152,104 @@ async function getPriceFeedObjectId(
   if (cache?.priceFeedObjectIdCache.has(cacheKey)) {
     return cache.priceFeedObjectIdCache.get(cacheKey);
   }
-
   const keyBytes = bcs
     .struct("PriceIdentifier", { bytes: bcs.vector(bcs.u8()) })
     .serialize({ bytes: fromHex(normalized) })
     .toBytes();
-
   const result = await client.getDynamicField({
     parentId: table.id,
-    name: {
-      type: `${table.fieldType}::price_identifier::PriceIdentifier`,
-      bcs: keyBytes,
-    },
+    name: { type: `${table.fieldType}::price_identifier::PriceIdentifier`, bcs: keyBytes },
   });
   const value = result.dynamicField?.value as { bcs?: Uint8Array } | undefined;
   const objectId = !value?.bcs || value.bcs.length < 32 ? undefined : "0x" + toHex(value.bcs);
-
   if (cache) cache.priceFeedObjectIdCache.set(cacheKey, objectId);
   return objectId;
 }
 
 // ============================================================================
-// Concurrency helper
+// Accumulator parsing
 // ============================================================================
 
-async function runWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    results.push(...(await Promise.all(batch.map(fn))));
-  }
-  return results;
+function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
+  const view = new DataView(
+    accumulatorMessage.buffer,
+    accumulatorMessage.byteOffset,
+    accumulatorMessage.byteLength,
+  );
+  const trailingPayloadSize = view.getUint8(6);
+  const vaaSizeOffset = 7 + trailingPayloadSize + 1; // +1 for proof_type
+  const vaaSize = view.getUint16(vaaSizeOffset, false);
+  const vaaOffset = vaaSizeOffset + 2;
+  return accumulatorMessage.subarray(vaaOffset, vaaOffset + vaaSize);
 }
 
 // ============================================================================
-// Wormhole VAA verification
-// ============================================================================
-
-function verifyVaas(
-  tx: Transaction,
-  wormholePackageId: string,
-  wormholeStateId: string,
-  vaas: Uint8Array[],
-): TransactionArgument[] {
-  const verified: TransactionArgument[] = [];
-  for (const vaa of vaas) {
-    const vaaArg = tx.pure.vector("u8", vaa);
-    const [verifiedVaa] = tx.moveCall({
-      target: `${wormholePackageId}::vaa::parse_and_verify`,
-      arguments: [tx.object(wormholeStateId), vaaArg, tx.object.clock()],
-    });
-    verified.push(verifiedVaa as TransactionArgument);
-  }
-  return verified;
-}
-
-// ============================================================================
-// Main: Build Pyth price update calls in a PTB
+// Pyth update calls
 // ============================================================================
 
 /**
- * Appends Pyth price update Move calls to `tx` and returns
- * PriceInfoObject IDs (one per feedId, in same order).
+ * Append the on-chain Pyth update PTB block. Returns `PriceInfoObject` IDs
+ * (one per `feedIds`, same order). After this you can call
+ * `pyth_rule::feed` per ticker against the matching `PriceInfoObject`.
  *
- * PTB flow:
- * 1. wormhole::vaa::parse_and_verify — verify the VAA in the accumulator message
- * 2. pyth::create_authenticated_price_infos_using_accumulator — decode price proofs
- * 3. pyth::update_single_price_feed — update each feed (pays base_update_fee)
- * 4. hot_potato_vector::destroy — clean up the hot potato
- *
- * After this, PriceInfoObjects are updated and can be read by pyth_rule::feed().
+ * If `sponsorFund` is provided, the per-feed update fee comes from the
+ * sponsor pool (`pyth_sponsor_rule::split`) instead of `tx.gas`.
  */
 export async function buildPythPriceUpdateCalls(
   tx: Transaction,
-  client: SuiGrpcClient,
-  config: PythConfig,
+  client: WaterXClient,
   updates: Uint8Array[],
   feedIds: string[],
   cache?: PythCache,
   sponsorFund?: { fund: TransactionArgument; packageId: string },
 ): Promise<string[]> {
   if (updates.length === 0) {
-    throw new Error("No price update data provided; Hermes may have returned empty results");
+    throw new Error("No price update data provided; Hermes returned empty results");
   }
   if (updates.length > 1) {
     throw new Error("Only a single accumulator message is supported per transaction");
   }
 
-  const [pythState, wormholePackageId, table] = await Promise.all([
-    getPythStateInfo(client, config.pythStateId, cache),
-    getWormholePackageId(client, config.wormholeStateId, cache),
-    getPriceTableInfo(client, config.pythStateId, cache),
+  const pyth = client.pyth;
+  const [stateInfo, wormholePackageId, table] = await Promise.all([
+    getPythStateInfo(client.grpcClient, pyth.state_id, cache),
+    getWormholePackageId(client.grpcClient, pyth.wormhole_state_id, cache),
+    getPriceTableInfo(client.grpcClient, pyth.state_id, cache),
   ]);
-  const priceInfoObjectIds = await runWithConcurrency(feedIds, 4, (feedId) =>
-    getPriceFeedObjectId(client, table, feedId, cache, config.pythStateId),
+
+  const priceInfoObjectIds = await Promise.all(
+    feedIds.map((feedId) =>
+      getPriceFeedObjectId(client.grpcClient, table, feedId, cache, pyth.state_id),
+    ),
   );
 
-  const { packageId: pythPackageId, baseUpdateFee } = pythState;
+  const { packageId: pythPackageId, baseUpdateFee } = stateInfo;
 
   // 1. Verify VAA
-  const vaa = extractVaaBytesFromAccumulatorMessage(updates[0]!);
-  const verifiedVaas = verifyVaas(tx, wormholePackageId, config.wormholeStateId, [vaa]);
-
-  // 2. Create authenticated price infos
-  const accBytesArg = tx.pure.vector("u8", updates[0]!) as TransactionArgument;
-  const [priceUpdatesHotPotato] = tx.moveCall({
-    target: `${pythPackageId}::pyth::create_authenticated_price_infos_using_accumulator`,
-    arguments: [tx.object(config.pythStateId), accBytesArg, verifiedVaas[0]!, tx.object.clock()],
+  const vaa = extractVaaBytes(updates[0]!);
+  const [verifiedVaa] = tx.moveCall({
+    target: `${wormholePackageId}::vaa::parse_and_verify`,
+    arguments: [tx.object(pyth.wormhole_state_id), tx.pure.vector("u8", vaa), tx.object.clock()],
   });
 
-  // 3. Update each price feed (pay fee from sponsor fund or gas)
-  let hotPotato = priceUpdatesHotPotato;
+  // 2. Authenticate price infos
+  const [hotPotato0] = tx.moveCall({
+    target: `${pythPackageId}::pyth::create_authenticated_price_infos_using_accumulator`,
+    arguments: [
+      tx.object(pyth.state_id),
+      tx.pure.vector("u8", updates[0]!) as TransactionArgument,
+      verifiedVaa as TransactionArgument,
+      tx.object.clock(),
+    ],
+  });
+
+  // 3. Per-feed update
+  let hotPotato = hotPotato0;
   for (let i = 0; i < feedIds.length; i++) {
     const priceInfoObjectId = priceInfoObjectIds[i];
     if (!priceInfoObjectId) {
-      throw new Error(
-        `Price feed ${feedIds[i]} not found on-chain; create it first via pyth::create_price_feeds_using_accumulator`,
-      );
+      throw new Error(`Pyth feed ${feedIds[i]} not registered on-chain in Pyth state`);
     }
-
     const feeCoin = sponsorFund
       ? tx.moveCall({
           target: `${sponsorFund.packageId}::pyth_sponsor_rule::split`,
@@ -361,7 +260,7 @@ export async function buildPythPriceUpdateCalls(
     [hotPotato] = tx.moveCall({
       target: `${pythPackageId}::pyth::update_single_price_feed`,
       arguments: [
-        tx.object(config.pythStateId),
+        tx.object(pyth.state_id),
         hotPotato,
         tx.object(priceInfoObjectId),
         feeCoin,
@@ -380,103 +279,86 @@ export async function buildPythPriceUpdateCalls(
   return priceInfoObjectIds as string[];
 }
 
-// ============================================================================
-// Convenience: Fetch + Build in one call
-// ============================================================================
-
-/**
- * All-in-one: fetches price data from Hermes and appends Pyth update calls to the PTB.
- * Returns PriceInfoObject IDs that can then be passed to pyth_rule::feed().
- */
+/** All-in-one: fetch from Hermes, append update calls. Returns PriceInfoObject IDs. */
 export async function updatePythPrices(
   tx: Transaction,
-  client: SuiGrpcClient,
-  config: PythConfig,
+  client: WaterXClient,
   feedIds: string[],
   cache?: PythCache,
   sponsorFund?: { fund: TransactionArgument; packageId: string },
 ): Promise<string[]> {
-  const updates = await fetchPriceFeedsUpdateData(config.hermesEndpoint, feedIds);
-  return buildPythPriceUpdateCalls(tx, client, config, updates, feedIds, cache, sponsorFund);
+  const updates = await fetchPriceFeedsUpdateData(client.pyth.hermes_endpoint, feedIds);
+  return buildPythPriceUpdateCalls(tx, client, updates, feedIds, cache, sponsorFund);
 }
 
 // ============================================================================
-// PTB helpers: feed prices into bucket_oracle via pyth_rule
+// Per-ticker refresh: collector → pyth_rule::feed → oracle::aggregate
 // ============================================================================
 
 /**
- * After Pyth prices are updated in the PTB, feed them into bucket_oracle
- * PriceCollectors via pyth_rule::feed.
+ * For a given ticker, build the collector → feed → aggregate chain that
+ * refreshes the on-chain `Oracle` aggregator for that ticker.
  *
- * Does NOT create collectors or aggregate — the caller manages the collector
- * lifecycle so multiple sources can feed into the same collector.
+ * Caller must have first called `buildPythPriceUpdateCalls` /
+ * `updatePythPrices` so the corresponding `PriceInfoObject` is fresh.
  */
-export function feedPythRule(
+export function aggregateTickerWithPyth(
   tx: Transaction,
-  collector: TransactionArgument,
-  params: {
-    pythRulePackageId: string;
-    pythRuleConfigId: string;
-    pythStateId: string;
-    tokenType: string;
+  client: WaterXClient,
+  args: {
+    ticker: string;
     priceInfoObjectId: string;
   },
 ): void {
-  tx.moveCall({
-    target: `${params.pythRulePackageId}::pyth_rule::feed`,
-    typeArguments: [params.tokenType],
-    arguments: [
-      collector,
-      tx.object(params.pythRuleConfigId),
-      tx.object.clock(),
-      tx.object(params.pythStateId),
-      tx.object(params.priceInfoObjectId),
-    ],
-  });
+  const collector = newCollector({
+    package: client.config.packages.waterx_oracle.published_at,
+    arguments: { symbol: args.ticker },
+  })(tx);
+
+  pythRuleFeed({
+    package: client.config.packages.pyth_rule.published_at,
+    arguments: {
+      collector: collector as unknown as TransactionArgument,
+      config: tx.object(client.config.packages.pyth_rule.config),
+      pythState: tx.object(client.pyth.state_id),
+      pythPriceInfo: tx.object(args.priceInfoObjectId),
+    },
+  })(tx);
+
+  aggregateCall({
+    package: client.config.packages.waterx_oracle.published_at,
+    arguments: {
+      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+      collector: collector as unknown as TransactionArgument,
+    },
+  })(tx);
 }
 
 /**
- * Legacy helper — creates collectors, feeds Pyth, aggregates.
- * For multi-source (Pyth + Supra), use buildOracleFeedCalls from tx-builders instead.
+ * Refresh multiple tickers via Pyth in one PTB. Updates Pyth on-chain
+ * first (one accumulator), then runs the collector → feed → aggregate
+ * cycle for each ticker.
  */
-export function buildPythRuleFeedCalls(
+export async function refreshOraclePrices(
   tx: Transaction,
-  params: {
-    pythRulePackageId: string;
-    pythRuleConfigId: string;
-    bucketOraclePackageId: string;
-    pythStateId: string;
-    feeds: Array<{
-      tokenType: string;
-      aggregatorId: string;
-      priceInfoObjectId: string;
-    }>;
-  },
-): TransactionArgument[] {
-  const results: TransactionArgument[] = [];
-
-  for (const feed of params.feeds) {
-    const [collector] = collectorNewCall({
-      package: params.bucketOraclePackageId,
-      typeArguments: [feed.tokenType],
-    })(tx);
-
-    feedPythRule(tx, collector as TransactionArgument, {
-      pythRulePackageId: params.pythRulePackageId,
-      pythRuleConfigId: params.pythRuleConfigId,
-      pythStateId: params.pythStateId,
-      tokenType: feed.tokenType,
-      priceInfoObjectId: feed.priceInfoObjectId,
+  client: WaterXClient,
+  tickers: string[],
+  opts: {
+    cache?: PythCache;
+    sponsorFund?: { fund: TransactionArgument; packageId: string };
+  } = {},
+): Promise<void> {
+  if (tickers.length === 0) return;
+  // tickers are oracle tickers (e.g. "BTCUSD"); look up each one's pyth feed
+  // entry from config — both feed_id (off-chain) and price_info_object
+  // (on-chain) are consumed by the per-ticker aggregate cycle.
+  const entries = tickers.map((t) => client.getPythFeed(t));
+  const feedIds = entries.map((e) => e.feed_id);
+  await updatePythPrices(tx, client, feedIds, opts.cache, opts.sponsorFund);
+  tickers.forEach((ticker, i) => {
+    aggregateTickerWithPyth(tx, client, {
+      ticker,
+      priceInfoObjectId: entries[i]!.price_info_object,
     });
-
-    const [priceResult] = aggregateCall({
-      package: params.bucketOraclePackageId,
-      arguments: { self: feed.aggregatorId, collector: collector as TransactionArgument },
-      typeArguments: [feed.tokenType],
-    })(tx);
-
-    results.push(priceResult as TransactionArgument);
-  }
-
-  return results;
+  });
 }

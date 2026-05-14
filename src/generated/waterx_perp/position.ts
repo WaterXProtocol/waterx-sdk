@@ -15,11 +15,12 @@ import { type Transaction } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
 import * as type_name from './deps/std/type_name.ts';
 import * as float_1 from './deps/bucket_v2_framework/float.ts';
+import * as float_2 from './deps/bucket_v2_framework/float.ts';
 import * as double from './deps/bucket_v2_framework/double.ts';
 import * as type_name_1 from './deps/std/type_name.ts';
-import * as float_2 from './deps/bucket_v2_framework/float.ts';
 import * as float_3 from './deps/bucket_v2_framework/float.ts';
 import * as float_4 from './deps/bucket_v2_framework/float.ts';
+import * as float_5 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/perp::position';
 export const Position = new MoveStruct({ name: `${$moduleName}::Position`, fields: {
         id: bcs.Address,
@@ -41,8 +42,12 @@ export const Position = new MoveStruct({ name: `${$moduleName}::Position`, field
         collateral_amount: bcs.u64(),
         /** Average entry price (Float). */
         average_price: float_1.Float,
-        /** Entry cumulative borrow rate index. */
-        entry_borrow_index: bcs.u64(),
+        /** Entry cumulative borrow rate index as Float. */
+        entry_borrow_index: float_2.Float,
+        /** Pool reserve snapshot in collateral token units. */
+        pool_reserve_amount: bcs.u64(),
+        /** Borrow reserve snapshot in collateral token units. */
+        borrow_reserve_amount: bcs.u64(),
         /** Entry cumulative funding rate sign (true = longs pay). */
         entry_funding_sign: bcs.bool(),
         /** Entry cumulative funding rate index (Double). */
@@ -90,13 +95,23 @@ export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
         /** Whether this is a stop order (vs limit). */
         is_stop_order: bcs.bool(),
         /** Order size as Float (fixed 9 decimals). */
-        size: float_2.Float,
-        /** Trigger price (Float). */
-        trigger_price: float_3.Float,
+        size: float_3.Float,
+        /**
+         * Trigger price (Float). A value of zero marks the order as a market order: it
+         * sits at price tick 0 in the limit book and matches at any oracle price (see
+         * `check_order_fillable`).
+         */
+        trigger_price: float_4.Float,
+        /**
+         * Slippage limit (scaled `Float`) checked at match time. Zero disables the check.
+         * Only carries meaning on market orders — limit/stop orders always pass it through
+         * as zero.
+         */
+        acceptable_price: bcs.u64(),
         /** Leverage in bps. */
         leverage_bps: bcs.u64(),
         /** Oracle price when order was placed. */
-        oracle_price_at_creation: float_4.Float,
+        oracle_price_at_creation: float_5.Float,
         /** Creation timestamp. */
         create_timestamp: bcs.u64()
     } });
@@ -113,6 +128,7 @@ export interface CreateOrderArguments {
     isStopOrder: RawTransactionArgument<boolean>;
     size: RawTransactionArgument<string>;
     triggerPrice: RawTransactionArgument<string>;
+    acceptablePrice: RawTransactionArgument<number | bigint>;
     leverageBps: RawTransactionArgument<number | bigint>;
     oraclePrice: RawTransactionArgument<string>;
 }
@@ -131,6 +147,7 @@ export interface CreateOrderOptions {
         isStopOrder: RawTransactionArgument<boolean>,
         size: RawTransactionArgument<string>,
         triggerPrice: RawTransactionArgument<string>,
+        acceptablePrice: RawTransactionArgument<number | bigint>,
         leverageBps: RawTransactionArgument<number | bigint>,
         oraclePrice: RawTransactionArgument<string>
     ];
@@ -138,7 +155,12 @@ export interface CreateOrderOptions {
         string
     ];
 }
-/** Creates a new trading order. Collateral is deposited into the vault. */
+/**
+ * Creates a new trading order. Collateral is deposited into the vault.
+ * `acceptable_price = 0` means no slippage check; non-zero values are only carried
+ * by market orders (trigger_price == 0) and consulted by `match_orders` at fill
+ * time.
+ */
 export function createOrder(options: CreateOrderOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -155,10 +177,11 @@ export function createOrder(options: CreateOrderOptions) {
         null,
         null,
         'u64',
+        'u64',
         null,
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["orderId", "accountObjectAddress", "marketId", "linkedPositionId", "collateral", "vault", "collateralDecimal", "isLong", "reduceOnly", "isStopOrder", "size", "triggerPrice", "leverageBps", "oraclePrice"];
+    const parameterNames = ["orderId", "accountObjectAddress", "marketId", "linkedPositionId", "collateral", "vault", "collateralDecimal", "isLong", "reduceOnly", "isStopOrder", "size", "triggerPrice", "acceptablePrice", "leverageBps", "oraclePrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'position',
@@ -197,6 +220,68 @@ export function removeOrder(options: RemoveOrderOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface UpdateOrderArguments {
+    order: RawTransactionArgument<string>;
+    size: RawTransactionArgument<string>;
+    triggerPrice: RawTransactionArgument<string>;
+    leverageBps: RawTransactionArgument<number | bigint>;
+}
+export interface UpdateOrderOptions {
+    package?: string;
+    arguments: UpdateOrderArguments | [
+        order: RawTransactionArgument<string>,
+        size: RawTransactionArgument<string>,
+        triggerPrice: RawTransactionArgument<string>,
+        leverageBps: RawTransactionArgument<number | bigint>
+    ];
+}
+export function updateOrder(options: UpdateOrderOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["order", "size", "triggerPrice", "leverageBps"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'update_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface SetLinkedPositionIdArguments {
+    order: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface SetLinkedPositionIdOptions {
+    package?: string;
+    arguments: SetLinkedPositionIdArguments | [
+        order: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * Stamp the resolved linked position ID on an order whose `linked_position_id` is
+ * currently `None`. Used by the pre-order activation path: when a main with
+ * reserved pre-orders fills, the perp fills in the freshly-minted `position_id` on
+ * each reserved `Order` before moving it onto the live book.
+ */
+export function setLinkedPositionId(options: SetLinkedPositionIdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["order", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'set_linked_position_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface CreatePositionArguments {
     positionId: RawTransactionArgument<number | bigint>;
     accountObjectAddress: RawTransactionArgument<string>;
@@ -207,7 +292,8 @@ export interface CreatePositionArguments {
     vault: RawTransactionArgument<string>;
     collateralDecimal: RawTransactionArgument<number>;
     averagePrice: RawTransactionArgument<string>;
-    entryBorrowIndex: RawTransactionArgument<number | bigint>;
+    collateralPrice: RawTransactionArgument<string>;
+    entryBorrowIndex: RawTransactionArgument<string>;
     entryFundingSign: RawTransactionArgument<boolean>;
     entryFundingIndex: RawTransactionArgument<string>;
     tradingFee: RawTransactionArgument<number | bigint>;
@@ -224,7 +310,8 @@ export interface CreatePositionOptions {
         vault: RawTransactionArgument<string>,
         collateralDecimal: RawTransactionArgument<number>,
         averagePrice: RawTransactionArgument<string>,
-        entryBorrowIndex: RawTransactionArgument<number | bigint>,
+        collateralPrice: RawTransactionArgument<string>,
+        entryBorrowIndex: RawTransactionArgument<string>,
         entryFundingSign: RawTransactionArgument<boolean>,
         entryFundingIndex: RawTransactionArgument<string>,
         tradingFee: RawTransactionArgument<number | bigint>
@@ -246,13 +333,14 @@ export function createPosition(options: CreatePositionOptions) {
         null,
         'u8',
         null,
-        'u64',
+        null,
+        null,
         'bool',
         null,
         'u64',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["positionId", "accountObjectAddress", "marketId", "isLong", "size", "collateral", "vault", "collateralDecimal", "averagePrice", "entryBorrowIndex", "entryFundingSign", "entryFundingIndex", "tradingFee"];
+    const parameterNames = ["positionId", "accountObjectAddress", "marketId", "isLong", "size", "collateral", "vault", "collateralDecimal", "averagePrice", "collateralPrice", "entryBorrowIndex", "entryFundingSign", "entryFundingIndex", "tradingFee"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'position',
@@ -412,6 +500,37 @@ export function assertOrderCollateralType(options: AssertOrderCollateralTypeOpti
         typeArguments: options.typeArguments
     });
 }
+export interface CalculatePoolReserveAmountFromValuesArguments {
+    size: RawTransactionArgument<string>;
+    price: RawTransactionArgument<string>;
+    collateralDecimal: RawTransactionArgument<number>;
+    collateralPrice: RawTransactionArgument<string>;
+}
+export interface CalculatePoolReserveAmountFromValuesOptions {
+    package?: string;
+    arguments: CalculatePoolReserveAmountFromValuesArguments | [
+        size: RawTransactionArgument<string>,
+        price: RawTransactionArgument<string>,
+        collateralDecimal: RawTransactionArgument<number>,
+        collateralPrice: RawTransactionArgument<string>
+    ];
+}
+export function calculatePoolReserveAmountFromValues(options: CalculatePoolReserveAmountFromValuesOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'u8',
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["size", "price", "collateralDecimal", "collateralPrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'calculate_pool_reserve_amount_from_values',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface CalculateReserveAmountArguments {
     position: RawTransactionArgument<string>;
     price: RawTransactionArgument<string>;
@@ -437,6 +556,121 @@ export function calculateReserveAmount(options: CalculateReserveAmountOptions) {
         package: packageAddress,
         module: 'position',
         function: 'calculate_reserve_amount',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface CalculateReserveAmountFromValuesArguments {
+    size: RawTransactionArgument<string>;
+    price: RawTransactionArgument<string>;
+    collateralAmount: RawTransactionArgument<number | bigint>;
+    collateralDecimal: RawTransactionArgument<number>;
+    collateralPrice: RawTransactionArgument<string>;
+}
+export interface CalculateReserveAmountFromValuesOptions {
+    package?: string;
+    arguments: CalculateReserveAmountFromValuesArguments | [
+        size: RawTransactionArgument<string>,
+        price: RawTransactionArgument<string>,
+        collateralAmount: RawTransactionArgument<number | bigint>,
+        collateralDecimal: RawTransactionArgument<number>,
+        collateralPrice: RawTransactionArgument<string>
+    ];
+}
+export function calculateReserveAmountFromValues(options: CalculateReserveAmountFromValuesOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'u64',
+        'u8',
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["size", "price", "collateralAmount", "collateralDecimal", "collateralPrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'calculate_reserve_amount_from_values',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RefreshBorrowReserveArguments {
+    position: RawTransactionArgument<string>;
+    price: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
+}
+export interface RefreshBorrowReserveOptions {
+    package?: string;
+    arguments: RefreshBorrowReserveArguments | [
+        position: RawTransactionArgument<string>,
+        price: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>
+    ];
+}
+export function refreshBorrowReserve(options: RefreshBorrowReserveOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["position", "price", "collateralPrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'refresh_borrow_reserve',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AddPoolReserveArguments {
+    position: RawTransactionArgument<string>;
+    reserveAmount: RawTransactionArgument<number | bigint>;
+}
+export interface AddPoolReserveOptions {
+    package?: string;
+    arguments: AddPoolReserveArguments | [
+        position: RawTransactionArgument<string>,
+        reserveAmount: RawTransactionArgument<number | bigint>
+    ];
+}
+export function addPoolReserve(options: AddPoolReserveOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["position", "reserveAmount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'add_pool_reserve',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RealizePoolReserveArguments {
+    position: RawTransactionArgument<string>;
+    reduceSize: RawTransactionArgument<string>;
+    originalSize: RawTransactionArgument<string>;
+}
+export interface RealizePoolReserveOptions {
+    package?: string;
+    arguments: RealizePoolReserveArguments | [
+        position: RawTransactionArgument<string>,
+        reduceSize: RawTransactionArgument<string>,
+        originalSize: RawTransactionArgument<string>
+    ];
+}
+export function realizePoolReserve(options: RealizePoolReserveOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["position", "reduceSize", "originalSize"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'realize_pool_reserve',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -473,35 +707,10 @@ export function updatePositionSize(options: UpdatePositionSizeOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface TouchUpdateTimestampArguments {
-    position: RawTransactionArgument<string>;
-}
-export interface TouchUpdateTimestampOptions {
-    package?: string;
-    arguments: TouchUpdateTimestampArguments | [
-        position: RawTransactionArgument<string>
-    ];
-}
-/** Touches the update_timestamp (for cooldown tracking). */
-export function touchUpdateTimestamp(options: TouchUpdateTimestampOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        '0x2::clock::Clock'
-    ] satisfies (string | null)[];
-    const parameterNames = ["position"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'position',
-        function: 'touch_update_timestamp',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-    });
-}
 export interface UpdateFeesArguments {
     position: RawTransactionArgument<string>;
-    price: RawTransactionArgument<string>;
     collateralPrice: RawTransactionArgument<string>;
-    cumulativeBorrowRate: RawTransactionArgument<number | bigint>;
+    cumulativeBorrowRate: RawTransactionArgument<string>;
     cumulativeFundingSign: RawTransactionArgument<boolean>;
     cumulativeFundingIndex: RawTransactionArgument<string>;
 }
@@ -509,9 +718,8 @@ export interface UpdateFeesOptions {
     package?: string;
     arguments: UpdateFeesArguments | [
         position: RawTransactionArgument<string>,
-        price: RawTransactionArgument<string>,
         collateralPrice: RawTransactionArgument<string>,
-        cumulativeBorrowRate: RawTransactionArgument<number | bigint>,
+        cumulativeBorrowRate: RawTransactionArgument<string>,
         cumulativeFundingSign: RawTransactionArgument<boolean>,
         cumulativeFundingIndex: RawTransactionArgument<string>
     ];
@@ -523,11 +731,10 @@ export function updateFees(options: UpdateFeesOptions) {
         null,
         null,
         null,
-        'u64',
         'bool',
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["position", "price", "collateralPrice", "cumulativeBorrowRate", "cumulativeFundingSign", "cumulativeFundingIndex"];
+    const parameterNames = ["position", "collateralPrice", "cumulativeBorrowRate", "cumulativeFundingSign", "cumulativeFundingIndex"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'position',
@@ -622,6 +829,19 @@ export function addLinkedOrder(options: AddLinkedOrderOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface MaxLinkedOrdersOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function maxLinkedOrders(options: MaxLinkedOrdersOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'max_linked_orders',
+    });
+}
 export interface RemoveLinkedOrderArguments {
     position: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
@@ -705,8 +925,8 @@ export interface IsLiquidatableArguments {
     currentPrice: RawTransactionArgument<string>;
     collateralPrice: RawTransactionArgument<string>;
     closingFee: RawTransactionArgument<string>;
-    maintenanceMarginBps: RawTransactionArgument<number | bigint>;
-    cumulativeBorrowRate: RawTransactionArgument<number | bigint>;
+    maintenanceMargin: RawTransactionArgument<string>;
+    cumulativeBorrowRate: RawTransactionArgument<string>;
     cumulativeFundingSign: RawTransactionArgument<boolean>;
     cumulativeFundingIndex: RawTransactionArgument<string>;
 }
@@ -717,13 +937,16 @@ export interface IsLiquidatableOptions {
         currentPrice: RawTransactionArgument<string>,
         collateralPrice: RawTransactionArgument<string>,
         closingFee: RawTransactionArgument<string>,
-        maintenanceMarginBps: RawTransactionArgument<number | bigint>,
-        cumulativeBorrowRate: RawTransactionArgument<number | bigint>,
+        maintenanceMargin: RawTransactionArgument<string>,
+        cumulativeBorrowRate: RawTransactionArgument<string>,
         cumulativeFundingSign: RawTransactionArgument<boolean>,
         cumulativeFundingIndex: RawTransactionArgument<string>
     ];
 }
-/** Returns true if the position is liquidatable. */
+/**
+ * Returns true if the position is liquidatable. `maintenance_margin` is a Float
+ * rate (e.g. 0.015 = 1.5%).
+ */
 export function isLiquidatable(options: IsLiquidatableOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -731,12 +954,12 @@ export function isLiquidatable(options: IsLiquidatableOptions) {
         null,
         null,
         null,
-        'u64',
-        'u64',
+        null,
+        null,
         'bool',
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["position", "currentPrice", "collateralPrice", "closingFee", "maintenanceMarginBps", "cumulativeBorrowRate", "cumulativeFundingSign", "cumulativeFundingIndex"];
+    const parameterNames = ["position", "currentPrice", "collateralPrice", "closingFee", "maintenanceMargin", "cumulativeBorrowRate", "cumulativeFundingSign", "cumulativeFundingIndex"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'position',
@@ -746,28 +969,22 @@ export function isLiquidatable(options: IsLiquidatableOptions) {
 }
 export interface CalculateBorrowFeeArguments {
     position: RawTransactionArgument<string>;
-    price: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
-    cumulativeBorrowRate: RawTransactionArgument<number | bigint>;
+    cumulativeBorrowRate: RawTransactionArgument<string>;
 }
 export interface CalculateBorrowFeeOptions {
     package?: string;
     arguments: CalculateBorrowFeeArguments | [
         position: RawTransactionArgument<string>,
-        price: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>,
-        cumulativeBorrowRate: RawTransactionArgument<number | bigint>
+        cumulativeBorrowRate: RawTransactionArgument<string>
     ];
 }
 export function calculateBorrowFee(options: CalculateBorrowFeeOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
-        null,
-        null,
-        'u64'
+        null
     ] satisfies (string | null)[];
-    const parameterNames = ["position", "price", "collateralPrice", "cumulativeBorrowRate"];
+    const parameterNames = ["position", "cumulativeBorrowRate"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'position',
@@ -777,7 +994,6 @@ export function calculateBorrowFee(options: CalculateBorrowFeeOptions) {
 }
 export interface CalculateFundingFeeArguments {
     position: RawTransactionArgument<string>;
-    price: RawTransactionArgument<string>;
     collateralPrice: RawTransactionArgument<string>;
     cumulativeFundingSign: RawTransactionArgument<boolean>;
     cumulativeFundingIndex: RawTransactionArgument<string>;
@@ -786,7 +1002,6 @@ export interface CalculateFundingFeeOptions {
     package?: string;
     arguments: CalculateFundingFeeArguments | [
         position: RawTransactionArgument<string>,
-        price: RawTransactionArgument<string>,
         collateralPrice: RawTransactionArgument<string>,
         cumulativeFundingSign: RawTransactionArgument<boolean>,
         cumulativeFundingIndex: RawTransactionArgument<string>
@@ -797,11 +1012,10 @@ export function calculateFundingFee(options: CalculateFundingFeeOptions) {
     const argumentsTypes = [
         null,
         null,
-        null,
         'bool',
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["position", "price", "collateralPrice", "cumulativeFundingSign", "cumulativeFundingIndex"];
+    const parameterNames = ["position", "collateralPrice", "cumulativeFundingSign", "cumulativeFundingIndex"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'position',
@@ -1029,6 +1243,50 @@ export function positionEntryBorrowIndex(options: PositionEntryBorrowIndexOption
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface PositionPoolReserveAmountArguments {
+    p: RawTransactionArgument<string>;
+}
+export interface PositionPoolReserveAmountOptions {
+    package?: string;
+    arguments: PositionPoolReserveAmountArguments | [
+        p: RawTransactionArgument<string>
+    ];
+}
+export function positionPoolReserveAmount(options: PositionPoolReserveAmountOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["p"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'position_pool_reserve_amount',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PositionBorrowReserveAmountArguments {
+    p: RawTransactionArgument<string>;
+}
+export interface PositionBorrowReserveAmountOptions {
+    package?: string;
+    arguments: PositionBorrowReserveAmountArguments | [
+        p: RawTransactionArgument<string>
+    ];
+}
+export function positionBorrowReserveAmount(options: PositionBorrowReserveAmountOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["p"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'position_borrow_reserve_amount',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface PositionLinkedOrderIdsArguments {
     p: RawTransactionArgument<string>;
 }
@@ -1227,6 +1485,28 @@ export function positionEntryFundingIndex(options: PositionEntryFundingIndexOpti
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface PositionFeeStateArguments {
+    p: RawTransactionArgument<string>;
+}
+export interface PositionFeeStateOptions {
+    package?: string;
+    arguments: PositionFeeStateArguments | [
+        p: RawTransactionArgument<string>
+    ];
+}
+export function positionFeeState(options: PositionFeeStateOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["p"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'position_fee_state',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface PositionCreateTimestampArguments {
     p: RawTransactionArgument<string>;
 }
@@ -1422,6 +1702,28 @@ export function orderTriggerPrice(options: OrderTriggerPriceOptions) {
         package: packageAddress,
         module: 'position',
         function: 'order_trigger_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface OrderAcceptablePriceArguments {
+    o: RawTransactionArgument<string>;
+}
+export interface OrderAcceptablePriceOptions {
+    package?: string;
+    arguments: OrderAcceptablePriceArguments | [
+        o: RawTransactionArgument<string>
+    ];
+}
+export function orderAcceptablePrice(options: OrderAcceptablePriceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["o"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'position',
+        function: 'order_acceptable_price',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

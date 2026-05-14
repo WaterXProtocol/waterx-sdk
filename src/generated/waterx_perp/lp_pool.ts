@@ -14,17 +14,33 @@ import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
 import * as type_name from './deps/std/type_name.ts';
 import * as float from './deps/bucket_v2_framework/float.ts';
+import * as float_1 from './deps/bucket_v2_framework/float.ts';
+import * as float_2 from './deps/bucket_v2_framework/float.ts';
+import * as float_3 from './deps/bucket_v2_framework/float.ts';
+import * as float_4 from './deps/bucket_v2_framework/float.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as coin from './deps/sui/coin.ts';
 import * as type_name_1 from './deps/std/type_name.ts';
-import * as float_1 from './deps/bucket_v2_framework/float.ts';
+import * as float_5 from './deps/bucket_v2_framework/float.ts';
 import * as keyed_big_vector from './keyed_big_vector.ts';
 import * as balance from './deps/sui/balance.ts';
 import * as type_name_2 from './deps/std/type_name.ts';
+import * as keyed_big_vector_1 from './keyed_big_vector.ts';
+import * as float_6 from './deps/bucket_v2_framework/float.ts';
+import * as float_7 from './deps/bucket_v2_framework/float.ts';
+import * as float_8 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/perp::lp_pool';
 export const TokenPoolInfo = new MoveStruct({ name: `${$moduleName}::TokenPoolInfo`, fields: {
         /** Token type. */
         token_type: type_name.TypeName,
+        /**
+         * Oracle ticker bound to this token type. Set at `add_token` time and immutable
+         * thereafter. Every per-token price lookup (`mint_wlp`, `settle_redeem`,
+         * `update_token_value`, perp collateral pricing) goes through this field — callers
+         * do _not_ supply a ticker string, eliminating the "lie about the asset I'm
+         * pricing" attack class.
+         */
+        ticker: bcs.string(),
         /** Token decimal. */
         token_decimal: bcs.u8(),
         /** Target weight in bps (e.g., 5000 = 50%). */
@@ -37,9 +53,12 @@ export const TokenPoolInfo = new MoveStruct({ name: `${$moduleName}::TokenPoolIn
         max_capacity: bcs.u64(),
         /** Min deposit. */
         min_deposit: bcs.u64(),
-        basic_borrow_rate_0: bcs.u64(),
-        basic_borrow_rate_1: bcs.u64(),
-        basic_borrow_rate_2: bcs.u64(),
+        /** Per-interval borrow rate at utilization 0 (Float, 1e9 scale). */
+        basic_borrow_rate_0: float.Float,
+        /** Per-interval borrow rate at utilization threshold_0 (Float). */
+        basic_borrow_rate_1: float_1.Float,
+        /** Per-interval borrow rate at utilization threshold_1 (Float). */
+        basic_borrow_rate_2: float_2.Float,
         utilization_threshold_0_bps: bcs.u64(),
         utilization_threshold_1_bps: bcs.u64(),
         borrow_interval_ms: bcs.u64(),
@@ -47,13 +66,13 @@ export const TokenPoolInfo = new MoveStruct({ name: `${$moduleName}::TokenPoolIn
         /** Liquidity amount in token units. */
         liquidity_amount: bcs.u64(),
         /** Value in USD. */
-        value_usd: float.Float,
+        value_usd: float_3.Float,
         /** Reserved amount for open positions. */
         reserved_amount: bcs.u64(),
         /** Last borrow rate update timestamp. */
         last_borrow_timestamp: bcs.u64(),
-        /** Cumulative borrow rate. */
-        cumulative_borrow_rate: bcs.u64(),
+        /** Cumulative borrow rate as Float (1e9 scale). */
+        cumulative_borrow_rate: float_4.Float,
         /** Last timestamp when this token price was refreshed via oracle. */
         last_price_refresh_timestamp: bcs.u64()
     } });
@@ -72,15 +91,15 @@ export const WlpPool = new MoveStruct({ name: `${$moduleName}::WlpPool<phantom L
         /** Token pool configs and states. */
         token_pools: bcs.vector(TokenPoolInfo),
         /** Total value locked in USD (Float). */
-        tvl_usd: float_1.Float,
+        tvl_usd: float_5.Float,
         /** Redeem requests. */
         redeem_requests: keyed_big_vector.KeyedBigVector,
         /** Next redeem request ID. */
         next_redeem_id: bcs.u64()
     } });
 export const RedeemRequest = new MoveStruct({ name: `${$moduleName}::RedeemRequest<phantom LP_TOKEN>`, fields: {
-        /** Recipient address. */
-        recipient: bcs.Address,
+        /** Wxa account ID to repay into at settlement. */
+        recipient_account_id: bcs.Address,
         /** LP balance held pending settlement. */
         lp_balance: balance.Balance,
         /** Requested token type to receive. */
@@ -88,6 +107,63 @@ export const RedeemRequest = new MoveStruct({ name: `${$moduleName}::RedeemReque
         /** Request timestamp. */
         request_timestamp: bcs.u64()
     } });
+export const WlpAum = new MoveStruct({ name: `${$moduleName}::WlpAum<phantom LP_TOKEN>`, fields: {
+        id: bcs.Address,
+        /** WLP pool this AUM object prices. */
+        pool_id: bcs.Address,
+        /** Registered market PnL contributions keyed by market ID. */
+        market_contributions: keyed_big_vector_1.KeyedBigVector,
+        /** Sum of registered markets where traders are in profit. */
+        total_trader_profit_usd: float_6.Float,
+        /** Sum of registered markets where traders are in loss. */
+        total_trader_loss_usd: float_7.Float
+    } });
+export const AumMarketContribution = new MoveStruct({ name: `${$moduleName}::AumMarketContribution`, fields: {
+        /** Whether the market's aggregate unrealized PnL is trader profit. */
+        is_trader_profit: bcs.bool(),
+        /** Absolute aggregate unrealized PnL in USD. */
+        pnl_usd: float_8.Float,
+        /** Timestamp of the oracle price used to refresh this contribution. */
+        last_refresh_timestamp: bcs.u64()
+    } });
+export interface AssertWxaProtocolPermArguments {
+    wxaRegistry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    sender: RawTransactionArgument<string>;
+    permission: RawTransactionArgument<number>;
+}
+export interface AssertWxaProtocolPermOptions {
+    package?: string;
+    arguments: AssertWxaProtocolPermArguments | [
+        wxaRegistry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        sender: RawTransactionArgument<string>,
+        permission: RawTransactionArgument<number>
+    ];
+}
+/**
+ * Pre-take permission check for WLP actions. Uses `WaterXPerp` as the permission
+ * scope (shared witness across the perp's wxa surface). `PERM_MINT_WLP` and
+ * `PERM_REDEEM_WLP` are the relevant bits. Must run before any `wxa_account::take`
+ * so a failed auth doesn't drain.
+ */
+export function assertWxaProtocolPerm(options: AssertWxaProtocolPermOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID',
+        'address',
+        'u32',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["wxaRegistry", "accountId", "sender", "permission"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'assert_wxa_protocol_perm',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface CreatePoolArguments {
     Cap: RawTransactionArgument<string>;
     lpTreasuryCap: RawTransactionArgument<string>;
@@ -121,6 +197,36 @@ export function createPool(options: CreatePoolOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface CreateAumArguments {
+    Cap: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+}
+export interface CreateAumOptions {
+    package?: string;
+    arguments: CreateAumArguments | [
+        Cap: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Creates a pool-level AUM object used for multi-market WLP share pricing. */
+export function createAum(options: CreateAumOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["Cap", "pool"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'create_aum',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface AssertVersionArguments {
     wlpPool: RawTransactionArgument<string>;
 }
@@ -148,15 +254,15 @@ export function assertVersion(options: AssertVersionOptions) {
     });
 }
 export interface AllowVersionArguments {
-    _: RawTransactionArgument<string>;
     wlpPool: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number>;
 }
 export interface AllowVersionOptions {
     package?: string;
     arguments: AllowVersionArguments | [
-        _: RawTransactionArgument<string>,
         wlpPool: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number>
     ];
     typeArguments: [
@@ -170,7 +276,7 @@ export function allowVersion(options: AllowVersionOptions) {
         null,
         'u16'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "wlpPool", "v"];
+    const parameterNames = ["wlpPool", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -180,15 +286,15 @@ export function allowVersion(options: AllowVersionOptions) {
     });
 }
 export interface DisallowVersionArguments {
-    _: RawTransactionArgument<string>;
     wlpPool: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number>;
 }
 export interface DisallowVersionOptions {
     package?: string;
     arguments: DisallowVersionArguments | [
-        _: RawTransactionArgument<string>,
         wlpPool: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number>
     ];
     typeArguments: [
@@ -202,7 +308,7 @@ export function disallowVersion(options: DisallowVersionOptions) {
         null,
         'u16'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "wlpPool", "v"];
+    const parameterNames = ["wlpPool", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -212,8 +318,9 @@ export function disallowVersion(options: DisallowVersionOptions) {
     });
 }
 export interface AddTokenArguments {
-    Cap: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    ticker: RawTransactionArgument<string>;
     tokenDecimal: RawTransactionArgument<number>;
     targetWeightBps: RawTransactionArgument<number | bigint>;
     mintFeeBps: RawTransactionArgument<number | bigint>;
@@ -231,8 +338,9 @@ export interface AddTokenArguments {
 export interface AddTokenOptions {
     package?: string;
     arguments: AddTokenArguments | [
-        Cap: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
+        ticker: RawTransactionArgument<string>,
         tokenDecimal: RawTransactionArgument<number>,
         targetWeightBps: RawTransactionArgument<number | bigint>,
         mintFeeBps: RawTransactionArgument<number | bigint>,
@@ -252,28 +360,32 @@ export interface AddTokenOptions {
         string
     ];
 }
-/** Adds a supported token to the pool. */
+/**
+ * Adds a supported token to the pool. `basic_borrow_rate_0/1/2` are scaled Float
+ * values (1e9 scale).
+ */
 export function addToken(options: AddTokenOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null,
+        '0x1::string::String',
         'u8',
         'u64',
         'u64',
         'u64',
         'u64',
         'u64',
-        'u64',
-        'u64',
-        'u64',
+        'u128',
+        'u128',
+        'u128',
         'u64',
         'u64',
         'u64',
         'u64',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "pool", "tokenDecimal", "targetWeightBps", "mintFeeBps", "burnFeeBps", "maxCapacity", "minDeposit", "basicBorrowRate_0", "basicBorrowRate_1", "basicBorrowRate_2", "utilizationThreshold_0Bps", "utilizationThreshold_1Bps", "borrowIntervalMs", "maxReserveRatioBps"];
+    const parameterNames = ["pool", "Cap", "ticker", "tokenDecimal", "targetWeightBps", "mintFeeBps", "burnFeeBps", "maxCapacity", "minDeposit", "basicBorrowRate_0", "basicBorrowRate_1", "basicBorrowRate_2", "utilizationThreshold_0Bps", "utilizationThreshold_1Bps", "borrowIntervalMs", "maxReserveRatioBps"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -283,8 +395,8 @@ export function addToken(options: AddTokenOptions) {
     });
 }
 export interface UpdateTokenPoolConfigArguments {
-    Cap: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     targetWeightBps: RawTransactionArgument<number | bigint>;
     mintFeeBps: RawTransactionArgument<number | bigint>;
     burnFeeBps: RawTransactionArgument<number | bigint>;
@@ -301,8 +413,8 @@ export interface UpdateTokenPoolConfigArguments {
 export interface UpdateTokenPoolConfigOptions {
     package?: string;
     arguments: UpdateTokenPoolConfigArguments | [
-        Cap: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         targetWeightBps: RawTransactionArgument<number | bigint>,
         mintFeeBps: RawTransactionArgument<number | bigint>,
         burnFeeBps: RawTransactionArgument<number | bigint>,
@@ -335,15 +447,15 @@ export function updateTokenPoolConfig(options: UpdateTokenPoolConfigOptions) {
         'u64',
         'u64',
         'u64',
-        'u64',
-        'u64',
-        'u64',
+        'u128',
+        'u128',
+        'u128',
         'u64',
         'u64',
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "pool", "targetWeightBps", "mintFeeBps", "burnFeeBps", "maxCapacity", "minDeposit", "basicBorrowRate_0", "basicBorrowRate_1", "basicBorrowRate_2", "utilizationThreshold_0Bps", "utilizationThreshold_1Bps", "borrowIntervalMs", "maxReserveRatioBps"];
+    const parameterNames = ["pool", "Cap", "targetWeightBps", "mintFeeBps", "burnFeeBps", "maxCapacity", "minDeposit", "basicBorrowRate_0", "basicBorrowRate_1", "basicBorrowRate_2", "utilizationThreshold_0Bps", "utilizationThreshold_1Bps", "borrowIntervalMs", "maxReserveRatioBps"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -355,25 +467,38 @@ export function updateTokenPoolConfig(options: UpdateTokenPoolConfigOptions) {
 export interface MintWlpArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
-    deposit: RawTransactionArgument<string>;
-    priceResult: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    aum: RawTransactionArgument<string>;
+    senderRequest: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    depositAmount: RawTransactionArgument<number | bigint>;
     minLpAmount: RawTransactionArgument<number | bigint>;
+    oracle: RawTransactionArgument<string>;
 }
 export interface MintWlpOptions {
     package?: string;
     arguments: MintWlpArguments | [
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
-        deposit: RawTransactionArgument<string>,
-        priceResult: RawTransactionArgument<string>,
-        minLpAmount: RawTransactionArgument<number | bigint>
+        wxaRegistry: RawTransactionArgument<string>,
+        aum: RawTransactionArgument<string>,
+        senderRequest: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        depositAmount: RawTransactionArgument<number | bigint>,
+        minLpAmount: RawTransactionArgument<number | bigint>,
+        oracle: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
         string
     ];
 }
-/** Mints WLP tokens by depositing a token. Instant. */
+/**
+ * Mints WLP by taking `deposit_amount` of `TOKEN` from the caller's wxa stored
+ * balance, pricing against AUM-adjusted TVL, and putting the minted WLP back into
+ * the same wxa account. Returns the minted `lp_amount` (also emitted on
+ * `WlpMinted`).
+ */
 export function mintWlp(options: MintWlpOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -381,10 +506,14 @@ export function mintWlp(options: MintWlpOptions) {
         null,
         null,
         null,
+        null,
+        '0x2::object::ID',
         'u64',
+        'u64',
+        null,
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "globalConfig", "deposit", "priceResult", "minLpAmount"];
+    const parameterNames = ["pool", "globalConfig", "wxaRegistry", "aum", "senderRequest", "accountId", "depositAmount", "minLpAmount", "oracle"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -393,80 +522,47 @@ export function mintWlp(options: MintWlpOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface MintWlpToArguments {
-    pool: RawTransactionArgument<string>;
-    globalConfig: RawTransactionArgument<string>;
-    deposit: RawTransactionArgument<string>;
-    priceResult: RawTransactionArgument<string>;
-    minLpAmount: RawTransactionArgument<number | bigint>;
-    recipient: RawTransactionArgument<string>;
-}
-export interface MintWlpToOptions {
-    package?: string;
-    arguments: MintWlpToArguments | [
-        pool: RawTransactionArgument<string>,
-        globalConfig: RawTransactionArgument<string>,
-        deposit: RawTransactionArgument<string>,
-        priceResult: RawTransactionArgument<string>,
-        minLpAmount: RawTransactionArgument<number | bigint>,
-        recipient: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string,
-        string
-    ];
-}
-/** Mints WLP tokens and transfers them to `recipient`. Convenience wrapper. */
-export function mintWlpTo(options: MintWlpToOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null,
-        null,
-        null,
-        'u64',
-        'address',
-        '0x2::clock::Clock'
-    ] satisfies (string | null)[];
-    const parameterNames = ["pool", "globalConfig", "deposit", "priceResult", "minLpAmount", "recipient"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'lp_pool',
-        function: 'mint_wlp_to',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
 export interface RequestRedeemArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
-    lpCoin: RawTransactionArgument<string>;
-    recipient: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    senderRequest: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    lpAmount: RawTransactionArgument<number | bigint>;
 }
 export interface RequestRedeemOptions {
     package?: string;
     arguments: RequestRedeemArguments | [
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
-        lpCoin: RawTransactionArgument<string>,
-        recipient: RawTransactionArgument<string>
+        wxaRegistry: RawTransactionArgument<string>,
+        senderRequest: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        lpAmount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string,
         string
     ];
 }
-/** Requests a WLP redeem (T+1 settlement). */
+/**
+ * Enqueues a WLP redeem (T+1 settlement) by taking `lp_amount` of `LP_TOKEN` from
+ * the caller's wxa stored balance into a pending `RedeemRequest`. Returns the
+ * `request_id`. Settlement (via `settle_redeem`) and cancellation (via
+ * `cancel_redeem`) repay the proceeds / WLP back into the same wxa account.
+ */
 export function requestRedeem(options: RequestRedeemOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null,
         null,
-        '0x2::clock::Clock',
-        'address'
+        null,
+        '0x2::object::ID',
+        'u64',
+        '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "globalConfig", "lpCoin", "recipient"];
+    const parameterNames = ["pool", "globalConfig", "wxaRegistry", "senderRequest", "accountId", "lpAmount"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -475,8 +571,99 @@ export function requestRedeem(options: RequestRedeemOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface MintWlpWithPricingTvlArguments {
+    pool: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+    deposit: RawTransactionArgument<string>;
+    oracle: RawTransactionArgument<string>;
+    ticker: RawTransactionArgument<string>;
+    pricingTvlUsd: RawTransactionArgument<string>;
+    minLpAmount: RawTransactionArgument<number | bigint>;
+    sender: RawTransactionArgument<string>;
+}
+export interface MintWlpWithPricingTvlOptions {
+    package?: string;
+    arguments: MintWlpWithPricingTvlArguments | [
+        pool: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>,
+        deposit: RawTransactionArgument<string>,
+        oracle: RawTransactionArgument<string>,
+        ticker: RawTransactionArgument<string>,
+        pricingTvlUsd: RawTransactionArgument<string>,
+        minLpAmount: RawTransactionArgument<number | bigint>,
+        sender: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function mintWlpWithPricingTvl(options: MintWlpWithPricingTvlOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        '0x1::string::String',
+        null,
+        'u64',
+        'address',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "globalConfig", "deposit", "oracle", "ticker", "pricingTvlUsd", "minLpAmount", "sender"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'mint_wlp_with_pricing_tvl',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface DoRequestRedeemArguments {
+    pool: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+    recipientAccountId: RawTransactionArgument<string>;
+    lpBalance: RawTransactionArgument<string>;
+    expectedLpAmount: RawTransactionArgument<number | bigint>;
+}
+export interface DoRequestRedeemOptions {
+    package?: string;
+    arguments: DoRequestRedeemArguments | [
+        pool: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>,
+        recipientAccountId: RawTransactionArgument<string>,
+        lpBalance: RawTransactionArgument<string>,
+        expectedLpAmount: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function doRequestRedeem(options: DoRequestRedeemOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::object::ID',
+        null,
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "globalConfig", "recipientAccountId", "lpBalance", "expectedLpAmount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'do_request_redeem',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface CancelRedeemArguments {
     pool: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
     senderRequest: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
 }
@@ -484,6 +671,8 @@ export interface CancelRedeemOptions {
     package?: string;
     arguments: CancelRedeemArguments | [
         pool: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
         senderRequest: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>
     ];
@@ -492,18 +681,21 @@ export interface CancelRedeemOptions {
     ];
 }
 /**
- * Cancels a pending WLP redeem request. Caller must be the original requester.
- * Re-mints the LP tokens back to the user.
+ * Cancels a pending WLP redeem request. Caller must hold `PERM_REDEEM_WLP` on the
+ * recipient wxa account (checked under the shared `WaterXPerp` permission scope).
+ * The escrowed WLP is put back into the recipient account.
  */
 export function cancelRedeem(options: CancelRedeemOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null,
+        null,
+        null,
         'u64',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "senderRequest", "requestId"];
+    const parameterNames = ["pool", "globalConfig", "wxaRegistry", "senderRequest", "requestId"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -512,36 +704,83 @@ export function cancelRedeem(options: CancelRedeemOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface CancelRedeemAndTransferArguments {
+export interface RejectRedeemByAdminArguments {
     pool: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
 }
-export interface CancelRedeemAndTransferOptions {
+export interface RejectRedeemByAdminOptions {
     package?: string;
-    arguments: CancelRedeemAndTransferArguments | [
+    arguments: RejectRedeemByAdminArguments | [
         pool: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string
     ];
 }
-/** Cancels a redeem request and transfers the LP tokens to the caller directly. */
-export function cancelRedeemAndTransfer(options: CancelRedeemAndTransferOptions) {
+/**
+ * Rejects a pending WLP redeem request as admin and repays the LP back to the
+ * original recipient's wxa account.
+ */
+export function rejectRedeemByAdmin(options: RejectRedeemByAdminOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null,
-        'u64',
-        '0x2::clock::Clock'
+        null,
+        'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "senderRequest", "requestId"];
+    const parameterNames = ["pool", "wxaRegistry", "Cap", "requestId"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
-        function: 'cancel_redeem_and_transfer',
+        function: 'reject_redeem_by_admin',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RejectRedeemByRedeemOperatorArguments {
+    pool: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    operatorRequest: RawTransactionArgument<string>;
+    requestId: RawTransactionArgument<number | bigint>;
+}
+export interface RejectRedeemByRedeemOperatorOptions {
+    package?: string;
+    arguments: RejectRedeemByRedeemOperatorArguments | [
+        pool: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        operatorRequest: RawTransactionArgument<string>,
+        requestId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Rejects a pending WLP redeem request as redeem operator and repays the LP back
+ * to the original recipient's wxa account.
+ */
+export function rejectRedeemByRedeemOperator(options: RejectRedeemByRedeemOperatorOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "globalConfig", "wxaRegistry", "operatorRequest", "requestId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'reject_redeem_by_redeem_operator',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -549,37 +788,93 @@ export function cancelRedeemAndTransfer(options: CancelRedeemAndTransferOptions)
 export interface SettleRedeemArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    operatorRequest: RawTransactionArgument<string>;
+    aum: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
-    priceResult: RawTransactionArgument<string>;
+    oracle: RawTransactionArgument<string>;
 }
 export interface SettleRedeemOptions {
     package?: string;
     arguments: SettleRedeemArguments | [
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        operatorRequest: RawTransactionArgument<string>,
+        aum: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>,
-        priceResult: RawTransactionArgument<string>
+        oracle: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
         string
     ];
 }
-/** Settles a WLP redeem request */
+/**
+ * Settles a WLP redeem request using pool-level AUM pricing. The payout is repaid
+ * back into the recipient's wxa account as `Balance<TOKEN>` via
+ * `wxa_account::put<TOKEN, WaterXPerp>`.
+ */
 export function settleRedeem(options: SettleRedeemOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
+        null,
+        null,
+        null,
         null,
         null,
         'u64',
         null,
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "globalConfig", "requestId", "priceResult"];
+    const parameterNames = ["pool", "globalConfig", "wxaRegistry", "operatorRequest", "aum", "requestId", "oracle"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
         function: 'settle_redeem',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleRedeemWithPricingTvlArguments {
+    pool: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+    requestId: RawTransactionArgument<number | bigint>;
+    oracle: RawTransactionArgument<string>;
+    ticker: RawTransactionArgument<string>;
+    pricingTvlUsd: RawTransactionArgument<string>;
+}
+export interface SettleRedeemWithPricingTvlOptions {
+    package?: string;
+    arguments: SettleRedeemWithPricingTvlArguments | [
+        pool: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>,
+        requestId: RawTransactionArgument<number | bigint>,
+        oracle: RawTransactionArgument<string>,
+        ticker: RawTransactionArgument<string>,
+        pricingTvlUsd: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleRedeemWithPricingTvl(options: SettleRedeemWithPricingTvlOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'u64',
+        null,
+        '0x1::string::String',
+        null,
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "globalConfig", "requestId", "oracle", "ticker", "pricingTvlUsd"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'settle_redeem_with_pricing_tvl',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -614,13 +909,13 @@ export function updateBorrowRates(options: UpdateBorrowRatesOptions) {
 }
 export interface UpdateTokenValueArguments {
     pool: RawTransactionArgument<string>;
-    priceResult: RawTransactionArgument<string>;
+    oracle: RawTransactionArgument<string>;
 }
 export interface UpdateTokenValueOptions {
     package?: string;
     arguments: UpdateTokenValueArguments | [
         pool: RawTransactionArgument<string>,
-        priceResult: RawTransactionArgument<string>
+        oracle: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -634,11 +929,350 @@ export function updateTokenValue(options: UpdateTokenValueOptions) {
         null,
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "priceResult"];
+    const parameterNames = ["pool", "oracle"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
         function: 'update_token_value',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumPoolIdArguments {
+    aum: RawTransactionArgument<string>;
+}
+export interface AumPoolIdOptions {
+    package?: string;
+    arguments: AumPoolIdArguments | [
+        aum: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function aumPoolId(options: AumPoolIdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_pool_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumMarketCountArguments {
+    aum: RawTransactionArgument<string>;
+}
+export interface AumMarketCountOptions {
+    package?: string;
+    arguments: AumMarketCountArguments | [
+        aum: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function aumMarketCount(options: AumMarketCountOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_market_count',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumTotalTraderProfitUsdArguments {
+    aum: RawTransactionArgument<string>;
+}
+export interface AumTotalTraderProfitUsdOptions {
+    package?: string;
+    arguments: AumTotalTraderProfitUsdArguments | [
+        aum: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function aumTotalTraderProfitUsd(options: AumTotalTraderProfitUsdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_total_trader_profit_usd',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumTotalTraderLossUsdArguments {
+    aum: RawTransactionArgument<string>;
+}
+export interface AumTotalTraderLossUsdOptions {
+    package?: string;
+    arguments: AumTotalTraderLossUsdArguments | [
+        aum: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function aumTotalTraderLossUsd(options: AumTotalTraderLossUsdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_total_trader_loss_usd',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumMarketContributionArguments {
+    aum: RawTransactionArgument<string>;
+    marketId: RawTransactionArgument<string>;
+}
+export interface AumMarketContributionOptions {
+    package?: string;
+    arguments: AumMarketContributionArguments | [
+        aum: RawTransactionArgument<string>,
+        marketId: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function aumMarketContribution(options: AumMarketContributionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID'
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "marketId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_market_contribution',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumMarketContributionByIndexArguments {
+    aum: RawTransactionArgument<string>;
+    index: RawTransactionArgument<number | bigint>;
+}
+export interface AumMarketContributionByIndexOptions {
+    package?: string;
+    arguments: AumMarketContributionByIndexArguments | [
+        aum: RawTransactionArgument<string>,
+        index: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function aumMarketContributionByIndex(options: AumMarketContributionByIndexOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "index"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_market_contribution_by_index',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumContributionIsTraderProfitArguments {
+    c: RawTransactionArgument<string>;
+}
+export interface AumContributionIsTraderProfitOptions {
+    package?: string;
+    arguments: AumContributionIsTraderProfitArguments | [
+        c: RawTransactionArgument<string>
+    ];
+}
+export function aumContributionIsTraderProfit(options: AumContributionIsTraderProfitOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["c"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_contribution_is_trader_profit',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AumContributionPnlUsdArguments {
+    c: RawTransactionArgument<string>;
+}
+export interface AumContributionPnlUsdOptions {
+    package?: string;
+    arguments: AumContributionPnlUsdArguments | [
+        c: RawTransactionArgument<string>
+    ];
+}
+export function aumContributionPnlUsd(options: AumContributionPnlUsdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["c"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_contribution_pnl_usd',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AumContributionLastRefreshTimestampArguments {
+    c: RawTransactionArgument<string>;
+}
+export interface AumContributionLastRefreshTimestampOptions {
+    package?: string;
+    arguments: AumContributionLastRefreshTimestampArguments | [
+        c: RawTransactionArgument<string>
+    ];
+}
+export function aumContributionLastRefreshTimestamp(options: AumContributionLastRefreshTimestampOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["c"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_contribution_last_refresh_timestamp',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RegisterMarketAumArguments {
+    aum: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    marketId: RawTransactionArgument<string>;
+    isTraderProfit: RawTransactionArgument<boolean>;
+    pnlUsd: RawTransactionArgument<string>;
+}
+export interface RegisterMarketAumOptions {
+    package?: string;
+    arguments: RegisterMarketAumArguments | [
+        aum: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
+        marketId: RawTransactionArgument<string>,
+        isTraderProfit: RawTransactionArgument<boolean>,
+        pnlUsd: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Registers a market contribution for this WLP AUM object. */
+export function registerMarketAum(options: RegisterMarketAumOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::object::ID',
+        'bool',
+        null,
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "Cap", "marketId", "isTraderProfit", "pnlUsd"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'register_market_aum',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RefreshMarketAumArguments {
+    aum: RawTransactionArgument<string>;
+    marketId: RawTransactionArgument<string>;
+    isTraderProfit: RawTransactionArgument<boolean>;
+    pnlUsd: RawTransactionArgument<string>;
+}
+export interface RefreshMarketAumOptions {
+    package?: string;
+    arguments: RefreshMarketAumArguments | [
+        aum: RawTransactionArgument<string>,
+        marketId: RawTransactionArgument<string>,
+        isTraderProfit: RawTransactionArgument<boolean>,
+        pnlUsd: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Refreshes an existing market's AUM contribution. */
+export function refreshMarketAum(options: RefreshMarketAumOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID',
+        'bool',
+        null,
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "marketId", "isTraderProfit", "pnlUsd"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'refresh_market_aum',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AumEquityUsdArguments {
+    pool: RawTransactionArgument<string>;
+    aum: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface AumEquityUsdOptions {
+    package?: string;
+    arguments: AumEquityUsdArguments | [
+        pool: RawTransactionArgument<string>,
+        aum: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Returns WLP equity after applying all registered market unrealized PnL. */
+export function aumEquityUsd(options: AumEquityUsdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "aum", "globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'aum_equity_usd',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -966,15 +1600,48 @@ export function tokenDecimal(options: TokenDecimalOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface SuspendPoolArguments {
-    Cap: RawTransactionArgument<string>;
+export interface TokenTickerArguments {
     pool: RawTransactionArgument<string>;
+}
+export interface TokenTickerOptions {
+    package?: string;
+    arguments: TokenTickerArguments | [
+        pool: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * Returns the oracle ticker bound to `TOKEN` at `add_token` time. This is the only
+ * source of truth for "what ticker do I price TOKEN at?" — perp + lp_pool
+ * callsites look it up here instead of accepting a free-form string from the
+ * caller. Aborts if TOKEN is not a supported token in this pool.
+ */
+export function tokenTicker(options: TokenTickerOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'token_ticker',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SuspendPoolArguments {
+    pool: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
 }
 export interface SuspendPoolOptions {
     package?: string;
     arguments: SuspendPoolArguments | [
-        Cap: RawTransactionArgument<string>,
-        pool: RawTransactionArgument<string>
+        pool: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -987,7 +1654,7 @@ export function suspendPool(options: SuspendPoolOptions) {
         null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "pool"];
+    const parameterNames = ["pool", "Cap"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -997,14 +1664,14 @@ export function suspendPool(options: SuspendPoolOptions) {
     });
 }
 export interface ResumePoolArguments {
-    Cap: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
 }
 export interface ResumePoolOptions {
     package?: string;
     arguments: ResumePoolArguments | [
-        Cap: RawTransactionArgument<string>,
-        pool: RawTransactionArgument<string>
+        pool: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1016,7 +1683,7 @@ export function resumePool(options: ResumePoolOptions) {
         null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "pool"];
+    const parameterNames = ["pool", "Cap"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
@@ -1239,6 +1906,28 @@ export function tpiTokenType(options: TpiTokenTypeOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface TpiTickerArguments {
+    tp: RawTransactionArgument<string>;
+}
+export interface TpiTickerOptions {
+    package?: string;
+    arguments: TpiTickerArguments | [
+        tp: RawTransactionArgument<string>
+    ];
+}
+export function tpiTicker(options: TpiTickerOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["tp"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'tpi_ticker',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface TpiTokenDecimalArguments {
     tp: RawTransactionArgument<string>;
 }
@@ -1437,19 +2126,19 @@ export function tpiLastPriceRefreshTimestamp(options: TpiLastPriceRefreshTimesta
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface RedeemRecipientArguments {
+export interface RedeemRecipientAccountIdArguments {
     r: RawTransactionArgument<string>;
 }
-export interface RedeemRecipientOptions {
+export interface RedeemRecipientAccountIdOptions {
     package?: string;
-    arguments: RedeemRecipientArguments | [
+    arguments: RedeemRecipientAccountIdArguments | [
         r: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
     ];
 }
-export function redeemRecipient(options: RedeemRecipientOptions) {
+export function redeemRecipientAccountId(options: RedeemRecipientAccountIdOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -1458,7 +2147,7 @@ export function redeemRecipient(options: RedeemRecipientOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',
-        function: 'redeem_recipient',
+        function: 'redeem_recipient_account_id',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -1661,6 +2350,94 @@ export function refreshTokenValueWithPrice(options: RefreshTokenValueWithPriceOp
         typeArguments: options.typeArguments
     });
 }
+export interface AddAumContributionArguments {
+    aum: RawTransactionArgument<string>;
+    contribution: RawTransactionArgument<string>;
+}
+export interface AddAumContributionOptions {
+    package?: string;
+    arguments: AddAumContributionArguments | [
+        aum: RawTransactionArgument<string>,
+        contribution: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function addAumContribution(options: AddAumContributionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "contribution"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'add_aum_contribution',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RemoveAumContributionArguments {
+    aum: RawTransactionArgument<string>;
+    contribution: RawTransactionArgument<string>;
+}
+export interface RemoveAumContributionOptions {
+    package?: string;
+    arguments: RemoveAumContributionArguments | [
+        aum: RawTransactionArgument<string>,
+        contribution: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function removeAumContribution(options: RemoveAumContributionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "contribution"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'remove_aum_contribution',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AssertAumFreshArguments {
+    aum: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface AssertAumFreshOptions {
+    package?: string;
+    arguments: AssertAumFreshArguments | [
+        aum: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function assertAumFresh(options: AssertAumFreshOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["aum", "globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'assert_aum_fresh',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface AssertPricesFreshArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
@@ -1717,6 +2494,35 @@ export function assertRedeemAllowed(options: AssertRedeemAllowedOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface AssertTokenRedeemAllowedArguments {
+    pool: RawTransactionArgument<string>;
+    tokenType: RawTransactionArgument<string>;
+}
+export interface AssertTokenRedeemAllowedOptions {
+    package?: string;
+    arguments: AssertTokenRedeemAllowedArguments | [
+        pool: RawTransactionArgument<string>,
+        tokenType: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function assertTokenRedeemAllowed(options: AssertTokenRedeemAllowedOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "tokenType"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'assert_token_redeem_allowed',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface CalculateTotalWlpUtilizationBpsArguments {
     pool: RawTransactionArgument<string>;
 }
@@ -1739,6 +2545,70 @@ export function calculateTotalWlpUtilizationBps(options: CalculateTotalWlpUtiliz
         package: packageAddress,
         module: 'lp_pool',
         function: 'calculate_total_wlp_utilization_bps',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface TakeRedeemRequestArguments {
+    pool: RawTransactionArgument<string>;
+    requestId: RawTransactionArgument<number | bigint>;
+}
+export interface TakeRedeemRequestOptions {
+    package?: string;
+    arguments: TakeRedeemRequestArguments | [
+        pool: RawTransactionArgument<string>,
+        requestId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function takeRedeemRequest(options: TakeRedeemRequestOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["pool", "requestId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'take_redeem_request',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ReturnRejectedRedeemRequestArguments {
+    wxaRegistry: RawTransactionArgument<string>;
+    request: RawTransactionArgument<string>;
+    operator: RawTransactionArgument<string>;
+    requestId: RawTransactionArgument<number | bigint>;
+}
+export interface ReturnRejectedRedeemRequestOptions {
+    package?: string;
+    arguments: ReturnRejectedRedeemRequestArguments | [
+        wxaRegistry: RawTransactionArgument<string>,
+        request: RawTransactionArgument<string>,
+        operator: RawTransactionArgument<string>,
+        requestId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function returnRejectedRedeemRequest(options: ReturnRejectedRedeemRequestOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'address',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["wxaRegistry", "request", "operator", "requestId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'return_rejected_redeem_request',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -1782,26 +2652,26 @@ export function calculateDynamicFee(options: CalculateDynamicFeeOptions) {
     });
 }
 export interface AssertValidBorrowConfigArguments {
-    rate_0: RawTransactionArgument<number | bigint>;
-    rate_1: RawTransactionArgument<number | bigint>;
-    rate_2: RawTransactionArgument<number | bigint>;
+    rate_0: RawTransactionArgument<string>;
+    rate_1: RawTransactionArgument<string>;
+    rate_2: RawTransactionArgument<string>;
     intervalMs: RawTransactionArgument<number | bigint>;
 }
 export interface AssertValidBorrowConfigOptions {
     package?: string;
     arguments: AssertValidBorrowConfigArguments | [
-        rate_0: RawTransactionArgument<number | bigint>,
-        rate_1: RawTransactionArgument<number | bigint>,
-        rate_2: RawTransactionArgument<number | bigint>,
+        rate_0: RawTransactionArgument<string>,
+        rate_1: RawTransactionArgument<string>,
+        rate_2: RawTransactionArgument<string>,
         intervalMs: RawTransactionArgument<number | bigint>
     ];
 }
 export function assertValidBorrowConfig(options: AssertValidBorrowConfigOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
-        'u64',
-        'u64',
-        'u64',
+        null,
+        null,
+        null,
         'u64'
     ] satisfies (string | null)[];
     const parameterNames = ["rate_0", "rate_1", "rate_2", "intervalMs"];
@@ -1812,11 +2682,33 @@ export function assertValidBorrowConfig(options: AssertValidBorrowConfigOptions)
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface AssertValidMaxReserveRatioArguments {
+    maxReserveRatioBps: RawTransactionArgument<number | bigint>;
+}
+export interface AssertValidMaxReserveRatioOptions {
+    package?: string;
+    arguments: AssertValidMaxReserveRatioArguments | [
+        maxReserveRatioBps: RawTransactionArgument<number | bigint>
+    ];
+}
+export function assertValidMaxReserveRatio(options: AssertValidMaxReserveRatioOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["maxReserveRatioBps"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'lp_pool',
+        function: 'assert_valid_max_reserve_ratio',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface CalculateBorrowRateArguments {
     utilizationBps: RawTransactionArgument<number | bigint>;
-    rate_0: RawTransactionArgument<number | bigint>;
-    rate_1: RawTransactionArgument<number | bigint>;
-    rate_2: RawTransactionArgument<number | bigint>;
+    rate_0: RawTransactionArgument<string>;
+    rate_1: RawTransactionArgument<string>;
+    rate_2: RawTransactionArgument<string>;
     threshold_0: RawTransactionArgument<number | bigint>;
     threshold_1: RawTransactionArgument<number | bigint>;
 }
@@ -1824,9 +2716,9 @@ export interface CalculateBorrowRateOptions {
     package?: string;
     arguments: CalculateBorrowRateArguments | [
         utilizationBps: RawTransactionArgument<number | bigint>,
-        rate_0: RawTransactionArgument<number | bigint>,
-        rate_1: RawTransactionArgument<number | bigint>,
-        rate_2: RawTransactionArgument<number | bigint>,
+        rate_0: RawTransactionArgument<string>,
+        rate_1: RawTransactionArgument<string>,
+        rate_2: RawTransactionArgument<string>,
         threshold_0: RawTransactionArgument<number | bigint>,
         threshold_1: RawTransactionArgument<number | bigint>
     ];
@@ -1836,9 +2728,9 @@ export function calculateBorrowRate(options: CalculateBorrowRateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         'u64',
-        'u64',
-        'u64',
-        'u64',
+        null,
+        null,
+        null,
         'u64',
         'u64'
     ] satisfies (string | null)[];
@@ -1851,14 +2743,14 @@ export function calculateBorrowRate(options: CalculateBorrowRateOptions) {
     });
 }
 export interface CalculateBorrowRateAccrualArguments {
-    borrowRate: RawTransactionArgument<number | bigint>;
+    borrowRate: RawTransactionArgument<string>;
     elapsedMs: RawTransactionArgument<number | bigint>;
     intervalMs: RawTransactionArgument<number | bigint>;
 }
 export interface CalculateBorrowRateAccrualOptions {
     package?: string;
     arguments: CalculateBorrowRateAccrualArguments | [
-        borrowRate: RawTransactionArgument<number | bigint>,
+        borrowRate: RawTransactionArgument<string>,
         elapsedMs: RawTransactionArgument<number | bigint>,
         intervalMs: RawTransactionArgument<number | bigint>
     ];
@@ -1870,7 +2762,7 @@ export interface CalculateBorrowRateAccrualOptions {
 export function calculateBorrowRateAccrual(options: CalculateBorrowRateAccrualOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
-        'u64',
+        null,
         'u64',
         'u64'
     ] satisfies (string | null)[];

@@ -1,299 +1,269 @@
-import {
-  Transaction,
-  TransactionResult,
-  type TransactionArgument,
-  type TransactionObjectArgument,
-} from "@mysten/sui/transactions";
-
-import { WaterXClient } from "../client.ts";
-import {
-  request as accountRequestCall,
-  requestWithAccount as accountRequestWithAccountCall,
-} from "../generated/bucket_v2_framework/account.ts";
-import {
-  addDelegate as addDelegateMoveCall,
-  createAccount as createAccountMoveCall,
-  receiveCoinWithAmount as receiveCoinWithAmountMoveCall,
-  removeDelegate as removeDelegateMoveCall,
-  transferCoin as transferCoinMoveCall,
-  updateDelegatePermissions as updateDelegatePermissionsMoveCall,
-} from "../generated/waterx_perp/user_account.ts";
-
 /**
- * Builds an `AccountRequest` for v2 account-management / referral / TTO calls.
- * - When `bucketAccount` is omitted: identity is the wallet sender (`account::request`).
- * - When provided: identity is the Bucket Account object address
- *   (`account::request_with_account(&Account)`), so shared/multi-sig accounts can
- *   own UserAccounts and act on coins under a different identity than `tx.sender`.
+ * Account-side builders for the `waterx_account` framework.
+ *
+ * In v3, `waterx_account` is the only account abstraction — `waterx_perp`
+ * stores per-account state under `ProtocolDataKey<WaterXPerp>()` on a wxa
+ * `Account` and uses witness-gated `take` / `put` for collateral.
+ *
+ * All builders that mutate the account pass `account::request()` or
+ * `account::request_with_account(&Account)` internally. To act through
+ * a Bucket `Account` object, pass `bucketAccount` (an object ID string
+ * or a `TransactionArgument`).
  */
-function createAccountRequest(
-  tx: Transaction,
-  bucketFrameworkPkg: string,
-  bucketAccount?: string | TransactionArgument,
-): TransactionArgument {
+
+import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+
+import type { WaterXClient } from "../client.ts";
+import {
+  request as accountRequest,
+  requestWithAccount as accountRequestWithAccount,
+} from "../generated/bucket_v2_framework/account.ts";
+import * as wxa from "../generated/waterx_account/account.ts";
+
+type BucketAccount = string | TransactionArgument | undefined;
+
+function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
   if (bucketAccount === undefined) {
-    const [request] = accountRequestCall({ package: bucketFrameworkPkg })(tx);
-    return request;
+    return accountRequest({})(tx) as unknown as TransactionArgument;
   }
-  const accountArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  const [request] = accountRequestWithAccountCall({
-    package: bucketFrameworkPkg,
-    arguments: { account: accountArg },
-  })(tx);
-  return request;
+  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
+  return accountRequestWithAccount({
+    arguments: { account: accArg as unknown as string },
+  })(tx) as unknown as TransactionArgument;
 }
 
-// ======== Create Account ========
+// ============================================================================
+// Create account
+// ============================================================================
 
 export interface CreateAccountParams {
-  /** Human-readable account name (max 32 chars). */
-  name: string;
-  /**
-   * Optional `bucket_v2_framework::account::Account` object id (or PTB arg) to use
-   * as the owner identity. When omitted, the new UserAccount is owned by the wallet
-   * sender. When provided, ownership is registered under the Bucket Account.
-   */
+  /** Alias / display name for the new account (max length checked on-chain). */
+  alias: string;
+  /** Optional Bucket Account to act through (otherwise tx.sender). */
   bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to create a named user account in the AccountRegistry.
- * Each owner identity can own up to 20 accounts.
- * Returns the new UserAccount object id as the MoveCall result.
- *
- * @param nameOrParams - Either a string `name` (v1 shape) or `{ name, bucketAccount? }`.
- */
+/** Build `waterx_account::create_account`. Returns the new account ID via Move return value. */
 export function createAccount(
   client: WaterXClient,
   tx: Transaction,
-  nameOrParams: string | CreateAccountParams,
-): TransactionArgument {
-  const params: CreateAccountParams =
-    typeof nameOrParams === "string" ? { name: nameOrParams } : nameOrParams;
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg, params.bucketAccount);
-  const [accountObjectId] = createAccountMoveCall({
-    package: client.config.packageId,
+  params: CreateAccountParams,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  wxa.createAccount({
+    package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: client.config.accountRegistry,
-      senderRequest,
-      name: params.name,
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      alias: params.alias,
     },
-  })(tx);
-  return accountObjectId;
-}
-
-// ======== TTO Deposit ========
-
-/**
- * Deposits a coin into a UserAccount via TTO.
- * Validates account exists on-chain via `user_account::transfer_coin`.
- *
- * @param accountObjectAddress - UserAccount object id
- * @param coin - Coin object ID or TransactionArgument to deposit
- * @param coinType - Full coin type string (e.g. "0x...::mock_usdc::MOCK_USDC")
- */
-export function transferToAccount(
-  client: WaterXClient,
-  tx: Transaction,
-  params: {
-    accountObjectAddress: string | TransactionArgument;
-    coin: string | TransactionObjectArgument;
-    coinType: string;
-  },
-): Transaction {
-  const coinArg = typeof params.coin === "string" ? tx.object(params.coin) : params.coin;
-  transferCoinMoveCall({
-    package: client.config.packageId,
-    arguments: {
-      registry: client.config.accountRegistry,
-      accountId: params.accountObjectAddress,
-      coin: coinArg,
-    },
-    typeArguments: [params.coinType],
-  })(tx);
-  return tx;
-}
-
-// ======== TTO Receive ========
-
-/**
- * Receives coins from a UserAccount via TTO. Merges multiple Receiving<Coin<T>>,
- * splits `amount` (or all if omitted), and returns the split coin as a PTB result.
- * Any remainder is transferred back to the account.
- * Requires PERM_WITHDRAW on the sender.
- *
- * @param params.accountObjectAddress - UserAccount object id
- * @param params.coins - Metadata of TTO-owned coins to receive (objectId/version/digest)
- * @param params.coinType - Full type string of the coin
- * @param params.amount - Optional amount to split (omit to take all)
- *
- * v1 shape `{ coinObjectId, coinVersion, coinDigest }` is also accepted for
- * backward compatibility — it's normalized into `coins: [{…}]` with
- * `amount` undefined (take all).
- */
-export function receiveCoin(
-  client: WaterXClient,
-  tx: Transaction,
-  params: {
-    accountObjectAddress: string;
-    coinType: string;
-    /** v2 shape — array of TTO coin handles. */
-    coins?: Array<{ objectId: string; version: string | bigint; digest: string }>;
-    amount?: bigint | number;
-    /** @deprecated v1 shape: a single coin. Use `coins: [{ objectId, version, digest }]`. */
-    coinObjectId?: string;
-    /** @deprecated v1 shape. */
-    coinVersion?: string | bigint;
-    /** @deprecated v1 shape. */
-    coinDigest?: string;
-  },
-): TransactionResult {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg);
-
-  // Accept the v1 single-coin shape as a shim.
-  const coins =
-    params.coins ??
-    (params.coinObjectId !== undefined
-      ? [
-          {
-            objectId: params.coinObjectId,
-            version: params.coinVersion ?? "0",
-            digest: params.coinDigest ?? "",
-          },
-        ]
-      : []);
-  if (coins.length === 0) {
-    throw new Error(
-      "receiveCoin: pass `coins: [{ objectId, version, digest }, ...]` (or the v1 `coinObjectId` / `coinVersion` / `coinDigest` triple).",
-    );
-  }
-
-  const toReceives = coins.map((c) =>
-    tx.receivingRef({
-      objectId: c.objectId,
-      version: String(c.version),
-      digest: c.digest,
-    }),
-  );
-  return receiveCoinWithAmountMoveCall({
-    package: client.config.packageId,
-    arguments: {
-      registry: client.config.accountRegistry,
-      senderRequest,
-      accountId: params.accountObjectAddress,
-      toReceives: tx.makeMoveVec({
-        elements: toReceives,
-        type: `0x2::transfer::Receiving<0x2::coin::Coin<${params.coinType}>>`,
-      }),
-      amountOpt:
-        params.amount !== undefined
-          ? tx.pure.option("u64", BigInt(params.amount))
-          : tx.pure.option("u64", null),
-    },
-    typeArguments: [params.coinType],
   })(tx);
 }
 
-// ======== Add Delegate ========
+// ============================================================================
+// Set alias
+// ============================================================================
+
+export interface SetAliasParams {
+  accountId: string;
+  alias: string;
+  bucketAccount?: string | TransactionArgument;
+}
+
+export function setAlias(client: WaterXClient, tx: Transaction, params: SetAliasParams): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  wxa.setAlias({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      alias: params.alias,
+    },
+  })(tx);
+}
+
+// ============================================================================
+// Delegate management
+// ============================================================================
 
 export interface AddDelegateParams {
-  /** UserAccount object id (or PTB result from `createAccount`) */
-  accountObjectAddress: string | TransactionArgument;
-  /** Delegate address to add */
-  delegate: string;
-  /** Permission bitmask (use PERM_* constants) */
+  accountId: string;
+  delegateAddress: string;
+  alias: string;
+  /** Bitmask matching `waterx_account` permission constants. */
   permissions: number;
+  /** Optional millisecond timestamp at which the delegate expires. */
+  expiresAtMs?: bigint | number;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to add a delegate with specific permissions to an account.
- * Only the owner can add delegates. If the delegate already exists, permissions are updated.
- */
 export function addDelegate(
   client: WaterXClient,
   tx: Transaction,
   params: AddDelegateParams,
-): Transaction {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  addDelegateMoveCall({
-    package: client.config.packageId,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  wxa.addDelegate({
+    package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: client.config.accountRegistry,
-      senderRequest,
-      accountId: params.accountObjectAddress,
-      delegate: params.delegate,
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      delegateAddress: params.delegateAddress,
+      alias: params.alias,
       permissions: params.permissions,
+      expiresAtMs: params.expiresAtMs ?? null,
     },
   })(tx);
-  return tx;
 }
-
-// ======== Remove Delegate ========
 
 export interface RemoveDelegateParams {
-  /** UserAccount object id (or PTB result from `createAccount`) */
-  accountObjectAddress: string | TransactionArgument;
-  /** Delegate address to remove */
-  delegate: string;
+  accountId: string;
+  delegateAddress: string;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to remove a delegate from a specific account.
- * Only the owner can remove delegates.
- */
 export function removeDelegate(
   client: WaterXClient,
   tx: Transaction,
   params: RemoveDelegateParams,
-): Transaction {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  removeDelegateMoveCall({
-    package: client.config.packageId,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  wxa.removeDelegate({
+    package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: client.config.accountRegistry,
-      senderRequest,
-      accountId: params.accountObjectAddress,
-      delegate: params.delegate,
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      delegateAddress: params.delegateAddress,
     },
   })(tx);
-  return tx;
 }
 
-// ======== Update Delegate Permissions ========
-
-export interface UpdateDelegatePermissionsParams {
-  /** UserAccount object id (or PTB result from `createAccount`) */
-  accountObjectAddress: string | TransactionArgument;
-  /** Delegate address */
-  delegate: string;
-  /** New permission bitmask */
-  newPermissions: number;
+export interface SetDelegateProtocolPermissionParams {
+  accountId: string;
+  delegateAddress: string;
+  /** Bitmask of per-protocol permissions (e.g. perm_open_position | perm_close_position). */
+  permissions: number;
+  /** Fully-qualified Move type of the protocol witness (e.g. `0x…::account_data::WaterXPerp`). */
+  protocolType: string;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to update permissions for an existing delegate.
- * Only the owner can update permissions.
- */
-export function updateDelegatePermissions(
+export function setDelegateProtocolPermission(
   client: WaterXClient,
   tx: Transaction,
-  params: UpdateDelegatePermissionsParams,
-): Transaction {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const senderRequest = createAccountRequest(tx, fwPkg);
-  updateDelegatePermissionsMoveCall({
-    package: client.config.packageId,
+  params: SetDelegateProtocolPermissionParams,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  wxa.setDelegateProtocolPermission({
+    package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: client.config.accountRegistry,
-      senderRequest,
-      accountId: params.accountObjectAddress,
-      delegate: params.delegate,
-      newPermissions: params.newPermissions,
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      delegateAddress: params.delegateAddress,
+      permissions: params.permissions,
     },
+    typeArguments: [params.protocolType],
   })(tx);
-  return tx;
+}
+
+// ============================================================================
+// Deposit policy flow (request_deposit → consume_deposit → put)
+// ============================================================================
+
+export interface RequestDepositParams {
+  /** wxa account ID receiving the deposit. */
+  accountId: string;
+  /** Coin or coin transaction argument to deposit. */
+  coin: TransactionArgument;
+  /** Fully-qualified coin type. */
+  coinType: string;
+  /** Optional opaque extra data forwarded to the policy. */
+  extraData?: Uint8Array;
+}
+
+/** Build `account::request_deposit<T>`. Returns the `DepositRequest<T>` argument. */
+export function requestDeposit(
+  client: WaterXClient,
+  tx: Transaction,
+  params: RequestDepositParams,
+): TransactionArgument {
+  const [req] = wxa.requestDeposit({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      accountId: params.accountId,
+      coin: params.coin as unknown as string,
+      extraData: Array.from(params.extraData ?? new Uint8Array()),
+    },
+    typeArguments: [params.coinType],
+  })(tx);
+  return req as unknown as TransactionArgument;
+}
+
+// ============================================================================
+// Withdraw policy flow (request_withdraw → consume_withdraw → policy)
+// ============================================================================
+
+export interface RequestWithdrawParams {
+  accountId: string;
+  amount: bigint | number;
+  /** Recipient for the eventual coin payout (policy decides exact mechanics). */
+  recipient: string;
+  /** Fully-qualified coin type. */
+  coinType: string;
+  /** Optional opaque extra data forwarded to the policy. */
+  extraData?: Uint8Array;
+  bucketAccount?: string | TransactionArgument;
+}
+
+/** Build `account::request_withdraw<T>`. Returns the `WithdrawRequest<T>` argument. */
+export function requestWithdraw(
+  client: WaterXClient,
+  tx: Transaction,
+  params: RequestWithdrawParams,
+): TransactionArgument {
+  const req = senderRequest(tx, params.bucketAccount);
+  const [out] = wxa.requestWithdraw({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      amount: params.amount,
+      recipient: params.recipient,
+      extraData: Array.from(params.extraData ?? new Uint8Array()),
+    },
+    typeArguments: [params.coinType],
+  })(tx);
+  return out as unknown as TransactionArgument;
+}
+
+// ============================================================================
+// Direct coin transfer to an account (validates account exists)
+// ============================================================================
+
+export interface TransferToAccountParams {
+  accountId: string;
+  coin: TransactionArgument;
+  coinType: string;
+}
+
+export function transferToAccount(
+  client: WaterXClient,
+  tx: Transaction,
+  params: TransferToAccountParams,
+): void {
+  wxa.transferCoin({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      accountId: params.accountId,
+      coin: params.coin as unknown as string,
+    },
+    typeArguments: [params.coinType],
+  })(tx);
 }

@@ -1,226 +1,74 @@
 /**
  * WaterX Protocol client.
  *
- * Uses SuiGrpcClient (gRPC) for all operations including simulateTransaction.
- * JSON-RPC is not used (deprecated July 2026).
+ * Initialization is async — config is fetched from the canonical
+ * `waterx-config` JSON (default: GitHub raw). See `WaterXClient.create()`.
  */
 
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
 
 import {
-  MAINNET_COLLATERALS,
-  MAINNET_MARKETS,
-  MAINNET_OBJECTS,
-  MAINNET_PACKAGE_IDS,
-  MAINNET_TYPES,
-  PYTH_HERMES_ENDPOINT,
-  PYTH_STATE_ID,
-  PYTH_WORMHOLE_STATE_ID,
-  TESTNET_COLLATERALS,
-  TESTNET_MARKETS,
-  TESTNET_OBJECTS,
-  TESTNET_PACKAGE_IDS,
-  TESTNET_TYPES,
-  type BaseAsset,
-  type CollateralAsset,
-  type ExtendedBaseAsset,
-  type LegacyBaseAsset,
-  type Network,
-} from "./constants.ts";
-import type { PythConfig } from "./utils/pyth.ts";
+  loadConfig,
+  PYTH_DEFAULTS,
+  type LoadConfigOptions,
+  type PythInfraConfig,
+  type WaterXConfig,
+} from "./config.ts";
+import type { Network } from "./constants.ts";
 
 // ======== gRPC base URLs by network ========
 
-const GRPC_URLS: Record<string, string> = {
-  mainnet: "https://fullnode.mainnet.sui.io:443",
-  testnet: "https://fullnode.testnet.sui.io:443",
+const DEFAULT_GRPC_URLS: Record<Network, string> = {
+  MAINNET: "https://fullnode.mainnet.sui.io:443",
+  TESTNET: "https://fullnode.testnet.sui.io:443",
 };
 
-// ======== Config ========
-
-/** Per-market config: object IDs and token type. */
-export interface MarketEntry {
-  /** Market<BASE_TOKEN, LP_TOKEN> shared object ID */
-  marketId: string;
-  /** PriceAggregator<BASE_TOKEN> object ID */
-  aggregatorId: string;
-  /** Pyth PriceInfoObject ID */
-  priceInfoId: string;
-  /** Fully-qualified Move type string for the base token */
-  baseType: string;
-  /** Pyth price feed key (e.g. "BTC/USD") */
-  feedKey: string;
-}
-
-export interface WaterXConfig {
-  network: Network;
-  /** gRPC base URL (default: public Mysten fullnode) */
+export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
-  /** waterx_perp package ID */
-  packageId: string;
-  /** reward_distributor package ID */
-  rewardDistributorPackageId?: string;
-  /** Shared RewardDistributor object ID */
-  rewardDistributorId?: string;
-  /** Default reward token types for the reward distributor */
-  rewardDistributorRewardTokenTypes?: string[];
-  /** bucket_oracle package ID */
-  bucketOraclePackageId?: string;
-  /** bucket_framework package ID */
-  bucketFrameworkPackageId?: string;
-  /** pyth_rule package ID (testnet/mainnet) */
-  pythRulePackageId: string;
-  /** pyth_rule Config object ID (testnet/mainnet) */
-  pythRuleConfigId: string;
-  /** pyth_sponsor_rule package ID */
-  pythSponsorRulePackageId?: string;
-  /** Shared PythSponsor object ID */
-  pythSponsorId?: string;
-
-  /** Shared GlobalConfig object ID */
-  globalConfig: string;
-  /** Shared ReferralTable object ID */
-  referralTable: string;
-  /** Shared AccountRegistry object ID */
-  accountRegistry: string;
-  /** Shared WlpPool object ID */
-  wlpPool: string;
-
-  /**
-   * Markets keyed by base asset symbol. The 13 legacy markets are guaranteed
-   * present on every network; the 200K-tier batch (`ExtendedBaseAsset`) is
-   * mainnet-only, so those keys are optional.
-   */
-  markets: Record<LegacyBaseAsset, MarketEntry> & Partial<Record<ExtendedBaseAsset, MarketEntry>>;
-
-  /** Collateral token configs keyed by CollateralAsset */
-  collaterals: Record<
-    CollateralAsset,
-    {
-      type: string;
-      aggregatorId: string;
-      priceInfoId: string;
-      feedKey: string;
-    }
-  >;
-
-  wlpType: string;
-
-  /** @deprecated v2: read `collaterals.USDC.aggregatorId`. Retained as an alias. */
-  usdcAggregator?: string;
-  /** @deprecated v2: read `collaterals.USDC.priceInfoId`. Retained as an alias. */
-  usdcPriceInfoId?: string;
-  /** @deprecated v2: read `collaterals.USDC.type`. Retained as an alias. */
-  usdcType?: string;
-
-  /** Pyth oracle config (testnet/mainnet) */
-  pythConfig?: PythConfig;
 }
-
-/**
- * Creates a testnet config using deployed object IDs.
- * Uses real Pyth oracle (no mock prices).
- */
-export function createTestnetConfig(): WaterXConfig {
-  return {
-    network: "TESTNET",
-    packageId: TESTNET_PACKAGE_IDS.WATERX_PERP,
-    rewardDistributorPackageId: TESTNET_PACKAGE_IDS.REWARD_DISTRIBUTOR,
-    bucketOraclePackageId: TESTNET_PACKAGE_IDS.BUCKET_ORACLE,
-    bucketFrameworkPackageId: TESTNET_PACKAGE_IDS.BUCKET_FRAMEWORK,
-    pythRulePackageId: TESTNET_PACKAGE_IDS.PYTH_RULE,
-    pythRuleConfigId: TESTNET_OBJECTS.PYTH_RULE_CONFIG,
-    pythSponsorRulePackageId: TESTNET_PACKAGE_IDS.PYTH_SPONSOR_RULE,
-    pythSponsorId: TESTNET_OBJECTS.PYTH_SPONSOR,
-    globalConfig: TESTNET_OBJECTS.GLOBAL_CONFIG,
-    referralTable: TESTNET_OBJECTS.REFERRAL_TABLE,
-    accountRegistry: TESTNET_OBJECTS.ACCOUNT_REGISTRY,
-    wlpPool: TESTNET_OBJECTS.WLP_POOL,
-    rewardDistributorId: TESTNET_OBJECTS.REWARD_DISTRIBUTOR,
-    markets: TESTNET_MARKETS,
-    collaterals: TESTNET_COLLATERALS,
-    // v1 aliases (deprecated — prefer `collaterals.USDC.*`)
-    usdcAggregator: TESTNET_COLLATERALS.USDC.aggregatorId,
-    usdcPriceInfoId: TESTNET_COLLATERALS.USDC.priceInfoId,
-    usdcType: TESTNET_COLLATERALS.USDC.type,
-    wlpType: TESTNET_TYPES.WLP,
-    rewardDistributorRewardTokenTypes: [TESTNET_TYPES.SUI],
-    pythConfig: {
-      pythStateId: PYTH_STATE_ID.TESTNET,
-      wormholeStateId: PYTH_WORMHOLE_STATE_ID.TESTNET,
-      hermesEndpoint: PYTH_HERMES_ENDPOINT.TESTNET,
-    },
-  };
-}
-
-/**
- * Creates a mainnet config using deployed object IDs.
- */
-export function createMainnetConfig(): WaterXConfig {
-  return {
-    network: "MAINNET",
-    packageId: MAINNET_PACKAGE_IDS.WATERX_PERP,
-    rewardDistributorPackageId: MAINNET_PACKAGE_IDS.REWARD_DISTRIBUTOR,
-    bucketOraclePackageId: MAINNET_PACKAGE_IDS.BUCKET_ORACLE,
-    bucketFrameworkPackageId: MAINNET_PACKAGE_IDS.BUCKET_FRAMEWORK,
-    pythRulePackageId: MAINNET_PACKAGE_IDS.PYTH_RULE,
-    pythRuleConfigId: MAINNET_OBJECTS.PYTH_RULE_CONFIG,
-    pythSponsorRulePackageId: MAINNET_PACKAGE_IDS.PYTH_SPONSOR_RULE,
-    pythSponsorId: MAINNET_OBJECTS.PYTH_SPONSOR,
-    globalConfig: MAINNET_OBJECTS.GLOBAL_CONFIG,
-    referralTable: MAINNET_OBJECTS.REFERRAL_TABLE,
-    accountRegistry: MAINNET_OBJECTS.ACCOUNT_REGISTRY,
-    wlpPool: MAINNET_OBJECTS.WLP_POOL,
-    rewardDistributorId: MAINNET_OBJECTS.REWARD_DISTRIBUTOR,
-    markets: MAINNET_MARKETS,
-    collaterals: MAINNET_COLLATERALS,
-    usdcAggregator: MAINNET_COLLATERALS.USDC.aggregatorId,
-    usdcPriceInfoId: MAINNET_COLLATERALS.USDC.priceInfoId,
-    usdcType: MAINNET_COLLATERALS.USDC.type,
-    wlpType: MAINNET_TYPES.WLP,
-    rewardDistributorRewardTokenTypes: [MAINNET_TYPES.SUI],
-    pythConfig: {
-      pythStateId: PYTH_STATE_ID.MAINNET,
-      wormholeStateId: PYTH_WORMHOLE_STATE_ID.MAINNET,
-      hermesEndpoint: PYTH_HERMES_ENDPOINT.MAINNET,
-    },
-  };
-}
-
-// ======== Client ========
 
 export class WaterXClient {
-  /** gRPC client — all operations. */
+  /** gRPC client — all RPC including `simulateTransaction`. */
   grpcClient: SuiGrpcClient;
+  /** Network identifier in upper case (`MAINNET` / `TESTNET`). */
+  network: Network;
+  /** Parsed canonical `waterx-config` JSON. */
   config: WaterXConfig;
+  /** Pyth + Wormhole infra (network defaults unless overridden in JSON). */
+  pyth: PythInfraConfig;
 
-  constructor(config: WaterXConfig) {
+  constructor(network: Network, config: WaterXConfig, opts: { grpcUrl?: string } = {}) {
+    this.network = network;
     this.config = config;
-    const net = config.network.toLowerCase() as "mainnet" | "testnet";
+    this.pyth = config.pyth ?? PYTH_DEFAULTS[network];
 
+    const grpcUrl = opts.grpcUrl ?? config.grpcUrl ?? DEFAULT_GRPC_URLS[network];
     this.grpcClient = new SuiGrpcClient({
-      baseUrl: config.grpcUrl ?? GRPC_URLS[net],
-      network: net,
+      baseUrl: grpcUrl,
+      network: network.toLowerCase() as "mainnet" | "testnet",
     });
   }
 
-  /** Creates a WaterXClient configured for mainnet. */
-  static mainnet(opts?: { grpcUrl?: string }): WaterXClient {
-    const config = createMainnetConfig();
-    if (opts?.grpcUrl) config.grpcUrl = opts.grpcUrl;
-    return new WaterXClient(config);
+  /**
+   * Async factory: fetches the deployment config for `network` and returns
+   * a ready-to-use client. Pass `opts.cache=true` to memoize the JSON.
+   */
+  static async create(network: Network, opts: CreateClientOptions = {}): Promise<WaterXClient> {
+    const config = await loadConfig(network, opts);
+    return new WaterXClient(network, config, { grpcUrl: opts.grpcUrl });
   }
 
-  /** Creates a WaterXClient configured for testnet. */
-  static testnet(opts?: { grpcUrl?: string }): WaterXClient {
-    const config = createTestnetConfig();
-    if (opts?.grpcUrl) config.grpcUrl = opts.grpcUrl;
-    return new WaterXClient(config);
+  static mainnet(opts: CreateClientOptions = {}): Promise<WaterXClient> {
+    return WaterXClient.create("MAINNET", opts);
+  }
+
+  static testnet(opts: CreateClientOptions = {}): Promise<WaterXClient> {
+    return WaterXClient.create("TESTNET", opts);
   }
 
   // ========================================================
-  // gRPC convenience wrappers (primary path)
+  // gRPC convenience wrappers
   // ========================================================
 
   getObject(objectId: string) {
@@ -255,24 +103,12 @@ export class WaterXClient {
     return this.grpcClient.waitForTransaction({ digest });
   }
 
-  // ========================================================
-  // simulateTransaction (gRPC — returns Move return values)
-  // ========================================================
-
-  /**
-   * Simulates a transaction via gRPC and returns results including
-   * Move return values (commandResults). Replaces JSON-RPC devInspect.
-   */
   async simulate(tx: Transaction) {
     return this.grpcClient.simulateTransaction({
       transaction: tx,
       include: { commandResults: true },
     });
   }
-
-  // ========================================================
-  // Transaction execution (gRPC primary)
-  // ========================================================
 
   async signAndExecuteTransaction(params: {
     signer: {
@@ -284,47 +120,52 @@ export class WaterXClient {
   }
 
   // ========================================================
-  // Market / token helpers
+  // Shorthand accessors (canonical-schema lookups)
   // ========================================================
 
-  /** Returns all supported base assets with their coin types. */
-  getBaseAssets(): { asset: BaseAsset; coinType: string }[] {
-    return (Object.entries(this.config.markets) as [BaseAsset, MarketEntry][]).map(
-      ([asset, entry]) => ({ asset, coinType: entry.baseType }),
-    );
-  }
-
-  /** Returns all supported collateral assets with their coin types. */
-  getCollateralAssets(): { asset: CollateralAsset; coinType: string }[] {
-    return (Object.entries(this.config.collaterals) as [CollateralAsset, { type: string }][]).map(
-      ([asset, entry]) => ({ asset, coinType: entry.type }),
-    );
-  }
-
-  /** Returns the MarketEntry for a given base asset symbol. */
-  getMarketEntry(base: BaseAsset): MarketEntry {
-    const entry = this.config.markets[base];
-    if (!entry) throw new Error(`Unknown base asset: ${base}`);
-    return entry;
-  }
-
-  /** Returns the Market object ID for a given base asset symbol. */
-  getMarket(base: BaseAsset): string {
-    return this.getMarketEntry(base).marketId;
-  }
-
-  /** Returns the collateral config for a given CollateralAsset. */
-  getCollateral(collateral: CollateralAsset = "USDC") {
-    const entry = this.config.collaterals[collateral];
-    if (!entry || !entry.type) throw new Error(`Unknown collateral asset: ${collateral}`);
-    return entry;
-  }
-
-  /** Returns the PriceAggregator object ID for a given base asset or collateral. */
-  getAggregator(tokenOrBase: BaseAsset | CollateralAsset): string {
-    if (tokenOrBase in this.config.collaterals) {
-      return this.getCollateral(tokenOrBase as CollateralAsset).aggregatorId;
+  /** All package IDs (`published_at`) keyed by package name. */
+  packageIds(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [name, pkg] of Object.entries(this.config.packages)) {
+      if (pkg && typeof pkg === "object" && "published_at" in pkg && pkg.published_at) {
+        out[name] = (pkg as { published_at: string }).published_at;
+      }
     }
-    return this.getMarketEntry(tokenOrBase as BaseAsset).aggregatorId;
+    return out;
+  }
+
+  /** `waterx_perp.markets[ticker]`, throws if unknown. */
+  getMarket(ticker: string) {
+    const m = this.config.packages.waterx_perp?.markets?.[ticker];
+    if (!m) throw new Error(`Unknown market ticker: ${ticker}`);
+    return m;
+  }
+
+  /** `waterx_oracle.aggregators[ticker]`, throws if unknown. */
+  getAggregator(ticker: string): string {
+    const a = this.config.packages.waterx_oracle?.aggregators?.[ticker];
+    if (!a) throw new Error(`No aggregator listed for ticker: ${ticker}`);
+    return a;
+  }
+
+  /** `pyth_rule.feeds[ticker]`, throws if unknown. */
+  getPythFeed(ticker: string) {
+    const f = this.config.packages.pyth_rule?.feeds?.[ticker];
+    if (!f) throw new Error(`No pyth feed listed for ticker: ${ticker}`);
+    return f;
+  }
+
+  /** `wlp.pool_tokens[ticker]` (fully-qualified Move type), throws if unknown. */
+  getPoolTokenType(ticker: string): string {
+    const t = this.config.packages.wlp?.pool_tokens?.[ticker];
+    if (!t) throw new Error(`No pool token registered for ticker: ${ticker}`);
+    return t;
+  }
+
+  /** Fully-qualified WLP coin type derived from `wlp.original_id`. */
+  wlpType(): string {
+    const w = this.config.packages.wlp;
+    if (!w?.original_id) throw new Error("wlp.original_id missing from config");
+    return `${w.original_id}::wlp::WLP`;
   }
 }

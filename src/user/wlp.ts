@@ -1,198 +1,194 @@
-import {
-  Transaction,
-  type TransactionArgument,
-  type TransactionObjectArgument,
-} from "@mysten/sui/transactions";
+/**
+ * WLP pool builders for `waterx_perp::lp_pool`.
+ *
+ * Auth + collateral flow goes through `waterx_account::take`/`put` —
+ * the user must have already deposited the input asset into their wxa
+ * account (use `requestDeposit` from `./account.ts`).
+ *
+ * `mintWlp` / `settleRedeem` require fresh oracle prices; call
+ * `refreshOraclePrices` (see `utils/pyth.ts`) for every pool token
+ * before invoking these builders in the same PTB.
+ */
 
-import { WaterXClient } from "../client.ts";
+import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+
+import type { WaterXClient } from "../client.ts";
 import {
-  request as accountRequestCall,
-  requestWithAccount as accountRequestWithAccountCall,
+  request as accountRequest,
+  requestWithAccount as accountRequestWithAccount,
 } from "../generated/bucket_v2_framework/account.ts";
-import {
-  cancelRedeem as cancelRedeemCall,
-  mintWlp as mintWlpCall,
-  requestRedeem as requestRedeemCall,
-  settleRedeem as settleRedeemCall,
-} from "../generated/waterx_perp/lp_pool.ts";
+import * as lp from "../generated/waterx_perp/lp_pool.ts";
 
-// ======== Mint WLP ========
+type BucketAccount = string | TransactionArgument | undefined;
 
-export interface MintWlpCoinParams {
-  /** Token type being deposited (e.g., USDC type) */
+function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
+  if (bucketAccount === undefined) {
+    return accountRequest({})(tx) as unknown as TransactionArgument;
+  }
+  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
+  return accountRequestWithAccount({
+    arguments: { account: accArg as unknown as string },
+  })(tx) as unknown as TransactionArgument;
+}
+
+// ============================================================================
+// mint_wlp
+// ============================================================================
+
+export interface MintWlpParams {
+  /** wxa account holding the input balance and receiving the minted WLP. */
+  accountId: string;
+  /** Input asset coin type (e.g. USDC). */
   depositTokenType: string;
-  /** LP token type (WLP type) */
-  lpTokenType: string;
-  /** Coin<TOKEN> object ID or TransactionArgument */
-  depositCoin: string | TransactionArgument;
-  /** PriceResult<TOKEN> for the deposit token */
-  priceResult: TransactionArgument;
-  /** Minimum LP tokens to receive (slippage protection) */
+  /** Defaults to `client.wlpType()`. */
+  lpType?: string;
+  /** Amount of `depositTokenType` to draw from the wxa account. */
+  depositAmount: bigint | number;
+  /** Slippage floor for minted LP amount. */
   minLpAmount: bigint | number;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to mint WLP tokens and returns the minted Coin<LP_TOKEN>
- * so it can be used by later commands in the same PTB.
- */
-export function mintWlpCoin(
-  client: WaterXClient,
-  tx: Transaction,
-  params: MintWlpCoinParams,
-): TransactionObjectArgument {
-  const depositCoinArg =
-    typeof params.depositCoin === "string" ? tx.object(params.depositCoin) : params.depositCoin;
-
-  const [lpCoin] = mintWlpCall({
-    package: client.config.packageId,
+export function mintWlp(client: WaterXClient, tx: Transaction, params: MintWlpParams): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  lp.mintWlp({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: client.config.wlpPool,
-      globalConfig: client.config.globalConfig,
-      deposit: depositCoinArg,
-      priceResult: params.priceResult,
-      minLpAmount: BigInt(params.minLpAmount),
+      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
+      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      aum: tx.object(requireWlpAum(client)),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      depositAmount: params.depositAmount,
+      minLpAmount: params.minLpAmount,
+      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
     },
-    typeArguments: [params.lpTokenType, params.depositTokenType],
+    typeArguments: [params.lpType ?? client.wlpType(), params.depositTokenType],
   })(tx);
-
-  return lpCoin;
 }
 
-export interface MintWlpParams extends MintWlpCoinParams {
-  /** Recipient address for the minted WLP tokens */
-  recipient: string;
+function requireWlpAum(client: WaterXClient): string {
+  const aum = client.config.packages.wlp.wlp_aum;
+  if (!aum) {
+    throw new Error("wlp.wlp_aum is not configured — mintWlp/settleRedeem require WlpAum");
+  }
+  return aum;
 }
 
-/**
- * Builds a transaction to mint WLP tokens by depositing a token.
- * Mint is instant. The minted WLP is transferred to the recipient.
- */
-export function mintWlp(client: WaterXClient, tx: Transaction, params: MintWlpParams): Transaction {
-  const lpCoin = mintWlpCoin(client, tx, params);
-  tx.transferObjects([lpCoin], params.recipient);
-  return tx;
-}
-
-// ======== Request Redeem WLP ========
+// ============================================================================
+// request_redeem
+// ============================================================================
 
 export interface RequestRedeemWlpParams {
-  /** Token type to receive on redeem */
+  accountId: string;
+  /** Defaults to `client.wlpType()`. */
+  lpType?: string;
+  /** Token type to settle the redeem into (must match `lp_pool` settings). */
   redeemTokenType: string;
-  /** LP token type (WLP type) */
-  lpTokenType: string;
-  /** Coin<LP_TOKEN> object ID or TransactionArgument */
-  lpCoin: string | TransactionArgument;
-  /** Recipient address for the redeemed tokens */
-  recipient: string;
+  /** Amount of LP tokens to enqueue. */
+  lpAmount: bigint | number;
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to request a WLP redeem (T+1 settlement).
- * The WLP is burned immediately; the underlying token is claimable after 24h.
- * Returns the redeem request ID.
- */
 export function requestRedeemWlp(
   client: WaterXClient,
   tx: Transaction,
   params: RequestRedeemWlpParams,
-): Transaction {
-  const lpCoinArg = typeof params.lpCoin === "string" ? tx.object(params.lpCoin) : params.lpCoin;
-
-  requestRedeemCall({
-    package: client.config.packageId,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  lp.requestRedeem({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: client.config.wlpPool,
-      globalConfig: client.config.globalConfig,
-      lpCoin: lpCoinArg,
-      recipient: params.recipient,
+      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
+      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      lpAmount: params.lpAmount,
     },
-    typeArguments: [params.lpTokenType, params.redeemTokenType],
+    typeArguments: [params.lpType ?? client.wlpType(), params.redeemTokenType],
   })(tx);
-  return tx;
 }
 
-// ======== Cancel Redeem WLP ========
+// ============================================================================
+// cancel_redeem
+// ============================================================================
 
 export interface CancelRedeemWlpParams {
-  /** LP token type (WLP type) */
-  lpTokenType: string;
-  /** Redeem request ID */
   requestId: bigint | number;
-  /**
-   * Optional Bucket framework `Account` object ID (or PTB arg). When set, the
-   * sender request is built via `account::request_with_account(&Account)` so
-   * the identity is the Account object address. Use this when the original
-   * `request_redeem` recipient was a Bucket Account (shared / multi-sig).
-   * Defaults to wallet sender.
-   */
+  lpType?: string;
   bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Cancels a pending WLP redeem request and returns the recovered `Coin<WLP>`
- * so it can be re-staked or transferred in the same PTB.
- */
 export function cancelRedeemWlp(
   client: WaterXClient,
   tx: Transaction,
   params: CancelRedeemWlpParams,
-): TransactionObjectArgument {
-  const fwPkg = client.config.bucketFrameworkPackageId!;
-  const [senderRequest] = params.bucketAccount
-    ? accountRequestWithAccountCall({
-        package: fwPkg,
-        arguments: {
-          account:
-            typeof params.bucketAccount === "string"
-              ? tx.object(params.bucketAccount)
-              : params.bucketAccount,
-        },
-      })(tx)
-    : accountRequestCall({ package: fwPkg })(tx);
-
-  const [lpCoin] = cancelRedeemCall({
-    package: client.config.packageId,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  lp.cancelRedeem({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: client.config.wlpPool,
-      senderRequest,
-      requestId: BigInt(params.requestId),
+      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
+      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      requestId: params.requestId,
     },
-    typeArguments: [params.lpTokenType],
+    typeArguments: [params.lpType ?? client.wlpType()],
   })(tx);
-  return lpCoin;
 }
 
-// ======== Settle Redeem WLP ========
+// ============================================================================
+// settle_redeem (operator-side)
+// ============================================================================
 
 export interface SettleRedeemWlpParams {
-  /** LP token type (WLP type) */
-  lpTokenType: string;
-  /** Token type to receive on settlement */
-  redeemTokenType: string;
-  /** Redeem request ID */
   requestId: bigint | number;
-  /** PriceResult<TOKEN> for the redeem token */
-  priceResult: TransactionArgument;
+  redeemTokenType: string;
+  lpType?: string;
+  /** Optional Bucket Account for the operator caller. */
+  bucketAccount?: string | TransactionArgument;
 }
 
-/**
- * Builds a transaction to settle a pending WLP redeem request.
- * Can only be called after the settlement period (T+1).
- */
 export function settleRedeemWlp(
   client: WaterXClient,
   tx: Transaction,
   params: SettleRedeemWlpParams,
-): Transaction {
-  settleRedeemCall({
-    package: client.config.packageId,
+): void {
+  const req = senderRequest(tx, params.bucketAccount);
+  lp.settleRedeem({
+    package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: client.config.wlpPool,
-      globalConfig: client.config.globalConfig,
-      requestId: BigInt(params.requestId),
-      priceResult: params.priceResult,
+      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
+      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      operatorRequest: req as unknown as string,
+      aum: tx.object(requireWlpAum(client)),
+      requestId: params.requestId,
+      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
     },
-    typeArguments: [params.lpTokenType, params.redeemTokenType],
+    typeArguments: [params.lpType ?? client.wlpType(), params.redeemTokenType],
   })(tx);
-  return tx;
+}
+
+// ============================================================================
+// update_token_value (housekeeping — refresh per-token TVL)
+// ============================================================================
+
+/** Recompute one token pool's TVL using the current Oracle price. */
+export function updateTokenValue(
+  client: WaterXClient,
+  tx: Transaction,
+  args: { tokenType: string; lpType?: string },
+): void {
+  lp.updateTokenValue({
+    package: client.config.packages.waterx_perp.published_at,
+    arguments: {
+      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+    },
+    typeArguments: [args.lpType ?? client.wlpType(), args.tokenType],
+  })(tx);
 }

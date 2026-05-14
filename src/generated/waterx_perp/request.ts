@@ -17,6 +17,21 @@ import * as float_1 from './deps/bucket_v2_framework/float.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as type_name from './deps/std/type_name.ts';
 const $moduleName = '@waterx/perp::request';
+export const PlaceOrderArgument = new MoveStruct({ name: `${$moduleName}::PlaceOrderArgument`, fields: {
+        is_long: bcs.bool(),
+        is_stop_order: bcs.bool(),
+        reduce_only: bcs.bool(),
+        /** Scaled Float (1e9) — converted internally. */
+        size: bcs.u128(),
+        /** `None` = market order (parked at tick 0). Pre-orders must be `Some`. */
+        trigger_price: bcs.option(bcs.u128()),
+        /** `None` = standalone. Pre-orders must be `None` (auto-linked at activation). */
+        linked_position_id: bcs.option(bcs.u64()),
+        /** Honored only on market orders. */
+        acceptable_price: bcs.option(bcs.u64()),
+        /** Collateral debited from the wxa account. Pre-orders must be `0`. */
+        collateral_amount: bcs.u64()
+    } });
 export const TradingRequest = new MoveStruct({ name: `${$moduleName}::TradingRequest<phantom C_TOKEN>`, fields: {
         market_id: bcs.Address,
         account_object_address: bcs.Address,
@@ -25,6 +40,7 @@ export const TradingRequest = new MoveStruct({ name: `${$moduleName}::TradingReq
         is_long: bcs.bool(),
         size: float.Float,
         collateral: balance.Balance,
+        order_id: bcs.option(bcs.u64()),
         position_id: bcs.option(bcs.u64()),
         trigger_price: bcs.option(float_1.Float),
         reduce_only: bcs.bool(),
@@ -38,8 +54,232 @@ export const TradingRequest = new MoveStruct({ name: `${$moduleName}::TradingReq
          * assert price >= acceptable_price.
          */
         acceptable_price: bcs.u64(),
+        /**
+         * TP / SL pre-orders carried alongside a place-order action. Empty for
+         * non-`ACTION_PLACE_ORDER` actions and for plain main orders.
+         */
+        pre_orders: bcs.vector(PlaceOrderArgument),
         witnesses: vec_set.VecSet(type_name.TypeName)
     } });
+export interface NewPlaceOrderArgumentArguments {
+    isLong: RawTransactionArgument<boolean>;
+    isStopOrder: RawTransactionArgument<boolean>;
+    reduceOnly: RawTransactionArgument<boolean>;
+    size: RawTransactionArgument<number | bigint>;
+    triggerPrice: RawTransactionArgument<number | bigint | null>;
+    linkedPositionId: RawTransactionArgument<number | bigint | null>;
+    acceptablePrice: RawTransactionArgument<number | bigint | null>;
+    collateralAmount: RawTransactionArgument<number | bigint>;
+}
+export interface NewPlaceOrderArgumentOptions {
+    package?: string;
+    arguments: NewPlaceOrderArgumentArguments | [
+        isLong: RawTransactionArgument<boolean>,
+        isStopOrder: RawTransactionArgument<boolean>,
+        reduceOnly: RawTransactionArgument<boolean>,
+        size: RawTransactionArgument<number | bigint>,
+        triggerPrice: RawTransactionArgument<number | bigint | null>,
+        linkedPositionId: RawTransactionArgument<number | bigint | null>,
+        acceptablePrice: RawTransactionArgument<number | bigint | null>,
+        collateralAmount: RawTransactionArgument<number | bigint>
+    ];
+}
+export function newPlaceOrderArgument(options: NewPlaceOrderArgumentOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        'bool',
+        'bool',
+        'bool',
+        'u128',
+        '0x1::option::Option<u128>',
+        '0x1::option::Option<u64>',
+        '0x1::option::Option<u64>',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["isLong", "isStopOrder", "reduceOnly", "size", "triggerPrice", "linkedPositionId", "acceptablePrice", "collateralAmount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'new_place_order_argument',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgIsLongArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgIsLongOptions {
+    package?: string;
+    arguments: ArgIsLongArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argIsLong(options: ArgIsLongOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_is_long',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgIsStopOrderArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgIsStopOrderOptions {
+    package?: string;
+    arguments: ArgIsStopOrderArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argIsStopOrder(options: ArgIsStopOrderOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_is_stop_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgReduceOnlyArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgReduceOnlyOptions {
+    package?: string;
+    arguments: ArgReduceOnlyArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argReduceOnly(options: ArgReduceOnlyOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_reduce_only',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgSizeArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgSizeOptions {
+    package?: string;
+    arguments: ArgSizeArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argSize(options: ArgSizeOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_size',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgTriggerPriceArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgTriggerPriceOptions {
+    package?: string;
+    arguments: ArgTriggerPriceArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argTriggerPrice(options: ArgTriggerPriceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_trigger_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgLinkedPositionIdArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgLinkedPositionIdOptions {
+    package?: string;
+    arguments: ArgLinkedPositionIdArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argLinkedPositionId(options: ArgLinkedPositionIdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_linked_position_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgAcceptablePriceArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgAcceptablePriceOptions {
+    package?: string;
+    arguments: ArgAcceptablePriceArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argAcceptablePrice(options: ArgAcceptablePriceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_acceptable_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ArgCollateralAmountArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface ArgCollateralAmountOptions {
+    package?: string;
+    arguments: ArgCollateralAmountArguments | [
+        self: RawTransactionArgument<string>
+    ];
+}
+export function argCollateralAmount(options: ArgCollateralAmountOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'arg_collateral_amount',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface AddWitnessArguments<W extends BcsType<any>> {
     self: RawTransactionArgument<string>;
     Witness: RawTransactionArgument<W>;
@@ -279,6 +519,32 @@ export function depositAmount(options: DepositAmountOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface OrderIdArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface OrderIdOptions {
+    package?: string;
+    arguments: OrderIdArguments | [
+        self: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function orderId(options: OrderIdOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'order_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface PositionIdArguments {
     self: RawTransactionArgument<string>;
 }
@@ -487,6 +753,32 @@ export function acceptablePrice(options: AcceptablePriceOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface PreOrdersArguments {
+    self: RawTransactionArgument<string>;
+}
+export interface PreOrdersOptions {
+    package?: string;
+    arguments: PreOrdersArguments | [
+        self: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function preOrders(options: PreOrdersOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["self"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'request',
+        function: 'pre_orders',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface WitnessesArguments {
     self: RawTransactionArgument<string>;
 }
@@ -513,32 +805,6 @@ export function witnesses(options: WitnessesOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface ActionOpenPositionOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionOpenPosition(options: ActionOpenPositionOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_open_position',
-    });
-}
-export interface ActionClosePositionOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionClosePosition(options: ActionClosePositionOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_close_position',
-    });
-}
 export interface ActionPlaceOrderOptions {
     package?: string;
     arguments?: [
@@ -552,84 +818,6 @@ export function actionPlaceOrder(options: ActionPlaceOrderOptions = {}) {
         function: 'action_place_order',
     });
 }
-export interface ActionCancelOrderOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionCancelOrder(options: ActionCancelOrderOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_cancel_order',
-    });
-}
-export interface ActionDepositCollateralOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionDepositCollateral(options: ActionDepositCollateralOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_deposit_collateral',
-    });
-}
-export interface ActionWithdrawCollateralOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionWithdrawCollateral(options: ActionWithdrawCollateralOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_withdraw_collateral',
-    });
-}
-export interface ActionLiquidateOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionLiquidate(options: ActionLiquidateOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_liquidate',
-    });
-}
-export interface ActionIncreasePositionOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionIncreasePosition(options: ActionIncreasePositionOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_increase_position',
-    });
-}
-export interface ActionDecreasePositionOptions {
-    package?: string;
-    arguments?: [
-    ];
-}
-export function actionDecreasePosition(options: ActionDecreasePositionOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'request',
-        function: 'action_decrease_position',
-    });
-}
 export interface NewArguments {
     marketId: RawTransactionArgument<string>;
     accountObjectAddress: RawTransactionArgument<string>;
@@ -638,6 +826,7 @@ export interface NewArguments {
     isLong: RawTransactionArgument<boolean>;
     size: RawTransactionArgument<string>;
     collateral: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint | null>;
     positionId: RawTransactionArgument<number | bigint | null>;
     triggerPrice: RawTransactionArgument<string | null>;
     reduceOnly: RawTransactionArgument<boolean>;
@@ -646,6 +835,7 @@ export interface NewArguments {
     triggerPriceKey: RawTransactionArgument<number | bigint | null>;
     withdrawAmount: RawTransactionArgument<number | bigint>;
     acceptablePrice: RawTransactionArgument<number | bigint>;
+    preOrders: RawTransactionArgument<string[]>;
 }
 export interface NewOptions {
     package?: string;
@@ -657,6 +847,7 @@ export interface NewOptions {
         isLong: RawTransactionArgument<boolean>,
         size: RawTransactionArgument<string>,
         collateral: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint | null>,
         positionId: RawTransactionArgument<number | bigint | null>,
         triggerPrice: RawTransactionArgument<string | null>,
         reduceOnly: RawTransactionArgument<boolean>,
@@ -664,7 +855,8 @@ export interface NewOptions {
         linkedPositionId: RawTransactionArgument<number | bigint | null>,
         triggerPriceKey: RawTransactionArgument<number | bigint | null>,
         withdrawAmount: RawTransactionArgument<number | bigint>,
-        acceptablePrice: RawTransactionArgument<number | bigint>
+        acceptablePrice: RawTransactionArgument<number | bigint>,
+        preOrders: RawTransactionArgument<string[]>
     ];
     typeArguments: [
         string
@@ -682,15 +874,17 @@ export function _new(options: NewOptions) {
         null,
         null,
         '0x1::option::Option<u64>',
+        '0x1::option::Option<u64>',
         '0x1::option::Option<null>',
         'bool',
         'bool',
         '0x1::option::Option<u64>',
         '0x1::option::Option<u128>',
         'u64',
-        'u64'
+        'u64',
+        'vector<null>'
     ] satisfies (string | null)[];
-    const parameterNames = ["marketId", "accountObjectAddress", "action", "sender", "isLong", "size", "collateral", "positionId", "triggerPrice", "reduceOnly", "isStopOrder", "linkedPositionId", "triggerPriceKey", "withdrawAmount", "acceptablePrice"];
+    const parameterNames = ["marketId", "accountObjectAddress", "action", "sender", "isLong", "size", "collateral", "orderId", "positionId", "triggerPrice", "reduceOnly", "isStopOrder", "linkedPositionId", "triggerPriceKey", "withdrawAmount", "acceptablePrice", "preOrders"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'request',
@@ -731,6 +925,7 @@ export interface NewNoCollateralArguments {
     accountObjectAddress: RawTransactionArgument<string>;
     action: RawTransactionArgument<number>;
     sender: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint | null>;
     positionId: RawTransactionArgument<number | bigint | null>;
     withdrawAmount: RawTransactionArgument<number | bigint>;
     acceptablePrice: RawTransactionArgument<number | bigint>;
@@ -742,6 +937,7 @@ export interface NewNoCollateralOptions {
         accountObjectAddress: RawTransactionArgument<string>,
         action: RawTransactionArgument<number>,
         sender: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint | null>,
         positionId: RawTransactionArgument<number | bigint | null>,
         withdrawAmount: RawTransactionArgument<number | bigint>,
         acceptablePrice: RawTransactionArgument<number | bigint>
@@ -759,10 +955,11 @@ export function newNoCollateral(options: NewNoCollateralOptions) {
         'u8',
         'address',
         '0x1::option::Option<u64>',
+        '0x1::option::Option<u64>',
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["marketId", "accountObjectAddress", "action", "sender", "positionId", "withdrawAmount", "acceptablePrice"];
+    const parameterNames = ["marketId", "accountObjectAddress", "action", "sender", "orderId", "positionId", "withdrawAmount", "acceptablePrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'request',

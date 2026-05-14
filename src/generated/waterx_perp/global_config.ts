@@ -14,29 +14,46 @@ import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as vec_set_1 from './deps/sui/vec_set.ts';
 import * as vec_set_2 from './deps/sui/vec_set.ts';
+import * as vec_set_3 from './deps/sui/vec_set.ts';
+import * as vec_set_4 from './deps/sui/vec_set.ts';
 import * as sheet from './deps/bucket_v2_framework/sheet.ts';
 import * as balance from './deps/sui/balance.ts';
+import * as balance_1 from './deps/sui/balance.ts';
+import * as balance_2 from './deps/sui/balance.ts';
 const $moduleName = '@waterx/perp::global_config';
 export const GlobalConfig = new MoveStruct({ name: `${$moduleName}::GlobalConfig`, fields: {
         id: bcs.Address,
         /** Allowed protocol versions (admin-managed). */
         allowed_versions: vec_set.VecSet(bcs.u16()),
+        /**
+         * Protocol-wide pause. When true, every trading and WLP action aborts. Triggered
+         * by any pauser; only AdminCap can unpause.
+         */
+        is_paused: bcs.bool(),
+        /** Authorized addresses that can trigger the global pause (but not unpause). */
+        pausers: vec_set_1.VecSet(bcs.Address),
         /** Authorized keeper addresses. */
-        keepers: vec_set_1.VecSet(bcs.Address),
+        keepers: vec_set_2.VecSet(bcs.Address),
+        /** Authorized WLP redeem operators (can settle/reject redeem requests). */
+        redeem_operators: vec_set_3.VecSet(bcs.Address),
         /** Authorized risk manager addresses (can force-close positions). */
-        risk_managers: vec_set_2.VecSet(bcs.Address),
-        /** Protocol fee recipient. */
-        fee_address: bcs.Address,
-        /** Protocol fee share in bps (of total trading fees). */
+        risk_managers: vec_set_4.VecSet(bcs.Address),
+        /**
+         * Protocol fee share in bps (of total trading fees). The protocol's cut of every
+         * realized trading fee accumulates on `GlobalVault.protocol_fee_balance` and is
+         * drained via `claim_protocol_fee` (admin-gated).
+         */
         protocol_fee_share_bps: bcs.u64(),
-        /** Insurance fund recipient. */
-        insurance_address: bcs.Address,
         /** Optional keeper reward fee in bps of position notional. */
         liquidator_fee_bps: bcs.u64(),
-        /** Insurance fund fee in bps of position notional. */
+        /**
+         * Insurance fund fee in bps of position notional. The insurance cut of every
+         * liquidation accumulates on `GlobalVault.insurance_fee_balance` and is drained
+         * via `claim_insurance_fee` (admin-gated).
+         */
         insurance_fee_bps: bcs.u64(),
-        /** Maximum orders per price level. */
-        max_orders_per_price: bcs.u64(),
+        /** Maximum stale/invalid orders a keeper match call may skip or cancel. */
+        max_skipped_orders_per_match: bcs.u64(),
         /** OI cap as bps of pool TVL (0 = no cap). */
         oi_cap_bps: bcs.u64(),
         /** Maximum allowed age for WLP token price refreshes in ms. */
@@ -44,7 +61,23 @@ export const GlobalConfig = new MoveStruct({ name: `${$moduleName}::GlobalConfig
     } });
 export const GlobalVault = new MoveStruct({ name: `${$moduleName}::GlobalVault<phantom C_TOKEN>`, fields: {
         sheet: sheet.Sheet,
-        balance: balance.Balance
+        /**
+         * Trader collateral + LP liquidity — drained / topped up by every trading and WLP
+         * action.
+         */
+        balance: balance.Balance,
+        /**
+         * Accumulated protocol-fee share. Routed here by `execute_*` / `match_orders` /
+         * `mint_wlp` / `settle_redeem` instead of being transferred to a configured
+         * `fee_address`. Drained by `claim_protocol_fee` (admin-gated).
+         */
+        protocol_fee_balance: balance_1.Balance,
+        /**
+         * Accumulated insurance fee from liquidations. Routed here by `execute_liquidate`
+         * instead of being transferred to a configured `insurance_address`. Drained by
+         * `claim_insurance_fee` (admin-gated).
+         */
+        insurance_fee_balance: balance_2.Balance
     } });
 export interface InitOptions {
     package?: string;
@@ -82,15 +115,15 @@ export function assertVersion(options: AssertVersionOptions) {
     });
 }
 export interface AllowVersionArguments {
-    _: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number>;
 }
 export interface AllowVersionOptions {
     package?: string;
     arguments: AllowVersionArguments | [
-        _: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number>
     ];
 }
@@ -101,7 +134,7 @@ export function allowVersion(options: AllowVersionOptions) {
         null,
         'u16'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -110,15 +143,15 @@ export function allowVersion(options: AllowVersionOptions) {
     });
 }
 export interface DisallowVersionArguments {
-    _: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number>;
 }
 export interface DisallowVersionOptions {
     package?: string;
     arguments: DisallowVersionArguments | [
-        _: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number>
     ];
 }
@@ -129,7 +162,7 @@ export function disallowVersion(options: DisallowVersionOptions) {
         null,
         'u16'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -138,15 +171,15 @@ export function disallowVersion(options: DisallowVersionOptions) {
     });
 }
 export interface SetLiquidatorFeeBpsArguments {
-    _: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number | bigint>;
 }
 export interface SetLiquidatorFeeBpsOptions {
     package?: string;
     arguments: SetLiquidatorFeeBpsArguments | [
-        _: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number | bigint>
     ];
 }
@@ -157,7 +190,7 @@ export function setLiquidatorFeeBps(options: SetLiquidatorFeeBpsOptions) {
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -166,15 +199,15 @@ export function setLiquidatorFeeBps(options: SetLiquidatorFeeBpsOptions) {
     });
 }
 export interface SetInsuranceFeeBpsArguments {
-    _: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number | bigint>;
 }
 export interface SetInsuranceFeeBpsOptions {
     package?: string;
     arguments: SetInsuranceFeeBpsArguments | [
-        _: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number | bigint>
     ];
 }
@@ -185,7 +218,7 @@ export function setInsuranceFeeBps(options: SetInsuranceFeeBpsOptions) {
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -193,44 +226,44 @@ export function setInsuranceFeeBps(options: SetInsuranceFeeBpsOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface SetMaxOrdersPerPriceArguments {
-    _: RawTransactionArgument<string>;
+export interface SetMaxSkippedOrdersPerMatchArguments {
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number | bigint>;
 }
-export interface SetMaxOrdersPerPriceOptions {
+export interface SetMaxSkippedOrdersPerMatchOptions {
     package?: string;
-    arguments: SetMaxOrdersPerPriceArguments | [
-        _: RawTransactionArgument<string>,
+    arguments: SetMaxSkippedOrdersPerMatchArguments | [
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number | bigint>
     ];
 }
-export function setMaxOrdersPerPrice(options: SetMaxOrdersPerPriceOptions) {
+export function setMaxSkippedOrdersPerMatch(options: SetMaxSkippedOrdersPerMatchOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
-        function: 'set_max_orders_per_price',
+        function: 'set_max_skipped_orders_per_match',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
 export interface SetOiCapBpsArguments {
-    _: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number | bigint>;
 }
 export interface SetOiCapBpsOptions {
     package?: string;
     arguments: SetOiCapBpsArguments | [
-        _: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number | bigint>
     ];
 }
@@ -241,7 +274,7 @@ export function setOiCapBps(options: SetOiCapBpsOptions) {
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -250,15 +283,15 @@ export function setOiCapBps(options: SetOiCapBpsOptions) {
     });
 }
 export interface SetPriceRefreshThresholdMsArguments {
-    _: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
     v: RawTransactionArgument<number | bigint>;
 }
 export interface SetPriceRefreshThresholdMsOptions {
     package?: string;
     arguments: SetPriceRefreshThresholdMsArguments | [
-        _: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
         v: RawTransactionArgument<number | bigint>
     ];
 }
@@ -269,7 +302,7 @@ export function setPriceRefreshThresholdMs(options: SetPriceRefreshThresholdMsOp
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "globalConfig", "v"];
+    const parameterNames = ["globalConfig", "_", "v"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -321,16 +354,16 @@ export function insuranceFeeBps(options: InsuranceFeeBpsOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface MaxOrdersPerPriceArguments {
+export interface MaxSkippedOrdersPerMatchArguments {
     globalConfig: RawTransactionArgument<string>;
 }
-export interface MaxOrdersPerPriceOptions {
+export interface MaxSkippedOrdersPerMatchOptions {
     package?: string;
-    arguments: MaxOrdersPerPriceArguments | [
+    arguments: MaxSkippedOrdersPerMatchArguments | [
         globalConfig: RawTransactionArgument<string>
     ];
 }
-export function maxOrdersPerPrice(options: MaxOrdersPerPriceOptions) {
+export function maxSkippedOrdersPerMatch(options: MaxSkippedOrdersPerMatchOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null
@@ -339,7 +372,7 @@ export function maxOrdersPerPrice(options: MaxOrdersPerPriceOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
-        function: 'max_orders_per_price',
+        function: 'max_skipped_orders_per_match',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -384,50 +417,6 @@ export function priceRefreshThresholdMs(options: PriceRefreshThresholdMsOptions)
         package: packageAddress,
         module: 'global_config',
         function: 'price_refresh_threshold_ms',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-    });
-}
-export interface FeeAddressArguments {
-    globalConfig: RawTransactionArgument<string>;
-}
-export interface FeeAddressOptions {
-    package?: string;
-    arguments: FeeAddressArguments | [
-        globalConfig: RawTransactionArgument<string>
-    ];
-}
-export function feeAddress(options: FeeAddressOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'global_config',
-        function: 'fee_address',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-    });
-}
-export interface InsuranceAddressArguments {
-    globalConfig: RawTransactionArgument<string>;
-}
-export interface InsuranceAddressOptions {
-    package?: string;
-    arguments: InsuranceAddressArguments | [
-        globalConfig: RawTransactionArgument<string>
-    ];
-}
-export function insuranceAddress(options: InsuranceAddressOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'global_config',
-        function: 'insurance_address',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -497,6 +486,50 @@ export function keeperAddresses(options: KeeperAddressesOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface RedeemOperatorCountArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface RedeemOperatorCountOptions {
+    package?: string;
+    arguments: RedeemOperatorCountArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+}
+export function redeemOperatorCount(options: RedeemOperatorCountOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'redeem_operator_count',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RedeemOperatorAddressesArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface RedeemOperatorAddressesOptions {
+    package?: string;
+    arguments: RedeemOperatorAddressesArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+}
+export function redeemOperatorAddresses(options: RedeemOperatorAddressesOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'redeem_operator_addresses',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface RiskManagerAddressesArguments {
     globalConfig: RawTransactionArgument<string>;
 }
@@ -542,15 +575,15 @@ export function allowedVersions(options: AllowedVersionsOptions) {
     });
 }
 export interface AddKeeperArguments {
-    Cap: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     keeper: RawTransactionArgument<string>;
 }
 export interface AddKeeperOptions {
     package?: string;
     arguments: AddKeeperArguments | [
-        Cap: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         keeper: RawTransactionArgument<string>
     ];
 }
@@ -562,7 +595,7 @@ export function addKeeper(options: AddKeeperOptions) {
         null,
         'address'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "keeper"];
+    const parameterNames = ["globalConfig", "Cap", "keeper"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -571,15 +604,15 @@ export function addKeeper(options: AddKeeperOptions) {
     });
 }
 export interface RemoveKeeperArguments {
-    Cap: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     keeper: RawTransactionArgument<string>;
 }
 export interface RemoveKeeperOptions {
     package?: string;
     arguments: RemoveKeeperArguments | [
-        Cap: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         keeper: RawTransactionArgument<string>
     ];
 }
@@ -591,7 +624,7 @@ export function removeKeeper(options: RemoveKeeperOptions) {
         null,
         'address'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "keeper"];
+    const parameterNames = ["globalConfig", "Cap", "keeper"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -599,16 +632,74 @@ export function removeKeeper(options: RemoveKeeperOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface AddRiskManagerArguments {
-    Cap: RawTransactionArgument<string>;
+export interface AddRedeemOperatorArguments {
     globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    redeemOperator: RawTransactionArgument<string>;
+}
+export interface AddRedeemOperatorOptions {
+    package?: string;
+    arguments: AddRedeemOperatorArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
+        redeemOperator: RawTransactionArgument<string>
+    ];
+}
+/** Adds a WLP redeem operator address. */
+export function addRedeemOperator(options: AddRedeemOperatorOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "Cap", "redeemOperator"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'add_redeem_operator',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RemoveRedeemOperatorArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    redeemOperator: RawTransactionArgument<string>;
+}
+export interface RemoveRedeemOperatorOptions {
+    package?: string;
+    arguments: RemoveRedeemOperatorArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
+        redeemOperator: RawTransactionArgument<string>
+    ];
+}
+/** Removes a WLP redeem operator address. */
+export function removeRedeemOperator(options: RemoveRedeemOperatorOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "Cap", "redeemOperator"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'remove_redeem_operator',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AddRiskManagerArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     riskManager: RawTransactionArgument<string>;
 }
 export interface AddRiskManagerOptions {
     package?: string;
     arguments: AddRiskManagerArguments | [
-        Cap: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         riskManager: RawTransactionArgument<string>
     ];
 }
@@ -620,7 +711,7 @@ export function addRiskManager(options: AddRiskManagerOptions) {
         null,
         'address'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "riskManager"];
+    const parameterNames = ["globalConfig", "Cap", "riskManager"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -629,15 +720,15 @@ export function addRiskManager(options: AddRiskManagerOptions) {
     });
 }
 export interface RemoveRiskManagerArguments {
-    Cap: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     riskManager: RawTransactionArgument<string>;
 }
 export interface RemoveRiskManagerOptions {
     package?: string;
     arguments: RemoveRiskManagerArguments | [
-        Cap: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         riskManager: RawTransactionArgument<string>
     ];
 }
@@ -649,7 +740,7 @@ export function removeRiskManager(options: RemoveRiskManagerOptions) {
         null,
         'address'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "riskManager"];
+    const parameterNames = ["globalConfig", "Cap", "riskManager"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -658,15 +749,15 @@ export function removeRiskManager(options: RemoveRiskManagerOptions) {
     });
 }
 export interface SetProtocolFeeShareArguments {
-    Cap: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     feeShareBps: RawTransactionArgument<number | bigint>;
 }
 export interface SetProtocolFeeShareOptions {
     package?: string;
     arguments: SetProtocolFeeShareArguments | [
-        Cap: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         feeShareBps: RawTransactionArgument<number | bigint>
     ];
 }
@@ -678,7 +769,7 @@ export function setProtocolFeeShare(options: SetProtocolFeeShareOptions) {
         null,
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "feeShareBps"];
+    const parameterNames = ["globalConfig", "Cap", "feeShareBps"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
@@ -686,61 +777,233 @@ export function setProtocolFeeShare(options: SetProtocolFeeShareOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface SetFeeAddressArguments {
-    Cap: RawTransactionArgument<string>;
+export interface AssertNotPausedArguments {
     globalConfig: RawTransactionArgument<string>;
-    addr: RawTransactionArgument<string>;
 }
-export interface SetFeeAddressOptions {
+export interface AssertNotPausedOptions {
     package?: string;
-    arguments: SetFeeAddressArguments | [
-        Cap: RawTransactionArgument<string>,
-        globalConfig: RawTransactionArgument<string>,
-        addr: RawTransactionArgument<string>
+    arguments: AssertNotPausedArguments | [
+        globalConfig: RawTransactionArgument<string>
     ];
 }
-/** Sets the fee recipient address. */
-export function setFeeAddress(options: SetFeeAddressOptions) {
+/** Aborts if the protocol is globally paused. */
+export function assertNotPaused(options: AssertNotPausedOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
-        null,
-        null,
-        'address'
+        null
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "addr"];
+    const parameterNames = ["globalConfig"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
-        function: 'set_fee_address',
+        function: 'assert_not_paused',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface SetInsuranceAddressArguments {
-    Cap: RawTransactionArgument<string>;
+export interface AssertActiveArguments {
     globalConfig: RawTransactionArgument<string>;
-    addr: RawTransactionArgument<string>;
 }
-export interface SetInsuranceAddressOptions {
+export interface AssertActiveOptions {
     package?: string;
-    arguments: SetInsuranceAddressArguments | [
-        Cap: RawTransactionArgument<string>,
-        globalConfig: RawTransactionArgument<string>,
-        addr: RawTransactionArgument<string>
+    arguments: AssertActiveArguments | [
+        globalConfig: RawTransactionArgument<string>
     ];
 }
-/** Sets the insurance fund address. */
-export function setInsuranceAddress(options: SetInsuranceAddressOptions) {
+/**
+ * Combined pre-flight check used by every public entrypoint: protocol must not be
+ * paused AND the on-chain package must be on an allowed version. Folded into one
+ * helper so call sites can `gc.assert_active()` instead of pairing the two checks
+ * each time.
+ */
+export function assertActive(options: AssertActiveOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'assert_active',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface IsPausedArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface IsPausedOptions {
+    package?: string;
+    arguments: IsPausedArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+}
+export function isPaused(options: IsPausedOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'is_paused',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PauserCountArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface PauserCountOptions {
+    package?: string;
+    arguments: PauserCountArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+}
+export function pauserCount(options: PauserCountOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'pauser_count',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PauserAddressesArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface PauserAddressesOptions {
+    package?: string;
+    arguments: PauserAddressesArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+}
+export function pauserAddresses(options: PauserAddressesOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'pauser_addresses',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AddPauserArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    pauser: RawTransactionArgument<string>;
+}
+export interface AddPauserOptions {
+    package?: string;
+    arguments: AddPauserArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
+        pauser: RawTransactionArgument<string>
+    ];
+}
+/** Adds an authorized pauser. Admin-gated. */
+export function addPauser(options: AddPauserOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
         null,
         'address'
     ] satisfies (string | null)[];
-    const parameterNames = ["Cap", "globalConfig", "addr"];
+    const parameterNames = ["globalConfig", "Cap", "pauser"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'global_config',
-        function: 'set_insurance_address',
+        function: 'add_pauser',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RemovePauserArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+    pauser: RawTransactionArgument<string>;
+}
+export interface RemovePauserOptions {
+    package?: string;
+    arguments: RemovePauserArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
+        pauser: RawTransactionArgument<string>
+    ];
+}
+/** Removes an authorized pauser. Admin-gated. */
+export function removePauser(options: RemovePauserOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "Cap", "pauser"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'remove_pauser',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PauseArguments {
+    globalConfig: RawTransactionArgument<string>;
+    senderRequest: RawTransactionArgument<string>;
+}
+export interface PauseOptions {
+    package?: string;
+    arguments: PauseArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        senderRequest: RawTransactionArgument<string>
+    ];
+}
+/**
+ * Triggers the global pause. Callable by any registered pauser. Unpause requires
+ * `AdminCap` (see `unpause`).
+ */
+export function pause(options: PauseOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "senderRequest"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'pause',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface UnpauseArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+}
+export interface UnpauseOptions {
+    package?: string;
+    arguments: UnpauseArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
+    ];
+}
+/** Lifts the global pause. Admin-only. */
+export function unpause(options: UnpauseOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "Cap"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'unpause',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -793,6 +1056,32 @@ export function verifyKeeper(options: VerifyKeeperOptions) {
         package: packageAddress,
         module: 'global_config',
         function: 'verify_keeper',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface VerifyRedeemOperatorArguments {
+    globalConfig: RawTransactionArgument<string>;
+    addr: RawTransactionArgument<string>;
+}
+export interface VerifyRedeemOperatorOptions {
+    package?: string;
+    arguments: VerifyRedeemOperatorArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        addr: RawTransactionArgument<string>
+    ];
+}
+/** Verifies the caller is a WLP redeem operator. */
+export function verifyRedeemOperator(options: VerifyRedeemOperatorOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "addr"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'verify_redeem_operator',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -918,6 +1207,204 @@ export function balanceMut(options: BalanceMutOptions) {
         package: packageAddress,
         module: 'global_config',
         function: 'balance_mut',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ProtocolFeeBalanceMutArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface ProtocolFeeBalanceMutOptions {
+    package?: string;
+    arguments: ProtocolFeeBalanceMutArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Mutable accessor for the protocol-fee accumulator. */
+export function protocolFeeBalanceMut(options: ProtocolFeeBalanceMutOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'protocol_fee_balance_mut',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface InsuranceFeeBalanceMutArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface InsuranceFeeBalanceMutOptions {
+    package?: string;
+    arguments: InsuranceFeeBalanceMutArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Mutable accessor for the insurance-fee accumulator. */
+export function insuranceFeeBalanceMut(options: InsuranceFeeBalanceMutOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'insurance_fee_balance_mut',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ProtocolFeeValueArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface ProtocolFeeValueOptions {
+    package?: string;
+    arguments: ProtocolFeeValueArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Read-only accumulator views. */
+export function protocolFeeValue(options: ProtocolFeeValueOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'protocol_fee_value',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface InsuranceFeeValueArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface InsuranceFeeValueOptions {
+    package?: string;
+    arguments: InsuranceFeeValueArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function insuranceFeeValue(options: InsuranceFeeValueOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'insurance_fee_value',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ClaimProtocolFeeArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+}
+export interface ClaimProtocolFeeOptions {
+    package?: string;
+    arguments: ClaimProtocolFeeArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: drain the protocol-fee accumulator for `C_TOKEN` and return the full
+ * balance as a `Coin<C_TOKEN>` the admin can route wherever (typically into a
+ * multisig treasury). No-op when the vault hasn't been opened yet; returns a zero
+ * coin if there's nothing to claim.
+ */
+export function claimProtocolFee(options: ClaimProtocolFeeOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "Cap"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'claim_protocol_fee',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ClaimInsuranceFeeArguments {
+    globalConfig: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
+}
+export interface ClaimInsuranceFeeOptions {
+    package?: string;
+    arguments: ClaimInsuranceFeeArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Admin: drain the insurance-fee accumulator for `C_TOKEN`. */
+export function claimInsuranceFee(options: ClaimInsuranceFeeOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "Cap"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'claim_insurance_fee',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface EnsureVaultArguments {
+    globalConfig: RawTransactionArgument<string>;
+}
+export interface EnsureVaultOptions {
+    package?: string;
+    arguments: EnsureVaultArguments | [
+        globalConfig: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function ensureVault(options: EnsureVaultOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'global_config',
+        function: 'ensure_vault',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
