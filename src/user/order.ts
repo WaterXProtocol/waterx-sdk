@@ -13,24 +13,9 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import type { WaterXClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
-import {
-  request as accountRequest,
-  requestWithAccount as accountRequestWithAccount,
-} from "../generated/bucket_v2_framework/account.ts";
 import { newPlaceOrderArgument } from "../generated/waterx_perp/request.ts";
 import * as trading from "../generated/waterx_perp/trading.ts";
-
-type BucketAccount = string | TransactionArgument | undefined;
-
-function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
-  if (bucketAccount === undefined) {
-    return accountRequest({})(tx) as unknown as TransactionArgument;
-  }
-  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  return accountRequestWithAccount({
-    arguments: { account: accArg as unknown as string },
-  })(tx) as unknown as TransactionArgument;
-}
+import { makeSenderRequest } from "../utils/account-request.ts";
 
 // ============================================================================
 // PlaceOrderArgument struct constructor
@@ -94,7 +79,7 @@ export function placeOrderRequest(
   tx: Transaction,
   params: PlaceOrderRequestParams,
 ): TransactionArgument {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const mainArg = buildPlaceOrderArgument(client, tx, params.main);
   const preArgs = (params.preOrders ?? []).map((p) => buildPlaceOrderArgument(client, tx, p));
 
@@ -143,7 +128,7 @@ export function cancelOrderRequest(
   tx: Transaction,
   params: CancelOrderRequestParams,
 ): TransactionArgument {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.cancelOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -187,7 +172,7 @@ export function updateOrderRequest(
   tx: Transaction,
   params: UpdateOrderRequestParams,
 ): TransactionArgument {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.updateOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -227,7 +212,7 @@ export function cancelPreOrderRequest(
   tx: Transaction,
   params: CancelPreOrderRequestParams,
 ): TransactionArgument {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.cancelPreOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -260,7 +245,7 @@ export function addPreOrderRequest(
   tx: Transaction,
   params: AddPreOrderRequestParams,
 ): TransactionArgument {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const preArg = buildPlaceOrderArgument(client, tx, params.preOrder);
   const [tr] = trading.addPreOrderRequest({
     package: client.config.packages.waterx_perp.published_at,

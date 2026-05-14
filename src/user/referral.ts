@@ -9,23 +9,8 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  request as accountRequest,
-  requestWithAccount as accountRequestWithAccount,
-} from "../generated/bucket_v2_framework/account.ts";
 import * as referral from "../generated/bucket_v2_referral/referral_table.ts";
-
-type BucketAccount = string | TransactionArgument | undefined;
-
-function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
-  if (bucketAccount === undefined) {
-    return accountRequest({})(tx) as unknown as TransactionArgument;
-  }
-  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  return accountRequestWithAccount({
-    arguments: { account: accArg as unknown as string },
-  })(tx) as unknown as TransactionArgument;
-}
+import { makeSenderRequest } from "../utils/account-request.ts";
 
 function requireReferralConfig(client: WaterXClient): { pkg: string; table: string } {
   const pkg = client.config.packages.bucket_referral?.published_at;
@@ -50,7 +35,7 @@ export function setReferralCode(
   params: SetReferralCodeParams,
 ): void {
   const { pkg, table } = requireReferralConfig(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   referral.setReferralCode({
     package: pkg,
     arguments: {
@@ -73,7 +58,7 @@ export function useReferralCode(
   params: UseReferralCodeParams,
 ): void {
   const { pkg, table } = requireReferralConfig(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   referral.useReferralCode({
     package: pkg,
     arguments: {

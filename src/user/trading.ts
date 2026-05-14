@@ -15,27 +15,12 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import type { WaterXClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
-import {
-  request as accountRequest,
-  requestWithAccount as accountRequestWithAccount,
-} from "../generated/bucket_v2_framework/account.ts";
 import * as trading from "../generated/waterx_perp/trading.ts";
+import { makeSenderRequest } from "../utils/account-request.ts";
 
 // ============================================================================
 // Common helpers
 // ============================================================================
-
-type BucketAccount = string | TransactionArgument | undefined;
-
-function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
-  if (bucketAccount === undefined) {
-    return accountRequest({})(tx) as unknown as TransactionArgument;
-  }
-  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  return accountRequestWithAccount({
-    arguments: { account: accArg as unknown as string },
-  })(tx) as unknown as TransactionArgument;
-}
 
 export interface TradingTypeArgs {
   /** Collateral coin type (e.g. `0x…::usdc::USDC`). */
@@ -85,7 +70,7 @@ export function closePositionRequest(
   params: ClosePositionRequestParams,
 ): TransactionArgument {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.closePositionRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -124,7 +109,7 @@ export function increasePositionRequest(
   params: IncreasePositionRequestParams,
 ): TransactionArgument {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.increasePositionRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -158,7 +143,7 @@ export function decreasePositionRequest(
   params: DecreasePositionRequestParams,
 ): TransactionArgument {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.decreasePositionRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -192,7 +177,7 @@ export function depositCollateralRequest(
   params: DepositCollateralRequestParams,
 ): TransactionArgument {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.depositCollateralRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -221,7 +206,7 @@ export function withdrawCollateralRequest(
   params: WithdrawCollateralRequestParams,
 ): TransactionArgument {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.withdrawCollateralRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -282,7 +267,7 @@ export interface LiquidateParams extends TradingTypeArgs {
 
 export function liquidate(client: WaterXClient, tx: Transaction, params: LiquidateParams): void {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.liquidate({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -312,7 +297,7 @@ export function batchLiquidate(
   params: BatchLiquidateParams,
 ): void {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.batchLiquidate({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -346,7 +331,7 @@ export function matchOrders(
   params: MatchOrdersParams,
 ): void {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.matchOrders({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -378,7 +363,7 @@ export function updateFundingRate(
   params: UpdateFundingRateParams,
 ): void {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.updateFundingRate({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -412,7 +397,7 @@ export function openPositionByKeeper(
   params: OpenPositionByKeeperParams,
 ): void {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.openPositionByKeeper({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -446,7 +431,7 @@ export function closePositionByKeeper(
   params: ClosePositionByKeeperParams,
 ): void {
   const obj = commonObjects(client);
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.closePositionByKeeper({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {

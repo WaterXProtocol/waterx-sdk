@@ -15,23 +15,8 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  request as accountRequest,
-  requestWithAccount as accountRequestWithAccount,
-} from "../generated/bucket_v2_framework/account.ts";
 import * as staking from "../generated/waterx_staking/waterx_staking.ts";
-
-type BucketAccount = string | TransactionArgument | undefined;
-
-function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
-  if (bucketAccount === undefined) {
-    return accountRequest({})(tx) as unknown as TransactionArgument;
-  }
-  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  return accountRequestWithAccount({
-    arguments: { account: accArg as unknown as string },
-  })(tx) as unknown as TransactionArgument;
-}
+import { makeSenderRequest } from "../utils/account-request.ts";
 
 function pool(client: WaterXClient): string {
   const id = client.config.packages.waterx_staking?.staking_pool;
@@ -55,7 +40,7 @@ export interface StakeParams {
 }
 
 export function stake(client: WaterXClient, tx: Transaction, params: StakeParams): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [checker] = staking.deposit({
     package: client.config.packages.waterx_staking?.published_at,
     arguments: {
@@ -99,7 +84,7 @@ export interface UnstakeParams {
 }
 
 export function unstake(client: WaterXClient, tx: Transaction, params: UnstakeParams): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [checker] = staking.redeem({
     package: client.config.packages.waterx_staking?.published_at,
     arguments: {
@@ -147,7 +132,7 @@ export function claimReward(
   tx: Transaction,
   params: ClaimRewardParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   staking.claim({
     package: client.config.packages.waterx_staking?.published_at,
     arguments: {

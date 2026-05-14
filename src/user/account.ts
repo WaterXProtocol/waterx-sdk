@@ -14,23 +14,8 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  request as accountRequest,
-  requestWithAccount as accountRequestWithAccount,
-} from "../generated/bucket_v2_framework/account.ts";
 import * as wxa from "../generated/waterx_account/account.ts";
-
-type BucketAccount = string | TransactionArgument | undefined;
-
-function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
-  if (bucketAccount === undefined) {
-    return accountRequest({})(tx) as unknown as TransactionArgument;
-  }
-  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  return accountRequestWithAccount({
-    arguments: { account: accArg as unknown as string },
-  })(tx) as unknown as TransactionArgument;
-}
+import { makeSenderRequest } from "../utils/account-request.ts";
 
 // ============================================================================
 // Create account
@@ -49,7 +34,7 @@ export function createAccount(
   tx: Transaction,
   params: CreateAccountParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.createAccount({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
@@ -71,7 +56,7 @@ export interface SetAliasParams {
 }
 
 export function setAlias(client: WaterXClient, tx: Transaction, params: SetAliasParams): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.setAlias({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
@@ -103,7 +88,7 @@ export function addDelegate(
   tx: Transaction,
   params: AddDelegateParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.addDelegate({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
@@ -129,7 +114,7 @@ export function removeDelegate(
   tx: Transaction,
   params: RemoveDelegateParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.removeDelegate({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
@@ -156,7 +141,7 @@ export function setDelegateProtocolPermission(
   tx: Transaction,
   params: SetDelegateProtocolPermissionParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.setDelegateProtocolPermission({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
@@ -226,7 +211,7 @@ export function requestWithdraw(
   tx: Transaction,
   params: RequestWithdrawParams,
 ): TransactionArgument {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [out] = wxa.requestWithdraw({
     package: client.config.packages.waterx_account.published_at,
     arguments: {

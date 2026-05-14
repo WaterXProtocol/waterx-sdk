@@ -13,23 +13,8 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  request as accountRequest,
-  requestWithAccount as accountRequestWithAccount,
-} from "../generated/bucket_v2_framework/account.ts";
 import * as lp from "../generated/waterx_perp/lp_pool.ts";
-
-type BucketAccount = string | TransactionArgument | undefined;
-
-function senderRequest(tx: Transaction, bucketAccount: BucketAccount): TransactionArgument {
-  if (bucketAccount === undefined) {
-    return accountRequest({})(tx) as unknown as TransactionArgument;
-  }
-  const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
-  return accountRequestWithAccount({
-    arguments: { account: accArg as unknown as string },
-  })(tx) as unknown as TransactionArgument;
-}
+import { makeSenderRequest } from "../utils/account-request.ts";
 
 // ============================================================================
 // mint_wlp
@@ -50,7 +35,7 @@ export interface MintWlpParams {
 }
 
 export function mintWlp(client: WaterXClient, tx: Transaction, params: MintWlpParams): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   lp.mintWlp({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -96,7 +81,7 @@ export function requestRedeemWlp(
   tx: Transaction,
   params: RequestRedeemWlpParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   lp.requestRedeem({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -126,7 +111,7 @@ export function cancelRedeemWlp(
   tx: Transaction,
   params: CancelRedeemWlpParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   lp.cancelRedeem({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
@@ -157,7 +142,7 @@ export function settleRedeemWlp(
   tx: Transaction,
   params: SettleRedeemWlpParams,
 ): void {
-  const req = senderRequest(tx, params.bucketAccount);
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
   lp.settleRedeem({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
