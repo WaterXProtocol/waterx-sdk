@@ -1,22 +1,25 @@
 /**
  * Happy-path smoke against a real wxa account on testnet:
- *   1. Deposit USDC into the wxa account (request_deposit + consume_deposit_direct)
- *   2. Place a limit buy via buildPlaceOrderTx (auto-wires pyth_sponsor_rule)
- *   3. Cancel the order via buildCancelOrderTx
+ *   1. Deposit USD into the wxa account (request_deposit + consume_deposit_direct)
+ *   2. Mint WLP into the WLP pool from the wxa account's USD balance — this
+ *      seeds the pool with LP liquidity so positions have reserve room.
+ *   3. Place a limit buy via buildPlaceOrderTx (auto-wires pyth_sponsor_rule).
+ *   4. Cancel the order via buildCancelOrderTx.
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID    wxa account id you own
  *
  * Optional env:
- *   WATERX_DEPOSIT_AMOUNT      raw USD amount, default 10_000_000
- *   WATERX_ORDER_SIZE          raw 1e9-scaled Float, default rawPrice(0.001)
+ *   WATERX_DEPOSIT_AMOUNT      raw USD to deposit, default 50_000_000 (50 USD)
+ *   WATERX_MINT_WLP_AMOUNT     raw USD to convert to WLP, default 30_000_000
+ *   WATERX_ORDER_SIZE          raw 1e9-scaled Float, default rawPrice(0.0001)
  *   WATERX_ORDER_PRICE         raw 1e9-scaled Float, default rawPrice(60000)
  *   WATERX_ORDER_COLLATERAL    raw USD amount for order, default 5_000_000
- *   WATERX_ORDER_ID            order id for cancel step (auto-extracted from
- *                              the place tx events if omitted)
- *   WATERX_SKIP_DEPOSIT=1      skip deposit (account already funded)
- *   WATERX_SKIP_PLACE=1        only deposit
- *   WATERX_SKIP_CANCEL=1       only deposit + place
+ *   WATERX_ORDER_ID            order id for cancel step (auto-extracted)
+ *   WATERX_SKIP_DEPOSIT=1      skip deposit
+ *   WATERX_SKIP_MINT=1         skip mintWlp
+ *   WATERX_SKIP_PLACE=1        skip placeOrder
+ *   WATERX_SKIP_CANCEL=1       skip cancelOrder
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -28,7 +31,12 @@ import { Transaction, type TransactionArgument } from "@mysten/sui/transactions"
 import { WaterXClient } from "../src/client.ts";
 import { ORDER_LIMIT_BUY, rawPrice } from "../src/constants.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
-import { buildCancelOrderTx, buildPlaceOrderTx, requestDeposit } from "../src/index.ts";
+import {
+  buildCancelOrderTx,
+  buildMintWlpTx,
+  buildPlaceOrderTx,
+  requestDeposit,
+} from "../src/index.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -131,7 +139,7 @@ async function main(): Promise<void> {
   // ============================================================================
   // 1. Deposit USDC into the wxa account
   // ============================================================================
-  const depositAmount = BigInt(process.env.WATERX_DEPOSIT_AMOUNT ?? "10000000"); // 10 USD @ 6 dec
+  const depositAmount = BigInt(process.env.WATERX_DEPOSIT_AMOUNT ?? "50000000"); // 50 USD @ 6 dec
   if (process.env.WATERX_SKIP_DEPOSIT !== "1") {
     console.log(`\n=== Deposit ${depositAmount} USD → wxa account ===`);
     const coins = (await client.grpcClient.listCoins({ owner: address, coinType: usdcType })) as {
@@ -175,15 +183,34 @@ async function main(): Promise<void> {
     if (!r.success) process.exit(1);
   }
 
+  // ============================================================================
+  // 2. Mint WLP from the wxa account's USD balance — seeds the pool with LP
+  //    liquidity so the placeOrder step has reserve room.
+  // ============================================================================
+  const mintAmount = BigInt(process.env.WATERX_MINT_WLP_AMOUNT ?? "30000000"); // 30 USD
+  if (process.env.WATERX_SKIP_MINT !== "1") {
+    console.log(`\n=== Mint WLP from ${mintAmount} USD ===`);
+    const mintTx = await buildMintWlpTx(client, {
+      accountId,
+      depositTokenType: usdcType,
+      depositTicker: "USDCUSD",
+      depositAmount: mintAmount,
+      minLpAmount: 0n,
+    });
+    if (!(await sim(client, keypair, mintTx, "mintWlp (sim)"))) process.exit(2);
+    const r = await execute(client, keypair, mintTx, "mintWlp (execute)");
+    if (!r.success) process.exit(1);
+  }
+
   if (process.env.WATERX_SKIP_PLACE === "1") {
-    console.log("\nWATERX_SKIP_PLACE=1; stopping after deposit.");
+    console.log("\nWATERX_SKIP_PLACE=1; stopping after mint.");
     return;
   }
 
   // ============================================================================
-  // 2. Place limit BTC LONG (auto-wires pyth_sponsor_rule)
+  // 3. Place limit BTC LONG (auto-wires pyth_sponsor_rule)
   // ============================================================================
-  const orderSize = BigInt(process.env.WATERX_ORDER_SIZE ?? rawPrice(0.001).toString());
+  const orderSize = BigInt(process.env.WATERX_ORDER_SIZE ?? rawPrice(0.0001).toString());
   const orderPrice = BigInt(process.env.WATERX_ORDER_PRICE ?? rawPrice(60000).toString());
   const orderCollateral = BigInt(process.env.WATERX_ORDER_COLLATERAL ?? "5000000");
   console.log(
@@ -219,7 +246,7 @@ async function main(): Promise<void> {
   }
 
   // ============================================================================
-  // 3. Cancel the order (extracts order_id from OrderCreated event)
+  // 4. Cancel the order (extracts order_id from OrderCreated event)
   // ============================================================================
   const orderId =
     process.env.WATERX_ORDER_ID !== undefined

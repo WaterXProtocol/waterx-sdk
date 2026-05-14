@@ -42,7 +42,7 @@ import {
   type IncreasePositionRequestParams,
   type WithdrawCollateralRequestParams,
 } from "./user/trading.ts";
-import { updateTokenValue } from "./user/wlp.ts";
+import { mintWlp, updateTokenValue, type MintWlpParams } from "./user/wlp.ts";
 import {
   openPythSponsorFund,
   PythCache,
@@ -354,6 +354,44 @@ export async function buildAddPreOrderTx(
     params,
     () => addPreOrderRequest(client, tx, params),
   );
+  return tx;
+}
+
+// ============================================================================
+// WLP mint
+// ============================================================================
+
+export interface BuildMintWlpParams extends MintWlpParams, CommonBuildOpts {
+  /** Oracle ticker for the deposited token (must be a registered pool token). */
+  depositTicker: string;
+}
+
+/**
+ * Mints WLP from a deposit asset already in the wxa account's stored
+ * balance. Refreshes every pool-token oracle + bumps each pool token's
+ * `last_price_refresh_timestamp` so `assert_prices_fresh` inside
+ * `mint_wlp` passes.
+ *
+ * Does NOT use the pyth_sponsor flow — `mint_wlp` produces no
+ * `TradingRequest`, so there's nothing for the sponsor to attach its
+ * witness to. Pyth update fees come from `tx.gas`.
+ */
+export async function buildMintWlpTx(
+  client: WaterXClient,
+  params: BuildMintWlpParams,
+): Promise<Transaction> {
+  const tx = newTx(params);
+
+  if (!params.skipOraclePriceRefresh) {
+    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    const oracleTickers = Array.from(new Set([params.depositTicker, ...poolTickers]));
+    await refreshOraclePrices(tx, client, oracleTickers, { cache: params.pythCache });
+    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
+      updateTokenValue(client, tx, { tokenType, lpType: params.lpType });
+    }
+  }
+
+  mintWlp(client, tx, params);
   return tx;
 }
 
