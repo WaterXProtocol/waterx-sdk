@@ -12,6 +12,15 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "./client.ts";
 import { SENDER } from "./constants.ts";
+// ============================================================================
+// Referral queries (bucket_v2_referral::referral_table)
+// ============================================================================
+
+import {
+  isValidReferralCode as isValidReferralCodeCall,
+  referralCodeExists as referralCodeExistsCall,
+  tryGetRefer as tryGetReferCall,
+} from "./generated/bucket_v2_referral/referral_table.ts";
 import {
   AccountData,
   accountData as accountDataCall,
@@ -41,12 +50,24 @@ import {
 // ============================================================================
 
 interface SimulationCommandResult {
-  returnValues?: { value?: { bcs?: Uint8Array | string } }[];
+  returnValues?: { bcs?: Uint8Array | string; value?: { bcs?: Uint8Array | string } }[];
 }
 
 interface SimulationResult {
+  $kind?: string;
+  FailedTransaction?: {
+    status?: { error?: { message?: string } };
+  };
   commandResults?: SimulationCommandResult[] | null;
-  error?: string | null;
+}
+
+function toBytes(b: Uint8Array | string | undefined): Uint8Array | undefined {
+  if (!b) return undefined;
+  if (typeof b === "string") return fromBase64(b);
+  // gRPC returns Uint8Array; JSON-RPC serialization may turn it into a
+  // numeric-indexed object. Normalize both.
+  if (b instanceof Uint8Array) return b;
+  return new Uint8Array(Object.values(b as Record<string, number>));
 }
 
 async function simulateAndExtract(
@@ -57,16 +78,19 @@ async function simulateAndExtract(
 ): Promise<Uint8Array> {
   tx.setSender(SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
-  if (sim.error) throw new Error(`simulate failed: ${sim.error}`);
+  if (sim.$kind === "FailedTransaction") {
+    const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
+    throw new Error(`simulate aborted: ${err}`);
+  }
   const cmd = sim.commandResults?.[commandIndex];
   const ret = cmd?.returnValues?.[returnIndex];
-  const bcsValue = ret?.value?.bcs;
-  if (!bcsValue) {
+  const bytes = toBytes(ret?.bcs) ?? toBytes(ret?.value?.bcs);
+  if (!bytes) {
     throw new Error(
       `simulate returned no BCS value at commandResults[${commandIndex}].returnValues[${returnIndex}]`,
     );
   }
-  return typeof bcsValue === "string" ? fromBase64(bcsValue) : bcsValue;
+  return bytes;
 }
 
 function withLp(client: WaterXClient, lpType?: string): string {
@@ -278,14 +302,14 @@ export async function getMarketOrders(
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   const ret = sim.commandResults?.[0]?.returnValues;
   if (!ret) return { orders: [] };
-  const ordersBytes = ret[0]?.value?.bcs;
-  const cursorBytes = ret[1]?.value?.bcs;
+  const ordersBytes = toBytes(ret[0]?.bcs) ?? toBytes(ret[0]?.value?.bcs);
+  const cursorBytes = toBytes(ret[1]?.bcs) ?? toBytes(ret[1]?.value?.bcs);
   if (!ordersBytes) return { orders: [] };
-  const ordersBuf = typeof ordersBytes === "string" ? fromBase64(ordersBytes) : ordersBytes;
+  const ordersBuf = ordersBytes;
   const orders = bcs.vector(OrderData).parse(ordersBuf);
   let nextCursor: bigint | undefined;
   if (cursorBytes) {
-    const cb = typeof cursorBytes === "string" ? fromBase64(cursorBytes) : cursorBytes;
+    const cb = cursorBytes;
     const opt = bcs.option(bcs.u64()).parse(cb);
     if (opt) nextCursor = BigInt(opt);
   }
@@ -320,14 +344,14 @@ export async function getMarketPositions(
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   const ret = sim.commandResults?.[0]?.returnValues;
   if (!ret) return { positions: [] };
-  const positionsBytes = ret[0]?.value?.bcs;
-  const cursorBytes = ret[1]?.value?.bcs;
+  const positionsBytes = toBytes(ret[0]?.bcs) ?? toBytes(ret[0]?.value?.bcs);
+  const cursorBytes = toBytes(ret[1]?.bcs) ?? toBytes(ret[1]?.value?.bcs);
   if (!positionsBytes) return { positions: [] };
-  const buf = typeof positionsBytes === "string" ? fromBase64(positionsBytes) : positionsBytes;
+  const buf = positionsBytes;
   const positions = bcs.vector(PositionData).parse(buf);
   let nextCursor: bigint | undefined;
   if (cursorBytes) {
-    const cb = typeof cursorBytes === "string" ? fromBase64(cursorBytes) : cursorBytes;
+    const cb = cursorBytes;
     const opt = bcs.option(bcs.u64()).parse(cb);
     if (opt) nextCursor = BigInt(opt);
   }
@@ -405,14 +429,14 @@ export async function getRedeemRequests(
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   const ret = sim.commandResults?.[0]?.returnValues;
   if (!ret) return { requests: [] };
-  const reqBytes = ret[0]?.value?.bcs;
-  const cursorBytes = ret[1]?.value?.bcs;
+  const reqBytes = toBytes(ret[0]?.bcs) ?? toBytes(ret[0]?.value?.bcs);
+  const cursorBytes = toBytes(ret[1]?.bcs) ?? toBytes(ret[1]?.value?.bcs);
   if (!reqBytes) return { requests: [] };
-  const buf = typeof reqBytes === "string" ? fromBase64(reqBytes) : reqBytes;
+  const buf = reqBytes;
   const requests = bcs.vector(RedeemRequestData).parse(buf);
   let nextCursor: bigint | undefined;
   if (cursorBytes) {
-    const cb = typeof cursorBytes === "string" ? fromBase64(cursorBytes) : cursorBytes;
+    const cb = cursorBytes;
     const opt = bcs.option(bcs.u64()).parse(cb);
     if (opt) nextCursor = BigInt(opt);
   }
@@ -421,3 +445,51 @@ export async function getRedeemRequests(
 
 // Silence unused import warning until VECTOR_PAGE is wired into a public helper.
 void VECTOR_PAGE;
+
+function requireReferralPackage(client: WaterXClient): { pkg: string; table: string } {
+  const pkg = client.config.packages.bucket_referral?.published_at;
+  const table = client.config.packages.bucket_referral?.referral_table;
+  if (!pkg || !table) {
+    throw new Error(
+      "referral package not configured: set config.packages.bucket_referral.{published_at,referral_table}",
+    );
+  }
+  return { pkg, table };
+}
+
+/** Returns the referrer address bound to `referee`, or `undefined` if none. */
+export async function getRefererFor(
+  client: WaterXClient,
+  referee: string,
+): Promise<string | undefined> {
+  const { pkg, table } = requireReferralPackage(client);
+  const tx = new Transaction();
+  tryGetReferCall({
+    package: pkg,
+    arguments: { table: tx.object(table), referee },
+  })(tx);
+  const bytes = await simulateAndExtract(client, tx);
+  const opt = bcs.option(bcs.Address).parse(bytes);
+  return opt ?? undefined;
+}
+
+/** True if `code` is a syntactically valid referral code (matches the contract's char rules). */
+export async function isValidReferralCode(client: WaterXClient, code: string): Promise<boolean> {
+  const { pkg } = requireReferralPackage(client);
+  const tx = new Transaction();
+  isValidReferralCodeCall({ package: pkg, arguments: { code } })(tx);
+  const bytes = await simulateAndExtract(client, tx);
+  return bcs.bool().parse(bytes);
+}
+
+/** True if `code` is already claimed in the on-chain ReferralTable. */
+export async function referralCodeExists(client: WaterXClient, code: string): Promise<boolean> {
+  const { pkg, table } = requireReferralPackage(client);
+  const tx = new Transaction();
+  referralCodeExistsCall({
+    package: pkg,
+    arguments: { table: tx.object(table), code },
+  })(tx);
+  const bytes = await simulateAndExtract(client, tx);
+  return bcs.bool().parse(bytes);
+}

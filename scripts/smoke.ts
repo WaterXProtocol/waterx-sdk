@@ -19,6 +19,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { WaterXClient } from "../src/client.ts";
 import type { WaterXConfig } from "../src/config.ts";
 import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING, rawPrice } from "../src/constants.ts";
+import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/fetch.ts";
 import {
   buildPlaceOrderArgument,
   cancelOrderRequest,
@@ -325,6 +326,19 @@ async function main(): Promise<void> {
     });
     return tx;
   });
+
+  // 10. Referral read helpers — exercises bucket_v2_referral query path.
+  console.log("\n=== Referral reads ===");
+  try {
+    const valid = await isValidReferralCode(client, "smoke");
+    console.log(`  isValidReferralCode("smoke")       ${valid}`);
+    const claimed = await referralCodeExists(client, "smoke");
+    console.log(`  referralCodeExists("smoke")        ${claimed}`);
+    const refer = await getRefererFor(client, FAKE_SENDER);
+    console.log(`  getRefererFor(FAKE_SENDER)         ${refer ?? "(none)"}`);
+  } catch (e) {
+    console.log(`  read FAIL: ${String(e).slice(0, 200)}`);
+  }
 
   // Perm constant sanity (no on-chain bit, just makes sure the enum survived).
   console.log(`\n  PERM_ALL_TRADING = 0x${PERM_ALL_TRADING.toString(16)}`);
