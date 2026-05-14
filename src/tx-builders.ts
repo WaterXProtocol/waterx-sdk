@@ -5,11 +5,13 @@
  * Each top-level builder:
  *   1. Creates a fresh `Transaction` (or appends to one you pass in).
  *   2. Refreshes the on-chain `Oracle` for the base + collateral tickers
- *      via Pyth (uses `utils/pyth.ts`). Pass `updatePythPrice: true` to
- *      additionally pre-update Pyth on-chain from Hermes — otherwise the
- *      caller is assumed to have done this in a sibling PTB.
- *   3. Calls the request builder, then `executeTrading` to consume the
- *      hot potato.
+ *      via Pyth (uses `utils/pyth.ts`).
+ *   3. Calls the request builder.
+ *   4. If `useSponsor` (default true on testnet): opens a Fund via
+ *      `pyth_sponsor_rule::request`, then closes it with `reimburse`
+ *      which attaches the `PythSponsorRule` witness to the
+ *      TradingRequest so the market's `request_checklist` is satisfied.
+ *   5. Executes the trading request via `trading::execute`.
  */
 
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
@@ -40,7 +42,14 @@ import {
   type IncreasePositionRequestParams,
   type WithdrawCollateralRequestParams,
 } from "./user/trading.ts";
-import { PythCache, refreshOraclePrices, updatePythPrices } from "./utils/pyth.ts";
+import { updateTokenValue } from "./user/wlp.ts";
+import {
+  openPythSponsorFund,
+  PythCache,
+  refreshOraclePrices,
+  reimbursePythSponsor,
+  updatePythPrices,
+} from "./utils/pyth.ts";
 
 // ============================================================================
 // Common opts
@@ -49,40 +58,94 @@ import { PythCache, refreshOraclePrices, updatePythPrices } from "./utils/pyth.t
 export interface CommonBuildOpts {
   /** Append to an existing PTB instead of creating a new one. */
   tx?: Transaction;
-  /** Refresh Pyth on-chain via Hermes before feeding the rule. Default: false. */
-  updatePythPrice?: boolean;
+  /** Skip oracle refresh entirely (caller manages freshness). Default: false. */
+  skipOraclePriceRefresh?: boolean;
   /** Share a `PythCache` across builders to avoid redundant pyth_state reads. */
   pythCache?: PythCache;
-  /** Optional sponsored Pyth update fund (from `pyth_sponsor_rule::request`). */
-  sponsorFund?: { fund: TransactionArgument; packageId: string };
+  /**
+   * Wire the `pyth_sponsor_rule` flow:
+   *   - open a Fund via `pyth_sponsor_rule::request(sponsor)`
+   *   - pay Pyth update fees from the Fund (instead of `tx.gas`)
+   *   - reimburse leftover into the sponsor pool + attach
+   *     `PythSponsorRule` witness to the TradingRequest so markets
+   *     whose `request_checklist` contains `PythSponsorRule` accept it
+   * Default: true (matches the testnet/mainnet checklist config).
+   * Pass `false` only when the market checklist is empty.
+   */
+  useSponsor?: boolean;
+}
+
+interface RequestParams {
+  ticker: string;
+  collateralType: string;
+  lpType?: string;
 }
 
 function newTx(opts?: CommonBuildOpts): Transaction {
   return opts?.tx ?? new Transaction();
 }
 
-async function refreshForAction(
+/**
+ * Build the *Request + execute envelope with optional Pyth sponsor flow:
+ *
+ *   [fund = sponsor.request()]
+ *   refreshOraclePrices(..., sponsorFund?)
+ *   req = buildRequest()
+ *   [sponsor.reimburse(fund, req)]
+ *   trading::execute(req)
+ */
+async function wrapRequestAndExecute(
   client: WaterXClient,
   tx: Transaction,
-  tickers: string[],
-  opts?: CommonBuildOpts,
+  req: RequestParams,
+  collateralTicker: string,
+  opts: CommonBuildOpts | undefined,
+  buildRequest: (sponsorFund?: {
+    fund: TransactionArgument;
+    packageId: string;
+  }) => TransactionArgument,
 ): Promise<void> {
-  if (opts?.updatePythPrice === false) {
-    // Skip even on-chain feed — caller manages oracle freshness elsewhere.
-    return;
+  const useSponsor = opts?.useSponsor ?? true;
+  let sponsorFund: { fund: TransactionArgument; packageId: string } | undefined;
+  if (useSponsor) sponsorFund = openPythSponsorFund(tx, client);
+
+  if (!opts?.skipOraclePriceRefresh) {
+    // (a) Refresh every pool-token oracle + the base ticker. The pool's
+    //     `assert_prices_fresh` walks every TokenPoolInfo and requires each
+    //     to have been recently update_token_value'd, so we feed Pyth for
+    //     all of them in one PTB. Base ticker is added on top.
+    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    const oracleTickers = Array.from(new Set([req.ticker, collateralTicker, ...poolTickers]));
+    await refreshOraclePrices(tx, client, oracleTickers, {
+      cache: opts?.pythCache,
+      sponsorFund,
+    });
+    // (b) Bump each pool token's `last_price_refresh_timestamp` so the
+    //     in-execute freshness assertion passes.
+    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
+      updateTokenValue(client, tx, { tokenType, lpType: req.lpType });
+    }
   }
-  await refreshOraclePrices(tx, client, tickers, {
-    cache: opts?.pythCache,
-    sponsorFund: opts?.sponsorFund,
+
+  const tradingReq = buildRequest(sponsorFund);
+
+  if (sponsorFund) {
+    reimbursePythSponsor(tx, client, sponsorFund.fund, tradingReq, req.collateralType);
+  }
+
+  executeTrading(client, tx, {
+    ticker: req.ticker,
+    collateralType: req.collateralType,
+    lpType: req.lpType,
+    request: tradingReq,
   });
 }
 
 // ============================================================================
-// Close / increase / decrease position
+// Position lifecycle (close / increase / decrease)
 // ============================================================================
 
 export interface BuildClosePositionParams extends ClosePositionRequestParams, CommonBuildOpts {
-  /** Collateral ticker (e.g. `"USDC/USD"`); defaults to client.config.collaterals.USDC.ticker */
   collateralTicker?: string;
 }
 
@@ -91,16 +154,14 @@ export async function buildClosePositionTx(
   params: BuildClosePositionParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const baseTicker = params.ticker;
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [baseTicker, colTicker], params);
-  const req = closePositionRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => closePositionRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -114,15 +175,14 @@ export async function buildIncreasePositionTx(
   params: BuildIncreasePositionParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = increasePositionRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => increasePositionRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -136,15 +196,14 @@ export async function buildDecreasePositionTx(
   params: BuildDecreasePositionParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = decreasePositionRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => decreasePositionRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -162,15 +221,14 @@ export async function buildDepositCollateralTx(
   params: BuildDepositCollateralParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = depositCollateralRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => depositCollateralRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -184,20 +242,19 @@ export async function buildWithdrawCollateralTx(
   params: BuildWithdrawCollateralParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = withdrawCollateralRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => withdrawCollateralRequest(client, tx, params),
+  );
   return tx;
 }
 
 // ============================================================================
-// Place / cancel / update order
+// Order lifecycle (place / cancel / update / pre-order)
 // ============================================================================
 
 export interface BuildPlaceOrderParams extends PlaceOrderRequestParams, CommonBuildOpts {
@@ -209,15 +266,14 @@ export async function buildPlaceOrderTx(
   params: BuildPlaceOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = placeOrderRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => placeOrderRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -230,15 +286,14 @@ export async function buildCancelOrderTx(
   params: BuildCancelOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = cancelOrderRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => cancelOrderRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -251,15 +306,14 @@ export async function buildUpdateOrderTx(
   params: BuildUpdateOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = updateOrderRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => updateOrderRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -272,15 +326,14 @@ export async function buildCancelPreOrderTx(
   params: BuildCancelPreOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = cancelPreOrderRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => cancelPreOrderRequest(client, tx, params),
+  );
   return tx;
 }
 
@@ -293,20 +346,25 @@ export async function buildAddPreOrderTx(
   params: BuildAddPreOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  const colTicker = params.collateralTicker ?? "USDC/USD";
-  await refreshForAction(client, tx, [params.ticker, colTicker], params);
-  const req = addPreOrderRequest(client, tx, params);
-  executeTrading(client, tx, {
-    ticker: params.ticker,
-    collateralType: params.collateralType,
-    lpType: params.lpType,
-    request: req,
-  });
+  await wrapRequestAndExecute(
+    client,
+    tx,
+    params,
+    params.collateralTicker ?? "USDCUSD",
+    params,
+    () => addPreOrderRequest(client, tx, params),
+  );
   return tx;
 }
 
 // ============================================================================
-// Re-exports for convenience
+// Re-exports
 // ============================================================================
 
-export { PythCache, refreshOraclePrices, updatePythPrices };
+export {
+  openPythSponsorFund,
+  PythCache,
+  refreshOraclePrices,
+  reimbursePythSponsor,
+  updatePythPrices,
+};

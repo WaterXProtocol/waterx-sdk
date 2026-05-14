@@ -18,6 +18,16 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
+// ============================================================================
+// Pyth-sponsor flow — pays Pyth update fees from a shared sponsor pool AND
+// attaches the `PythSponsorRule` witness to a TradingRequest. Required when
+// the market's `request_checklist` contains `PythSponsorRule`.
+// ============================================================================
+
+import {
+  reimburse as sponsorReimburse,
+  request as sponsorRequest,
+} from "../generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import { feed as pythRuleFeed } from "../generated/waterx_pyth_rule/pyth_rule.ts";
 
@@ -361,4 +371,56 @@ export async function refreshOraclePrices(
       priceInfoObjectId: entries[i]!.price_info_object,
     });
   });
+}
+
+/**
+ * Opens a `Fund` hot potato from the shared PythSponsor pool. Pass the
+ * returned `{ fund, packageId }` straight to `refreshOraclePrices` as
+ * `sponsorFund`, then `reimbursePythSponsor` once the TradingRequest is
+ * built to attach the `PythSponsorRule` witness and return leftover
+ * balance.
+ */
+export function openPythSponsorFund(
+  tx: Transaction,
+  client: WaterXClient,
+): { fund: TransactionArgument; packageId: string } {
+  const entry = client.config.packages.pyth_sponsor_rule;
+  if (!entry?.published_at || !entry.pyth_sponsor) {
+    throw new Error(
+      "pyth_sponsor_rule.{published_at,pyth_sponsor} missing — sponsor flow unavailable",
+    );
+  }
+  const [fund] = sponsorRequest({
+    package: entry.published_at,
+    arguments: { self: tx.object(entry.pyth_sponsor) },
+  })(tx);
+  return { fund: fund as unknown as TransactionArgument, packageId: entry.published_at };
+}
+
+/**
+ * Consumes the `Fund` hot potato from `openPythSponsorFund`, returns any
+ * leftover SUI to the sponsor pool, and attaches the `PythSponsorRule`
+ * witness to the given `TradingRequest<C_TOKEN>` so `trading::execute`
+ * can satisfy a checklist that includes `PythSponsorRule`.
+ */
+export function reimbursePythSponsor(
+  tx: Transaction,
+  client: WaterXClient,
+  fund: TransactionArgument,
+  tradingRequest: TransactionArgument,
+  collateralType: string,
+): void {
+  const entry = client.config.packages.pyth_sponsor_rule;
+  if (!entry?.published_at || !entry.pyth_sponsor) {
+    throw new Error("pyth_sponsor_rule missing from config");
+  }
+  sponsorReimburse({
+    package: entry.published_at,
+    arguments: {
+      self: tx.object(entry.pyth_sponsor),
+      fund: fund as unknown as string,
+      tradingReq: tradingRequest as unknown as string,
+    },
+    typeArguments: [collateralType],
+  })(tx);
 }
