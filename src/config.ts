@@ -55,7 +55,8 @@ export interface WaterxPerpPackage extends BasePackageEntry {
 
 export interface WaterxStakingPackage extends BasePackageEntry {
   admin_cap?: string;
-  staking_pool?: string;
+  /** Map of stake-type alias (e.g. `"WLP"`) → `StakingPool<STAKE>` shared object ID. */
+  pools?: Record<string, string>;
 }
 
 export interface WlpPackage extends BasePackageEntry {

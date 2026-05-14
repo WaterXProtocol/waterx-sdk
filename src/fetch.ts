@@ -103,11 +103,16 @@ function withLp(client: WaterXClient, lpType?: string): string {
 
 export type AccountDataView = ReturnType<typeof AccountData.parse>;
 
-/** Look up the registered AccountData for a given wxa account ID. */
+/**
+ * Look up the registered AccountData for a given wxa account ID.
+ * Returns `undefined` if the account has no perp data slot installed yet
+ * (the slot auto-installs on the first `add_position` / `add_order`).
+ * The underlying view fn returns `Option<AccountData>`.
+ */
 export async function getAccountData(
   client: WaterXClient,
   accountId: string,
-): Promise<AccountDataView> {
+): Promise<AccountDataView | undefined> {
   const tx = new Transaction();
   accountDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
@@ -116,7 +121,9 @@ export async function getAccountData(
       accountId,
     },
   })(tx);
-  return AccountData.parse(await simulateAndExtract(client, tx));
+  const bytes = await simulateAndExtract(client, tx);
+  const opt = bcs.option(AccountData).parse(bytes);
+  return opt ?? undefined;
 }
 
 // ============================================================================

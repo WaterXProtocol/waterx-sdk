@@ -10,6 +10,10 @@
  *   destroy_<deposit|withdraw>_checker(checker)
  *
  * `claim<STAKE, R>` is single-call (no checker).
+ *
+ * Each builder takes a `stakeAlias` (e.g. `"WLP"`) that keys into
+ * `config.packages.waterx_staking.pools` to find the actual
+ * `StakingPool<STAKE>` shared object.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
@@ -18,10 +22,20 @@ import type { WaterXClient } from "../client.ts";
 import * as staking from "../generated/waterx_staking/waterx_staking.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
-function pool(client: WaterXClient): string {
-  const id = client.config.packages.waterx_staking?.staking_pool;
-  if (!id) throw new Error("config.objects.stakingPool is not set");
+function pool(client: WaterXClient, stakeAlias: string): string {
+  const id = client.config.packages.waterx_staking?.pools?.[stakeAlias];
+  if (!id) {
+    throw new Error(
+      `config.packages.waterx_staking.pools[${stakeAlias}] is not set — staking is not deployed for this stake type`,
+    );
+  }
   return id;
+}
+
+function stakingPackage(client: WaterXClient): string {
+  const pkg = client.config.packages.waterx_staking?.published_at;
+  if (!pkg) throw new Error("config.packages.waterx_staking is not configured");
+  return pkg;
 }
 
 // ============================================================================
@@ -30,7 +44,9 @@ function pool(client: WaterXClient): string {
 
 export interface StakeParams {
   accountId: string;
-  /** Fully-qualified `STAKE` coin type (e.g. WLP). */
+  /** Stake-type alias (key into `waterx_staking.pools`, e.g. `"WLP"`). */
+  stakeAlias: string;
+  /** Fully-qualified `STAKE` coin type for the type argument. */
   stakeType: string;
   /** Amount to take from the wxa account into the staking pool. */
   stakeAmount: bigint | number;
@@ -40,11 +56,13 @@ export interface StakeParams {
 }
 
 export function stake(client: WaterXClient, tx: Transaction, params: StakeParams): void {
+  const pkg = stakingPackage(client);
+  const poolId = pool(client, params.stakeAlias);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [checker] = staking.deposit({
-    package: client.config.packages.waterx_staking?.published_at,
+    package: pkg,
     arguments: {
-      self: tx.object(pool(client)),
+      self: tx.object(poolId),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       accReq: req as unknown as string,
@@ -55,17 +73,17 @@ export function stake(client: WaterXClient, tx: Transaction, params: StakeParams
 
   for (const r of params.rewarderTypes ?? []) {
     staking.settleRewarderOnDeposit({
-      package: client.config.packages.waterx_staking?.published_at,
+      package: pkg,
       arguments: {
         checker: checker as unknown as string,
-        self: tx.object(pool(client)),
+        self: tx.object(poolId),
       },
       typeArguments: [params.stakeType, r],
     })(tx);
   }
 
   staking.destroyDepositChecker({
-    package: client.config.packages.waterx_staking?.published_at,
+    package: pkg,
     arguments: { checker: checker as unknown as string },
     typeArguments: [params.stakeType],
   })(tx);
@@ -77,6 +95,7 @@ export function stake(client: WaterXClient, tx: Transaction, params: StakeParams
 
 export interface UnstakeParams {
   accountId: string;
+  stakeAlias: string;
   stakeType: string;
   withdrawalAmount: bigint | number;
   rewarderTypes?: string[];
@@ -84,11 +103,13 @@ export interface UnstakeParams {
 }
 
 export function unstake(client: WaterXClient, tx: Transaction, params: UnstakeParams): void {
+  const pkg = stakingPackage(client);
+  const poolId = pool(client, params.stakeAlias);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [checker] = staking.redeem({
-    package: client.config.packages.waterx_staking?.published_at,
+    package: pkg,
     arguments: {
-      self: tx.object(pool(client)),
+      self: tx.object(poolId),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       accReq: req as unknown as string,
@@ -99,17 +120,17 @@ export function unstake(client: WaterXClient, tx: Transaction, params: UnstakePa
 
   for (const r of params.rewarderTypes ?? []) {
     staking.settleRewarderOnWithdraw({
-      package: client.config.packages.waterx_staking?.published_at,
+      package: pkg,
       arguments: {
         checker: checker as unknown as string,
-        self: tx.object(pool(client)),
+        self: tx.object(poolId),
       },
       typeArguments: [params.stakeType, r],
     })(tx);
   }
 
   staking.destroyWithdrawChecker({
-    package: client.config.packages.waterx_staking?.published_at,
+    package: pkg,
     arguments: { checker: checker as unknown as string },
     typeArguments: [params.stakeType],
   })(tx);
@@ -121,6 +142,7 @@ export function unstake(client: WaterXClient, tx: Transaction, params: UnstakePa
 
 export interface ClaimRewardParams {
   accountId: string;
+  stakeAlias: string;
   stakeType: string;
   /** Reward coin type to claim. */
   rewardType: string;
@@ -132,11 +154,13 @@ export function claimReward(
   tx: Transaction,
   params: ClaimRewardParams,
 ): void {
+  const pkg = stakingPackage(client);
+  const poolId = pool(client, params.stakeAlias);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   staking.claim({
-    package: client.config.packages.waterx_staking?.published_at,
+    package: pkg,
     arguments: {
-      self: tx.object(pool(client)),
+      self: tx.object(poolId),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       request: req as unknown as string,
