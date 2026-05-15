@@ -20,10 +20,10 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias",
     "codegen": "tsx scripts/codegen-summaries.ts && npx sui-ts-codegen generate && tsx scripts/fix-generated-imports.ts",
     "lint": "pnpm lint:eslint && pnpm lint:prettier",
-    "lint:eslint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\"",
-    "lint:prettier": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
-    "lint:fix": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\" --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
+    "lint:eslint": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\"",
+    "lint:prettier": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

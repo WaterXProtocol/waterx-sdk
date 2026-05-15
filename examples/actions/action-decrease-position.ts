@@ -1,0 +1,33 @@
+/**
+ * `buildDecreasePositionTx` — reduce position size while keeping it
+ * open. Partial close. PnL on the reduced portion is realized.
+ *
+ *   WATERX_ACCOUNT_ID=0x... WATERX_POSITION_ID=3 \
+ *     pnpm exec tsx examples/actions/action-decrease-position.ts
+ */
+import {
+  buildClient,
+  loadActiveKeypair,
+  requireEnv,
+  run,
+  simThenMaybeExecute,
+} from "../_shared.ts";
+import { buildDecreasePositionTx, rawPrice } from "../../src/index.ts";
+
+run(async () => {
+  const client = await buildClient();
+  const { keypair } = loadActiveKeypair();
+  const accountId = requireEnv("WATERX_ACCOUNT_ID");
+  const usdcType = client.getPoolTokenType("USDCUSD");
+
+  const tx = await buildDecreasePositionTx(client, {
+    ticker: process.env.WATERX_TICKER ?? "BTCUSD",
+    collateralType: usdcType,
+    accountId,
+    positionId: BigInt(requireEnv("WATERX_POSITION_ID")),
+    size: BigInt(process.env.WATERX_SIZE ?? rawPrice(0.00005).toString()),
+    acceptablePrice: rawPrice(Number(process.env.WATERX_ACCEPTABLE_USD ?? "1")),
+  });
+
+  await simThenMaybeExecute(client, tx, "decreasePosition", keypair);
+});

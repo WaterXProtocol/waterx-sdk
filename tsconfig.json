@@ -6,11 +6,11 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": false,
-    "rootDirs": ["src", "test", "scripts"],
+    "rootDirs": ["src", "test", "scripts", "examples"],
     "paths": {
       "@waterx/perp-sdk": ["./src/index.ts"]
     }
   },
-  "include": ["src", "test", "scripts"],
+  "include": ["src", "test", "scripts", "examples"],
   "exclude": ["node_modules", "**/__tests__/*"]
 }
