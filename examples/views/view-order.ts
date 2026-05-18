@@ -8,7 +8,8 @@
  *     pnpm exec tsx examples/views/view-order.ts
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
-import { ORDER_LIMIT_BUY, rawPrice } from "../../src/constants.ts";
+import { ORDER_LIMIT_BUY } from "../../src/constants.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import { getOrder } from "../../src/fetch.ts";
 
 run(async () => {

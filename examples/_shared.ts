@@ -19,13 +19,13 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
-import { SENDER } from "../src/constants.ts";
+import { DRY_RUN_SENDER } from "../src/constants.ts";
 import type { Network } from "../src/constants.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
-export const ZERO_SENDER = SENDER;
+
 
 export async function buildClient(network: Network = "TESTNET"): Promise<WaterXClient> {
   return WaterXClient.create(network, { cache: true });
@@ -64,7 +64,7 @@ export async function sim(
   client: WaterXClient,
   tx: Transaction,
   label: string,
-  sender: string = ZERO_SENDER,
+  sender: string = DRY_RUN_SENDER,
 ): Promise<boolean> {
   tx.setSender(sender);
   const r = (await client.simulate(tx)) as unknown as SimResult;
@@ -113,7 +113,7 @@ export async function simThenMaybeExecute(
   label: string,
   signer?: Ed25519Keypair,
 ): Promise<void> {
-  const sender = signer?.toSuiAddress() ?? ZERO_SENDER;
+  const sender = signer?.toSuiAddress() ?? DRY_RUN_SENDER;
   if (!(await sim(client, tx, label, sender))) return;
   if (shouldExecute() && signer) {
     await execute(client, signer, tx, `${label} (execute)`);

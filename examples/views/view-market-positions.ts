@@ -7,7 +7,7 @@
  *   WATERX_CURSOR=10 WATERX_PAGE_SIZE=50 ... examples/...
  */
 import { buildClient, dump, run } from "../_shared.ts";
-import { rawPrice } from "../../src/constants.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import { getMarketPositions } from "../../src/fetch.ts";
 
 run(async () => {

@@ -34,7 +34,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
-import { SENDER } from "../src/constants.ts";
+import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
 import {
   realtimeRewardAmount as realtimeRewardAmountCall,
@@ -139,7 +139,7 @@ async function readTotalStake(client: WaterXClient): Promise<bigint> {
     arguments: { self: tx.object(poolId(client)) },
     typeArguments: [client.wlpType()],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   return BigInt(bcs.u64().parse(pullBcs(r.commandResults?.[0]?.returnValues?.[0])));
 }
@@ -151,7 +151,7 @@ async function readStakeExists(client: WaterXClient, accountId: string): Promise
     arguments: { self: tx.object(poolId(client)), account: accountId },
     typeArguments: [client.wlpType()],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   return bcs.bool().parse(pullBcs(r.commandResults?.[0]?.returnValues?.[0]));
 }
@@ -167,7 +167,7 @@ async function readRealtimeReward(
     arguments: { self: tx.object(poolId(client)), account: accountId },
     typeArguments: [client.wlpType(), rewardType],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   return BigInt(bcs.u64().parse(pullBcs(r.commandResults?.[0]?.returnValues?.[0])));
 }
@@ -182,7 +182,7 @@ async function readStakingWhitelisted(client: WaterXClient): Promise<boolean> {
     arguments: { registry: tx.object(client.config.packages.waterx_account.account_registry) },
     typeArguments: [witnessType],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   return bcs.bool().parse(pullBcs(r.commandResults?.[0]?.returnValues?.[0]));
 }

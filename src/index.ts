@@ -33,8 +33,12 @@ export {
   ACTION_PLACE_ORDER,
   ACTION_UPDATE_ORDER,
   ACTION_WITHDRAW_COLLATERAL,
-  CLOCK,
+  BPS_SCALE,
+  CRYPTO_FEE_RATE,
+  DOUBLE_SCALE,
+  DRY_RUN_SENDER,
   FLOAT_SCALE,
+  MAINTENANCE_MARGIN_RATE,
   ORDER_LIMIT_BUY,
   ORDER_LIMIT_SELL,
   ORDER_STOP_BUY,
@@ -52,10 +56,35 @@ export {
   PERM_PLACE_ORDER,
   PERM_REDEEM_WLP,
   PERM_WITHDRAW_COLLATERAL,
-  SENDER,
-  rawPrice,
+  STOCK_FEE_RATE,
+  TOKEN_DECIMALS,
 } from "./constants.ts";
 export type { Network } from "./constants.ts";
+
+
+// ======== Utilities ========
+export { getBaseAssets, getCollateralAssets } from "./utils/config.ts";
+export {
+  calcBorrowRate,
+  calcBorrowRateAccrual,
+  calcDynamicFeeBps,
+  calcEstLiqPrice,
+  calcFee,
+  calcFundingFeeUsd,
+  calcFundingRate,
+  calcImpactFeeRate,
+  calcLeverage,
+  calcNotional,
+  calcPositionBorrowFee,
+  calcTokenUtilizationBps,
+  calcTotalTradingFeeRate,
+  calcUnrealizedPnl,
+  calcWlpMintOut,
+  calcWlpPrice,
+  calcWlpRedeemOut,
+  decodeFundingIndexDelta,
+  rawPrice,
+} from "./utils/math.ts";
 
 // ======== Transaction builders (user-side) ========
 export * from "./user/index.ts";

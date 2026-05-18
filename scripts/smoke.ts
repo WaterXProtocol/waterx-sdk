@@ -18,7 +18,8 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import type { WaterXConfig } from "../src/config.ts";
-import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING, rawPrice } from "../src/constants.ts";
+import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/constants.ts";
+import { rawPrice } from "../src/utils/math.ts";
 import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/fetch.ts";
 import {
   buildPlaceOrderArgument,

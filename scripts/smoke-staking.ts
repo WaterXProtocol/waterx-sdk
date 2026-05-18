@@ -32,7 +32,7 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
-import { SENDER } from "../src/constants.ts";
+import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
 import {
   stakeExists as stakeExistsCall,
@@ -127,7 +127,7 @@ async function readTotalStakeAmount(client: WaterXClient): Promise<bigint> {
     arguments: { self: tx.object(poolId(client)) },
     typeArguments: [client.wlpType()],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   const b = r.commandResults?.[0]?.returnValues?.[0]?.bcs;
   if (!b) throw new Error("total_stake_amount returned no BCS value");
@@ -143,7 +143,7 @@ async function readStakeExists(client: WaterXClient, accountId: string): Promise
     arguments: { self: tx.object(poolId(client)), account: accountId },
     typeArguments: [client.wlpType()],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   const b = r.commandResults?.[0]?.returnValues?.[0]?.bcs;
   if (!b) throw new Error("stake_exists returned no BCS value");
@@ -173,7 +173,7 @@ async function readStakingWhitelisted(client: WaterXClient): Promise<boolean> {
     arguments: { registry: tx.object(client.config.packages.waterx_account.account_registry) },
     typeArguments: [witnessType],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   const b = r.commandResults?.[0]?.returnValues?.[0]?.bcs;
   if (!b) throw new Error("is_protocol_whitelisted returned no BCS value");

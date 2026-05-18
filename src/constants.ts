@@ -1,6 +1,33 @@
 // ======== Network ========
 export type Network = "MAINNET" | "TESTNET";
 
+// ======== Scaling ========
+/** Basis-point denominator (10_000). Matches BP_SCALE in the Move contracts. */
+export const BPS_SCALE = 10_000n;
+
+/** Float scaling factor (1e9). All `Float` values from `bucket_v2_framework` are 1e9-scaled. */
+export const FLOAT_SCALE = 1_000_000_000n;
+
+/** Double scaling factor (1e18). Used for high-precision intermediate values (e.g. u256 fields). */
+export const DOUBLE_SCALE = 1_000_000_000_000_000_000n;
+
+// ======== Token decimals ========
+/** On-chain decimal precision for SUI-native coins. */
+export const TOKEN_DECIMALS = {
+  SUI: 9,
+  USDC: 6,
+  USDSUI: 6,
+  WLP: 6,
+} as const satisfies Record<string, number>;
+
+// ======== Fee rates & risk parameters ========
+/** Default crypto market trading fee rate (3 bps). Per-market value lives in MarketConfig. */
+export const CRYPTO_FEE_RATE = 0.0003;
+/** Default stock / commodity market trading fee rate (5 bps). Per-market value lives in MarketConfig. */
+export const STOCK_FEE_RATE = 0.0005;
+/** Default maintenance margin rate (150 bps = 1.5%). Per-market value lives in MarketConfig. */
+export const MAINTENANCE_MARGIN_RATE = 0.015;
+
 // ======== Permission Bitmasks (matches account_data.move) ========
 export const PERM_OPEN_POSITION = 1;
 export const PERM_CLOSE_POSITION = 2;
@@ -38,21 +65,5 @@ export const ACTION_CANCEL_PRE_ORDER = 10;
 export const ACTION_ADD_PRE_ORDER = 11;
 
 // ======== Misc ========
-/** Zero address — used as a placeholder sender in simulateTransaction. */
-export const SENDER = "0x0000000000000000000000000000000000000000000000000000000000000000";
-
-/** Sui Clock shared object. */
-export const CLOCK = "0x6";
-
-/** Float scaling factor (1e9). All `Float` values from `bucket_v2_framework` are 1e9-scaled. */
-export const FLOAT_SCALE = 1_000_000_000n;
-
-/**
- * Convert a human-readable USD price to the raw 1e9-scaled `u128` value
- * that on-chain `Float`-typed parameters expect.
- */
-export function rawPrice(usd: number | string): bigint {
-  const n = typeof usd === "string" ? Number(usd) : usd;
-  if (!Number.isFinite(n)) throw new Error(`Invalid USD price: ${usd}`);
-  return BigInt(Math.round(n * Number(FLOAT_SCALE)));
-}
+/** Zero-address placeholder used as the sender in dry-run / simulate calls. */
+export const DRY_RUN_SENDER = "0x0000000000000000000000000000000000000000000000000000000000000000";

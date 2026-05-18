@@ -20,7 +20,8 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
-import { ORDER_TAG_WILDCARD, rawPrice } from "../src/constants.ts";
+import { ORDER_TAG_WILDCARD } from "../src/constants.ts";
+import { rawPrice } from "../src/utils/math.ts";
 import {
   getAccountData,
   getAccountOrders,
