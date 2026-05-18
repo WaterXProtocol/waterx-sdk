@@ -53,7 +53,8 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
-import { ORDER_LIMIT_BUY, rawPrice, SENDER } from "../src/constants.ts";
+import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/constants.ts";
+import { rawPrice } from "../src/utils/math.ts";
 import {
   getAccountOrders,
   getAccountPositions,
@@ -157,7 +158,7 @@ async function readMarketRaw(client: WaterXClient): Promise<MarketDataView> {
     },
     typeArguments: [client.wlpType()],
   })(tx);
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
 
   const r = (await client.simulate(tx)) as unknown as SimResult;
   if (r.$kind === "FailedTransaction") {

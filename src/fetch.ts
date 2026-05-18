@@ -11,7 +11,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "./client.ts";
-import { SENDER } from "./constants.ts";
+import { DRY_RUN_SENDER } from "./constants.ts";
 // ============================================================================
 // Referral queries (bucket_v2_referral::referral_table)
 // ============================================================================
@@ -76,7 +76,7 @@ async function simulateAndExtract(
   commandIndex = 0,
   returnIndex = 0,
 ): Promise<Uint8Array> {
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   if (sim.$kind === "FailedTransaction") {
     const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
@@ -282,8 +282,6 @@ export interface PageOpts {
   pageSize?: bigint | number;
 }
 
-const VECTOR_PAGE = (struct: ReturnType<typeof bcs.vector>) => struct;
-
 export async function getMarketOrders(
   client: WaterXClient,
   args: {
@@ -305,7 +303,7 @@ export async function getMarketOrders(
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
 
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   const ret = sim.commandResults?.[0]?.returnValues;
   if (!ret) return { orders: [] };
@@ -347,7 +345,7 @@ export async function getMarketPositions(
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
 
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   const ret = sim.commandResults?.[0]?.returnValues;
   if (!ret) return { positions: [] };
@@ -432,7 +430,7 @@ export async function getRedeemRequests(
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
 
-  tx.setSender(SENDER);
+  tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   const ret = sim.commandResults?.[0]?.returnValues;
   if (!ret) return { requests: [] };
@@ -449,9 +447,6 @@ export async function getRedeemRequests(
   }
   return { requests, nextCursor };
 }
-
-// Silence unused import warning until VECTOR_PAGE is wired into a public helper.
-void VECTOR_PAGE;
 
 function requireReferralPackage(client: WaterXClient): { pkg: string; table: string } {
   const pkg = client.config.packages.bucket_referral?.published_at;

@@ -29,7 +29,8 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
-import { ORDER_LIMIT_BUY, rawPrice } from "../src/constants.ts";
+import { ORDER_LIMIT_BUY } from "../src/constants.ts";
+import { rawPrice } from "../src/utils/math.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
 import {
   buildCancelOrderTx,
