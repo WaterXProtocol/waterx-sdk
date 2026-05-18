@@ -11,6 +11,18 @@
       "@waterx/perp-sdk": ["./src/index.ts"]
     }
   },
-  "include": ["src", "test", "scripts", "examples"],
+  "include": [
+    "src",
+    "scripts",
+    "examples",
+    "test/unit",
+    "test/simulate",
+    "test/helpers/fixtures",
+    "test/helpers/test-client.ts",
+    "test/helpers/e2e/e2e-client.ts",
+    "test/helpers/e2e/e2e-setup.ts",
+    "test/helpers/e2e/transient-rpc.ts",
+    "test/helpers/trading/expected-open-trading-fee.ts"
+  ],
   "exclude": ["node_modules", "**/__tests__/*"]
 }

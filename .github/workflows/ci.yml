@@ -158,7 +158,7 @@ jobs:
       - name: Vitest e2e — shard ${{ matrix.shard }}/3 (dot + JUnit)
         env:
           NODE_NO_WARNINGS: "1"
-        run: pnpm exec tsx scripts/run-e2e.ts --reporter=dot --reporter=junit --outputFile=test-results-e2e-${{ matrix.shard }}.xml --shard=${{ matrix.shard }}/3
+        run: pnpm exec tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-e2e-${{ matrix.shard }}.xml --shard=${{ matrix.shard }}/3
       - name: Test report (e2e shard ${{ matrix.shard }})
         uses: dorny/test-reporter@v2
         if: always()
