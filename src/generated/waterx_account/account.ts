@@ -12,7 +12,7 @@
  * `DepositRequest<T>` / `WithdrawRequest<T>` that the framework issues; a
  * registered policy module destroys the potato with its own witness and decides
  * what final asset to put back into the account (e.g. a PSM policy turns
- * `Coin<USDC>` into `Balance<USDX>` and credits the account via `put<USDX, P>`).
+ * `Coin<USDC>` into `Balance<USD>` and credits the account via `put<USD, P>`).
  * 
  * Internal protocol ↔ account flow stays witness-gated via `take<T, P>` /
  * `put<T, P>` with no policy registration involved — the protocol module's witness
@@ -1062,6 +1062,12 @@ export interface RemoveDelegateOptions {
         delegateAddress: RawTransactionArgument<string>
     ];
 }
+/**
+ * Owner-only for live delegates; permissionless once the delegate has passed its
+ * `expires_at_ms`. Lets a keeper / bot prune dead entries without bothering the
+ * owner — an expired delegate carries no authority, so removing it is purely
+ * janitorial.
+ */
 export function removeDelegate(options: RemoveDelegateOptions) {
     const packageAddress = options.package ?? '@waterx/account';
     const argumentsTypes = [
