@@ -69,7 +69,7 @@ export interface WlpPackage extends BasePackageEntry {
   pool_tokens: Record<string, string>;
 }
 
-export interface BucketReferralPackage extends BasePackageEntry {
+export interface WaterxReferralPackage extends BasePackageEntry {
   /** Shared `ReferralTable`. */
   referral_table: string;
 }
@@ -82,7 +82,7 @@ export interface MockCoinPackage extends BasePackageEntry {
 
 export interface WaterXPackages {
   bucket_framework: BasePackageEntry;
-  bucket_referral?: BucketReferralPackage;
+  waterx_referral?: WaterxReferralPackage;
   pyth_rule: PythRulePackage;
   pyth_sponsor_rule?: PythSponsorRulePackage;
   waterx_account: WxaAccountPackage;

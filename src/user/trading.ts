@@ -34,7 +34,7 @@ function typeArgs(client: WaterXClient, t: TradingTypeArgs): [string, string] {
 }
 
 export interface CommonTradingParams extends TradingTypeArgs {
-  /** Market ticker (e.g. `"BTC/USD"`). */
+  /** Market ticker (e.g. `"BTCUSD"`). */
   ticker: string;
   /** wxa `Account` ID acting as sender / collateral source. */
   accountId: string;

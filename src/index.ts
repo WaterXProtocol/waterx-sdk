@@ -4,7 +4,7 @@ export type { CreateClientOptions } from "./client.ts";
 export { PYTH_DEFAULTS, clearConfigCache, defaultConfigUrl, loadConfig } from "./config.ts";
 export type {
   BasePackageEntry,
-  BucketReferralPackage,
+  WaterxReferralPackage,
   LoadConfigOptions,
   PythInfraConfig,
   PythRulePackage,
@@ -63,7 +63,7 @@ export type { Network } from "./constants.ts";
 
 
 // ======== Utilities ========
-export { getBaseAssets, getCollateralAssets } from "./utils/config.ts";
+export { getMarketTickers, getCollateralAssets } from "./utils/config.ts";
 export {
   calcBorrowRate,
   calcBorrowRateAccrual,

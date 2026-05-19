@@ -1,7 +1,7 @@
 import type { WaterXConfig } from "../config.ts";
 
-/** Returns all registered base asset tickers from waterx-config. */
-export function getBaseAssets(config: WaterXConfig): string[] {
+/** Returns all registered market tickers (e.g. "BTCUSD") from waterx-config. */
+export function getMarketTickers(config: WaterXConfig): string[] {
   return Object.keys(config.packages.waterx_perp.markets);
 }
 
