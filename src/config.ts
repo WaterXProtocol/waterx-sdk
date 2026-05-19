@@ -4,8 +4,9 @@
  *
  * The schema mirrors the canonical JSON layout one-to-one (each package
  * groups its own object IDs + per-ticker maps). External chain infra
- * (Pyth state, Wormhole state, Hermes endpoint) is **not** in the JSON
- * — it lives in `PYTH_DEFAULTS` below, keyed by network.
+ * (Pyth state, Wormhole state/core, Hermes & Wormholescan endpoints) is
+ * **not** in the JSON — it lives in `PYTH_DEFAULTS` / `WORMHOLE_DEFAULTS`
+ * below, keyed by network.
  */
 
 import type { Network } from "./constants.ts";
@@ -80,6 +81,96 @@ export interface MockCoinPackage extends BasePackageEntry {
   metadata_cap?: string;
 }
 
+// ---- Cross-chain credit / bridge stack ------------------------------------
+//
+// Mirrors the canonical credit `waterx-config` JSON 1:1 (snake_case). This
+// is a *credit-only* deployment file — separate from the perp config — so
+// it carries no `network` / perp / oracle / wlp keys. Only `published_at`
+// is guaranteed on each package entry (no `original_id` / `version`), so
+// these do NOT extend `BasePackageEntry`.
+//
+// The CREDIT coin Move type is taken verbatim from
+// `waterx_credit.credit_type` (the legacy `usdx` OTW package /
+// `usdx::USDX` is deprecated and intentionally NOT modeled here).
+
+export interface WaterxCreditPackage {
+  published_at: string;
+  /** Shared `CreditRegistry<CREDIT>` (phase-1 output). */
+  credit_registry?: string;
+  /**
+   * Fully-qualified CREDIT coin Move type, e.g. `0x..::usd::USD`. Required
+   * for any credit/bridge flow — `client.creditType()` returns it as-is.
+   */
+  credit_type?: string;
+}
+
+/** One backing-asset row on the native custody vault (PSM). */
+export interface NativeCustodyAsset {
+  /** Fully-qualified backing asset Move type `T`. */
+  type: string;
+  decimal: number;
+  mint_fee_scaled: string;
+  burn_fee_scaled: string;
+  min_burn_amount: string;
+}
+
+export interface NativeCustodyPackage {
+  published_at: string;
+  /** Shared `CustodyVault<CREDIT>` (phase-4 output). */
+  vault?: string;
+  /** Backing assets registered via `add_asset` (array, identified by `type`). */
+  assets: NativeCustodyAsset[];
+}
+
+export interface TrustedEmitterRow {
+  /** Source EVM chain's Wormhole chain id (e.g. 10002 = Sepolia). */
+  chain_id: number;
+  /** 32-byte left-padded EVM bridge address (0x form). */
+  evm_bridge_address_32b: string;
+  /** Whitelisted 20-byte EVM token addresses (0x form). */
+  evm_tokens_20b: string[];
+}
+
+export interface WormholeBridgePackage {
+  published_at: string;
+  /** Shared Sui Wormhole `State` object id for this deployment. */
+  wormhole_state: string;
+  hourly_mint_limit?: string;
+  max_mint_per_tx?: string;
+  hourly_burn_limit?: string;
+  max_burn_per_tx?: string;
+  trusted_emitters: TrustedEmitterRow[];
+  /** Shared `Bridge` (phase-5 output). */
+  bridge?: string;
+  /**
+   * The bridge's `EmitterCap` object id (Sui-side Wormhole emitter address
+   * for burn-relay Wormholescan lookups). Not written by the deploy script
+   * — resolve from the on-chain `Bridge` object if absent.
+   */
+  emitter_cap?: string;
+}
+
+export interface WithdrawalQueuePackage {
+  published_at: string;
+  /** Addresses on the queue executor allowlist (keepers). */
+  executors?: string[];
+  /** Shared `Queue<CREDIT>` (phase-6 output). */
+  queue?: string;
+}
+
+export interface TestnetFaucetPackage {
+  published_at: string;
+  whitelist?: string[];
+  faucet?: string;
+}
+
+// `waterx-config` ships as either a perp deployment or a credit-only
+// deployment, never both. The perp-side entries stay non-optional so the
+// existing perp builders / examples / scripts keep compiling — the JSON is
+// `as WaterXConfig`-cast with no runtime shape enforcement, and a
+// credit-only config simply never reads them (credit consumers go through
+// the throwing `client.get*()` helpers; `validateConfig` only enforces the
+// package set appropriate to the detected deployment kind).
 export interface WaterXPackages {
   bucket_framework: BasePackageEntry;
   bucket_referral?: BucketReferralPackage;
@@ -91,6 +182,12 @@ export interface WaterXPackages {
   waterx_perp_view: BasePackageEntry;
   waterx_staking?: WaterxStakingPackage;
   wlp: WlpPackage;
+  // Cross-chain credit / bridge stack (credit-only deployments).
+  waterx_credit?: WaterxCreditPackage;
+  wormhole_bridge?: WormholeBridgePackage;
+  withdrawal_queue?: WithdrawalQueuePackage;
+  native_custody?: NativeCustodyPackage;
+  testnet_faucet?: TestnetFaucetPackage;
   // Optional mock coin packages (testnet only).
   mock_usdc?: MockCoinPackage;
   mock_usdsui?: MockCoinPackage;
@@ -124,18 +221,59 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
   },
 };
 
+/**
+ * Wormhole infra for the cross-chain credit bridge. `state_id` is the same
+ * shared Sui Wormhole `State` object Pyth uses (kept in sync with
+ * `PYTH_DEFAULTS[*].wormhole_state_id`). Override per-deployment via
+ * `WaterXConfig.wormhole` if a deployment ever points elsewhere.
+ */
+export interface WormholeInfraConfig {
+  /** Shared Sui Wormhole `State` object. */
+  state_id: string;
+  /** Wormhole core package id on Sui. */
+  core_package: string;
+  /** Sui's Wormhole chain id (21 on both mainnet and testnet). */
+  sui_chain_id: number;
+  /** Wormholescan REST base for VAA lookups (no trailing slash). */
+  wormholescan_api: string;
+}
+
+export const WORMHOLE_DEFAULTS: Record<Network, WormholeInfraConfig> = {
+  MAINNET: {
+    state_id: "0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c",
+    core_package: "0x5306f64e312b581766351c07af79c72fcb1cd25147157fdc2f8ad76de9a3fb6a",
+    sui_chain_id: 21,
+    wormholescan_api: "https://api.wormholescan.io/api/v1",
+  },
+  TESTNET: {
+    state_id: "0x31358d198147da50db32eda2562951d53973a0c0ad5ed738e9b17d88b213d790",
+    core_package: "0xf47329f4344f3bf0f8e436e2f7b485466cff300f12a166563995d3888c296a94",
+    sui_chain_id: 21,
+    wormholescan_api: "https://api.testnet.wormholescan.io/api/v1",
+  },
+};
+
 // ============================================================================
 // Root config
 // ============================================================================
 
 export interface WaterXConfig {
-  network: "mainnet" | "testnet";
-  chain_id: string | null;
+  /** Absent on credit-only deployment files. */
+  network?: "mainnet" | "testnet";
+  chain_id?: string | number | null;
   /** Sui gRPC base URL (default: public Mysten fullnode for the network). */
   grpcUrl?: string;
   packages: WaterXPackages;
   /** Pyth infra override (defaults from `PYTH_DEFAULTS[network]`). */
   pyth?: PythInfraConfig;
+  /** Wormhole infra override (defaults from `WORMHOLE_DEFAULTS[network]`). */
+  wormhole?: WormholeInfraConfig;
+  /** Sui `CoinRegistry` shared object (credit deployments). */
+  coin_registry?: string;
+  /** Per-module credit supply caps (credit deployments). */
+  credit_caps?: Record<string, string>;
+  /** Deploy-script phase completion flags (credit deployments). */
+  done?: Record<string, boolean>;
 }
 
 // ============================================================================
@@ -206,23 +344,39 @@ export async function loadConfig(
 }
 
 function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void {
-  if (cfg.network !== expected.toLowerCase()) {
+  // `network` is only present on perp deployment files; credit-only files
+  // omit it. Enforce the guard only when the field is present.
+  if (cfg.network !== undefined && cfg.network !== expected.toLowerCase()) {
     throw new Error(
       `loadConfig: config at ${url} declares network=${cfg.network} but caller asked for ${expected}`,
     );
   }
-  const required: (keyof WaterXPackages)[] = [
-    "bucket_framework",
-    "pyth_rule",
-    "waterx_account",
-    "waterx_oracle",
-    "waterx_perp",
-    "waterx_perp_view",
-    "wlp",
-  ];
+  if (!cfg.packages || typeof cfg.packages !== "object") {
+    throw new Error(`loadConfig: config at ${url} has no packages object`);
+  }
+  const hasPublishedAt = (k: keyof WaterXPackages): boolean => {
+    const entry = cfg.packages[k] as { published_at?: string } | undefined;
+    return !!entry && typeof entry === "object" && !!entry.published_at;
+  };
+  // Validate by deployment kind. A perp config must carry the perp set; a
+  // credit config the credit set. `waterx_account` is common to both.
+  const isPerp = "waterx_perp" in cfg.packages;
+  const isCredit = "waterx_credit" in cfg.packages || "wormhole_bridge" in cfg.packages;
+  const required: (keyof WaterXPackages)[] = isPerp
+    ? [
+        "bucket_framework",
+        "pyth_rule",
+        "waterx_account",
+        "waterx_oracle",
+        "waterx_perp",
+        "waterx_perp_view",
+        "wlp",
+      ]
+    : isCredit
+      ? ["waterx_account", "waterx_credit"]
+      : ["waterx_account"];
   for (const k of required) {
-    const entry = cfg.packages?.[k];
-    if (!entry || typeof entry !== "object" || !("published_at" in entry) || !entry.published_at) {
+    if (!hasPublishedAt(k)) {
       throw new Error(`loadConfig: config at ${url} missing packages.${k}.published_at`);
     }
   }
