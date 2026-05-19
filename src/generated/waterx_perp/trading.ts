@@ -1969,44 +1969,6 @@ export function executeWithdrawCollateral(options: ExecuteWithdrawCollateralOpti
         typeArguments: options.typeArguments
     });
 }
-export interface FindBestTriggerableSlArguments {
-    market: RawTransactionArgument<string>;
-    position: RawTransactionArgument<string>;
-    oraclePrice: RawTransactionArgument<string>;
-}
-export interface FindBestTriggerableSlOptions {
-    package?: string;
-    arguments: FindBestTriggerableSlArguments | [
-        market: RawTransactionArgument<string>,
-        position: RawTransactionArgument<string>,
-        oraclePrice: RawTransactionArgument<string>
-    ];
-    typeArguments: [
-        string
-    ];
-}
-/**
- * Scans the position's linked orders for opposite-side reduce-only stop orders
- * (stop-loss legs) that would have triggered at the current oracle price, and
- * returns the order id and trigger price of the one most favourable to the user
- * (highest trigger for a long position, lowest trigger for a short position).
- */
-export function findBestTriggerableSl(options: FindBestTriggerableSlOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null,
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["market", "position", "oraclePrice"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'trading',
-        function: 'find_best_triggerable_sl',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
 export interface ExecuteLiquidateArguments {
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
@@ -2058,84 +2020,6 @@ export function executeLiquidate(options: ExecuteLiquidateOptions) {
         package: packageAddress,
         module: 'trading',
         function: 'execute_liquidate',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
-export interface ExecuteLiquidateCloseAtSlArguments {
-    globalConfig: RawTransactionArgument<string>;
-    wxaRegistry: RawTransactionArgument<string>;
-    market: RawTransactionArgument<string>;
-    pool: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
-    cumulativeBorrow: RawTransactionArgument<string>;
-    fundingSign: RawTransactionArgument<boolean>;
-    fundingIdx: RawTransactionArgument<string>;
-    marketId: RawTransactionArgument<string>;
-    accountId: RawTransactionArgument<string>;
-    accountObjectAddress: RawTransactionArgument<string>;
-    positionId: RawTransactionArgument<number | bigint>;
-    slOrderId: RawTransactionArgument<number | bigint>;
-    slPrice: RawTransactionArgument<string>;
-    now: RawTransactionArgument<number | bigint>;
-}
-export interface ExecuteLiquidateCloseAtSlOptions {
-    package?: string;
-    arguments: ExecuteLiquidateCloseAtSlArguments | [
-        globalConfig: RawTransactionArgument<string>,
-        wxaRegistry: RawTransactionArgument<string>,
-        market: RawTransactionArgument<string>,
-        pool: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>,
-        cumulativeBorrow: RawTransactionArgument<string>,
-        fundingSign: RawTransactionArgument<boolean>,
-        fundingIdx: RawTransactionArgument<string>,
-        marketId: RawTransactionArgument<string>,
-        accountId: RawTransactionArgument<string>,
-        accountObjectAddress: RawTransactionArgument<string>,
-        positionId: RawTransactionArgument<number | bigint>,
-        slOrderId: RawTransactionArgument<number | bigint>,
-        slPrice: RawTransactionArgument<string>,
-        now: RawTransactionArgument<number | bigint>
-    ];
-    typeArguments: [
-        string,
-        string
-    ];
-}
-/**
- * Close the position at the stop-loss trigger price instead of liquidating.
- * Invoked from `execute_liquidate` when a triggerable SL exists among the
- * position's linked orders. No liquidator/insurance fee is collected; only the
- * standard trading fee (incl. impact fee) plus the accumulated borrow, funding and
- * open fees are settled. Remaining collateral returns to the user; a
- * `PositionClosed` event is emitted at `sl_price`.
- */
-export function executeLiquidateCloseAtSl(options: ExecuteLiquidateCloseAtSlOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        'bool',
-        null,
-        '0x2::object::ID',
-        '0x2::object::ID',
-        'address',
-        'u64',
-        'u64',
-        null,
-        'u64',
-        '0x2::clock::Clock'
-    ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "wxaRegistry", "market", "pool", "collateralPrice", "cumulativeBorrow", "fundingSign", "fundingIdx", "marketId", "accountId", "accountObjectAddress", "positionId", "slOrderId", "slPrice", "now"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'trading',
-        function: 'execute_liquidate_close_at_sl',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

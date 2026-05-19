@@ -1062,6 +1062,12 @@ export interface RemoveDelegateOptions {
         delegateAddress: RawTransactionArgument<string>
     ];
 }
+/**
+ * Owner-only for live delegates; permissionless once the delegate has passed its
+ * `expires_at_ms`. Lets a keeper / bot prune dead entries without bothering the
+ * owner — an expired delegate carries no authority, so removing it is purely
+ * janitorial.
+ */
 export function removeDelegate(options: RemoveDelegateOptions) {
     const packageAddress = options.package ?? '@waterx/account';
     const argumentsTypes = [

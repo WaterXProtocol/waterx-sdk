@@ -11,9 +11,11 @@ import { Transaction } from "@mysten/sui/transactions";
 import {
   loadConfig,
   PYTH_DEFAULTS,
+  WORMHOLE_DEFAULTS,
   type LoadConfigOptions,
   type PythInfraConfig,
   type WaterXConfig,
+  type WormholeInfraConfig,
 } from "./config.ts";
 import type { Network } from "./constants.ts";
 
@@ -35,13 +37,16 @@ export class WaterXClient {
   network: Network;
   /** Parsed canonical `waterx-config` JSON. */
   config: WaterXConfig;
-  /** Pyth + Wormhole infra (network defaults unless overridden in JSON). */
+  /** Pyth infra (network defaults unless overridden in JSON). */
   pyth: PythInfraConfig;
+  /** Wormhole infra for the credit bridge (network defaults unless overridden). */
+  wormhole: WormholeInfraConfig;
 
   constructor(network: Network, config: WaterXConfig, opts: { grpcUrl?: string } = {}) {
     this.network = network;
     this.config = config;
     this.pyth = config.pyth ?? PYTH_DEFAULTS[network];
+    this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
 
     const grpcUrl = opts.grpcUrl ?? config.grpcUrl ?? DEFAULT_GRPC_URLS[network];
     this.grpcClient = new SuiGrpcClient({
@@ -167,5 +172,54 @@ export class WaterXClient {
     const w = this.config.packages.wlp;
     if (!w?.original_id) throw new Error("wlp.original_id missing from config");
     return `${w.original_id}::wlp::WLP`;
+  }
+
+  /** `waterx_credit` package entry, throws if the deployment has no bridge. */
+  getCredit() {
+    const c = this.config.packages.waterx_credit;
+    if (!c) throw new Error("waterx_credit not configured for this deployment");
+    return c;
+  }
+
+  /**
+   * Fully-qualified CREDIT coin Move type, taken verbatim from
+   * `waterx_credit.credit_type` (e.g. `0x..::usd::USD`). Throws if absent —
+   * the deprecated `usdx` OTW package is intentionally not consulted.
+   */
+  creditType(): string {
+    const t = this.config.packages.waterx_credit?.credit_type;
+    if (!t) {
+      throw new Error("creditType: packages.waterx_credit.credit_type missing from config");
+    }
+    return t;
+  }
+
+  /** `wormhole_bridge` package entry, throws if absent. */
+  getBridge() {
+    const b = this.config.packages.wormhole_bridge;
+    if (!b) throw new Error("wormhole_bridge not configured for this deployment");
+    return b;
+  }
+
+  /**
+   * Sui Wormhole `State` object id — prefers the per-deployment
+   * `wormhole_bridge.wormhole_state`, falls back to `client.wormhole`.
+   */
+  wormholeStateId(): string {
+    return this.config.packages.wormhole_bridge?.wormhole_state ?? this.wormhole.state_id;
+  }
+
+  /** All native-custody backing-asset rows (throws if no custody vault). */
+  getNativeAssets() {
+    const nc = this.config.packages.native_custody;
+    if (!nc) throw new Error("native_custody not configured for this deployment");
+    return nc.assets;
+  }
+
+  /** A native-custody asset row by its fully-qualified Move type, throws if unknown. */
+  getNativeAsset(moveType: string) {
+    const row = this.getNativeAssets().find((a) => a.type === moveType);
+    if (!row) throw new Error(`No native custody asset registered for type: ${moveType}`);
+    return row;
   }
 }
