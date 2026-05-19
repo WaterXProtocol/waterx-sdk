@@ -86,7 +86,7 @@ describe("pyth on-chain helper branches", () => {
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [] } }),
-    })) as typeof fetch;
+    })) as unknown as typeof fetch;
 
     await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"])).rejects.toThrow(
       /Hermes returned no binary price data/,
@@ -288,7 +288,7 @@ describe("pyth on-chain helper branches", () => {
       dynamicField: { value: { bcs: new Uint8Array(32).fill(1) } },
     }));
     wirePythGrpc(client);
-    client.grpcClient.getDynamicField = getDynamicField as typeof client.grpcClient.getDynamicField;
+    client.grpcClient.getDynamicField = getDynamicField as unknown as typeof client.grpcClient.getDynamicField;
 
     const cache = new PythCache();
     const feedId = "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";

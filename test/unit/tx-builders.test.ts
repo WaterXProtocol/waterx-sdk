@@ -2,7 +2,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { rawPrice } from "../../src/constants.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -175,7 +175,7 @@ describe("tx-builders (v3)", () => {
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as typeof fetch;
+    })) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
     const tx = await buildPlaceOrderTx(client, {
@@ -194,7 +194,7 @@ describe("tx-builders (v3)", () => {
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as typeof fetch;
+    })) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
     const tx = await buildMintWlpTx(client, {
