@@ -1,7 +1,7 @@
 /**
  * Referral builders — backed by the standalone `bucket_v2_referral` package
  * (kept from v2; not part of `waterx-contract/`). Requires
- * `config.packages.bucketReferral` and `config.objects.referralTable` to be
+ * `config.packages.waterx_referral.{published_at,referral_table}` to be
  * populated; otherwise the builder throws so misconfigured deployments fail
  * loudly instead of silently aborting on-chain.
  */
@@ -17,7 +17,7 @@ function requireReferralConfig(client: WaterXClient): { pkg: string; table: stri
   const table = client.config.packages.waterx_referral?.referral_table;
   if (!pkg || !table) {
     throw new Error(
-      "referral package not configured: set config.packages.bucketReferral and config.objects.referralTable",
+      "referral package not configured: set config.packages.waterx_referral.{published_at,referral_table}",
     );
   }
   return { pkg, table };
