@@ -1,9 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearConfigCache, defaultConfigUrl, loadConfig } from "../../src/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 
+const MOCK_TESTNET_CONFIG_URL = "https://waterx.test/fixtures/mock-testnet.json";
+
 describe("loadConfig validation", () => {
+  beforeEach(() => {
+    clearConfigCache();
+  });
+
   afterEach(() => {
     clearConfigCache();
     vi.unstubAllGlobals();
@@ -46,5 +52,37 @@ describe("loadConfig validation", () => {
       vi.fn(async () => ({ ok: true, json: async () => bad })),
     );
     await expect(loadConfig("TESTNET")).rejects.toThrow(/missing packages\.waterx_perp/);
+  });
+
+  it("fetches and parses canonical-shaped testnet JSON", async () => {
+    const cfg = await loadConfig("TESTNET", {
+      configUrl: MOCK_TESTNET_CONFIG_URL,
+      fetchImpl: (async () => ({
+        ok: true,
+        json: async () => MOCK_TESTNET_CONFIG,
+      })) as unknown as typeof fetch,
+    });
+    expect(cfg.network).toBe("testnet");
+    expect(cfg.packages.wlp?.published_at).toMatch(/^0x/);
+    expect(cfg.packages.waterx_perp.markets.BTCUSD).toBeDefined();
+  });
+
+  it("uses in-memory cache when opts.cache is true", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+    }) as unknown as typeof fetch;
+    await loadConfig("TESTNET", {
+      configUrl: MOCK_TESTNET_CONFIG_URL,
+      cache: true,
+      fetchImpl,
+    });
+    await loadConfig("TESTNET", {
+      configUrl: MOCK_TESTNET_CONFIG_URL,
+      cache: true,
+      fetchImpl,
+    });
+    expect(calls).toBe(1);
   });
 });
