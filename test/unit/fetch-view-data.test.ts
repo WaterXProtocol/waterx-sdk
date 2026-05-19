@@ -43,8 +43,8 @@ import {
   mockSimulatePagedNested,
   mockSimulateReturn,
 } from "../helpers/fixtures/mock-simulate.ts";
-import { createUnitTestClient } from "../helpers/test-client.ts";
 import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
+import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("fetch view helpers (mocked simulate)", () => {
   const client = createUnitTestClient();

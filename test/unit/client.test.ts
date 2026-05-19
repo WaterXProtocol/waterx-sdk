@@ -7,7 +7,7 @@ import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts"
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("WaterXClient (offline)", () => {
-  let client = createUnitTestClient();
+  const client = createUnitTestClient();
 
   it("exposes testnet config and pyth defaults", () => {
     expect(client.network).toBe("TESTNET");
@@ -96,6 +96,13 @@ describe("WaterXClient (offline)", () => {
   });
 });
 
+function mockJsonFetch(body: unknown): typeof fetch {
+  return vi.fn(async () => ({
+    ok: true,
+    json: async () => body,
+  })) as unknown as typeof fetch;
+}
+
 describe("loadConfig", () => {
   afterEach(() => {
     clearConfigCache();
@@ -103,27 +110,15 @@ describe("loadConfig", () => {
   });
 
   it("fetches and parses testnet JSON", async () => {
-    const json = JSON.stringify(MOCK_TESTNET_CONFIG);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => JSON.parse(json),
-      })),
-    );
-    const cfg = await loadConfig("TESTNET");
+    const cfg = await loadConfig("TESTNET", { fetchImpl: mockJsonFetch(MOCK_TESTNET_CONFIG) });
     expect(cfg.network).toBe("testnet");
     expect(cfg.packages.waterx_perp.markets.BTCUSD).toBeDefined();
   });
 
   it("uses cache when opts.cache is true", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => MOCK_TESTNET_CONFIG,
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-    await loadConfig("TESTNET", { cache: true });
-    await loadConfig("TESTNET", { cache: true });
+    const fetchMock = mockJsonFetch(MOCK_TESTNET_CONFIG);
+    await loadConfig("TESTNET", { cache: true, fetchImpl: fetchMock });
+    await loadConfig("TESTNET", { cache: true, fetchImpl: fetchMock });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -135,14 +130,9 @@ describe("WaterXClient.create", () => {
   });
 
   it("returns async client with loaded config", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => MOCK_TESTNET_CONFIG,
-      })),
-    );
-    const client = await WaterXClient.create("TESTNET");
+    const client = await WaterXClient.create("TESTNET", {
+      fetchImpl: mockJsonFetch(MOCK_TESTNET_CONFIG),
+    });
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
   });
 
@@ -152,13 +142,12 @@ describe("WaterXClient.create", () => {
       const url = String(input);
       const body = url.includes("mainnet") ? mainnetConfig : MOCK_TESTNET_CONFIG;
       return { ok: true, json: async () => body };
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    }) as unknown as typeof fetch;
 
-    const testnet = await WaterXClient.testnet();
+    const testnet = await WaterXClient.testnet({ fetchImpl: fetchMock });
     expect(testnet.network).toBe("TESTNET");
 
-    const mainnet = await WaterXClient.mainnet();
+    const mainnet = await WaterXClient.mainnet({ fetchImpl: fetchMock });
     expect(mainnet.network).toBe("MAINNET");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

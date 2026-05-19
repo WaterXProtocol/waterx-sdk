@@ -169,9 +169,8 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildPlaceOrderTx with oracle refresh and sponsor reimburse", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } = await import(
-      "../helpers/fixtures/pyth-mock-grpc.ts"
-    );
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
@@ -188,9 +187,8 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildMintWlpTx with oracle refresh", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } = await import(
-      "../helpers/fixtures/pyth-mock-grpc.ts"
-    );
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),

@@ -23,6 +23,8 @@ describe("Referral PTB builders (v3)", () => {
     const bare = createUnitTestClient();
     delete (bare.config.packages as { waterx_referral?: unknown }).waterx_referral;
     const tx = new Transaction();
-    expect(() => setReferralCode(bare, tx, { code: "x" })).toThrow(/referral package not configured/);
+    expect(() => setReferralCode(bare, tx, { code: "x" })).toThrow(
+      /referral package not configured/,
+    );
   });
 });
