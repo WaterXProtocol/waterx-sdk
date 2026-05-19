@@ -4,7 +4,7 @@ export type { CreateClientOptions } from "./client.ts";
 export { PYTH_DEFAULTS, clearConfigCache, defaultConfigUrl, loadConfig } from "./config.ts";
 export type {
   BasePackageEntry,
-  BucketReferralPackage,
+  WaterxReferralPackage,
   LoadConfigOptions,
   PythInfraConfig,
   PythRulePackage,
@@ -57,14 +57,17 @@ export {
   PERM_REDEEM_WLP,
   PERM_WITHDRAW_COLLATERAL,
   STOCK_FEE_RATE,
+  MS_PER_YEAR,
   TOKEN_DECIMALS,
 } from "./constants.ts";
 export type { Network } from "./constants.ts";
 
 
 // ======== Utilities ========
-export { getBaseAssets, getCollateralAssets } from "./utils/config.ts";
+export { getMarketTickers, getCollateralAssets } from "./utils/config.ts";
 export {
+  annualizedApyFromRatio,
+  annualizeFundingRate,
   calcBorrowRate,
   calcBorrowRateAccrual,
   calcDynamicFeeBps,
@@ -79,6 +82,7 @@ export {
   calcTokenUtilizationBps,
   calcTotalTradingFeeRate,
   calcUnrealizedPnl,
+  calcWlpIncentiveApy,
   calcWlpMintOut,
   calcWlpPrice,
   calcWlpRedeemOut,

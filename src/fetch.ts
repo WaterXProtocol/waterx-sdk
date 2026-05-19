@@ -449,11 +449,11 @@ export async function getRedeemRequests(
 }
 
 function requireReferralPackage(client: WaterXClient): { pkg: string; table: string } {
-  const pkg = client.config.packages.bucket_referral?.published_at;
-  const table = client.config.packages.bucket_referral?.referral_table;
+  const pkg = client.config.packages.waterx_referral?.published_at;
+  const table = client.config.packages.waterx_referral?.referral_table;
   if (!pkg || !table) {
     throw new Error(
-      "referral package not configured: set config.packages.bucket_referral.{published_at,referral_table}",
+      "referral package not configured: set config.packages.waterx_referral.{published_at,referral_table}",
     );
   }
   return { pkg, table };

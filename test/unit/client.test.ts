@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WaterXClient } from "../../src/client.ts";
 import { clearConfigCache, loadConfig, PYTH_DEFAULTS } from "../../src/config.ts";
+import type { WlpPackage } from "../../src/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -40,7 +41,7 @@ describe("WaterXClient (offline)", () => {
     const bare = createUnitTestClient();
     bare.config = {
       ...bare.config,
-      packages: { ...bare.config.packages, wlp: undefined },
+      packages: { ...bare.config.packages, wlp: undefined as unknown as WlpPackage },
     };
     expect(() => bare.wlpType()).toThrow(/wlp.original_id missing/);
   });

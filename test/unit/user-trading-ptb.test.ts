@@ -1,7 +1,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { ORDER_LIMIT_BUY, rawPrice } from "../../src/constants.ts";
+import { ORDER_LIMIT_BUY } from "../../src/constants.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import {
   batchLiquidate,
   closePositionByKeeper,

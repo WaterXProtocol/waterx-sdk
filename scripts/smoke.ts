@@ -143,7 +143,7 @@ async function main(): Promise<void> {
   console.log(`  wlp_pool              ${client.config.packages.wlp.wlp_pool}`);
   console.log(`  wlp_aum               ${client.config.packages.wlp.wlp_aum ?? "(missing)"}`);
   console.log(
-    `  referral_table        ${client.config.packages.bucket_referral?.referral_table ?? "(missing)"}`,
+    `  referral_table        ${client.config.packages.waterx_referral?.referral_table ?? "(missing)"}`,
   );
   console.log(`  pyth state            ${client.pyth.state_id}`);
   console.log(`  pyth hermes           ${client.pyth.hermes_endpoint}`);

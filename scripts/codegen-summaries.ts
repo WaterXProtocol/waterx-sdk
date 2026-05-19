@@ -16,7 +16,7 @@ const PACKAGES: Array<{ name: string; root: string }> = [
   { name: "pyth_sponsor_rule", root: CONTRACTS_ROOT },
   { name: "bucket_framework", root: CONTRACTS_ROOT },
   { name: "wlp", root: CONTRACTS_ROOT },
-  { name: "bucket_referral", root: V2_CONTRACTS_ROOT },
+  { name: "waterx_referral", root: V2_CONTRACTS_ROOT },
 ];
 
 for (const pkg of PACKAGES) {

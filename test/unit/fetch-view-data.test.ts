@@ -230,7 +230,7 @@ describe("fetch view helpers (mocked simulate)", () => {
 
   it("throws when referral package missing", async () => {
     const bare = createUnitTestClient();
-    delete (bare.config.packages as { bucket_referral?: unknown }).bucket_referral;
+    delete (bare.config.packages as { waterx_referral?: unknown }).waterx_referral;
     await expect(getRefererFor(bare, mockSuiAddress("aa"))).rejects.toThrow(
       /referral package not configured/,
     );

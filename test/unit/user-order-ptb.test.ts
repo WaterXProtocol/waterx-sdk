@@ -1,7 +1,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD, rawPrice } from "../../src/constants.ts";
+import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../src/constants.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import {
   addPreOrderRequest,
   cancelOrderRequest,

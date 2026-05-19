@@ -1,4 +1,4 @@
-import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE } from "../constants.ts";
+import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../constants.ts";
 
 // ======== On-chain encoding ========
 
@@ -282,6 +282,49 @@ export function calcPositionBorrowFee(
 export function calcTokenUtilizationBps(reservedAmount: number, liquidityAmount: number): number {
   if (liquidityAmount === 0) return 0;
   return Math.floor(reservedAmount / liquidityAmount * Number(BPS_SCALE));
+}
+
+// ======== Funding annualization ========
+
+/**
+ * Annualize a per-interval funding rate.
+ *
+ * @param rate        Per-interval funding rate (e.g. from `calcFundingRate`).
+ * @param intervalMs  Funding interval in milliseconds (e.g. 3_600_000 for 1H).
+ */
+export function annualizeFundingRate(rate: number, intervalMs: number): number {
+  if (intervalMs === 0) return 0;
+  return rate * (MS_PER_YEAR / intervalMs);
+}
+
+// ======== WLP APY ========
+
+/**
+ * Annualized APY from a NAV ratio over a given number of days.
+ *
+ * Compounds `ratio` (WLP price now / WLP price past) to a 365-day return.
+ * Returns 0 when the result is not finite (e.g. ratio ≤ 0 or days = 0).
+ *
+ * @param ratio  Current NAV divided by past NAV (e.g. 1.05 for 5% growth).
+ * @param days   Number of days elapsed between the two NAV samples.
+ */
+export function annualizedApyFromRatio(ratio: number, days: number): number {
+  if (days === 0 || ratio <= 0) return 0;
+  const apy = Math.pow(ratio, 365 / days) - 1;
+  return Number.isFinite(apy) ? apy : 0;
+}
+
+/**
+ * Convert a continuously-compounded incentive APR to APY.
+ *
+ * Rewards stream via `flow_rate` (continuous compounding), so APY = e^APR − 1.
+ * Returns 0 when the result is not finite.
+ *
+ * @param apr  Time-weighted incentive APR as a decimal fraction (e.g. 0.12 for 12%).
+ */
+export function calcWlpIncentiveApy(apr: number): number {
+  const apy = Math.expm1(apr);
+  return Number.isFinite(apy) ? apy : 0;
 }
 
 // ======== WLP ========
