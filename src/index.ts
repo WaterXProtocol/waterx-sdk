@@ -57,6 +57,7 @@ export {
   PERM_REDEEM_WLP,
   PERM_WITHDRAW_COLLATERAL,
   STOCK_FEE_RATE,
+  MS_PER_YEAR,
   TOKEN_DECIMALS,
 } from "./constants.ts";
 export type { Network } from "./constants.ts";
@@ -65,6 +66,8 @@ export type { Network } from "./constants.ts";
 // ======== Utilities ========
 export { getMarketTickers, getCollateralAssets } from "./utils/config.ts";
 export {
+  annualizedApyFromRatio,
+  annualizeFundingRate,
   calcBorrowRate,
   calcBorrowRateAccrual,
   calcDynamicFeeBps,
@@ -79,6 +82,7 @@ export {
   calcTokenUtilizationBps,
   calcTotalTradingFeeRate,
   calcUnrealizedPnl,
+  calcWlpIncentiveApy,
   calcWlpMintOut,
   calcWlpPrice,
   calcWlpRedeemOut,

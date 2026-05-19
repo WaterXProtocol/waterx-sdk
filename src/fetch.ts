@@ -216,7 +216,7 @@ export async function positionExists(
 export async function getPosition(
   client: WaterXClient,
   args: {
-    symbol: string;
+    ticker: string;
     positionId: bigint | number;
     /** Human-readable USD prices for PnL / liq price calc; pass 0n if unsure. */
     basePriceUsd: bigint | number;
@@ -249,7 +249,7 @@ export type OrderDataView = ReturnType<typeof OrderData.parse>;
 export async function getOrder(
   client: WaterXClient,
   args: {
-    symbol: string;
+    ticker: string;
     orderId: bigint | number;
     orderTypeTag: number;
     triggerPrice: bigint | number;
@@ -285,7 +285,7 @@ export interface PageOpts {
 export async function getMarketOrders(
   client: WaterXClient,
   args: {
-    symbol: string;
+    ticker: string;
     basePriceUsd?: bigint | number;
     lpType?: string;
   } & PageOpts,
@@ -324,7 +324,7 @@ export async function getMarketOrders(
 export async function getMarketPositions(
   client: WaterXClient,
   args: {
-    symbol: string;
+    ticker: string;
     basePriceUsd: bigint | number;
     collateralPriceUsd?: bigint | number;
     lpType?: string;
@@ -366,7 +366,7 @@ export async function getMarketPositions(
 export async function getAccountPositions(
   client: WaterXClient,
   args: {
-    symbol: string;
+    ticker: string;
     accountObjectAddress: string;
     basePriceUsd: bigint | number;
     collateralPriceUsd?: bigint | number;
@@ -393,7 +393,7 @@ export async function getAccountPositions(
 export async function getAccountOrders(
   client: WaterXClient,
   args: {
-    symbol: string;
+    ticker: string;
     accountObjectAddress: string;
     basePriceUsd?: bigint | number;
     lpType?: string;

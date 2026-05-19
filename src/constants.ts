@@ -64,6 +64,9 @@ export const ACTION_UPDATE_ORDER = 9;
 export const ACTION_CANCEL_PRE_ORDER = 10;
 export const ACTION_ADD_PRE_ORDER = 11;
 
+// ======== Time ========
+export const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
+
 // ======== Misc ========
 /** Zero-address placeholder used as the sender in dry-run / simulate calls. */
 export const DRY_RUN_SENDER = "0x0000000000000000000000000000000000000000000000000000000000000000";
