@@ -1,13 +1,18 @@
 /**
- * E2E: read-only view queries against testnet via simulateTransaction.
+ * E2E: global / market / pool / token-pool views + client shorthand accessors.
  */
-import { getGlobalConfigData, getMarketData, getPoolData, positionExists } from "@waterx/perp-sdk";
+import {
+  getGlobalConfigData,
+  getMarketData,
+  getPoolData,
+  getTokenPoolData,
+} from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 
-describe(`config + view simulate (${e2eNetwork})`, () => {
-  it("client loaded canonical markets", () => {
+describe(`read chain views (${e2eNetwork})`, () => {
+  it("loads BTCUSD market entry from config", () => {
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
     expect(client.getMarket("BTCUSD").market).toMatch(/^0x/);
   });
@@ -29,8 +34,16 @@ describe(`config + view simulate (${e2eNetwork})`, () => {
     expect(BigInt(pool.total_lp_supply)).toBeGreaterThanOrEqual(0n);
   }, 60_000);
 
-  it("positionExists for unlikely id", async () => {
-    const exists = await positionExists(client, { ticker: "BTCUSD", positionId: 999_999_999n });
-    expect(exists).toBe(false);
+  it("getTokenPoolData (first pool token)", async () => {
+    const tp = await getTokenPoolData(client, { tokenIndex: 0 });
+    expect(Number(tp.token_decimal)).toBeGreaterThanOrEqual(0);
   }, 60_000);
+
+  it("client.getAggregator / getPythFeed / wlpType / getPoolTokenType", () => {
+    const agg = client.config.packages.waterx_oracle?.aggregators?.BTCUSD;
+    if (agg) expect(client.getAggregator("BTCUSD")).toBe(agg);
+    expect(client.getPythFeed("BTCUSD").feed_id).toBeTruthy();
+    expect(client.wlpType()).toContain("::wlp::WLP");
+    expect(client.getPoolTokenType("USDCUSD")).toContain("::");
+  });
 });

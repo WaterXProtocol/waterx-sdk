@@ -1,143 +1,46 @@
+/**
+ * Process-wide USD hints for lifecycle helpers (v3).
+ *
+ * E2e setup must **not** batch-simulate legacy bucket aggregators — oracle freshness is per-PTB via Pyth.
+ */
+
 import type { WaterXClient } from "@waterx/perp-sdk";
 
-import type { BaseAsset } from "../../../src/constants.ts";
-import { fetchSimulatedUsdPricesForBases } from "./oracle-simulate-multi-asset.ts";
+import { getUsdHintForTicker, hintBasePriceUsdForTicker } from "./oracle-pyth-context.ts";
 
-const basePriceCache = new Map<BaseAsset, number>();
+const tickerPriceCache = new Map<string, number>();
 
-let warnedPrimeFallback = false;
-
-/**
- * Former table `approxPrice` values — only for {@link seedLifecycleApproxPricesForUnitTests}
- * or emergency offline use; e2e/integration should call {@link primeLifecycleOracleUsdPrices}.
- */
-const BASE_LIFECYCLE_ORACLE_USD_PRICE_FALLBACKS: Partial<Record<BaseAsset, number>> = {
-  BTC: 100_000,
-  ETH: 3800,
-  SUI: 1,
-  SOL: 180,
-  WAL: 0.45,
-  DEEP: 0.12,
-  AAPLX: 200,
-  GOOGLX: 170,
-  METAX: 600,
-  NVDAX: 130,
-  QQQX: 490,
-  SPYX: 560,
-  TSLAX: 250,
-  // 200K-tier (table fallbacks when batch oracle simulate misses a base)
-  HYPE: 25,
-  XRP: 2.2,
-  BNB: 650,
-  ZEC: 150,
-  XAUT: 2500,
-  XAG: 28,
-  EURUSD: 1.05,
-  USDJPY: 150,
-  MSTRX: 400,
-  COINX: 300,
-  HOODX: 90,
-  CRCLX: 120,
-  NFLXX: 25,
-  WTI: 75,
-  BRENT: 78,
-};
-
-/** Offline / unit helpers: populate {@link basePriceCache} without RPC. */
+/** Offline seed for integration workers (no RPC). */
 export function seedLifecycleApproxPricesForUnitTests(): void {
-  for (const [b, v] of Object.entries(BASE_LIFECYCLE_ORACLE_USD_PRICE_FALLBACKS)) {
-    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
-      basePriceCache.set(b as BaseAsset, v);
-    }
-  }
+  tickerPriceCache.clear();
 }
 
-/**
- * One `simulateTransaction` per base (feeds + aggregate only for that token).
- * Avoids a single huge PTB that can hit `err_total_weight_not_enough` on testnet.
- */
-export async function getOracleUsdPriceForBase(
-  client: WaterXClient,
-  base: BaseAsset,
-): Promise<number> {
-  const hit = basePriceCache.get(base);
+export function primeLifecycleOracleUsdPrices(_client: WaterXClient): void {
+  seedLifecycleApproxPricesForUnitTests();
+}
+
+export function getCachedOracleUsdPriceForTicker(ticker: string): number {
+  const hit = tickerPriceCache.get(ticker);
   if (hit !== undefined) return hit;
-  const row = await fetchSimulatedUsdPricesForBases(client, [base]);
-  const v = row[base];
-  if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) {
-    throw new Error(`getOracleUsdPriceForBase: missing or invalid simulated USD for ${base}`);
-  }
-  basePriceCache.set(base, v);
+  const v = getUsdHintForTicker(ticker);
+  tickerPriceCache.set(ticker, v);
   return v;
 }
 
-/** All lifecycle bases; fills cache per asset on first access. */
-export async function getLifecycleOracleUsdPrices(
+/** @deprecated Use {@link getCachedOracleUsdPriceForTicker}. */
+export function getCachedOracleUsdPriceForBase(base: string): number {
+  return getCachedOracleUsdPriceForTicker(base.endsWith("USD") ? base : `${base}USD`);
+}
+
+export async function getOracleUsdPriceForTicker(
   client: WaterXClient,
-): Promise<Record<BaseAsset, number>> {
-  const { activeLifecycleTestBasesForClient } = await import("./lifecycle-test-markets.ts");
-  const bases = activeLifecycleTestBasesForClient(client);
-  const out = {} as Record<BaseAsset, number>;
-  for (const b of bases) {
-    out[b] = await getOracleUsdPriceForBase(client, b);
-  }
-  return out;
+  ticker: string,
+): Promise<number> {
+  void client;
+  return getCachedOracleUsdPriceForTicker(ticker);
 }
 
-/**
- * Populate the process-wide oracle USD cache for every {@link activeLifecycleTestBasesForClient} entry.
- * Vitest e2e + integration-trader setup files call this before tests load.
- */
-export async function primeLifecycleOracleUsdPrices(client: WaterXClient): Promise<void> {
-  const { activeLifecycleTestBasesForClient } = await import("./lifecycle-test-markets.ts");
-  const bases = activeLifecycleTestBasesForClient(client);
-  if (bases.length === 0) return;
-  const prices = await fetchSimulatedUsdPricesForBases(client, bases);
-  const missing: BaseAsset[] = [];
-  for (const b of bases) {
-    const v = prices[b];
-    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
-      basePriceCache.set(b, v);
-    } else {
-      missing.push(b);
-    }
-  }
-  const stillMissing: BaseAsset[] = [];
-  for (const b of missing) {
-    const fb = BASE_LIFECYCLE_ORACLE_USD_PRICE_FALLBACKS[b];
-    if (typeof fb === "number" && Number.isFinite(fb) && fb > 0) {
-      basePriceCache.set(b, fb);
-    } else {
-      stillMissing.push(b);
-    }
-  }
-  if (stillMissing.length > 0) {
-    throw new Error(
-      `primeLifecycleOracleUsdPrices: no simulated USD and no table fallback for: ${stillMissing.join(", ")}`,
-    );
-  }
-  if (missing.length > 0 && !warnedPrimeFallback) {
-    warnedPrimeFallback = true;
-    console.warn(
-      `[waterx-sdk] primeLifecycleOracleUsdPrices: batch simulate missed ${missing.join(", ")}; using table fallbacks for lifecycleRow approxPrice.`,
-    );
-  }
-}
-
-/**
- * Synchronous read of prices primed by {@link primeLifecycleOracleUsdPrices}.
- * Used by {@link lifecycleRow} to attach `approxPrice` without async plumbing in table-driven tests.
- */
-export function getCachedOracleUsdPriceForBase(base: BaseAsset): number {
-  const hit = basePriceCache.get(base);
-  if (hit === undefined) {
-    throw new Error(
-      `Oracle USD cache miss for ${base}. Ensure Vitest setupFiles run primeLifecycleOracleUsdPrices(client), or call seedLifecycleApproxPricesForUnitTests() for offline tests.`,
-    );
-  }
-  return hit;
-}
-
-export function resetLifecycleOracleUsdPricesCache(): void {
-  basePriceCache.clear();
+/** Integer USD for view reads. */
+export function lifecycleHintBasePriceUsd(ticker: string): bigint {
+  return hintBasePriceUsdForTicker(ticker);
 }

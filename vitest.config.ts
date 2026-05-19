@@ -102,10 +102,10 @@ export default defineConfig({
         resolve: { alias: perpSdkAlias },
         test: {
           name: "integration-trader",
-          /** v3 integration tests pending port — see `test/integration/`. */
-          include: ["test/integration/user/**/*.test.ts"],
+          /** Disabled until v2-only scenarios are ported (`buildOpenPositionTx`, `getMarketEntry`, …). */
+          include: [],
           environment: "node",
-          exclude: ["**/node_modules/**", "**/dist/**", "test/integration/**"],
+          exclude: ["**/node_modules/**", "**/dist/**"],
           testTimeout: 300_000,
           hookTimeout: 120_000,
           setupFiles: ["./test/integration/vitest-integration-setup.ts"],

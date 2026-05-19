@@ -1,64 +1,86 @@
 /**
- * Read helpers used **only** by e2e simulate / integration tests. Not re-exported from `@waterx/perp-sdk`.
- *
- * Includes `simulate` return-byte extraction for one-shot view calls and WLP-pool JSON reads that
- * are coupled to on-chain object layout (`min_deposit` not on `view::token_pool_data`).
+ * Read helpers for e2e simulate / integration tests only (not exported from SDK).
  */
 
+import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../../../src/client.ts";
-import type { CollateralAsset } from "../../../src/constants.ts";
-import { getMarketSummary } from "../../../src/fetch.ts";
-import { getAccountOwner as getAccountOwnerCall } from "../../../src/generated/waterx_perp/user_account.ts";
+import { accountBalance, accountOwner } from "../../../src/generated/waterx_account/account.ts";
 
-function extractSimulateReturnBytes(
+function extractSimulateReturnBytesSync(
   result: unknown,
   commandIndex = 0,
   returnIndex = 0,
 ): Uint8Array {
-  const r = result as any;
+  const r = result as Record<string, unknown>;
   if (r.$kind === "FailedTransaction") {
-    const err = r.FailedTransaction?.status?.error;
-    throw new Error(`Simulate transaction failed: ${err?.message ?? JSON.stringify(err)}`);
+    const err = (r.FailedTransaction as Record<string, unknown> | undefined)?.status as
+      | { error?: { message?: string } | string }
+      | undefined;
+    const msg =
+      typeof err?.error === "string"
+        ? err.error
+        : typeof err?.error === "object" && err?.error && "message" in err.error
+          ? String((err.error as { message?: unknown }).message)
+          : JSON.stringify(err);
+    throw new Error(`Simulate transaction failed: ${msg}`);
   }
-  const cmdResults = r.commandResults;
-  if (cmdResults?.[commandIndex]?.returnValues?.[returnIndex]?.bcs) {
-    return new Uint8Array(cmdResults[commandIndex].returnValues[returnIndex].bcs);
+  const cmdResults = r.commandResults as Array<{ returnValues?: unknown[] }> | undefined;
+  const cmd = cmdResults?.[commandIndex];
+  const ret = cmd?.returnValues?.[returnIndex] as
+    | { bcs?: unknown; value?: { bcs?: unknown } }
+    | undefined;
+  if (!ret) {
+    throw new Error(`No return value at command[${commandIndex}].returnValues[${returnIndex}]`);
   }
-  const cmdResult = r.results?.[commandIndex];
-  if (cmdResult?.returnValues?.[returnIndex]) {
-    const [rawBytes] = cmdResult.returnValues[returnIndex];
-    return new Uint8Array(rawBytes);
+  const b = ret.bcs ?? ret.value?.bcs;
+  if (b instanceof Uint8Array) return b;
+  if (typeof b === "string") return fromBase64(b);
+  if (b && typeof b === "object" && !Array.isArray(b)) {
+    return new Uint8Array(Object.values(b as Record<string, number>));
   }
-  throw new Error(
-    `No return value at command[${commandIndex}].returnValues[${returnIndex}]. ` +
-      `Transaction may have failed.`,
-  );
+  throw new Error("Unsupported simulate return shape");
 }
 
-/**
- * Resolve the Sui `address` that owns a WaterX UserAccount id (`accountId` / registry key),
- * via on-chain `user_account::get_account_owner`.
- */
+/** Resolve registry owner address for wxa `Account` object id. */
 export async function getAccountOwnerByAccountId(
   client: WaterXClient,
   accountId: string,
 ): Promise<string> {
+  const pkg = client.config.packages.waterx_account.published_at;
   const tx = new Transaction();
-  tx.add(
-    getAccountOwnerCall({
-      package: client.config.packageId,
-      arguments: {
-        registry: client.config.accountRegistry,
-        accountId: (t) => t.pure.id(accountId),
-      },
-    }),
-  );
+  accountOwner({
+    package: pkg,
+    arguments: { account: tx.object(accountId) },
+  })(tx);
   const result = await client.simulate(tx);
-  const bytes = extractSimulateReturnBytes(result);
+  const bytes = extractSimulateReturnBytesSync(result);
   return bcs.Address.parse(bytes);
+}
+
+/** Stored balance for `coinType` on wxa account `accountId`. */
+export async function getWxaAccountBalance(
+  client: WaterXClient,
+  accountId: string,
+  coinType: string,
+): Promise<bigint> {
+  const pkg = client.config.packages.waterx_account.published_at;
+  const reg = client.config.packages.waterx_account.account_registry;
+  const tx = new Transaction();
+  accountBalance({
+    package: pkg,
+    arguments: {
+      registry: tx.object(reg),
+      accountId,
+    },
+    typeArguments: [coinType],
+  })(tx);
+  const result = await client.simulate(tx);
+  const bytes = extractSimulateReturnBytesSync(result);
+  const rawBal = bcs.u64().parse(bytes);
+  return typeof rawBal === "bigint" ? rawBal : BigInt(rawBal as string | number);
 }
 
 function normalizeCoinTypeForMatch(t: string): string {
@@ -84,7 +106,6 @@ function typeNameStringFromPoolJson(tt: unknown): string | null {
   return typeof o.type === "string" ? (o.type as string) : null;
 }
 
-/** One `token_types[i]` / `token_pools[i]` row from the WLP pool object JSON (`getObject`). */
 export type WlpCollateralPoolRow = {
   minDeposit: bigint;
   tokenDecimal: number;
@@ -106,17 +127,15 @@ function pow10(decimals: number): bigint {
   return 10n ** BigInt(decimals);
 }
 
-/**
- * Reads `TokenPoolInfo` for a collateral from the on-chain `WlpPool` shared object (`getObject` +
- * `json`). `view::token_pool_data` does not expose `min_deposit` / decimals for mint sizing.
- */
 export async function getWlpCollateralPoolRow(
   client: WaterXClient,
-  collateral: CollateralAsset,
+  poolTokenTicker: string,
 ): Promise<WlpCollateralPoolRow> {
-  const want = normalizeCoinTypeForMatch(client.getCollateral(collateral).type);
+  const want = normalizeCoinTypeForMatch(client.getPoolTokenType(poolTokenTicker));
+  const poolId = client.config.packages.wlp?.wlp_pool;
+  if (!poolId) throw new Error("getWlpCollateralPoolRow: wlp_pool missing from config");
   const { object } = await client.grpcClient.getObject({
-    objectId: client.config.wlpPool,
+    objectId: poolId,
     include: { json: true },
   });
   const json = object?.json as Record<string, unknown> | null | undefined;
@@ -160,22 +179,27 @@ export async function getWlpCollateralPoolRow(
     const tokenDecimal = parsePositiveIntJson(td, "getWlpCollateralPoolRow.token_decimal");
     return { minDeposit, tokenDecimal };
   }
-  throw new Error(`getWlpCollateralPoolRow: collateral ${collateral} not found in WLP pool`);
+  throw new Error(`getWlpCollateralPoolRow: ticker ${poolTokenTicker} not found in WLP pool`);
 }
 
-/** Reads `TokenPoolInfo.min_deposit` for a collateral from the on-chain `WlpPool` shared object JSON. */
-export async function getWlpMinDepositForCollateral(
+export async function getWlpMinDepositForTicker(
   client: WaterXClient,
-  collateral: CollateralAsset,
+  poolTokenTicker: string,
 ): Promise<bigint> {
-  const row = await getWlpCollateralPoolRow(client, collateral);
+  const row = await getWlpCollateralPoolRow(client, poolTokenTicker);
   return row.minDeposit;
 }
 
-/**
- * Minimum raw collateral (smallest token units) implied by on-chain `min_coll_value` (Float-scaled
- * USD, 1e9), given `collateralUsdPerTokenScaled` for 1.0 token in that same encoding. Ceiling div.
- */
+/** @deprecated Use {@link getWlpMinDepositForTicker}. */
+export async function getWlpMinDepositForCollateral(
+  client: WaterXClient,
+  collateral: string,
+): Promise<bigint> {
+  const ticker =
+    collateral === "USDC" || collateral.toUpperCase() === "USDC" ? "USDCUSD" : `${collateral}USD`;
+  return getWlpMinDepositForTicker(client, ticker);
+}
+
 export function minCollateralRawFromMinCollValueUsd(params: {
   minCollValueUsdScaled: bigint;
   collateralTokenDecimals: number;
@@ -190,13 +214,11 @@ export function minCollateralRawFromMinCollValueUsd(params: {
   return (num + den - 1n) / den;
 }
 
-/** `getMarketSummary` + WLP pool JSON → minimum raw collateral for `collateral`. */
 export async function getMarketMinCollateralRawAmount(
   client: WaterXClient,
   params: {
-    marketId: string;
-    baseType: string;
-    collateral: CollateralAsset;
+    ticker: string;
+    poolTokenTicker: string;
     collateralUsdPerTokenScaled: bigint;
   },
 ): Promise<{
@@ -204,18 +226,19 @@ export async function getMarketMinCollateralRawAmount(
   minCollValueUsdScaled: bigint;
   collateralDecimals: number;
 }> {
-  const [summary, poolRow] = await Promise.all([
-    getMarketSummary(client, params.marketId, params.baseType),
-    getWlpCollateralPoolRow(client, params.collateral),
+  const { getMarketData } = await import("../../../src/fetch.ts");
+  const [market, poolRow] = await Promise.all([
+    getMarketData(client, { ticker: params.ticker }),
+    getWlpCollateralPoolRow(client, params.poolTokenTicker),
   ]);
   const minCollateralRaw = minCollateralRawFromMinCollValueUsd({
-    minCollValueUsdScaled: summary.minCollValue,
+    minCollValueUsdScaled: BigInt(market.min_coll_value),
     collateralTokenDecimals: poolRow.tokenDecimal,
     collateralUsdPerTokenScaled: params.collateralUsdPerTokenScaled,
   });
   return {
     minCollateralRaw,
-    minCollValueUsdScaled: summary.minCollValue,
+    minCollValueUsdScaled: BigInt(market.min_coll_value),
     collateralDecimals: poolRow.tokenDecimal,
   };
 }

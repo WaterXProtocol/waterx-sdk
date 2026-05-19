@@ -17,12 +17,15 @@
     "examples",
     "test/unit",
     "test/simulate",
-    "test/helpers/fixtures",
-    "test/helpers/test-client.ts",
-    "test/helpers/e2e/e2e-client.ts",
-    "test/helpers/e2e/e2e-setup.ts",
-    "test/helpers/e2e/transient-rpc.ts",
-    "test/helpers/trading/expected-open-trading-fee.ts"
+    "test/helpers/**/*.ts"
   ],
-  "exclude": ["node_modules", "**/__tests__/*"]
+  "exclude": [
+    "node_modules",
+    "**/__tests__/*",
+    "test/helpers/trading/simulate-resize-size.ts",
+    "test/helpers/trading/above-max-leverage-case.ts",
+    "test/helpers/e2e/e2e-open-sizing-expect.ts",
+    "test/helpers/e2e/wlp-mint-simulate-tx.ts",
+    "test/helpers/trading/market-summary-assertions.ts"
+  ]
 }

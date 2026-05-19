@@ -12,7 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SIMULATE_DUMP_DIR = path.resolve(__dirname, "..", "..", "simulate-dumps");
 
 export type SimulateResult = {
-  $kind?: string;
+  /** gRPC returns `"Transaction"` on dry-run success; some mocks use `"Success"`. */
+  $kind?: "Success" | "Transaction" | "FailedTransaction" | string;
   commandResults?: unknown[];
   Transaction?: Record<string, unknown>;
   FailedTransaction?: {
@@ -33,16 +34,18 @@ export function extractSimulateError(result: SimulateResult): string {
   return JSON.stringify(result.FailedTransaction ?? result);
 }
 
+/** Whether {@link WaterXClient.simulate} returned a normal outcome object (not a thrown RPC error). */
+export function isSimulateOutcome(sim: unknown): boolean {
+  const k = (sim as SimulateResult).$kind;
+  return k === "Transaction" || k === "FailedTransaction" || k === "Success";
+}
+
 /**
  * Oracle feed/aggregate failures that are external-state dependent on testnet and
  * should not be treated as SDK logic regressions in dry-run suites.
  */
 export function isOracleTransientFailureMessage(msg: string): boolean {
-  return (
-    msg.includes("err_total_weight_not_enough") ||
-    msg.includes("::supra_rule::feed") ||
-    msg.includes("::pyth_rule::feed")
-  );
+  return msg.includes("::supra_rule::feed") || msg.includes("::pyth_rule::feed");
 }
 
 /**
@@ -78,8 +81,8 @@ export function isSimulateOracleTransient(result: unknown): boolean {
  * Run `simulate()` with a small retry budget for two kinds of transient
  * failures that commonly appear under parallel e2e load:
  *
- * 1. `FailedTransaction` with `err_total_weight_not_enough` (Pyth/Supra
- *    aggregate stale or half-updated) — retried with a fresh bundle.
+ * 1. `FailedTransaction` matching {@link isOracleTransientFailureMessage} (feed paths) —
+ *    retried once more after backoff.
  * 2. Thrown gRPC/HTTP errors such as `Too Many Requests` / `RESOURCE_EXHAUSTED`
  *    / `Deadline Exceeded` — public RPC rate limit.
  *

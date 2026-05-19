@@ -6,7 +6,6 @@
  */
 import type { WaterXClient } from "@waterx/perp-sdk";
 
-import type { BaseAsset } from "../../../src/constants.ts";
 import {
   activeLifecycleTestBasesForClient,
   LIFECYCLE_DEPOSIT_COLLATERAL_USDC,
@@ -35,9 +34,10 @@ export const SCRATCH_EXPECT = {
 } as const;
 
 export type ScratchTradingScenario = {
-  /** Stable id for Vitest titles, e.g. `scratch-BTC`. */
+  /** Stable id for Vitest titles, e.g. `scratch-BTCUSD`. */
   id: string;
-  base: BaseAsset;
+  /** Market ticker (`BTCUSD`, …) — legacy field name `base`. */
+  base: string;
   /** Full lifecycle row (oracle-backed `approxPrice`, e2ePtb, flags). */
   row: LifecycleTestMarketRow;
   /** `buildOpenPositionTx` on integration (larger collateral). */

@@ -1,15 +1,16 @@
 /**
- * E2E: dry-run a market-order place PTB (oracle refresh + request + execute).
+ * E2E: market-form place order (oracle refresh + sponsor path), primary open simulate smoke.
  */
 import { buildPlaceOrderTx } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
+import { isSimulateOutcome } from "../helpers/e2e/simulate-assertions.ts";
 
 const DUMMY_ACCOUNT = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
-describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
-  it("buildPlaceOrderTx simulates (market form)", async () => {
+describe(`trade open (${e2eNetwork})`, () => {
+  it("buildPlaceOrderTx simulates market-form entry on BTCUSD", async () => {
     const collateralType = client.getPoolTokenType("USDCUSD");
     const tx = await buildPlaceOrderTx(client, {
       ticker: "BTCUSD",
@@ -30,7 +31,6 @@ describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_ACCOUNT);
     const sim = await client.simulate(tx);
     expect(sim).toBeDefined();
-    const kind = (sim as { $kind?: string }).$kind;
-    expect(kind === "Success" || kind === "FailedTransaction").toBe(true);
+    expect(isSimulateOutcome(sim)).toBe(true);
   }, 120_000);
 });

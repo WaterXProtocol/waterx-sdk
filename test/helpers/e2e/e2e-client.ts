@@ -4,7 +4,7 @@
  * Network precedence:
  *   1. `--testnet` / `--mainnet` in `process.argv` (from `scripts/run-e2e.ts`)
  *   2. `WATERX_E2E_NETWORK`
- *   3. **testnet** (mainnet config is not fully deployed yet)
+ *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
 import { WaterXClient } from "../../../src/client.ts";
 import type { Network } from "../../../src/constants.ts";

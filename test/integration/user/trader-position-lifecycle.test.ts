@@ -33,7 +33,7 @@ import {
 } from "../setup.ts";
 
 function scenariosForIntegrationEnv() {
-  const bases = new Set(selectedIntegrationLifecycleBasesFromEnv());
+  const bases = new Set(selectedIntegrationLifecycleBasesFromEnv(client));
   return scratchTradingScenarios(client).filter((s) => bases.has(s.base));
 }
 

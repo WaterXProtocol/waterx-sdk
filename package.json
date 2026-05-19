@@ -39,10 +39,10 @@
     "test:watch": "vitest --project unit --project e2e",
     "test:coverage": "vitest run --project unit --project e2e --coverage",
     "test:ci:unit": "vitest run --project unit --coverage --reporter=dot --reporter=junit --outputFile=test-results-unit.xml",
-    "test:ci:e2e": "tsx scripts/run-e2e.ts --reporter=dot --reporter=junit --outputFile=test-results-simulate.xml",
+    "test:ci:e2e": "tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-simulate-testnet.xml",
     "test:ci:e2e:testnet": "tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-simulate-testnet.xml",
     "test:ci:e2e:mainnet": "tsx scripts/run-e2e.ts --mainnet --reporter=dot --reporter=junit --outputFile=test-results-simulate-mainnet.xml",
-    "test:ci:e2e:coverage": "tsx scripts/run-e2e.ts --coverage",
+    "test:ci:e2e:coverage": "tsx scripts/run-e2e.ts --testnet --coverage",
     "test:ci:full": "pnpm test:ci:unit && pnpm test:ci:e2e",
     "test:ci": "pnpm test:ci:full"
   },
