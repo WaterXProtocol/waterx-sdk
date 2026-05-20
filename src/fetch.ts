@@ -218,7 +218,7 @@ export async function getPosition(
   args: {
     ticker: string;
     positionId: bigint | number;
-    /** Human-readable USD prices for PnL / liq price calc; pass 0n if unsure. */
+    /** Human-readable USD prices for Pnl / liq price calc; pass 0n if unsure. */
     basePriceUsd: bigint | number;
     collateralPriceUsd: bigint | number;
     lpType?: string;

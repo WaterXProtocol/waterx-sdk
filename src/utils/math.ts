@@ -24,7 +24,7 @@ export function calcFee(sizeUsd: number, feeRate: number): number {
   return sizeUsd * feeRate;
 }
 
-/** Unrealized perp PnL in USD (before fees). */
+/** Unrealized perp Pnl in USD (before fees). */
 export function calcUnrealizedPnl(
   isLong: boolean,
   entryPrice: number,
