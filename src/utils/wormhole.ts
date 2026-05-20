@@ -48,7 +48,8 @@ export interface VaaResponse {
 }
 
 export interface VaaListItem {
-  sequence: number | string;
+  /** Wormholescan returns u64 as a string — keep it that way to avoid `number` precision loss. */
+  sequence: string;
   /** Base64 VAA; absent until guardians have signed. */
   vaa?: string;
   emitterAddr?: string;
@@ -61,17 +62,23 @@ export interface WormholescanOptions {
   timeoutMs?: number;
 }
 
-async function doFetch(url: string, opts: WormholescanOptions | undefined): Promise<Response> {
+async function doFetch(
+  url: string,
+  opts: (WormholescanOptions & { signal?: AbortSignal }) | undefined,
+): Promise<Response> {
   const fetchImpl = opts?.fetchImpl ?? (globalThis.fetch as typeof fetch | undefined);
   if (!fetchImpl) {
     throw new Error("wormhole: no global `fetch` available; pass opts.fetchImpl");
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 10_000);
+  const onOuterAbort = () => controller.abort();
+  opts?.signal?.addEventListener("abort", onOuterAbort, { once: true });
   try {
     return await fetchImpl(url, { cache: "no-store", signal: controller.signal });
   } finally {
     clearTimeout(timer);
+    opts?.signal?.removeEventListener("abort", onOuterAbort);
   }
 }
 
@@ -140,7 +147,7 @@ export async function waitForVaa(
     if (opts.signal?.aborted) throw new Error("waitForVaa: aborted");
     attempt++;
     opts.onTick?.(attempt);
-    const vaa = await fetchVaa(apiBase, chainId, emitter, sequence, opts).catch(() => null);
+    const vaa = await fetchVaa(apiBase, chainId, emitter, sequence, opts);
     if (vaa) return vaa;
     await new Promise((r) => setTimeout(r, intervalMs));
   }

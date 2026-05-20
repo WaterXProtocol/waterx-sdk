@@ -17,6 +17,7 @@
  * same PTB.
  */
 
+import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
@@ -44,10 +45,9 @@ import { makeSenderRequest } from "../utils/account-request.ts";
 function toBytes(input: Uint8Array | number[] | string): number[] {
   if (typeof input === "string") {
     const hex = input.startsWith("0x") ? input.slice(2) : input;
+    // `fromHex` silently mis-parses odd-length strings, so guard up front.
     if (hex.length % 2 !== 0) throw new Error(`odd-length hex: ${input}`);
-    const out: number[] = [];
-    for (let i = 0; i < hex.length; i += 2) out.push(parseInt(hex.slice(i, i + 2), 16));
-    return out;
+    return Array.from(fromHex(hex));
   }
   return Array.from(input);
 }

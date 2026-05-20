@@ -373,8 +373,8 @@ function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void
         "wlp",
       ]
     : isCredit
-      ? ["waterx_account", "waterx_credit"]
-      : ["waterx_account"];
+      ? ["bucket_framework", "waterx_account", "waterx_credit"]
+      : ["bucket_framework", "waterx_account"];
   for (const k of required) {
     if (!hasPublishedAt(k)) {
       throw new Error(`loadConfig: config at ${url} missing packages.${k}.published_at`);

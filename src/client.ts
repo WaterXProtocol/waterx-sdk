@@ -13,6 +13,7 @@ import {
   PYTH_DEFAULTS,
   WORMHOLE_DEFAULTS,
   type LoadConfigOptions,
+  type NativeCustodyAsset,
   type PythInfraConfig,
   type WaterXConfig,
   type WormholeInfraConfig,
@@ -210,7 +211,7 @@ export class WaterXClient {
   }
 
   /** All native-custody backing-asset rows (throws if no custody vault). */
-  getNativeAssets() {
+  getNativeAssets(): readonly NativeCustodyAsset[] {
     const nc = this.config.packages.native_custody;
     if (!nc) throw new Error("native_custody not configured for this deployment");
     return nc.assets;
