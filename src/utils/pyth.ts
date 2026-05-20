@@ -49,83 +49,6 @@ export class PythCache {
 // Hermes REST
 // ============================================================================
 
-const HERMES_FETCH_MAX_ATTEMPTS = (() => {
-  const raw = process.env.WATERX_HERMES_RETRY_ATTEMPTS;
-  const n = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(n) && n >= 1 ? n : 6;
-})();
-
-/** HTTP statuses worth retrying (Hermes / CDN blips in CI and public RPC). */
-const HERMES_TRANSIENT_HTTP = new Set([429, 502, 503, 504]);
-
-/** errno / Undici codes on `err.cause` (Node fetch → TypeError: fetch failed). */
-const HERMES_TRANSIENT_SYSTEM_CODES = new Set([
-  "ECONNRESET",
-  "ETIMEDOUT",
-  "ECONNREFUSED",
-  "ECONNABORTED",
-  "EPIPE",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "ENETUNREACH",
-  "EHOSTUNREACH",
-  "UND_ERR_CONNECT_TIMEOUT",
-  "UND_ERR_HEADERS_TIMEOUT",
-  "UND_ERR_BODY_TIMEOUT",
-  "UND_ERR_SOCKET",
-  "UND_ERR_DESTROYED",
-]);
-
-type ErrNode = {
-  name?: string;
-  message?: string;
-  code?: string | number;
-  cause?: unknown;
-};
-
-function walkErrorChain(err: unknown): ErrNode[] {
-  const chain: ErrNode[] = [];
-  const seen = new Set<unknown>();
-  let cur: unknown = err;
-  while (cur != null && typeof cur === "object" && !seen.has(cur)) {
-    seen.add(cur);
-    chain.push(cur as ErrNode);
-    cur = (cur as ErrNode).cause;
-  }
-  return chain;
-}
-
-function isHermesTransientFetchError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (err.message.startsWith("Hermes price fetch failed:")) return false;
-
-  for (const node of walkErrorChain(err)) {
-    const code = node.code;
-    if (typeof code === "string" && HERMES_TRANSIENT_SYSTEM_CODES.has(code)) {
-      return true;
-    }
-    if (node.name === "AbortError" || node.name === "TimeoutError") {
-      return true;
-    }
-  }
-
-  const msg = err.message.toLowerCase();
-  return (
-    msg.includes("abort") ||
-    msg.includes("timeout") ||
-    msg.includes("econnreset") ||
-    msg.includes("etimedout") ||
-    msg.includes("socket hang up") ||
-    msg.includes("network")
-  );
-}
-
-function hermesRetryDelayMs(attempt: number): number {
-  const base = Math.min(500 * 2 ** attempt, 15_000);
-  const jitter = Math.floor(Math.random() * Math.min(base, 2_000));
-  return base + jitter;
-}
-
 export async function fetchPriceFeedsUpdateData(
   endpoint: string,
   priceIds: string[],
@@ -133,37 +56,14 @@ export async function fetchPriceFeedsUpdateData(
   if (priceIds.length === 0) return [];
   const url = new URL("/v2/updates/price/latest", endpoint);
   priceIds.forEach((id) => url.searchParams.append("ids[]", id));
-  const requestUrl = url.toString();
-
-  let lastError: Error | undefined;
-  for (let attempt = 0; attempt < HERMES_FETCH_MAX_ATTEMPTS; attempt++) {
-    try {
-      const res = await fetch(requestUrl, { signal: AbortSignal.timeout(15_000) });
-      if (!res.ok) {
-        const body = await res.text();
-        if (HERMES_TRANSIENT_HTTP.has(res.status) && attempt < HERMES_FETCH_MAX_ATTEMPTS - 1) {
-          lastError = new Error(`Hermes price fetch failed: ${res.status} ${body}`);
-          await new Promise((r) => setTimeout(r, hermesRetryDelayMs(attempt)));
-          continue;
-        }
-        throw new Error(`Hermes price fetch failed: ${res.status} ${body}`);
-      }
-      const json = (await res.json()) as { binary?: { data?: string[] } };
-      const data = json.binary?.data;
-      if (!Array.isArray(data) || data.length === 0) {
-        throw new Error("Hermes returned no binary price data");
-      }
-      return data.map((hex) => fromHex(hex));
-    } catch (err) {
-      if (attempt < HERMES_FETCH_MAX_ATTEMPTS - 1 && isHermesTransientFetchError(err)) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        await new Promise((r) => setTimeout(r, hermesRetryDelayMs(attempt)));
-        continue;
-      }
-      throw err;
-    }
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
+  const json = (await res.json()) as { binary?: { data?: string[] } };
+  const data = json.binary?.data;
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error("Hermes returned no binary price data");
   }
-  throw lastError ?? new Error("Hermes price fetch failed: retries exhausted");
+  return data.map((hex) => fromHex(hex));
 }
 
 // ============================================================================
