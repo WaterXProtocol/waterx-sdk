@@ -9,8 +9,8 @@
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
 import { ORDER_LIMIT_BUY } from "../../src/constants.ts";
-import { rawPrice } from "../../src/utils/math.ts";
 import { getOrder } from "../../src/fetch.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 
 run(async () => {
   const client = await buildClient();

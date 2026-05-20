@@ -25,8 +25,6 @@ import type { Network } from "../src/constants.ts";
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
-
-
 export async function buildClient(network: Network = "TESTNET"): Promise<WaterXClient> {
   return WaterXClient.create(network, { cache: true });
 }

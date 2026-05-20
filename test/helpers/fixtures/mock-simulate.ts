@@ -60,3 +60,11 @@ export function mockSimulateNoReturnValues(client: WaterXClient) {
     commandResults: [{}],
   } as never);
 }
+
+/** Simulate abort; optional custom error message. */
+export function mockSimulateFailed(client: WaterXClient, error?: string) {
+  return mockSimulateReturn(client, [], {
+    kind: "FailedTransaction",
+    error: error ?? "abort code 1",
+  });
+}

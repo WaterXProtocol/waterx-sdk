@@ -312,6 +312,65 @@ describe("pyth on-chain helper branches", () => {
     expect(getDynamicField).not.toHaveBeenCalled();
   });
 
+  it("reuses priceFeedObjectId cache with feed-only key when pyth state id is empty", async () => {
+    const client = createUnitTestClient();
+    const fieldType = DEFAULT_MOCK_PYTH_ROW_TYPE.replace(
+      /::price_identifier::PriceIdentifier$/,
+      "",
+    );
+    const cache = new PythCache();
+    cache.pythStateInfo = {
+      packageId: MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT,
+      baseUpdateFee: 1000n,
+    };
+    cache.wormholePackageId = MOCK_WORMHOLE_PACKAGE_FOR_GRPC_DEFAULT;
+    cache.priceTableInfo = { id: PRICE_TABLE_CHILD, fieldType };
+
+    const getDynamicField = vi.fn(async () => ({
+      dynamicField: { value: { bcs: new Uint8Array(32).fill(2) } },
+    }));
+    wirePythGrpc(client);
+    client.grpcClient.getDynamicField =
+      getDynamicField as unknown as typeof client.grpcClient.getDynamicField;
+    client.pyth = { ...client.pyth, state_id: "" };
+
+    const feedId = "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";
+    cache.priceFeedObjectIdCache.set(feedId.replace(/^0x/, ""), "0xcached-no-state");
+
+    const tx = new Transaction();
+    const ids = await buildPythPriceUpdateCalls(
+      tx,
+      client,
+      [mockAccumulatorUpdate()],
+      [feedId],
+      cache,
+    );
+    expect(ids[0]).toBe("0xcached-no-state");
+    expect(getDynamicField).not.toHaveBeenCalled();
+  });
+
+  it("matches price table rows via objectType when valueType is absent", async () => {
+    const client = createUnitTestClient();
+    wirePythGrpc(client, {
+      dynamicFields: [
+        { objectType: "unrelated::module::Field" },
+        {
+          objectId: PRICE_TABLE_CHILD,
+          objectType: DEFAULT_MOCK_PYTH_ROW_TYPE,
+        },
+      ],
+    });
+    const cache = new PythCache();
+    await buildPythPriceUpdateCalls(
+      txFor(),
+      client,
+      [mockAccumulatorUpdate()],
+      ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
+      cache,
+    );
+    expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
+  });
+
   it("reuses grpc caches for pyth state, wormhole package, and price table", async () => {
     const client = createUnitTestClient();
     wirePythGrpc(client);
