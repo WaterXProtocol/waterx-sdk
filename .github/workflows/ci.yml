@@ -140,35 +140,35 @@ jobs:
           path: coverage/
           retention-days: 7
 
-  # Simulate e2e: Vitest sharding across runners (~30–50% wall-clock vs single job). Requires each shard in branch protection if enforced.
+  # Simulate e2e (single job — only 3 test files today; re-enable Vitest --shard matrix when the suite grows).
   test-e2e:
     needs: setup
     runs-on: ubuntu-latest
-    name: E2E simulate (${{ matrix.shard }}/3)
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
+    name: E2E simulate
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/cache/restore@v5
+      - id: cache-nm
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Vitest e2e — shard ${{ matrix.shard }}/3 (dot + JUnit)
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Vitest e2e (dot + JUnit)
         env:
           NODE_NO_WARNINGS: "1"
-        run: pnpm exec tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-e2e-${{ matrix.shard }}.xml --shard=${{ matrix.shard }}/3
-      - name: Test report (e2e shard ${{ matrix.shard }})
+        run: pnpm exec tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
+      - name: Test report (e2e)
         uses: dorny/test-reporter@v2
         if: always()
         with:
-          name: perp-sdk E2E shard ${{ matrix.shard }}
-          path: test-results-e2e-${{ matrix.shard }}.xml
+          name: perp-sdk E2E simulate
+          path: test-results-e2e.xml
           reporter: java-junit
 
   trivy:
