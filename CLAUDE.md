@@ -182,11 +182,12 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
   - `order.ts` — `buildPlaceOrderArgument`, `placeOrderRequest`, `cancelOrderRequest`, `updateOrderRequest`, `cancelPreOrderRequest`, `addPreOrderRequest`.
   - `wlp.ts` — `mintWlp`, `requestRedeemWlp`, `cancelRedeemWlp`, `settleRedeemWlp`, `updateTokenValue`.
   - `staking.ts` — `stake`, `unstake`, `claimReward` (with rewarder settle/destroy checker plumbing).
+  - `custody.ts` — `native_custody` PSM: `mintCredit`, `mintCreditFromRequest`, `mintCreditToAccount` (mint + `consume_deposit_direct`), `burnCredit`. Needs `waterx_credit` + `native_custody` in config.
   - `referral.ts` — **stub**: contract has no `referral_table` module anymore; functions throw `removed in v3`.
 - **`fetch.ts`** — read-only `simulate`-based queries via `waterx_perp_view`. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, etc.).
 - **`tx-builders.ts`** — high-level `build*Tx` wrappers that compose oracle refresh + `*Request` + `executeTrading`. Each accepts `tx?`, `updatePythPrice`, `pythCache`, `sponsorFund`.
 - **`utils/pyth.ts`** — Hermes REST, on-chain Pyth update PTB, `aggregateTickerWithPyth`, `refreshOraclePrices`. The single source of truth for oracle freshness.
-- **`generated/`** — `sui-ts-codegen` output for the 9 packages in `sui-codegen.config.mjs`. Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen.
+- **`generated/`** — `sui-ts-codegen` output for the packages in `sui-codegen.config.mjs` (incl. `native_custody`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen.
 
 ## Naming conventions
 

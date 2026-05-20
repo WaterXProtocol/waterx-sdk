@@ -1,11 +1,16 @@
 import {
   buildClosePositionTx,
   buildPlaceOrderTx,
+  burnCredit,
   claimReward,
   closePositionRequest,
   executeTrading,
   getMarketData,
+  mintCredit,
+  mintCreditFromRequest,
+  mintCreditToAccount,
   mintWlp,
+  nativeCustodyCalls,
   placeOrderRequest,
   stake,
   WaterXClient,
@@ -32,5 +37,14 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof mintWlp).toBe("function");
     expect(typeof stake).toBe("function");
     expect(typeof claimReward).toBe("function");
+  });
+
+  it("exports native-custody builders + generated calls", () => {
+    expect(typeof mintCredit).toBe("function");
+    expect(typeof mintCreditFromRequest).toBe("function");
+    expect(typeof mintCreditToAccount).toBe("function");
+    expect(typeof burnCredit).toBe("function");
+    expect(typeof nativeCustodyCalls.mint).toBe("function");
+    expect(typeof nativeCustodyCalls.burn).toBe("function");
   });
 });
