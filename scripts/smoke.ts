@@ -19,7 +19,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import { WaterXClient } from "../src/client.ts";
 import type { WaterXConfig } from "../src/config.ts";
 import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/constants.ts";
-import { rawPrice } from "../src/utils/math.ts";
 import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/fetch.ts";
 import {
   buildPlaceOrderArgument,
@@ -32,6 +31,7 @@ import {
   requestRedeemWlp,
   setReferralCode,
 } from "../src/index.ts";
+import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 
 const CONFIG_PATH = resolve(import.meta.dirname, "..", "..", "waterx-config", "testnet.json");
@@ -328,7 +328,7 @@ async function main(): Promise<void> {
     return tx;
   });
 
-  // 10. Referral read helpers — exercises bucket_v2_referral query path.
+  // 10. Referral read helpers — exercises waterx_referral query path.
   console.log("\n=== Referral reads ===");
   try {
     const valid = await isValidReferralCode(client, "smoke");

@@ -12,15 +12,6 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "./client.ts";
 import { DRY_RUN_SENDER } from "./constants.ts";
-// ============================================================================
-// Referral queries (bucket_v2_referral::referral_table)
-// ============================================================================
-
-import {
-  isValidReferralCode as isValidReferralCodeCall,
-  referralCodeExists as referralCodeExistsCall,
-  tryGetRefer as tryGetReferCall,
-} from "./generated/bucket_v2_referral/referral_table.ts";
 import {
   AccountData,
   accountData as accountDataCall,
@@ -44,6 +35,15 @@ import {
   TokenPoolData,
   tokenPoolData as tokenPoolDataCall,
 } from "./generated/waterx_perp_view/view.ts";
+// ============================================================================
+// Referral queries (waterx_referral::referral_table)
+// ============================================================================
+
+import {
+  isValidReferralCode as isValidReferralCodeCall,
+  referralCodeExists as referralCodeExistsCall,
+  tryGetRefer as tryGetReferCall,
+} from "./generated/waterx_referral/referral_table.ts";
 
 // ============================================================================
 // Simulate / decode helpers

@@ -5,6 +5,7 @@ import { buildPlaceOrderTx } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
+
 const DUMMY_ACCOUNT = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {

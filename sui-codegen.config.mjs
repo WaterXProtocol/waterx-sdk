@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const contracts = resolve(__dirname, "../waterx-contract");
-const v2Contracts = resolve(__dirname, "../v2-move-contracts");
 
 export default {
   output: "./src/generated",
@@ -78,8 +77,8 @@ export default {
       },
     },
     {
-      package: "@bucket/referral",
-      path: resolve(v2Contracts, "bucket_referral"),
+      package: "@waterx/referral",
+      path: resolve(contracts, "waterx_referral"),
       generate: {
         types: true,
         functions: true,

@@ -100,8 +100,7 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       wlp_pool: "0xb8b23b9554879326224a5dbe615642956dcdfebde90618c832d14642d91f010c",
       wlp_aum: "0xa64fb2cac92ac3b31aefc799c5dd9ba0ed87b3049deda81fce0719f1b2081ce7",
       pool_tokens: {
-        USDCUSD:
-          "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD",
+        USDCUSD: "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD",
       },
     },
   },

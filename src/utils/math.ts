@@ -62,7 +62,15 @@ export function calcEstLiqPrice(params: {
   spotPrice: number;
   totalFeesUsd: number;
 }): number {
-  const { isLong, avgPrice, sizeInAsset, collateralUsd, maintenanceMarginRate, spotPrice, totalFeesUsd } = params;
+  const {
+    isLong,
+    avgPrice,
+    sizeInAsset,
+    collateralUsd,
+    maintenanceMarginRate,
+    spotPrice,
+    totalFeesUsd,
+  } = params;
   if (sizeInAsset === 0) return 0;
 
   const entryNotional = sizeInAsset * avgPrice;
@@ -128,9 +136,16 @@ export function calcImpactFeeRate(params: {
   scale?: number;
 }): number {
   const {
-    longOi, shortOi, orderIsLong, orderSize, executionPrice,
-    maxImpactFee, allocatedLpExposureBps, poolTvlUsd,
-    curvature = 1, scale = 1,
+    longOi,
+    shortOi,
+    orderIsLong,
+    orderSize,
+    executionPrice,
+    maxImpactFee,
+    allocatedLpExposureBps,
+    poolTvlUsd,
+    curvature = 1,
+    scale = 1,
   } = params;
 
   if (maxImpactFee === 0 || orderSize === 0) return 0;
@@ -138,14 +153,17 @@ export function calcImpactFeeRate(params: {
   const lpOriginalSide = longOi > shortOi ? false : true;
   const lpOriginalSize = Math.abs(longOi - shortOi);
 
-  const lpNewSize = lpOriginalSide === orderIsLong
-    ? (lpOriginalSize > orderSize ? lpOriginalSize - orderSize : orderSize - lpOriginalSize)
-    : lpOriginalSize + orderSize;
+  const lpNewSize =
+    lpOriginalSide === orderIsLong
+      ? lpOriginalSize > orderSize
+        ? lpOriginalSize - orderSize
+        : orderSize - lpOriginalSize
+      : lpOriginalSize + orderSize;
 
   if (lpNewSize <= lpOriginalSize) return 0;
 
   if (allocatedLpExposureBps === 0 || poolTvlUsd === 0) return 0;
-  const allocatedExposureUsd = poolTvlUsd * allocatedLpExposureBps / Number(BPS_SCALE);
+  const allocatedExposureUsd = (poolTvlUsd * allocatedLpExposureBps) / Number(BPS_SCALE);
   if (allocatedExposureUsd === 0) return 0;
 
   const originalExposureUsd = lpOriginalSize * executionPrice;
@@ -155,8 +173,20 @@ export function calcImpactFeeRate(params: {
   const orderNotionalUsd = orderSize * executionPrice;
   if (orderNotionalUsd === 0) return 0;
 
-  const originalCost = impactFeeCostUsd(maxImpactFee, allocatedExposureUsd, originalExposureUsd, curvature, scale);
-  const newCost = impactFeeCostUsd(maxImpactFee, allocatedExposureUsd, newExposureUsd, curvature, scale);
+  const originalCost = impactFeeCostUsd(
+    maxImpactFee,
+    allocatedExposureUsd,
+    originalExposureUsd,
+    curvature,
+    scale,
+  );
+  const newCost = impactFeeCostUsd(
+    maxImpactFee,
+    allocatedExposureUsd,
+    newExposureUsd,
+    curvature,
+    scale,
+  );
 
   return (newCost - originalCost) / orderNotionalUsd;
 }
@@ -185,9 +215,9 @@ export function calcFundingRate(
   if ((longOiUsd === 0 && shortOiUsd === 0) || tvlUsd === 0) return { sign: true, rate: 0 };
 
   if (longOiUsd >= shortOiUsd) {
-    return { sign: true, rate: basicRate * (longOiUsd - shortOiUsd) / tvlUsd };
+    return { sign: true, rate: (basicRate * (longOiUsd - shortOiUsd)) / tvlUsd };
   }
-  return { sign: false, rate: basicRate * (shortOiUsd - longOiUsd) / tvlUsd };
+  return { sign: false, rate: (basicRate * (shortOiUsd - longOiUsd)) / tvlUsd };
 }
 
 /**
@@ -219,7 +249,7 @@ export function calcFundingFeeUsd(
  * human-readable form (USD per base token) so they can be passed to `calcFundingFeeUsd`.
  */
 export function decodeFundingIndexDelta(rawDelta: bigint): number {
-  return Number(rawDelta * FLOAT_SCALE / DOUBLE_SCALE) / Number(FLOAT_SCALE);
+  return Number((rawDelta * FLOAT_SCALE) / DOUBLE_SCALE) / Number(FLOAT_SCALE);
 }
 
 // ======== Borrow rate ========
@@ -241,11 +271,13 @@ export function calcBorrowRate(
   if (utilizationBps <= threshold0Bps) return rate0;
   if (utilizationBps <= threshold1Bps) {
     if (threshold1Bps === threshold0Bps) return rate1;
-    return rate0 + (rate1 - rate0) * (utilizationBps - threshold0Bps) / (threshold1Bps - threshold0Bps);
+    return (
+      rate0 + ((rate1 - rate0) * (utilizationBps - threshold0Bps)) / (threshold1Bps - threshold0Bps)
+    );
   }
   const remaining = Number(BPS_SCALE) - threshold1Bps;
   if (remaining === 0) return rate2;
-  return rate1 + (rate2 - rate1) * (utilizationBps - threshold1Bps) / remaining;
+  return rate1 + ((rate2 - rate1) * (utilizationBps - threshold1Bps)) / remaining;
 }
 
 /**
@@ -254,9 +286,13 @@ export function calcBorrowRate(
  * Matches `calculate_borrow_rate_accrual` in `lp_pool.move`.
  * `elapsedMs / intervalMs` gives the number of completed intervals.
  */
-export function calcBorrowRateAccrual(borrowRate: number, elapsedMs: number, intervalMs: number): number {
+export function calcBorrowRateAccrual(
+  borrowRate: number,
+  elapsedMs: number,
+  intervalMs: number,
+): number {
   if (borrowRate === 0 || elapsedMs === 0 || intervalMs === 0) return 0;
-  return borrowRate * elapsedMs / intervalMs;
+  return (borrowRate * elapsedMs) / intervalMs;
 }
 
 /**
@@ -281,7 +317,7 @@ export function calcPositionBorrowFee(
 /** Token utilization in bps: reservedAmount / liquidityAmount × BPS_SCALE. */
 export function calcTokenUtilizationBps(reservedAmount: number, liquidityAmount: number): number {
   if (liquidityAmount === 0) return 0;
-  return Math.floor(reservedAmount / liquidityAmount * Number(BPS_SCALE));
+  return Math.floor((reservedAmount / liquidityAmount) * Number(BPS_SCALE));
 }
 
 // ======== Funding annualization ========
@@ -338,7 +374,7 @@ export function calcWlpIncentiveApy(apr: number): number {
  */
 export function calcWlpPrice(tvlUsd: number, totalSupply: number, lpDecimals: number): number {
   if (totalSupply === 0) return 0;
-  return tvlUsd * Math.pow(10, lpDecimals) / totalSupply;
+  return (tvlUsd * Math.pow(10, lpDecimals)) / totalSupply;
 }
 
 /**
@@ -361,7 +397,7 @@ export function calcWlpMintOut(
 ): number {
   const scale = Math.pow(10, lpDecimals);
   if (totalSupply === 0 || tvlUsd === 0) return Math.floor(netDepositUsd * scale);
-  return Math.floor(netDepositUsd * totalSupply / tvlUsd);
+  return Math.floor((netDepositUsd * totalSupply) / tvlUsd);
 }
 
 /**
@@ -384,8 +420,8 @@ export function calcWlpRedeemOut(
   tokenDecimals: number,
 ): number {
   if (totalSupply === 0 || tokenPriceUsd === 0) return 0;
-  const burnValueUsd = tvlUsd * lpAmount / totalSupply;
-  return Math.floor(burnValueUsd / tokenPriceUsd * Math.pow(10, tokenDecimals));
+  const burnValueUsd = (tvlUsd * lpAmount) / totalSupply;
+  return Math.floor((burnValueUsd / tokenPriceUsd) * Math.pow(10, tokenDecimals));
 }
 
 /**
@@ -413,19 +449,17 @@ export function calcDynamicFeeBps(
 ): number {
   if (tvlUsd === 0 || operationValueUsd === 0 || targetWeightBps === 0) return baseFeeBps;
 
-  const targetValue = tvlUsd * targetWeightBps / Number(BPS_SCALE);
+  const targetValue = (tvlUsd * targetWeightBps) / Number(BPS_SCALE);
   const originalDiff = Math.abs(tokenValueUsd - targetValue);
 
   const newTokenValue = isDeposit
     ? tokenValueUsd + operationValueUsd
     : Math.max(0, tokenValueUsd - operationValueUsd);
-  const newTvl = isDeposit
-    ? tvlUsd + operationValueUsd
-    : Math.max(0, tvlUsd - operationValueUsd);
+  const newTvl = isDeposit ? tvlUsd + operationValueUsd : Math.max(0, tvlUsd - operationValueUsd);
 
   if (newTvl === 0) return baseFeeBps;
 
-  const newTargetValue = newTvl * targetWeightBps / Number(BPS_SCALE);
+  const newTargetValue = (newTvl * targetWeightBps) / Number(BPS_SCALE);
   const newDiff = Math.abs(newTokenValue - newTargetValue);
 
   if (newDiff <= originalDiff) return baseFeeBps;
@@ -434,6 +468,6 @@ export function calcDynamicFeeBps(
   const avgTargetValue = (targetValue + newTargetValue) / 2;
   if (avgTargetValue === 0) return baseFeeBps;
 
-  const additional = Math.floor(avgDiff / avgTargetValue * baseFeeBps);
+  const additional = Math.floor((avgDiff / avgTargetValue) * baseFeeBps);
   return baseFeeBps + additional;
 }

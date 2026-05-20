@@ -7,7 +7,7 @@ import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as table from './deps/sui/table.ts';
 import * as table_1 from './deps/sui/table.ts';
-const $moduleName = '@bucket/referral::referral_table';
+const $moduleName = '@waterx/referral::referral_table';
 export const SetReferralCode = new MoveStruct({ name: `${$moduleName}::SetReferralCode`, fields: {
         refer: bcs.Address,
         code: bcs.string()
@@ -31,7 +31,7 @@ export interface PackageVersionOptions {
     ];
 }
 export function packageVersion(options: PackageVersionOptions = {}) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'referral_table',
@@ -53,7 +53,7 @@ export interface AddVersionOptions {
 }
 /** Admin Funs */
 export function addVersion(options: AddVersionOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         null,
@@ -81,7 +81,7 @@ export interface RemoveVersionOptions {
     ];
 }
 export function removeVersion(options: RemoveVersionOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         null,
@@ -110,7 +110,7 @@ export interface SetReferralCodeOptions {
 }
 /** Public Funs */
 export function setReferralCode(options: SetReferralCodeOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         null,
@@ -138,7 +138,7 @@ export interface UseReferralCodeOptions {
     ];
 }
 export function useReferralCode(options: UseReferralCodeOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         null,
@@ -164,7 +164,7 @@ export interface SetReferralCode_Options {
     ];
 }
 export function setReferralCode_(options: SetReferralCode_Options) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         '0x1::string::String'
@@ -189,7 +189,7 @@ export interface UseReferralCode_Options {
     ];
 }
 export function useReferralCode_(options: UseReferralCode_Options) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         '0x1::string::String'
@@ -213,7 +213,7 @@ export interface CodeToReferOptions {
 }
 /** Getter Funs */
 export function codeToRefer(options: CodeToReferOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -235,7 +235,7 @@ export interface RefereeToCodeOptions {
     ];
 }
 export function refereeToCode(options: RefereeToCodeOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -259,7 +259,7 @@ export interface TryGetReferOptions {
     ];
 }
 export function tryGetRefer(options: TryGetReferOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         'address'
@@ -282,7 +282,7 @@ export interface IsValidReferralCodeOptions {
     ];
 }
 export function isValidReferralCode(options: IsValidReferralCodeOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         '0x1::string::String'
     ] satisfies (string | null)[];
@@ -306,7 +306,7 @@ export interface ReferralCodeExistsOptions {
     ];
 }
 export function referralCodeExists(options: ReferralCodeExistsOptions) {
-    const packageAddress = options.package ?? '@bucket/referral';
+    const packageAddress = options.package ?? '@waterx/referral';
     const argumentsTypes = [
         null,
         '0x1::string::String'

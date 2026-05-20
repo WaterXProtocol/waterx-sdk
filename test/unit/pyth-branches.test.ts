@@ -4,6 +4,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { placeOrderRequest } from "../../src/user/order.ts";
 import {
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
@@ -12,7 +13,9 @@ import {
   refreshOraclePrices,
   reimbursePythSponsor,
 } from "../../src/utils/pyth.ts";
-import { placeOrderRequest } from "../../src/user/order.ts";
+import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
+import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
+import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import {
   DEFAULT_MOCK_PYTH_ROW_TYPE,
   MOCK_HERMES_URL,
@@ -20,9 +23,6 @@ import {
   MOCK_WORMHOLE_PACKAGE_FOR_GRPC_DEFAULT,
   mockSuiAddress,
 } from "../helpers/fixtures/sui-mock-fixtures.ts";
-import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
-import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
-import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const PYTH_STATE = mockSuiAddress("c1");
@@ -128,7 +128,13 @@ describe("pyth on-chain helper branches", () => {
     wirePythGrpc(client, { dynamicFieldValue: { bcs: new Uint8Array(8) } });
     const tx = new Transaction();
     await expect(
-      buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], ["0xdeadbeef"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        tx,
+        client,
+        [mockAccumulatorUpdate()],
+        ["0xdeadbeef"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/not registered on-chain/);
   });
 
@@ -215,8 +221,7 @@ describe("pyth on-chain helper branches", () => {
   it("normalizes feed ids without 0x prefix", async () => {
     const client = createUnitTestClient();
     wirePythGrpc(client);
-    const feedHex =
-      "f9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";
+    const feedHex = "f9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";
     const tx = new Transaction();
     const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedHex]);
     expect(ids[0]).toMatch(/^0x/);
@@ -288,14 +293,21 @@ describe("pyth on-chain helper branches", () => {
       dynamicField: { value: { bcs: new Uint8Array(32).fill(1) } },
     }));
     wirePythGrpc(client);
-    client.grpcClient.getDynamicField = getDynamicField as unknown as typeof client.grpcClient.getDynamicField;
+    client.grpcClient.getDynamicField =
+      getDynamicField as unknown as typeof client.grpcClient.getDynamicField;
 
     const cache = new PythCache();
     const feedId = "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";
     cache.priceFeedObjectIdCache.set(`${PYTH_STATE}:${feedId.replace(/^0x/, "")}`, "0xcached");
 
     const tx = new Transaction();
-    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedId], cache);
+    const ids = await buildPythPriceUpdateCalls(
+      tx,
+      client,
+      [mockAccumulatorUpdate()],
+      [feedId],
+      cache,
+    );
     expect(ids[0]).toBe("0xcached");
     expect(getDynamicField).not.toHaveBeenCalled();
   });
@@ -333,7 +345,13 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { pythStateJson: null });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/Unable to fetch pyth state/);
 
     wirePythGrpc(client, {
@@ -343,7 +361,13 @@ describe("pyth on-chain helper branches", () => {
       },
     });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/base_update_fee/);
   });
 
@@ -351,7 +375,13 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { wormholeJson: null });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/wormhole package id/);
   });
 
@@ -359,14 +389,26 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { dynamicFields: [] });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/Price table not found/);
 
     wirePythGrpc(client, {
       dynamicFields: [{ valueType: DEFAULT_MOCK_PYTH_ROW_TYPE }],
     });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/Price table missing childId/);
 
     wirePythGrpc(client, {
@@ -378,7 +420,13 @@ describe("pyth on-chain helper branches", () => {
       ],
     });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/Cannot extract package from price table type/);
   });
 
@@ -386,7 +434,13 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { pythStateJson: { fields: {} } });
     await expect(
-      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], new PythCache()),
+      buildPythPriceUpdateCalls(
+        txFor(),
+        client,
+        [mockAccumulatorUpdate()],
+        ["0x1"],
+        new PythCache(),
+      ),
     ).rejects.toThrow(/Cannot resolve package id/);
   });
 

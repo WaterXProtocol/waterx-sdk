@@ -2,7 +2,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
 import { ORDER_LIMIT_BUY } from "../../src/constants.ts";
-import { rawPrice } from "../../src/utils/math.ts";
 import {
   batchLiquidate,
   closePositionByKeeper,
@@ -17,8 +16,12 @@ import {
   updateFundingRate,
   withdrawCollateralRequest,
 } from "../../src/user/trading.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
-import { PTB_DUMMY_ACCOUNT_ID, PTB_DUMMY_DEPOSIT_COIN } from "../helpers/fixtures/ptb-test-dummies.ts";
+import {
+  PTB_DUMMY_ACCOUNT_ID,
+  PTB_DUMMY_DEPOSIT_COIN,
+} from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const client = createUnitTestClient();

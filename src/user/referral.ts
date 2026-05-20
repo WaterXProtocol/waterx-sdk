@@ -1,6 +1,6 @@
 /**
- * Referral builders — backed by the standalone `bucket_v2_referral` package
- * (kept from v2; not part of `waterx-contract/`). Requires
+ * Referral builders — backed by the standalone `waterx_referral` package.
+ * Requires
  * `config.packages.waterx_referral.{published_at,referral_table}` to be
  * populated; otherwise the builder throws so misconfigured deployments fail
  * loudly instead of silently aborting on-chain.
@@ -9,7 +9,7 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import * as referral from "../generated/bucket_v2_referral/referral_table.ts";
+import * as referral from "../generated/waterx_referral/referral_table.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
 function requireReferralConfig(client: WaterXClient): { pkg: string; table: string } {

@@ -6,8 +6,8 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (mainnet config is not fully deployed yet)
  */
-import type { Network } from "../../../src/constants.ts";
 import { WaterXClient } from "../../../src/client.ts";
+import type { Network } from "../../../src/constants.ts";
 import { isGrpcTransientError } from "./transient-rpc.ts";
 
 export type E2eNetwork = "testnet" | "mainnet";
@@ -93,8 +93,7 @@ export function rawPrice(usd: number): bigint {
   return BigInt(Math.round(usd * 1e9));
 }
 
-export const DUMMY_SENDER =
-  "0x1111111111111111111111111111111111111111111111111111111111111111";
+export const DUMMY_SENDER = "0x1111111111111111111111111111111111111111111111111111111111111111";
 
 export const PROBE_MIN_ACCOUNT_USDC: bigint = (() => {
   const raw = process.env.WATERX_E2E_PROBE_MIN_ACCOUNT_USDC;

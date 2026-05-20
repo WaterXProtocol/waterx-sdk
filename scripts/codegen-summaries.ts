@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..", "..");
 const CONTRACTS_ROOT = resolve(REPO_ROOT, "waterx-contract");
-const V2_CONTRACTS_ROOT = resolve(REPO_ROOT, "v2-move-contracts");
 
 const PACKAGES: Array<{ name: string; root: string }> = [
   { name: "waterx_perp", root: CONTRACTS_ROOT },
@@ -16,7 +15,7 @@ const PACKAGES: Array<{ name: string; root: string }> = [
   { name: "pyth_sponsor_rule", root: CONTRACTS_ROOT },
   { name: "bucket_framework", root: CONTRACTS_ROOT },
   { name: "wlp", root: CONTRACTS_ROOT },
-  { name: "waterx_referral", root: V2_CONTRACTS_ROOT },
+  { name: "waterx_referral", root: CONTRACTS_ROOT },
 ];
 
 for (const pkg of PACKAGES) {
