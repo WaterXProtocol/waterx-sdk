@@ -191,7 +191,7 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
 
 - **Move**: snake_case modules/functions, PascalCase structs, type params `C_TOKEN`, `LP_TOKEN`.
 - **SDK**: camelCase functions, PascalCase interfaces/types.
-- **Tickers**: `"BTC/USD"`, `"USDC/USD"`. The collateral ticker is held on the pool's `TokenPoolInfo.ticker` (set at `add_token`); SDK passes it explicitly when needed.
+- **Tickers**: trading pairs use **`ticker`** (never `symbol`), format concatenated `BTCUSD` / `ETHUSD` / `SUIUSD` — never `BTC`, `BTC/USD`, or `BTC_USD`. Canonical source: `waterx-config/{network}.json` (`markets` and `packages.pyth_rule.feeds` keys). Collateral tokens (`USDC`, `USDSUI`) keep `symbol` — held on `TokenPoolInfo.ticker` (set at `add_token`); the SDK passes it explicitly when needed.
 - **BCS field names**: snake_case on the Move / wire side (`account_object_address`, `request_timestamp`, `linked_position_id`); generated TS structs preserve those names — consumers use them as-is.
 
 ## Notes when hacking
