@@ -103,8 +103,41 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
         USDCUSD: "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD",
       },
     },
+    waterx_credit: {
+      published_at: "0xf6750397c266eca69451691b5125fbf35e5c4575c98884ac3ab6f084493fd497",
+      original_id: "0xf6750397c266eca69451691b5125fbf35e5c4575c98884ac3ab6f084493fd497",
+      credit_registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
+      credit_type: "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD",
+    },
+    native_custody: {
+      published_at: "0x45c2074e892975f0fb62b934824531c04d43f6e7f00bf8d1e7ce2556e84fd6ee",
+      original_id: "0x45c2074e892975f0fb62b934824531c04d43f6e7f00bf8d1e7ce2556e84fd6ee",
+      vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
+      assets: [
+        {
+          type: "0x7ccd477e884ec74f960b23a8b34b7d87999e4d7ee0dde738a0c25f46200f201a::mock_usdc::MOCK_USDC",
+          decimal: 6,
+          mint_fee_scaled: "0",
+          burn_fee_scaled: "1000000",
+          min_burn_amount: "0",
+        },
+        {
+          type: "0xc0fad30bc21babe3b8b51c6a4c380d27b61a47e34b26968daf20315da0e35016::mock_usdsui::MOCK_USDSUI",
+          decimal: 6,
+          mint_fee_scaled: "0",
+          burn_fee_scaled: "1000000",
+          min_burn_amount: "0",
+        },
+      ],
+    },
   },
 };
 
 /** Collateral Move type used in most testnet PTB examples. */
 export const MOCK_USDC_TYPE = MOCK_TESTNET_CONFIG.packages.wlp!.pool_tokens.USDCUSD;
+
+/** Backing-asset Move type registered on the native-custody vault (first asset). */
+export const MOCK_CUSTODY_ASSET_TYPE = MOCK_TESTNET_CONFIG.packages.native_custody!.assets[0]!.type;
+
+/** CREDIT CoinType minted by the native-custody PSM. */
+export const MOCK_CREDIT_TYPE = MOCK_TESTNET_CONFIG.packages.waterx_credit!.credit_type;

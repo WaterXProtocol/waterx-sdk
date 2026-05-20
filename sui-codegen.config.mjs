@@ -127,6 +127,14 @@ const config = {
         functions: true,
       },
     },
+    {
+      package: "@waterx/native-custody",
+      path: resolve(contracts, "waterx_credit/sui/native_custody"),
+      generate: {
+        types: true,
+        functions: true,
+      },
+    },
   ],
 };
 
