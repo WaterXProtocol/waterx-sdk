@@ -328,7 +328,7 @@ async function main(): Promise<void> {
     return tx;
   });
 
-  // 10. Referral read helpers — exercises bucket_v2_referral query path.
+  // 10. Referral read helpers — exercises waterx_referral query path.
   console.log("\n=== Referral reads ===");
   try {
     const valid = await isValidReferralCode(client, "smoke");

@@ -78,8 +78,8 @@ export default {
       },
     },
     {
-      package: "@bucket/referral",
-      path: resolve(v2Contracts, "bucket_referral"),
+      package: "@waterx/referral",
+      path: resolve(v2Contracts, "waterx_referral"),
       generate: {
         types: true,
         functions: true,

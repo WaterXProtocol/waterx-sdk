@@ -133,4 +133,4 @@ export * as stakingCalls from "./generated/waterx_staking/waterx_staking.ts";
 export * as oracleCalls from "./generated/waterx_oracle/oracle.ts";
 export * as pythRuleCalls from "./generated/waterx_pyth_rule/pyth_rule.ts";
 export * as pythSponsorRuleCalls from "./generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
-export * as referralCalls from "./generated/bucket_v2_referral/referral_table.ts";
+export * as referralCalls from "./generated/waterx_referral/referral_table.ts";
