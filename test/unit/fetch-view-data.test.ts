@@ -38,6 +38,7 @@ import {
   vectorRedeemBytes,
 } from "../helpers/fixtures/fetch-mock-bcs.ts";
 import {
+  mockSimulateFailed,
   mockSimulateNoReturnValues,
   mockSimulatePaged,
   mockSimulatePagedNested,
@@ -234,5 +235,125 @@ describe("fetch view helpers (mocked simulate)", () => {
     await expect(getRefererFor(bare, mockSuiAddress("aa"))).rejects.toThrow(
       /referral package not configured/,
     );
+  });
+});
+
+describe("fetch view helpers — simulate failures (negative)", () => {
+  const client = createUnitTestClient();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("paginated queries (empty fallback, no throw)", () => {
+    const paginatedCases = [
+      {
+        name: "getMarketOrders",
+        run: () => getMarketOrders(client, { ticker: "BTCUSD" }),
+        key: "orders" as const,
+      },
+      {
+        name: "getMarketPositions",
+        run: () => getMarketPositions(client, { ticker: "BTCUSD", basePriceUsd: 1n }),
+        key: "positions" as const,
+      },
+      {
+        name: "getRedeemRequests",
+        run: () => getRedeemRequests(client),
+        key: "requests" as const,
+      },
+    ] as const;
+
+    it.each(paginatedCases)(
+      "$name returns empty list on FailedTransaction (does not throw)",
+      async ({ run, key }) => {
+        mockSimulateFailed(client, "E_POSITION_NOT_FOUND");
+        const page = await run();
+        expect(page[key]).toEqual([]);
+      },
+    );
+
+    it.each(paginatedCases)(
+      "$name returns empty list when returnValues are missing",
+      async ({ run, key }) => {
+        mockSimulateNoReturnValues(client);
+        const page = await run();
+        expect(page[key]).toEqual([]);
+      },
+    );
+  });
+
+  describe("single-return simulateAndExtract queries", () => {
+    const singleCases = [
+      {
+        name: "getAccountData",
+        run: () => getAccountData(client, mockSuiAddress("aa")),
+      },
+      {
+        name: "getMarketData",
+        run: () => getMarketData(client, { ticker: "BTCUSD" }),
+      },
+      {
+        name: "getAccountPositions",
+        run: () =>
+          getAccountPositions(client, {
+            ticker: "BTCUSD",
+            accountObjectAddress: mockSuiAddress("aa"),
+            basePriceUsd: 1n,
+          }),
+      },
+      {
+        name: "getAccountOrders",
+        run: () =>
+          getAccountOrders(client, {
+            ticker: "BTCUSD",
+            accountObjectAddress: mockSuiAddress("aa"),
+          }),
+      },
+      {
+        name: "getPosition",
+        run: () =>
+          getPosition(client, {
+            ticker: "BTCUSD",
+            positionId: 1n,
+            basePriceUsd: 1n,
+            collateralPriceUsd: 1n,
+          }),
+      },
+      {
+        name: "positionExists",
+        run: () => positionExists(client, { ticker: "BTCUSD", positionId: 1n }),
+      },
+    ] as const;
+
+    it.each(singleCases)("$name throws on FailedTransaction", async ({ run }) => {
+      mockSimulateFailed(client, "view abort");
+      await expect(run()).rejects.toThrow(/simulate aborted: view abort/);
+    });
+
+    it.each(singleCases)("$name throws when return slot has no BCS", async ({ run }) => {
+      mockSimulateReturn(client, [{}]);
+      await expect(run()).rejects.toThrow(/simulate returned no BCS/);
+    });
+
+    it.each(singleCases)("$name throws when commandResults is missing", async ({ run }) => {
+      vi.spyOn(client, "simulate").mockResolvedValue({
+        $kind: "Success",
+        commandResults: [],
+      } as never);
+      await expect(run()).rejects.toThrow(/simulate returned no BCS/);
+    });
+  });
+
+  describe("referral queries", () => {
+    it("isValidReferralCode throws on FailedTransaction", async () => {
+      mockSimulateFailed(client);
+      await expect(isValidReferralCode(client, "abc")).rejects.toThrow(/simulate aborted/);
+    });
+
+    it("referralCodeExists throws when simulate returns no BCS", async () => {
+      mockSimulateReturn(client, [{}]);
+      await expect(referralCodeExists(client, "code")).rejects.toThrow(/simulate returned no BCS/);
+    });
   });
 });

@@ -1,5 +1,6 @@
-import type { WaterXClient } from "../../../src/client.ts";
 import { vi } from "vitest";
+
+import type { WaterXClient } from "../../../src/client.ts";
 
 type ReturnValue = { bcs?: Uint8Array; value?: { bcs?: Uint8Array } };
 
@@ -58,4 +59,12 @@ export function mockSimulateNoReturnValues(client: WaterXClient) {
     $kind: "Success",
     commandResults: [{}],
   } as never);
+}
+
+/** Simulate abort; optional custom error message. */
+export function mockSimulateFailed(client: WaterXClient, error?: string) {
+  return mockSimulateReturn(client, [], {
+    kind: "FailedTransaction",
+    error: error ?? "abort code 1",
+  });
 }

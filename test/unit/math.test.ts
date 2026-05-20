@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE } from "../../src/constants.ts";
+import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../../src/constants.ts";
 import {
+  annualizedApyFromRatio,
+  annualizeFundingRate,
   calcBorrowRate,
   calcBorrowRateAccrual,
   calcDynamicFeeBps,
@@ -16,6 +18,7 @@ import {
   calcTokenUtilizationBps,
   calcTotalTradingFeeRate,
   calcUnrealizedPnl,
+  calcWlpIncentiveApy,
   calcWlpMintOut,
   calcWlpPrice,
   calcWlpRedeemOut,
@@ -262,7 +265,9 @@ describe("impact and trading fee rate", () => {
       executionPrice: 100,
       maxImpactFee: 0.001,
     };
-    expect(calcImpactFeeRate({ ...base, allocatedLpExposureBps: 0, poolTvlUsd: 1_000_000 })).toBe(0);
+    expect(calcImpactFeeRate({ ...base, allocatedLpExposureBps: 0, poolTvlUsd: 1_000_000 })).toBe(
+      0,
+    );
     expect(calcImpactFeeRate({ ...base, allocatedLpExposureBps: 10_000, poolTvlUsd: 0 })).toBe(0);
   });
 
@@ -348,6 +353,30 @@ describe("funding", () => {
     const oneUsdPerAsset = DOUBLE_SCALE;
     expect(decodeFundingIndexDelta(oneUsdPerAsset)).toBeCloseTo(1, 10);
     expect(decodeFundingIndexDelta(0n)).toBe(0);
+  });
+
+  it("annualizeFundingRate scales per-interval rate to a year", () => {
+    const hourly = 0.0001;
+    expect(annualizeFundingRate(hourly, 3_600_000)).toBeCloseTo(hourly * (MS_PER_YEAR / 3_600_000));
+    expect(annualizeFundingRate(0.001, 0)).toBe(0);
+  });
+});
+
+describe("WLP APY helpers", () => {
+  it("annualizedApyFromRatio compounds NAV ratio over elapsed days", () => {
+    expect(annualizedApyFromRatio(1.05, 30)).toBeCloseTo(Math.pow(1.05, 365 / 30) - 1, 10);
+    expect(annualizedApyFromRatio(1, 0)).toBe(0);
+    expect(annualizedApyFromRatio(0, 30)).toBe(0);
+    expect(annualizedApyFromRatio(-1, 30)).toBe(0);
+  });
+
+  it("annualizedApyFromRatio returns 0 when compounding overflows", () => {
+    expect(annualizedApyFromRatio(Number.MAX_VALUE, 1)).toBe(0);
+  });
+
+  it("calcWlpIncentiveApy converts continuous APR to APY", () => {
+    expect(calcWlpIncentiveApy(0.12)).toBeCloseTo(Math.expm1(0.12), 10);
+    expect(calcWlpIncentiveApy(Number.POSITIVE_INFINITY)).toBe(0);
   });
 });
 

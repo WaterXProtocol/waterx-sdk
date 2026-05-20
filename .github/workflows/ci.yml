@@ -38,7 +38,7 @@ jobs:
       - if: steps.cache-nm.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
 
-  # Replaces former workflows/lint.yml (`pnpm lint` = eslint + prettier). Single ESLint run — no reviewdog duplicate.
+  # `pnpm lint` = ESLint + Prettier (--check) on src, test, scripts, examples, and root configs.
   lint:
     needs: setup
     runs-on: ubuntu-latest
@@ -49,10 +49,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/cache/restore@v5
+      - id: cache-nm
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - run: pnpm lint
 
   typecheck:

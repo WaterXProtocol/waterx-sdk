@@ -21,7 +21,6 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { ORDER_TAG_WILDCARD } from "../src/constants.ts";
-import { rawPrice } from "../src/utils/math.ts";
 import {
   getAccountData,
   getAccountOrders,
@@ -37,6 +36,7 @@ import {
   executeTrading,
   placeOrderRequest,
 } from "../src/index.ts";
+import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");

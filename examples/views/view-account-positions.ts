@@ -8,8 +8,8 @@
  *   WATERX_TICKER=ETHUSD WATERX_BASE_PRICE_USD=3500 ... examples/...
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
-import { rawPrice } from "../../src/utils/math.ts";
 import { getAccountPositions } from "../../src/fetch.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 
 run(async () => {
   const client = await buildClient();
