@@ -52,6 +52,17 @@ function toBytes(input: Uint8Array | number[] | string): number[] {
   return Array.from(input);
 }
 
+function toEvmAddressBytes(
+  input: Uint8Array | number[] | string,
+  field: "evmRecipient" | "evmToken",
+): number[] {
+  const bytes = toBytes(input);
+  if (bytes.length !== 20) {
+    throw new Error(`${field} must be a 20-byte EVM address (got ${bytes.length})`);
+  }
+  return bytes;
+}
+
 function creditTypeOf(client: WaterXClient, override?: string): string {
   return override ?? client.creditType();
 }
@@ -172,12 +183,21 @@ export function routeWormhole(
   tx: Transaction,
   params: RouteWormholeParams,
 ): TransactionArgument {
+  if (
+    !Number.isInteger(params.evmDestinationChain) ||
+    params.evmDestinationChain < 0 ||
+    params.evmDestinationChain > 0xffff
+  ) {
+    throw new Error(
+      `evmDestinationChain must be a u16 (0..65535), got ${params.evmDestinationChain}`,
+    );
+  }
   const out = routeWormholeCall({
     package: queuePkg(client),
     arguments: {
       evmDestinationChain: params.evmDestinationChain,
-      evmRecipient: toBytes(params.evmRecipient),
-      evmToken: toBytes(params.evmToken),
+      evmRecipient: toEvmAddressBytes(params.evmRecipient, "evmRecipient"),
+      evmToken: toEvmAddressBytes(params.evmToken, "evmToken"),
     },
   })(tx);
   return out as unknown as TransactionArgument;

@@ -32,7 +32,7 @@ export function toWormholescanEmitter(idOrAddress: string): string {
   return raw.toLowerCase().padStart(64, "0");
 }
 
-/** @deprecated alias of {@link toWormholescanEmitter} (EVM-side naming). */
+/** EVM-side naming alias of {@link toWormholescanEmitter}. */
 export const padEvmEmitter = toWormholescanEmitter;
 
 // ============================================================================
@@ -149,9 +149,28 @@ export async function waitForVaa(
     opts.onTick?.(attempt);
     const vaa = await fetchVaa(apiBase, chainId, emitter, sequence, opts);
     if (vaa) return vaa;
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await abortableSleep(intervalMs, opts.signal);
   }
   throw new Error("waitForVaa: timeout");
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("waitForVaa: aborted"));
+    };
+    if (signal?.aborted) {
+      clearTimeout(timer);
+      reject(new Error("waitForVaa: aborted"));
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 // ============================================================================
