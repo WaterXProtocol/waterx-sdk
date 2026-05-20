@@ -48,6 +48,30 @@ describe("fetchPriceFeedsUpdateData", () => {
       /Hermes price fetch failed: 500/,
     );
   });
+
+  it("retries transient 503 then succeeds", async () => {
+    const payload = new Uint8Array([9]);
+    const hex = toHex(payload);
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 503,
+          text: async () => "Service Temporarily Unavailable",
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ binary: { data: [hex] } }),
+      };
+    }) as unknown as typeof fetch;
+
+    const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"]);
+    expect(calls).toBe(2);
+    expect(Array.from(out[0]!)).toEqual([9]);
+  });
 });
 
 describe("PythCache", () => {
