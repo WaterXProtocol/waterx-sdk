@@ -1,5 +1,6 @@
-import type { WaterXClient } from "../../../src/client.ts";
 import { vi } from "vitest";
+
+import type { WaterXClient } from "../../../src/client.ts";
 
 type ReturnValue = { bcs?: Uint8Array; value?: { bcs?: Uint8Array } };
 

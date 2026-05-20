@@ -13,7 +13,10 @@ import {
   transferToAccount,
 } from "../../src/user/account.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
-import { PTB_DUMMY_ACCOUNT_ID, PTB_DUMMY_DEPOSIT_COIN } from "../helpers/fixtures/ptb-test-dummies.ts";
+import {
+  PTB_DUMMY_ACCOUNT_ID,
+  PTB_DUMMY_DEPOSIT_COIN,
+} from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const client = createUnitTestClient();

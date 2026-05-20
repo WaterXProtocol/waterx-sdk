@@ -78,9 +78,8 @@ describe("on-chain pyth PTB helpers", () => {
 
   it("buildPythPriceUpdateCalls appends wormhole + pyth update block", async () => {
     const { buildPythPriceUpdateCalls } = await import("../../src/utils/pyth.ts");
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } = await import(
-      "../helpers/fixtures/pyth-mock-grpc.ts"
-    );
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const client = createUnitTestClient();
     const { feedId } = attachPythGrpcMocks(client);
     const tx = new Transaction();

@@ -30,7 +30,6 @@ import { Transaction, type TransactionArgument } from "@mysten/sui/transactions"
 
 import { WaterXClient } from "../src/client.ts";
 import { ORDER_LIMIT_BUY } from "../src/constants.ts";
-import { rawPrice } from "../src/utils/math.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
 import {
   buildCancelOrderTx,
@@ -38,6 +37,7 @@ import {
   buildPlaceOrderTx,
   requestDeposit,
 } from "../src/index.ts";
+import { rawPrice } from "../src/utils/math.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");

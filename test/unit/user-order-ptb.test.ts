@@ -2,7 +2,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
 import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../src/constants.ts";
-import { rawPrice } from "../../src/utils/math.ts";
 import {
   addPreOrderRequest,
   cancelOrderRequest,
@@ -10,6 +9,7 @@ import {
   placeOrderRequest,
   updateOrderRequest,
 } from "../../src/user/order.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";

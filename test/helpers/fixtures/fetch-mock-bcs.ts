@@ -28,10 +28,13 @@ export function accountDataBytes(): Uint8Array {
 
 /** `Option<AccountData>` BCS with `some` variant for `getAccountData`. */
 export function accountDataSomeBytes(): Uint8Array {
-  return bcs.option(AccountData).serialize({
-    account_id: ADDR,
-    account_object_address: ADDR,
-  }).toBytes();
+  return bcs
+    .option(AccountData)
+    .serialize({
+      account_id: ADDR,
+      account_object_address: ADDR,
+    })
+    .toBytes();
 }
 
 export function accountDataNoneBytes(): Uint8Array {
@@ -96,7 +99,9 @@ export function tokenPoolDataBytes() {
   }).toBytes();
 }
 
-export function positionDataBytes(overrides: Partial<{ position_id: bigint; is_long: boolean }> = {}) {
+export function positionDataBytes(
+  overrides: Partial<{ position_id: bigint; is_long: boolean }> = {},
+) {
   return PositionData.serialize({
     position_id: overrides.position_id ?? 1n,
     account_object_address: ADDR,
@@ -131,7 +136,9 @@ export function positionDataBytes(overrides: Partial<{ position_id: bigint; is_l
   }).toBytes();
 }
 
-export function orderDataBytes(overrides: Partial<{ order_id: bigint; has_linked_position: boolean }> = {}) {
+export function orderDataBytes(
+  overrides: Partial<{ order_id: bigint; has_linked_position: boolean }> = {},
+) {
   return OrderData.serialize({
     order_id: overrides.order_id ?? 1n,
     account_object_address: ADDR,
@@ -197,5 +204,8 @@ export function boolBytes(value: boolean): Uint8Array {
 }
 
 export function addressOptionBytes(addr?: string): Uint8Array {
-  return bcs.option(bcs.Address).serialize(addr ?? null).toBytes();
+  return bcs
+    .option(bcs.Address)
+    .serialize(addr ?? null)
+    .toBytes();
 }

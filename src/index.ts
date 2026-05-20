@@ -62,7 +62,6 @@ export {
 } from "./constants.ts";
 export type { Network } from "./constants.ts";
 
-
 // ======== Utilities ========
 export { getMarketTickers, getCollateralAssets } from "./utils/config.ts";
 export {

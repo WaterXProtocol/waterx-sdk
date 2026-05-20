@@ -4,8 +4,8 @@
 import { toBase64 } from "@mysten/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GlobalConfigData } from "../../src/generated/waterx_perp_view/view.ts";
 import { getGlobalConfigData } from "../../src/fetch.ts";
+import { GlobalConfigData } from "../../src/generated/waterx_perp_view/view.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("fetch simulate decode", () => {
@@ -53,7 +53,9 @@ describe("fetch simulate decode", () => {
       FailedTransaction: { status: {} },
     } as never);
 
-    await expect(getGlobalConfigData(client)).rejects.toThrow(/simulate aborted: FailedTransaction/);
+    await expect(getGlobalConfigData(client)).rejects.toThrow(
+      /simulate aborted: FailedTransaction/,
+    );
   });
 
   it("decodes base64 string and JSON-RPC numeric-indexed BCS blobs", async () => {

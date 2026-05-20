@@ -7,7 +7,7 @@ import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts"
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("WaterXClient (offline)", () => {
-  let client = createUnitTestClient();
+  const client = createUnitTestClient();
 
   it("exposes testnet config and pyth defaults", () => {
     expect(client.network).toBe("TESTNET");

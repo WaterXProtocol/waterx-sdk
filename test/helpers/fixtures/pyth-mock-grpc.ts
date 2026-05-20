@@ -1,5 +1,6 @@
-import type { WaterXClient } from "../../../src/client.ts";
 import { vi } from "vitest";
+
+import type { WaterXClient } from "../../../src/client.ts";
 import {
   DEFAULT_MOCK_PYTH_ROW_TYPE,
   MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT,

@@ -2,7 +2,6 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { rawPrice } from "../../src/utils/math.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -19,6 +18,7 @@ import {
   reimbursePythSponsor,
 } from "../../src/tx-builders.ts";
 import { placeOrderRequest } from "../../src/user/order.ts";
+import { rawPrice } from "../../src/utils/math.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
@@ -169,9 +169,8 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildPlaceOrderTx with oracle refresh and sponsor reimburse", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } = await import(
-      "../helpers/fixtures/pyth-mock-grpc.ts"
-    );
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
@@ -188,9 +187,8 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildMintWlpTx with oracle refresh", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } = await import(
-      "../helpers/fixtures/pyth-mock-grpc.ts"
-    );
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
     globalThis.fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
