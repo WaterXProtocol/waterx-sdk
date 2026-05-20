@@ -58,9 +58,57 @@ const HERMES_FETCH_MAX_ATTEMPTS = (() => {
 /** HTTP statuses worth retrying (Hermes / CDN blips in CI and public RPC). */
 const HERMES_TRANSIENT_HTTP = new Set([429, 502, 503, 504]);
 
+/** errno / Undici codes on `err.cause` (Node fetch → TypeError: fetch failed). */
+const HERMES_TRANSIENT_SYSTEM_CODES = new Set([
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "ECONNABORTED",
+  "EPIPE",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET",
+  "UND_ERR_DESTROYED",
+]);
+
+type ErrNode = {
+  name?: string;
+  message?: string;
+  code?: string | number;
+  cause?: unknown;
+};
+
+function walkErrorChain(err: unknown): ErrNode[] {
+  const chain: ErrNode[] = [];
+  const seen = new Set<unknown>();
+  let cur: unknown = err;
+  while (cur != null && typeof cur === "object" && !seen.has(cur)) {
+    seen.add(cur);
+    chain.push(cur as ErrNode);
+    cur = (cur as ErrNode).cause;
+  }
+  return chain;
+}
+
 function isHermesTransientFetchError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   if (err.message.startsWith("Hermes price fetch failed:")) return false;
+
+  for (const node of walkErrorChain(err)) {
+    const code = node.code;
+    if (typeof code === "string" && HERMES_TRANSIENT_SYSTEM_CODES.has(code)) {
+      return true;
+    }
+    if (node.name === "AbortError" || node.name === "TimeoutError") {
+      return true;
+    }
+  }
+
   const msg = err.message.toLowerCase();
   return (
     msg.includes("abort") ||

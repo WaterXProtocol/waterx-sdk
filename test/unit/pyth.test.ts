@@ -49,6 +49,65 @@ describe("fetchPriceFeedsUpdateData", () => {
     );
   });
 
+  it("retries TypeError fetch failed when cause.code is ENOTFOUND", async () => {
+    const payload = new Uint8Array([7]);
+    const hex = toHex(payload);
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new TypeError("fetch failed");
+        const cause = Object.assign(new Error("getaddrinfo ENOTFOUND hermes.example"), {
+          code: "ENOTFOUND",
+        });
+        (err as Error & { cause: Error }).cause = cause;
+        throw err;
+      }
+      return {
+        ok: true,
+        json: async () => ({ binary: { data: [hex] } }),
+      };
+    }) as unknown as typeof fetch;
+
+    const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"]);
+    expect(calls).toBe(2);
+    expect(Array.from(out[0]!)).toEqual([7]);
+  });
+
+  it("retries TypeError fetch failed when cause.code is ECONNRESET", async () => {
+    const payload = new Uint8Array([8]);
+    const hex = toHex(payload);
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new TypeError("fetch failed");
+        const cause = Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+        (err as Error & { cause: Error }).cause = cause;
+        throw err;
+      }
+      return {
+        ok: true,
+        json: async () => ({ binary: { data: [hex] } }),
+      };
+    }) as unknown as typeof fetch;
+
+    const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"]);
+    expect(calls).toBe(2);
+    expect(Array.from(out[0]!)).toEqual([8]);
+  });
+
+  it("does not retry TypeError fetch failed without a transient cause", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+
+    await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"])).rejects.toThrow(
+      /fetch failed/,
+    );
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("retries transient 503 then succeeds", async () => {
     const payload = new Uint8Array([9]);
     const hex = toHex(payload);
