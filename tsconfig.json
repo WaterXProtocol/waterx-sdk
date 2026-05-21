@@ -17,6 +17,7 @@
     "examples",
     "test/unit",
     "test/simulate",
+    "test/integration",
     "test/helpers/**/*.ts"
   ],
   "exclude": [

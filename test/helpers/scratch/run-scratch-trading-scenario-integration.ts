@@ -1,14 +1,7 @@
 /**
- * Legacy integration harness for {@link scratchTradingScenarios}.
- * Re-enable when integration-trader Vitest project runs ported v3 flows.
+ * Legacy re-export — implementation lives in `test/helpers/trading/integration-scratch-lifecycle.ts`.
  */
-import type { ScratchTradingScenario } from "./scratch-trading-scenarios.ts";
 
-export async function runScratchTradingScenarioIntegration(
-  ctx: { skip: (reason?: string) => void },
-  _deps: unknown,
-  scenario: ScratchTradingScenario,
-  _accountId: string,
-): Promise<void> {
-  ctx.skip(`Integration scratch lifecycle not ported for v3 (${scenario.id})`);
-}
+export type { ScratchIntegrationDeps } from "../trading/integration-scratch-lifecycle.ts";
+
+export { runScratchTradingScenarioIntegration } from "../trading/integration-scratch-lifecycle.ts";

@@ -222,6 +222,20 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
 };
 
 /**
+ * Merge **`WATERX_PYTH_HERMES_URL`** from the environment without mutating the cached canonical JSON.
+ * Hermes fetch retries live in **`fetchPriceFeedsUpdateData`** (`src/utils/pyth.ts`).
+ *
+ * Typical use: Hermes Beta returns **503** — point at `https://hermes.pyth.network` temporarily.
+ */
+export function mergeEnvPythHermesUrl(network: Network, cfg: WaterXConfig): WaterXConfig {
+  const raw = typeof process !== "undefined" ? process.env.WATERX_PYTH_HERMES_URL?.trim() : "";
+  if (!raw) return cfg;
+  const base = cfg.pyth ?? PYTH_DEFAULTS[network];
+  const hermes_endpoint = raw.replace(/\/+$/, "");
+  return { ...cfg, pyth: { ...base, hermes_endpoint } };
+}
+
+/**
  * Wormhole infra for the cross-chain credit bridge. `state_id` is the same
  * shared Sui Wormhole `State` object Pyth uses (kept in sync with
  * `PYTH_DEFAULTS[*].wormhole_state_id`). Override per-deployment via
@@ -316,7 +330,7 @@ export async function loadConfig(
 ): Promise<WaterXConfig> {
   const url = opts.configUrl ?? defaultConfigUrl(network);
   if (opts.cache && cache.has(url)) {
-    return cache.get(url)!;
+    return mergeEnvPythHermesUrl(network, cache.get(url)!);
   }
 
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as typeof fetch | undefined);
@@ -340,7 +354,7 @@ export async function loadConfig(
   validateConfig(raw, network, url);
 
   if (opts.cache) cache.set(url, raw);
-  return raw;
+  return mergeEnvPythHermesUrl(network, raw);
 }
 
 function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void {

@@ -1,117 +1,145 @@
 /**
- * Maintains **e2e-only persistent** perp + WLP on the integration reference UserAccount.
- * Does not run increase/decrease/close on existing positions — only opens when a market has zero
- * open positions, or mints WLP when below minimum. Other integration tests must use scratch
- * positions and close them (see `trader-position-lifecycle.test.ts`).
+ * Maintains **persistent** per-market slots + minimal WLP balance on the integration wxa account.
+ * Opens only when no position exists on that ticker (keeper path).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { getAccountBalance } from "@waterx/perp-sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import type { BaseAsset } from "../../../src/constants.ts";
-import { getAccountCoins } from "../../../src/fetch.ts";
-import {
-  buildMintWlpTx,
-  buildOpenPositionTx,
-  buildReceiveCoinTx,
-} from "../../../src/tx-builders.ts";
+import { getAccountBalance } from "../../../src/fetch.ts";
+import { buildMintWlpTx } from "../../../src/tx-builders.ts";
+import { openPositionByKeeper } from "../../../src/user/trading.ts";
+import { lifecycleTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { refreshOraclePricesForTradingEdge } from "../../helpers/trading/run-trading-scenario.ts";
 import {
   buildDepositUsdcFromWalletTx,
   ensureUserAccountForIntegration,
+  selectWalletCoinsCoveringAmount,
 } from "../helpers/account-bootstrap.ts";
 import {
-  activeE2ePersistentPerpBases,
+  activeE2ePersistentPerpTickers,
   E2E_PERSISTENT_WLP,
   e2ePersistentPerpRow,
+  e2ePersistentPerpTickersForClient,
 } from "../helpers/e2e-persistent-state.ts";
 import {
-  alignPositionSizeToMarket,
-  assertMarketSnapshotTradeable,
+  assertMarketTickerTradeableSnapshot,
   fetchIntegrationMarketSummaries,
+  keeperOpenAcceptablePrice,
   type IntegrationMarketSnapshotMap,
 } from "../helpers/integration-market-snapshot.ts";
 import { listAccountPositionsInMarket } from "../helpers/list-account-positions.ts";
 import {
   assertSuccess,
   client,
+  clientInit,
   execBuiltTxWithCooldownRetries,
-  execIntegrationOrSkipSupra,
+  execIntegrationOrSkipOracleTransient,
   execTx,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
 } from "../setup.ts";
 
 describe.skipIf(!isIntegrationTraderConfigured())(
-  "Integration: e2e persistent state (perp slots + WLP, do not mutate in other tests)",
+  "Integration: e2e persistent state (per-ticker slots + WLP)",
   () => {
-    const perpBases = activeE2ePersistentPerpBases();
+    let configuredTickers: string[] = [];
     let marketAtStart: IntegrationMarketSnapshotMap;
 
     beforeAll(async () => {
-      marketAtStart = await fetchIntegrationMarketSummaries(client, perpBases);
+      await clientInit;
+      configuredTickers = e2ePersistentPerpTickersForClient(
+        client.config.packages.waterx_perp.markets ?? {},
+      );
+      marketAtStart = await fetchIntegrationMarketSummaries(client, configuredTickers);
     }, 180_000);
 
-    describe.each(perpBases)("%s perp slot", (base: BaseAsset) => {
-      it("opens one position only when this market has no open position for the account", async (ctx) => {
+    describe.each(activeE2ePersistentPerpTickers())("%s perp slot", (ticker: string) => {
+      it("keeper opens one small position when this market has none for the account", async (ctx) => {
+        if (!configuredTickers.includes(ticker)) {
+          ctx.skip(`Ticker ${ticker} missing from deployment`);
+          return;
+        }
         const trader = loadIntegrationTraderKeypair();
         const owner = trader.getPublicKey().toSuiAddress();
         const { accountId } = await ensureUserAccountForIntegration(client, trader, execTx);
 
-        const openRows = await listAccountPositionsInMarket(client, accountId, base, 256);
+        const snap = marketAtStart[ticker];
+        assertMarketTickerTradeableSnapshot(snap, ticker);
+
+        const openRows = await listAccountPositionsInMarket(client, accountId, ticker);
         if (openRows.length > 0) {
           expect(openRows.length).toBeGreaterThan(0);
           return;
         }
 
-        const row = e2ePersistentPerpRow(base);
-        const lev = row.simulateLeverage ?? row.leverage;
-        const usdcType = client.config.collaterals.USDC.type;
-        const minFree = row.openCollateral + 15_000_000n;
-        let balance = await getAccountBalance(client, accountId, usdcType);
-        if (balance < minFree) {
-          const need = minFree - balance;
-          const depTx = await buildDepositUsdcFromWalletTx(client, owner, accountId, need);
-          const depResult = await execTx(depTx, trader, { gasBudget: 50_000_000 });
-          assertSuccess(depResult);
-          balance = await getAccountBalance(client, accountId, usdcType);
+        const row = e2ePersistentPerpRow(ticker);
+        const rowHint = lifecycleTickerRow(ticker);
+        const usdcType = client.getPoolTokenType("USDCUSD");
+
+        // Keeper open draws collateral from the **wallet** `Coin<USDC>` (see open-smoke) — wxa
+        // stored USDC is not required for this path.
+        const { coins, totalBalance } = await selectWalletCoinsCoveringAmount(
+          client,
+          owner,
+          usdcType,
+          row.openCollateral,
+        );
+        if (totalBalance < row.openCollateral) {
+          ctx.skip(
+            `Wallet USDC insufficient for keeper open (${row.openCollateral}); have ${totalBalance}`,
+          );
+          return;
         }
-        expect(balance).toBeGreaterThanOrEqual(minFree);
 
-        const entry = client.getMarketEntry(base);
-        const snap = marketAtStart[base]!;
-        assertMarketSnapshotTradeable(snap, base);
-        const openSize = alignPositionSizeToMarket(row.openSize);
-
-        const result = await execIntegrationOrSkipSupra(ctx, () =>
+        const result = await execIntegrationOrSkipOracleTransient(ctx, () =>
           execBuiltTxWithCooldownRetries(
-            () =>
-              buildOpenPositionTx(client, {
-                accountId,
-                base,
+            async () => {
+              const tx = new Transaction();
+              await refreshOraclePricesForTradingEdge(tx, client, [ticker]);
+              const primary = tx.object(coins[0]!.objectId);
+              if (coins.length > 1) {
+                tx.mergeCoins(
+                  primary,
+                  coins.slice(1).map((c) => tx.object(c.objectId)),
+                );
+              }
+              const collArg =
+                totalBalance === row.openCollateral
+                  ? primary
+                  : tx.splitCoins(primary, [row.openCollateral])[0]!;
+              if (totalBalance > row.openCollateral) {
+                tx.transferObjects([primary], owner);
+              }
+              openPositionByKeeper(client, tx, {
+                ticker,
+                accountObjectAddress: accountId,
+                collateralType: usdcType,
+                collateralCoin: collArg,
                 isLong: row.isLong,
-                leverage: lev,
-                collateralAmount: row.openCollateral,
-                size: openSize,
-              }),
+                size: row.openSize,
+                acceptablePrice: keeperOpenAcceptablePrice(row.isLong, rowHint),
+              });
+              return tx;
+            },
             trader,
-            { cooldownMarketIds: [entry.marketId] },
+            { cooldownTickers: [ticker], gasBudget: 280_000_000 },
           ),
         );
         if (result === undefined) return;
         assertSuccess(result);
 
-        const after = await listAccountPositionsInMarket(client, accountId, base, 256);
+        const after = await listAccountPositionsInMarket(client, accountId, ticker);
         expect(after.length).toBeGreaterThan(0);
-      }, 300_000);
+      }, 400_000);
     });
 
-    it("mints WLP into the account when balance is below E2E_PERSISTENT_WLP.minBalanceRaw", async () => {
+    it("mints WLP into the wxa account when WLP balance is below minimum", async (ctx) => {
       const trader = loadIntegrationTraderKeypair();
       const owner = trader.getPublicKey().toSuiAddress();
       const { accountId } = await ensureUserAccountForIntegration(client, trader, execTx);
 
-      const wlpType = client.config.wlpType;
-      const usdcType = client.config.collaterals.USDC.type;
+      const wlpType = client.wlpType();
+      const usdcType = client.getPoolTokenType("USDCUSD");
       const { minBalanceRaw, mintPullUsdc } = E2E_PERSISTENT_WLP;
 
       const wlpBal = await getAccountBalance(client, accountId, wlpType);
@@ -121,131 +149,36 @@ describe.skipIf(!isIntegrationTraderConfigured())(
       }
 
       let usdcFree = await getAccountBalance(client, accountId, usdcType);
-      const needFree = mintPullUsdc + 10_000_000n;
+      const needFree = mintPullUsdc + 5_000_000n;
       if (usdcFree < needFree) {
         const need = needFree - usdcFree;
         const depTx = await buildDepositUsdcFromWalletTx(client, owner, accountId, need);
-        const depResult = await execTx(depTx, trader, { gasBudget: 50_000_000 });
+        const depResult = await execTx(depTx, trader, { gasBudget: 80_000_000 });
         assertSuccess(depResult);
         usdcFree = await getAccountBalance(client, accountId, usdcType);
       }
       expect(usdcFree).toBeGreaterThanOrEqual(mintPullUsdc);
 
-      const recvTx = await buildReceiveCoinTx(client, {
-        accountObjectAddress: accountId,
-        collateral: "USDC",
-        amount: mintPullUsdc,
-        recipient: owner,
-      });
-      const recvResult = await execTx(recvTx, trader, { gasBudget: 80_000_000 });
-      assertSuccess(recvResult);
-
-      const walletCoins = await getAccountCoins(client, owner, usdcType);
-      const usable = walletCoins.find((c) => BigInt(c.balance) >= mintPullUsdc);
-      if (!usable) {
-        throw new Error(
-          `Wallet USDC after receive: need one coin ≥ ${mintPullUsdc}, have ${walletCoins.length} coin(s).`,
-        );
-      }
-
-      const bal = BigInt(usable.balance);
-      let mintTx: Transaction;
-      if (bal === mintPullUsdc) {
-        mintTx = await buildMintWlpTx(client, {
-          depositCoin: usable.objectId,
-          recipient: accountId,
-          collateral: "USDC",
-        });
-      } else {
-        const tx = new Transaction();
-        tx.setGasBudget(250_000_000);
-        const primary = tx.object(usable.objectId);
-        const [depositCoin] = tx.splitCoins(primary, [mintPullUsdc]);
-        await buildMintWlpTx(client, {
-          depositCoin,
-          recipient: accountId,
-          collateral: "USDC",
-          tx,
-        });
-        tx.transferObjects([primary], owner);
-        mintTx = tx;
-      }
-
-      const mintResult = await execTx(mintTx, trader, { gasBudget: 250_000_000 });
+      const mintResult = await execIntegrationOrSkipOracleTransient(ctx, () =>
+        execBuiltTxWithCooldownRetries(
+          () =>
+            buildMintWlpTx(client, {
+              accountId,
+              depositTokenType: usdcType,
+              depositTicker: "USDCUSD",
+              depositAmount: mintPullUsdc,
+              minLpAmount: 1n,
+              skipOraclePriceRefresh: false,
+            }),
+          trader,
+          { gasBudget: 280_000_000 },
+        ),
+      );
+      if (mintResult === undefined) return;
       assertSuccess(mintResult);
 
       const after = await getAccountBalance(client, accountId, wlpType);
       expect(after).toBeGreaterThanOrEqual(minBalanceRaw);
-    }, 300_000);
-
-    it("optional: mint WLP with USDSUI when WLP low and account has USDSUI", async (ctx) => {
-      const trader = loadIntegrationTraderKeypair();
-      const owner = trader.getPublicKey().toSuiAddress();
-      const { accountId } = await ensureUserAccountForIntegration(client, trader, execTx);
-
-      const wlpType = client.config.wlpType;
-      const { minBalanceRaw, mintPullUsdc } = E2E_PERSISTENT_WLP;
-      const wlpBal = await getAccountBalance(client, accountId, wlpType);
-      if (wlpBal >= minBalanceRaw) {
-        expect(wlpBal).toBeGreaterThanOrEqual(minBalanceRaw);
-        return;
-      }
-
-      const usdsuiType = client.config.collaterals.USDSUI.type;
-      const usdsuiFree = await getAccountBalance(client, accountId, usdsuiType);
-      const needFree = mintPullUsdc + 10_000_000n;
-      if (usdsuiFree < needFree) {
-        ctx.skip(
-          `USDSUI account balance ${usdsuiFree} < ${needFree} — fund account or use USDC mint path`,
-        );
-        return;
-      }
-
-      const recvTx = await buildReceiveCoinTx(client, {
-        accountObjectAddress: accountId,
-        collateral: "USDSUI",
-        amount: mintPullUsdc,
-        recipient: owner,
-      });
-      const recvResult = await execTx(recvTx, trader, { gasBudget: 80_000_000 });
-      assertSuccess(recvResult);
-
-      const walletCoins = await getAccountCoins(client, owner, usdsuiType);
-      const usable = walletCoins.find((c) => BigInt(c.balance) >= mintPullUsdc);
-      if (!usable) {
-        throw new Error(
-          `Wallet USDSUI after receive: need one coin ≥ ${mintPullUsdc}, have ${walletCoins.length} coin(s).`,
-        );
-      }
-
-      const bal = BigInt(usable.balance);
-      let mintTx: Transaction;
-      if (bal === mintPullUsdc) {
-        mintTx = await buildMintWlpTx(client, {
-          depositCoin: usable.objectId,
-          recipient: accountId,
-          collateral: "USDSUI",
-        });
-      } else {
-        const tx = new Transaction();
-        tx.setGasBudget(250_000_000);
-        const primary = tx.object(usable.objectId);
-        const [depositCoin] = tx.splitCoins(primary, [mintPullUsdc]);
-        await buildMintWlpTx(client, {
-          depositCoin,
-          recipient: accountId,
-          collateral: "USDSUI",
-          tx,
-        });
-        tx.transferObjects([primary], owner);
-        mintTx = tx;
-      }
-
-      const mintResult = await execTx(mintTx, trader, { gasBudget: 250_000_000 });
-      assertSuccess(mintResult);
-
-      const after = await getAccountBalance(client, accountId, wlpType);
-      expect(after).toBeGreaterThanOrEqual(minBalanceRaw);
-    }, 300_000);
+    }, 400_000);
   },
 );

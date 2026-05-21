@@ -85,4 +85,22 @@ describe("loadConfig validation", () => {
     });
     expect(calls).toBe(1);
   });
+
+  it("applies WATERX_PYTH_HERMES_URL to merged pyth infra", async () => {
+    const prev = process.env.WATERX_PYTH_HERMES_URL;
+    process.env.WATERX_PYTH_HERMES_URL = "https://hermes.other.example/";
+    try {
+      const cfg = await loadConfig("TESTNET", {
+        configUrl: MOCK_TESTNET_CONFIG_URL,
+        fetchImpl: vi.fn(async () => ({
+          ok: true,
+          json: async () => MOCK_TESTNET_CONFIG,
+        })) as unknown as typeof fetch,
+      });
+      expect(cfg.pyth?.hermes_endpoint).toBe("https://hermes.other.example");
+    } finally {
+      if (prev === undefined) delete process.env.WATERX_PYTH_HERMES_URL;
+      else process.env.WATERX_PYTH_HERMES_URL = prev;
+    }
+  });
 });

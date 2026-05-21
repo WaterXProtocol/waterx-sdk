@@ -80,6 +80,7 @@ pnpm typecheck       # tsc --noEmit
 pnpm lint            # eslint + prettier --check
 pnpm lint:fix        # eslint --fix
 pnpm format          # prettier --write
+pnpm env:init        # copy `.env.example` → `.env.local` once (gitignored); chmod 600 on Unix
 pnpm codegen         # scripts/codegen-summaries.ts → sui-ts-codegen → fix-generated-imports.ts
 ```
 

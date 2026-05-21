@@ -49,7 +49,46 @@ export class PythCache {
 // Hermes REST
 // ============================================================================
 
-export async function fetchPriceFeedsUpdateData(
+function normalizeHermesBaseUrl(endpoint: string): string {
+  return endpoint.trim().replace(/\/+$/, "");
+}
+
+/** Additional Hermes bases to try after the primary exhausts retries (503 bursts). */
+function hermesFailoverEndpoints(primary: string): readonly string[] {
+  const norm = normalizeHermesBaseUrl(primary);
+  const out: string[] = [];
+  const add = (s: string) => {
+    const n = normalizeHermesBaseUrl(s);
+    if (n.length > 0 && !out.includes(n)) out.push(n);
+  };
+  add(norm);
+  const fromEnv =
+    typeof process !== "undefined" ? process.env.WATERX_PYTH_HERMES_FALLBACK_URL?.trim() : "";
+  if (fromEnv) add(fromEnv);
+
+  /** Pyth beta vs prod gateways — flip when one returns 429/502/503/504. */
+  if (norm.includes("hermes-beta.pyth.network")) {
+    add("https://hermes.pyth.network");
+  } else if (norm.includes("hermes.pyth.network")) {
+    add("https://hermes-beta.pyth.network");
+  }
+
+  return out;
+}
+
+function hermesRetryMaxAttempts(): number {
+  const raw =
+    typeof process !== "undefined" ? process.env.WATERX_PYTH_HERMES_MAX_RETRIES?.trim() : "";
+  const n = raw ? Number.parseInt(raw, 10) : NaN;
+  if (Number.isFinite(n) && n >= 1 && n <= 12) return n;
+  return 8;
+}
+
+function isHermesTransientHttpStatus(status: number): boolean {
+  return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
+async function fetchPriceFeedsUpdateDataOnce(
   endpoint: string,
   priceIds: string[],
 ): Promise<Uint8Array[]> {
@@ -57,13 +96,72 @@ export async function fetchPriceFeedsUpdateData(
   const url = new URL("/v2/updates/price/latest", endpoint);
   priceIds.forEach((id) => url.searchParams.append("ids[]", id));
   const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
-  const json = (await res.json()) as { binary?: { data?: string[] } };
+  const body = await res.text();
+  if (!res.ok) {
+    const err = new Error(
+      `Hermes price fetch failed: ${res.status} ${body.length > 2_048 ? `${body.slice(0, 2_048)}…` : body}`,
+    ) as Error & { hermesHttpStatus?: number };
+    err.hermesHttpStatus = res.status;
+    throw err;
+  }
+  let json: { binary?: { data?: string[] } };
+  try {
+    json = JSON.parse(body) as { binary?: { data?: string[] } };
+  } catch {
+    throw new Error("Hermes returned non-JSON success body");
+  }
   const data = json.binary?.data;
   if (!Array.isArray(data) || data.length === 0) {
     throw new Error("Hermes returned no binary price data");
   }
   return data.map((hex) => fromHex(hex));
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Pull latest accumulator VAAs from Hermes REST. Retries transient HTTP **429 / 502 / 503 / 504**
+ * with exponential backoff (override count with **`WATERX_PYTH_HERMES_MAX_RETRIES`**, 1 … 12, default **8**).
+ *
+ * After a base URL exhausts retries, tries **failover** bases: optional **`WATERX_PYTH_HERMES_FALLBACK_URL`**,
+ * then the paired **beta ↔ prod** host (`hermes-beta.pyth.network` ⇄ `hermes.pyth.network`).
+ *
+ * Override primary URL with **`WATERX_PYTH_HERMES_URL`** (see **`mergeEnvPythHermesUrl`** in config).
+ */
+export async function fetchPriceFeedsUpdateData(
+  endpoint: string,
+  priceIds: string[],
+): Promise<Uint8Array[]> {
+  if (priceIds.length === 0) return [];
+
+  const bases = hermesFailoverEndpoints(endpoint);
+  const maxAttempts = hermesRetryMaxAttempts();
+  let lastError: unknown;
+
+  for (const base of bases) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await fetchPriceFeedsUpdateDataOnce(base, priceIds);
+      } catch (e: unknown) {
+        lastError = e;
+        const status =
+          typeof e === "object" && e !== null && "hermesHttpStatus" in e
+            ? (e as { hermesHttpStatus: number }).hermesHttpStatus
+            : undefined;
+        const isNetwork = e instanceof TypeError;
+        const retryable =
+          (typeof status === "number" && isHermesTransientHttpStatus(status)) || isNetwork;
+        if (!retryable) throw e;
+        if (attempt === maxAttempts - 1) break;
+        const baseMs = Math.min(750 * 2 ** attempt, 10_000);
+        const jitter = Math.floor(Math.random() * 500);
+        await sleep(baseMs + jitter);
+      }
+    }
+  }
+
+  if (lastError !== undefined) throw lastError;
+  throw new Error("fetchPriceFeedsUpdateData: unreachable");
 }
 
 // ============================================================================

@@ -21,6 +21,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
+
+loadRepoEnvFiles();
+
 type Network = "testnet" | "mainnet";
 
 function parseArgs(argv: string[]): { network: Network; forward: string[] } {

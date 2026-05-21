@@ -1,3 +1,6 @@
+/** Result of {@link normalizeIntegrationTxResult} (integration `execTx`). */
+export type NormalizedIntegrationTxResult = ReturnType<typeof normalizeIntegrationTxResult>;
+
 /** Normalize gRPC `signAndExecuteTransaction` result to JSON-RPC-shaped effects/events. */
 export function normalizeIntegrationTxResult(raw: unknown): {
   digest: string;

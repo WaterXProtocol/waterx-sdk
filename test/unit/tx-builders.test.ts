@@ -171,10 +171,12 @@ describe("tx-builders (v3)", () => {
   it("buildPlaceOrderTx with oracle refresh and sponsor reimburse", async () => {
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
     const tx = await buildPlaceOrderTx(client, {
@@ -189,10 +191,12 @@ describe("tx-builders (v3)", () => {
   it("buildMintWlpTx with oracle refresh", async () => {
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
     const tx = await buildMintWlpTx(client, {

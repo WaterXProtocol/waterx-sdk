@@ -1,112 +1,84 @@
 /**
- * Closes **one** perp position — can remove an e2e **persistent** slot if it picks the newest id.
- * Prefer `WATERX_INTEGRATION_CLOSE_BASE` + `WATERX_INTEGRATION_POSITION_ID` to target a scratch id.
+ * Closes **one** perp position — opt-in destructive test.
+ * Prefer `WATERX_INTEGRATION_CLOSE_BASE=BTCUSD` + optional `WATERX_INTEGRATION_POSITION_ID`.
  * Skipped unless `WATERX_INTEGRATION_CLOSE_ONE_POSITION=1`.
  */
-import { getAccountsByOwner } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
-import type { BaseAsset } from "../../../src/constants.ts";
-import { getPosition, positionExists } from "../../../src/fetch.ts";
+import { getAccountsByOwner, positionExists } from "../../../src/fetch.ts";
 import { buildClosePositionTx } from "../../../src/tx-builders.ts";
-import { activeLifecycleTestBasesForClient } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { rawPrice } from "../../../src/utils/math.ts";
+import {
+  activeLifecycleTickersForClient,
+  canonicalLifecycleTicker,
+  lifecycleTickerRow,
+} from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";
+import { tickerRowApproxAcceptableUsdHint } from "../helpers/integration-market-snapshot.ts";
 import { listAccountPositionsInMarket } from "../helpers/list-account-positions.ts";
 import {
   assertSuccess,
   client,
+  clientInit,
   execBuiltTxWithCooldownRetries,
+  execTx,
   extractEvent,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
 } from "../setup.ts";
 
-function sameAddress(a: string, b: string): boolean {
-  const na = a.replace(/^0x/i, "").toLowerCase();
-  const nb = b.replace(/^0x/i, "").toLowerCase();
-  return na === nb;
-}
-
-function parseBaseAsset(raw: string | undefined): BaseAsset | undefined {
-  if (!raw?.trim()) return undefined;
-  const u = raw.trim().toUpperCase();
-  const bases: BaseAsset[] = ["BTC", "ETH", "SOL", "SUI", "DEEP", "WAL"];
-  return bases.includes(u as BaseAsset) ? (u as BaseAsset) : undefined;
-}
-
-/** Same order as {@link activeLifecycleTestBasesForClient} on the integration client — first open position wins. */
-const AUTO_CLOSE_SCAN_ORDER: BaseAsset[] = activeLifecycleTestBasesForClient(client);
-
-type SkipCtx = { skip: (reason?: string) => void };
-
-async function tryPinnedPosition(
-  ctx: SkipCtx,
-  b: BaseAsset,
-  pinnedRaw: string,
-  accountId: string,
-): Promise<{ base: BaseAsset; positionId: number } | null> {
-  const pid = Number.parseInt(pinnedRaw, 10);
-  if (!Number.isFinite(pid) || pid < 0) {
-    throw new Error(`Invalid position id for ${b}: ${pinnedRaw}`);
-  }
-  const entry = client.getMarketEntry(b);
-  const ex = await positionExists(client, entry.marketId, pid, entry.baseType);
-  if (!ex) {
-    ctx.skip(`Pinned position ${pid} does not exist on ${b} market.`);
-    return null;
-  }
-  const info = await getPosition(client, entry.marketId, pid, entry.baseType);
-  if (!sameAddress(info.accountObjectAddress, accountId) || info.size === 0n) {
-    ctx.skip(`Pinned position ${pid} is not an open position for this account on ${b}.`);
-    return null;
-  }
-  return { base: b, positionId: pid };
-}
-
-/**
- * WATERX_INTEGRATION_CLOSE_BASE + optional WATERX_INTEGRATION_POSITION_ID,
- * or legacy WATERX_INTEGRATION_BTC_POSITION_ID (BTC pin, optional),
- * or auto-scan configured lifecycle bases (see `test/helpers/e2e/lifecycle-test-markets.ts`).
- */
 async function resolvePositionToClose(
-  ctx: SkipCtx,
+  ctx: { skip: (reason?: string) => void },
   accountId: string,
-): Promise<{ base: BaseAsset; positionId: number } | null> {
-  const closeBaseEnv = parseBaseAsset(process.env.WATERX_INTEGRATION_CLOSE_BASE);
+): Promise<{ ticker: string; positionId: bigint } | null> {
+  const scanOrder = activeLifecycleTickersForClient(client);
+  const closeBaseEnv = canonicalLifecycleTicker(
+    process.env.WATERX_INTEGRATION_CLOSE_BASE?.trim() ?? "",
+  );
   const genericPin = process.env.WATERX_INTEGRATION_POSITION_ID?.trim();
   const legacyBtcPin = process.env.WATERX_INTEGRATION_BTC_POSITION_ID?.trim();
 
-  if (closeBaseEnv) {
+  if (closeBaseEnv && scanOrder.includes(closeBaseEnv)) {
+    const ticker = closeBaseEnv;
     if (genericPin) {
-      return tryPinnedPosition(ctx, closeBaseEnv, genericPin, accountId);
+      const pid = BigInt(genericPin);
+      const ex = await positionExists(client, { ticker, positionId: pid });
+      if (!ex) {
+        ctx.skip(`Pinned position ${genericPin} missing on ${ticker}`);
+        return null;
+      }
+      return { ticker, positionId: pid };
     }
-    const rows = await listAccountPositionsInMarket(client, accountId, closeBaseEnv);
-    if (!rows.length) {
-      ctx.skip(
-        `No open ${closeBaseEnv} position — open one or set WATERX_INTEGRATION_POSITION_ID.`,
-      );
+    const rows = await listAccountPositionsInMarket(client, accountId, ticker);
+    rows.sort((a, b) => (a.positionId > b.positionId ? -1 : 1));
+    const top = rows[0];
+    if (!top) {
+      ctx.skip(`No open ${ticker} position — set WATERX_INTEGRATION_POSITION_ID if needed`);
       return null;
     }
-    rows.sort((a, b) => b.positionId - a.positionId);
-    return { base: closeBaseEnv, positionId: rows[0]!.positionId };
+    return { ticker, positionId: top.positionId };
   }
 
   if (legacyBtcPin) {
-    return tryPinnedPosition(ctx, "BTC", legacyBtcPin, accountId);
+    const ticker = "BTCUSD";
+    const pid = BigInt(legacyBtcPin);
+    const ex = await positionExists(client, { ticker, positionId: pid });
+    if (!ex) {
+      ctx.skip(`Legacy pinned BTC position ${legacyBtcPin} missing`);
+      return null;
+    }
+    return { ticker, positionId: pid };
   }
 
-  for (const b of AUTO_CLOSE_SCAN_ORDER) {
-    const rows = await listAccountPositionsInMarket(client, accountId, b);
-    if (rows.length) {
-      rows.sort((a, c) => c.positionId - a.positionId);
-      return { base: b, positionId: rows[0]!.positionId };
-    }
+  for (const ticker of scanOrder) {
+    const rows = await listAccountPositionsInMarket(client, accountId, ticker);
+    rows.sort((a, b) => (a.positionId > b.positionId ? -1 : 1));
+    const top = rows[0];
+    if (top) return { ticker, positionId: top.positionId };
   }
 
   ctx.skip(
-    "No open perp position in configured lifecycle markets (scan cap applies). " +
-      "Open a position, or set WATERX_INTEGRATION_CLOSE_BASE (+ optional WATERX_INTEGRATION_POSITION_ID), " +
-      "or legacy WATERX_INTEGRATION_BTC_POSITION_ID if closing BTC. " +
-      "Edit `test/helpers/e2e/lifecycle-test-markets.ts` to change which bases are scanned.",
+    "No open lifecycle positions found. Set WATERX_INTEGRATION_CLOSE_BASE (+ optional POSITION_ID).",
   );
   return null;
 }
@@ -116,51 +88,57 @@ const integrationCloseOneEnabled =
   process.env.WATERX_INTEGRATION_CLOSE_ONE_POSITION?.trim() === "1";
 
 describe.skipIf(!integrationCloseOneEnabled)(
-  "Integration: close one open perp position (testnet, opt-in)",
+  "Integration: close one open perp position (opt-in destructive)",
   () => {
-    it("closes a single open position (env-pinned, or first found across markets)", async (ctx) => {
+    it("closes a single position (pinned or newest across lifecycle tickers)", async (ctx) => {
+      await clientInit;
+
       const trader = loadIntegrationTraderKeypair();
-      const owner = trader.getPublicKey().toSuiAddress();
 
-      const fromEnv = process.env.WATERX_INTEGRATION_ACCOUNT_ID?.trim();
-      const accounts = fromEnv ? [] : await getAccountsByOwner(client, owner);
-      const accountId = fromEnv ?? accounts[0];
-
-      if (!accountId) {
-        ctx.skip(
-          "No UserAccount — set WATERX_INTEGRATION_ACCOUNT_ID or create an account for this wallet.",
-        );
-        return;
-      }
-
-      if (fromEnv) {
-        const ok = (await getAccountsByOwner(client, owner)).some((a) => a === fromEnv);
-        if (!ok) {
-          throw new Error(
-            `WATERX_INTEGRATION_ACCOUNT_ID=${fromEnv} is not listed for owner ${owner}.`,
-          );
-        }
+      let accountId: string;
+      try {
+        ({ accountId } = await ensureUserAccountForIntegration(client, trader, execTx));
+      } catch (e) {
+        const owner = trader.getPublicKey().toSuiAddress();
+        const accounts = await getAccountsByOwner(client, owner);
+        const envId = process.env.WATERX_INTEGRATION_ACCOUNT_ID?.trim();
+        const pick =
+          envId &&
+          accounts.some(
+            (a) => a.replace(/^0x/i, "").toLowerCase() === envId.replace(/^0x/i, "").toLowerCase(),
+          )
+            ? envId
+            : accounts[0];
+        if (!pick) throw e instanceof Error ? e : new Error(String(e));
+        accountId = pick;
       }
 
       const resolved = await resolvePositionToClose(ctx, accountId);
       if (!resolved) return;
 
-      const { base, positionId } = resolved;
-      const marketId = client.getMarketEntry(base).marketId;
+      const collateralType = client.getPoolTokenType("USDCUSD");
+      const ap = rawPrice(
+        Number(tickerRowApproxAcceptableUsdHint(lifecycleTickerRow(resolved.ticker))),
+      );
+
       const result = await execBuiltTxWithCooldownRetries(
         () =>
           buildClosePositionTx(client, {
             accountId,
-            base,
-            positionId,
-            acceptablePrice: 0n,
+            ticker: resolved.ticker,
+            collateralType,
+            positionId: resolved.positionId,
+            acceptablePrice: ap,
+            collateralTicker: "USDCUSD",
+            skipOraclePriceRefresh: false,
+            useSponsor: true,
           }),
         trader,
-        { cooldownMarketIds: [marketId] },
+        { cooldownTickers: [resolved.ticker], gasBudget: 280_000_000 },
       );
+
       assertSuccess(result);
-      const ev = extractEvent(result, "PositionClosed");
-      expect(ev).toBeDefined();
-    }, 300_000);
+      expect(extractEvent(result, "PositionClosed")).toBeDefined();
+    }, 420_000);
   },
 );

@@ -18,6 +18,11 @@ const GRPC_RETRY_MAX_ATTEMPTS = (() => {
   return Number.isFinite(n) && n >= 1 ? n : 8;
 })();
 
+export function resolveE2eGrpcUrlOverride(): string | undefined {
+  const raw = process.env.WATERX_E2E_GRPC_URL?.trim();
+  return raw || undefined;
+}
+
 async function withGrpcRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt < GRPC_RETRY_MAX_ATTEMPTS; attempt++) {
     try {
@@ -32,7 +37,7 @@ async function withGrpcRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw new Error("withGrpcRateLimitRetry: unreachable");
 }
 
-function wrapGrpcClientForE2eRetry<T extends object>(grpc: T): T {
+export function wrapGrpcClientForE2eRetry<T extends object>(grpc: T): T {
   return new Proxy(grpc, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -69,7 +74,11 @@ export let clientTxBuildersSimulate!: WaterXClient;
 
 /** Resolves once the shared e2e client is ready (Vitest setup awaits this). */
 export const clientInit = (async () => {
-  const c = await WaterXClient.create(networkToClientKey(e2eNetwork), { cache: true });
+  const grpcUrl = resolveE2eGrpcUrlOverride();
+  const c = await WaterXClient.create(networkToClientKey(e2eNetwork), {
+    cache: true,
+    ...(grpcUrl ? { grpcUrl } : {}),
+  });
   c.grpcClient = wrapGrpcClientForE2eRetry(c.grpcClient);
   client = c;
   clientTxBuildersSimulate = c;

@@ -1,16 +1,18 @@
 /**
- * Legacy v2 scratch simulate runners (approx oracle open / explicit size / resize).
- * v3 opens via limit `placeOrderRequest`; use `test/simulate/trade-*.test.ts` instead.
+ * @deprecated Use `test/simulate/trade-*.test.ts` and `test/helpers/trading/run-trading-scenario.ts`.
  */
 import type { Transaction } from "@mysten/sui/transactions";
-import type { WaterXClient } from "@waterx/perp-sdk";
 
+import type { WaterXClient } from "../../../src/client.ts";
 import type { ScratchTradingScenario } from "./scratch-trading-scenarios.ts";
 
 export type SimulateScratchCtx = { skip: (reason?: string) => void };
 
-const SKIP =
-  "Scratch simulate runners removed for v3 — use buildPlaceOrderTx / trade-* e2e tests instead";
+const SKIP = "v3: scratch simulate migrated — use runBuiltTradingTx / trade-* e2e tests";
+
+async function skip(ctx: SimulateScratchCtx): Promise<void> {
+  ctx.skip(SKIP);
+}
 
 export async function scratchSimulateOpenApproxOracle(
   ctx: SimulateScratchCtx,
@@ -19,7 +21,7 @@ export async function scratchSimulateOpenApproxOracle(
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
 ): Promise<void> {
-  ctx.skip(SKIP);
+  await skip(ctx);
 }
 
 export async function scratchSimulateOpenExplicitSizeWithFee(
@@ -29,7 +31,7 @@ export async function scratchSimulateOpenExplicitSizeWithFee(
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
 ): Promise<void> {
-  ctx.skip(SKIP);
+  await skip(ctx);
 }
 
 export async function scratchSimulateOpenResize(
@@ -39,7 +41,7 @@ export async function scratchSimulateOpenResize(
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
 ): Promise<void> {
-  ctx.skip(SKIP);
+  await skip(ctx);
 }
 
 export async function scratchSimulateOpenTableApproxPrice(
@@ -50,7 +52,7 @@ export async function scratchSimulateOpenTableApproxPrice(
   _setSender: (tx: Transaction) => void,
   _trySimulate: (ctx: SimulateScratchCtx, tx: Transaction, minCommands: number) => Promise<void>,
 ): Promise<void> {
-  ctx.skip(SKIP);
+  await skip(ctx);
 }
 
 export async function scratchSimulateStatefulOps(
@@ -67,5 +69,5 @@ export async function scratchSimulateStatefulOps(
     collateral?: string;
   } = {},
 ): Promise<void> {
-  ctx.skip(SKIP);
+  await skip(ctx);
 }

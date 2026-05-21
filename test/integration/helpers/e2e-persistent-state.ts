@@ -1,8 +1,7 @@
 /**
- * Target on-chain state for the integration trader UserAccount (`trader-e2e-persistent-state.test.ts`).
+ * Target on-chain state for the integration trader wxa Account (`trader-e2e-persistent-state.test.ts`).
+ * Tickers mirror v3 oracle keys (`BTCUSD`, …) and {@link lifecycle-test-markets}.
  */
-import type { BaseAsset } from "../../../src/constants.ts";
-
 export type E2ePersistentPerpRow = {
   isLong: boolean;
   leverage: number;
@@ -11,63 +10,54 @@ export type E2ePersistentPerpRow = {
   openSize: bigint;
 };
 
-export const E2E_PERSISTENT_PERP_ORDER: readonly BaseAsset[] = [
-  "BTC",
-  "ETH",
-  "SUI",
-  "SOL",
-  "WAL",
-  "DEEP",
+/** Markets we try to seed with one dormant slot each (skipped if ticker missing from deployment). */
+export const E2E_PERSISTENT_PERP_ORDER: readonly string[] = [
+  "BTCUSD",
+  "ETHUSD",
+  "SOLUSD",
+  "SUIUSD",
 ];
 
-export const E2E_PERSISTENT_PERP_MARKETS: Partial<Record<BaseAsset, E2ePersistentPerpRow>> = {
-  BTC: {
+export const E2E_PERSISTENT_PERP_MARKETS: Partial<Record<string, E2ePersistentPerpRow>> = {
+  BTCUSD: {
     isLong: true,
     leverage: 2,
     openCollateral: 10_000_000n,
-    openSize: 2000n,
+    openSize: 2_000n,
   },
-  ETH: {
+  ETHUSD: {
     isLong: false,
     leverage: 4,
     openCollateral: 10_000_000n,
-    openSize: 2000n,
+    openSize: 2_000n,
   },
-  SUI: {
+  SUIUSD: {
     isLong: true,
     leverage: 5,
     openCollateral: 10_000_000n,
     openSize: 10_000_000n,
   },
-  SOL: {
+  SOLUSD: {
     isLong: false,
     leverage: 4,
     simulateLeverage: 2,
     openCollateral: 10_000_000n,
-    openSize: 2000n,
-  },
-  WAL: {
-    isLong: true,
-    leverage: 4,
-    openCollateral: 10_000_000n,
-    openSize: 10_000_000n,
-  },
-  DEEP: {
-    isLong: false,
-    leverage: 4,
-    openCollateral: 10_000_000n,
-    openSize: 2000n,
+    openSize: 2_000n,
   },
 };
 
-export function activeE2ePersistentPerpBases(): BaseAsset[] {
-  return E2E_PERSISTENT_PERP_ORDER.filter((b) => E2E_PERSISTENT_PERP_MARKETS[b] != null);
+export function activeE2ePersistentPerpTickers(): string[] {
+  return [...E2E_PERSISTENT_PERP_ORDER.filter((t) => E2E_PERSISTENT_PERP_MARKETS[t] != null)];
 }
 
-export function e2ePersistentPerpRow(base: BaseAsset): E2ePersistentPerpRow {
-  const row = E2E_PERSISTENT_PERP_MARKETS[base];
+export function e2ePersistentPerpTickersForClient(marketsObj: Record<string, unknown>): string[] {
+  return activeE2ePersistentPerpTickers().filter((t) => marketsObj[t] != null);
+}
+
+export function e2ePersistentPerpRow(ticker: string): E2ePersistentPerpRow {
+  const row = E2E_PERSISTENT_PERP_MARKETS[ticker];
   if (!row) {
-    throw new Error(`No E2E_PERSISTENT_PERP_MARKETS[${base}] — add a row or remove callers.`);
+    throw new Error(`No E2E_PERSISTENT_PERP_MARKETS[${ticker}] — add a row or adjust order.`);
   }
   return row;
 }
@@ -79,8 +69,8 @@ export const E2E_PERSISTENT_WLP = {
 
 export function e2ePersistentMinAccountUsdcRough(): bigint {
   let sum = E2E_PERSISTENT_WLP.mintPullUsdc + 20_000_000n;
-  for (const base of activeE2ePersistentPerpBases()) {
-    sum += e2ePersistentPerpRow(base).openCollateral;
+  for (const t of activeE2ePersistentPerpTickers()) {
+    sum += e2ePersistentPerpRow(t).openCollateral;
   }
   return sum;
 }

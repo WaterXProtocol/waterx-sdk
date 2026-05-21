@@ -7,9 +7,11 @@ import type { WaterXClient } from "@waterx/perp-sdk";
 import { expect } from "vitest";
 
 import { getWxaAccountBalance } from "../../helpers/e2e/fetch-read-helpers-for-tests.ts";
+import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
 import {
   activeLifecycleTestBasesIntegration,
   canonicalLifecycleTicker,
+  LIFECYCLE_TEST_TICKER_ORDER,
 } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { assertSuccess } from "../setup.ts";
 import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
@@ -18,10 +20,7 @@ export type IntegrationExecTx = (
   tx: Transaction,
   signer: Ed25519Keypair,
   opts?: { gasBudget?: number },
-) => Promise<{
-  events: Array<{ type: string; parsedJson: unknown }>;
-  effects?: { status?: unknown };
-}>;
+) => Promise<NormalizedIntegrationTxResult>;
 
 export function selectedIntegrationLifecycleBasesFromEnv(client: WaterXClient): string[] {
   const all = activeLifecycleTestBasesIntegration(client);
@@ -37,6 +36,37 @@ export function selectedIntegrationLifecycleBasesFromEnv(client: WaterXClient): 
   if (invalid.length > 0) {
     throw new Error(
       `Invalid WATERX_INTEGRATION_BASES: ${invalid.join(", ")}. Allowed: ${all.join(", ")}`,
+    );
+  }
+  if (!uniq.length) {
+    throw new Error(
+      `WATERX_INTEGRATION_BASES is empty after parsing. Use comma-separated tickers like BTC,ETH or BTCUSD.`,
+    );
+  }
+  return uniq;
+}
+
+/**
+ * Parses `WATERX_INTEGRATION_BASES` against the static ticker table (**no WaterX client**).
+ * Intended for Vitest **test discovery**: titles resolve before integration `WaterXClient` bootstrap.
+ * Throws on symbols outside {@link LIFECYCLE_TEST_TICKER_ORDER}.
+ */
+export function integrationLifecycleBasesConfiguredOrStaticDefault(): readonly string[] {
+  const raw = process.env.WATERX_INTEGRATION_BASES?.trim();
+  if (!raw) return LIFECYCLE_TEST_TICKER_ORDER;
+
+  const selected = raw
+    .split(",")
+    .map((s) => canonicalLifecycleTicker(s.trim()))
+    .filter((s) => s.length > 0);
+  const uniq = [...new Set(selected)];
+  const allowed = new Set(LIFECYCLE_TEST_TICKER_ORDER);
+  const invalid = uniq.filter((b) => !allowed.has(b));
+  if (invalid.length > 0) {
+    throw new Error(
+      `Invalid WATERX_INTEGRATION_BASES: ${invalid.join(", ")}. Allowed: ${[
+        ...LIFECYCLE_TEST_TICKER_ORDER,
+      ].join(", ")}`,
     );
   }
   if (!uniq.length) {

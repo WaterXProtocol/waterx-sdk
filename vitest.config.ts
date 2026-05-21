@@ -92,7 +92,7 @@ export default defineConfig({
           exclude: ["**/node_modules/**", "**/dist/**"],
           testTimeout: 120_000,
           hookTimeout: 30_000,
-          setupFiles: ["./test/helpers/e2e/e2e-setup.ts"],
+          setupFiles: ["./test/helpers/load-repo-env-setup.ts", "./test/helpers/e2e/e2e-setup.ts"],
           /** Parallelism: see `e2ePoolOptions` / env `WATERX_E2E_MAX_FORKS`. */
           poolOptions: e2ePoolOptions(),
           sequence: { concurrent: false },
@@ -102,13 +102,15 @@ export default defineConfig({
         resolve: { alias: perpSdkAlias },
         test: {
           name: "integration-trader",
-          /** Disabled until v2-only scenarios are ported (`buildOpenPositionTx`, `getMarketEntry`, …). */
-          include: [],
+          include: ["test/integration/**/*.test.ts"],
           environment: "node",
           exclude: ["**/node_modules/**", "**/dist/**"],
           testTimeout: 300_000,
           hookTimeout: 120_000,
-          setupFiles: ["./test/integration/vitest-integration-setup.ts"],
+          setupFiles: [
+            "./test/helpers/load-repo-env-setup.ts",
+            "./test/integration/vitest-integration-setup.ts",
+          ],
           /** One fork by default — see `integrationTraderPoolOptions`. */
           poolOptions: integrationTraderPoolOptions(),
           sequence: { concurrent: false },

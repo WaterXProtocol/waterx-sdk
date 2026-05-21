@@ -7,6 +7,7 @@ export {
   clearConfigCache,
   defaultConfigUrl,
   loadConfig,
+  mergeEnvPythHermesUrl,
 } from "./config.ts";
 export type {
   BasePackageEntry,

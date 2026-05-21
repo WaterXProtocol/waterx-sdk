@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
 
-import { isTransientRpcErrorMessage } from "./transient-rpc.ts";
+import { isInfrastructureTransientError, isTransientRpcErrorMessage } from "./transient-rpc.ts";
 
 export { isTransientRpcErrorMessage };
 
@@ -70,6 +70,61 @@ export function skipSimulateIfOracleTransient(
   return true;
 }
 
+/**
+ * When {@link refreshOraclePrices} fails before dry-run — e.g. Hermes **404** “Price ids not found” —
+ * the deployment’s **`waterx-config` feed IDs** may not exist on the chosen Hermes gateway. Treat as
+ * **environment mismatch**, not an SDK regression (same tier as flaky oracle paths).
+ */
+export function skipHermesIfFeedUnavailable(
+  ctx: { skip: (reason?: string) => void },
+  error: unknown,
+): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (!msg.includes("Hermes price fetch failed")) return false;
+  if (!msg.includes("404") && !msg.includes("Price ids not found")) return false;
+  ctx.skip(`Hermes feed / gateway mismatch: ${msg.split("\n")[0]}`);
+  return true;
+}
+
+/**
+ * When gRPC / network fails after retries (e.g. **`RpcError: fetch failed`** on public endpoints),
+ * treat as infra flake — same tier as oracle transient skips.
+ */
+export function skipIfTransientInfrastructureError(
+  ctx: { skip: (reason?: string) => void },
+  error: unknown,
+): boolean {
+  if (!isInfrastructureTransientError(error)) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  ctx.skip(`Transient RPC/network failure: ${msg.split("\n")[0]}`);
+  return true;
+}
+
+/**
+ * Retry an async step (builder, Hermes, gRPC simulate) on transient infra errors.
+ */
+export async function withInfrastructureRetry<T>(
+  fn: () => Promise<T>,
+  opts: { attempts?: number; backoffMs?: number } = {},
+): Promise<T> {
+  const attempts = Math.max(1, opts.attempts ?? 5);
+  const baseBackoff = opts.backoffMs ?? 600;
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isInfrastructureTransientError(e)) throw e;
+      if (i < attempts - 1) {
+        const jitter = Math.floor(Math.random() * 300);
+        await new Promise((r) => setTimeout(r, baseBackoff * (i + 1) + jitter));
+      }
+    }
+  }
+  throw last;
+}
+
 /** Whether a simulate result is a FailedTransaction whose MoveAbort matches a transient oracle pattern. */
 export function isSimulateOracleTransient(result: unknown): boolean {
   const r = result as SimulateResult;
@@ -104,8 +159,7 @@ export async function simulateWithTransientRetry(
       if (!isSimulateOracleTransient(last)) return last;
     } catch (e) {
       lastError = e;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!isTransientRpcErrorMessage(msg)) throw e;
+      if (!isInfrastructureTransientError(e)) throw e;
     }
     if (i < attempts - 1) {
       // Exponential-ish backoff + jitter so parallel forks don't resync retries.

@@ -6,15 +6,12 @@ import { createAccount, executeTrading, increasePositionRequest } from "@waterx/
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
-  discoverActivePosition,
+  discoverStatefulSimulatePosition,
   DISCOVERY_OPTS_STATEFUL_SIMULATE,
   type DiscoveredPosition,
 } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client, DUMMY_SENDER, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
-import {
-  activeLifecycleTickersForClient,
-  lifecycleTickerRow,
-} from "../helpers/e2e/lifecycle-test-markets.ts";
+import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   simulateWithTransientRetry,
   skipSimulateIfOracleTransient,
@@ -24,14 +21,10 @@ describe(`builders compose (${e2eNetwork})`, () => {
   let discovered: DiscoveredPosition | null;
 
   beforeAll(async () => {
-    for (const ticker of activeLifecycleTickersForClient(client)) {
-      try {
-        discovered = await discoverActivePosition(client, ticker, DISCOVERY_OPTS_STATEFUL_SIMULATE);
-      } catch {
-        discovered = null;
-      }
-      if (discovered) break;
-    }
+    discovered = await discoverStatefulSimulatePosition(
+      client,
+      DISCOVERY_OPTS_STATEFUL_SIMULATE,
+    );
   }, 300_000);
 
   it("createAccount + simulate", async () => {

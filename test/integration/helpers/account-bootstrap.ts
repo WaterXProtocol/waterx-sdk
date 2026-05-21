@@ -2,9 +2,35 @@ import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../../../src/client.ts";
-import { getAccountsByOwner, selectCoinsForAmount } from "../../../src/fetch.ts";
+import { getAccountsByOwner } from "../../../src/fetch.ts";
 import { createAccount, transferToAccount } from "../../../src/user/account.ts";
+import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
 import { assertSuccess } from "../setup.ts";
+
+export async function selectWalletCoinsCoveringAmount(
+  client: WaterXClient,
+  owner: string,
+  coinType: string,
+  minAmount: bigint,
+): Promise<{ coins: Array<{ objectId: string; balance: bigint }>; totalBalance: bigint }> {
+  const { objects } = await client.listCoins({ owner, coinType });
+  const sorted = [...objects]
+    .map((o) => ({
+      objectId: o.objectId,
+      balance: BigInt(o.balance ?? "0"),
+    }))
+    .filter((c) => c.objectId && c.balance > 0n);
+  sorted.sort((a, b) => (a.balance > b.balance ? -1 : 1));
+
+  let total = 0n;
+  const coins: typeof sorted = [];
+  for (const c of sorted) {
+    if (total >= minAmount) break;
+    coins.push(c);
+    total += c.balance;
+  }
+  return { coins, totalBalance: total };
+}
 
 function normAddr(a: string): string {
   return a.replace(/^0x/i, "").toLowerCase();
@@ -36,7 +62,7 @@ export async function ensureUserAccountForIntegration(
     tx: Transaction,
     signer: Ed25519Keypair,
     opts?: { gasBudget?: number },
-  ) => Promise<{ events: Array<{ type: string; parsedJson: unknown }> }>,
+  ) => Promise<NormalizedIntegrationTxResult>,
 ): Promise<{ accountId: string; created: boolean }> {
   const owner = signer.getPublicKey().toSuiAddress();
   const fromEnv = process.env.WATERX_INTEGRATION_ACCOUNT_ID?.trim();
@@ -58,7 +84,7 @@ export async function ensureUserAccountForIntegration(
   }
 
   const tx = new Transaction();
-  createAccount(client, tx, "integration-bootstrap");
+  createAccount(client, tx, { alias: "integration-bootstrap" });
   const result = await execTx(tx, signer, { gasBudget: 50_000_000 });
   assertSuccess(result);
   return { accountId: accountIdFromAccountCreatedEvent(result.events), created: true };
@@ -74,8 +100,13 @@ export async function buildDepositUsdcFromWalletTx(
   accountId: string,
   amount: bigint,
 ): Promise<Transaction> {
-  const usdcType = client.config.collaterals.USDC.type;
-  const { coins, totalBalance } = await selectCoinsForAmount(client, owner, usdcType, amount);
+  const usdcType = client.getPoolTokenType("USDCUSD");
+  const { coins, totalBalance } = await selectWalletCoinsCoveringAmount(
+    client,
+    owner,
+    usdcType,
+    amount,
+  );
   if (totalBalance < amount) {
     throw new Error(
       `Wallet USDC insufficient: need ${amount}, have ${totalBalance} at ${owner}. ` +
@@ -88,8 +119,8 @@ export async function buildDepositUsdcFromWalletTx(
 
   if (coins.length === 1 && totalBalance === amount) {
     transferToAccount(client, tx, {
-      accountObjectAddress: accountId,
-      coin: coins[0]!.objectId,
+      accountId,
+      coin: tx.object(coins[0]!.objectId),
       coinType: usdcType,
     });
     return tx;
@@ -105,7 +136,7 @@ export async function buildDepositUsdcFromWalletTx(
 
   if (totalBalance === amount) {
     transferToAccount(client, tx, {
-      accountObjectAddress: accountId,
+      accountId,
       coin: primary,
       coinType: usdcType,
     });
@@ -114,7 +145,7 @@ export async function buildDepositUsdcFromWalletTx(
 
   const [depositCoin] = tx.splitCoins(primary, [amount]);
   transferToAccount(client, tx, {
-    accountObjectAddress: accountId,
+    accountId,
     coin: depositCoin,
     coinType: usdcType,
   });

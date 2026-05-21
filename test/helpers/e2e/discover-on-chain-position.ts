@@ -724,19 +724,224 @@ export async function discoverPositionsForAllActiveMarkets(
   return out;
 }
 
+/** wxa `Account` id + registry owner — for v3 stored-balance simulate (`mintWlp`, `requestRedeemWlp`, …). */
+export type DiscoveredWxaAccount = {
+  accountId: string;
+  ownerAddress: string;
+};
+
+/** Pending row from `getRedeemRequests` with resolvable recipient owner. */
+export type DiscoveredRedeemRequest = DiscoveredWxaAccount & {
+  requestId: bigint;
+  lpAmount: bigint;
+  redeemTokenType: string;
+};
+
+const WXA_ACCOUNT_CANDIDATE_CAP = 40;
+
+function envWxaAccountIdHints(): string[] {
+  const out: string[] = [];
+  for (const key of ["WATERX_E2E_WXA_ACCOUNT_ID", "WATERX_INTEGRATION_ACCOUNT_ID"]) {
+    const v = process.env[key]?.trim();
+    if (v) out.push(v);
+  }
+  return out;
+}
+
+/** Prefer integration-maintained wxa account, then redeem queue / market positions / funded probe. */
+export async function collectWxaAccountIdCandidates(client: WaterXClient): Promise<string[]> {
+  const candidates: string[] = [...envWxaAccountIdHints()];
+
+  try {
+    const { requests } = await getRedeemRequests(client, { cursor: 0n, pageSize: 50n });
+    for (const accId of redeemRecipientAccountCandidates(requests)) {
+      candidates.push(accId);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const perMarket = await discoverPositionsForAllActiveMarkets(client);
+    for (const hit of perMarket.values()) {
+      if (hit?.accountObjectAddress) candidates.push(hit.accountObjectAddress);
+      if (candidates.length >= WXA_ACCOUNT_CANDIDATE_CAP) break;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const probe = await discoverFundedProbe(client, { minAccountUsdcBalance: 20_000_000n });
+    if (probe) candidates.push(probe.accountObjectAddress);
+  } catch {
+    /* ignore */
+  }
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of candidates) {
+    const key = normAddr(id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(id);
+    if (out.length >= WXA_ACCOUNT_CANDIDATE_CAP) break;
+  }
+  return out;
+}
+
+export async function discoverWxaAccountWithStoredBalance(
+  client: WaterXClient,
+  opts: { coinType: string; minBalance: bigint },
+): Promise<DiscoveredWxaAccount | null> {
+  for (const accountId of await collectWxaAccountIdCandidates(client)) {
+    try {
+      const bal = await getWxaAccountBalance(client, accountId, opts.coinType);
+      if (bal < opts.minBalance) continue;
+      const ownerAddress = await getAccountOwnerByAccountId(client, accountId);
+      return { accountId, ownerAddress };
+    } catch {
+      /* next candidate */
+    }
+  }
+  return null;
+}
+
+export async function discoverWxaAccountWithWlpBalance(
+  client: WaterXClient,
+  minWlpBalance = 1n,
+): Promise<DiscoveredWxaAccount | null> {
+  return discoverWxaAccountWithStoredBalance(client, {
+    coinType: client.wlpType(),
+    minBalance: minWlpBalance,
+  });
+}
+
+export async function discoverWxaAccountWithUsdcForWlpMint(
+  client: WaterXClient,
+  minUsdc: bigint,
+): Promise<DiscoveredWxaAccount | null> {
+  let usdcType: string;
+  try {
+    usdcType = client.getPoolTokenType("USDCUSD");
+  } catch {
+    return null;
+  }
+  return discoverWxaAccountWithStoredBalance(client, { coinType: usdcType, minBalance: minUsdc });
+}
+
+function redeemRequestIdBigInt(r: RedeemRequestDataView): bigint {
+  const x = recordStr(r) ?? {};
+  const raw = x.request_id ?? x.requestId;
+  return typeof raw === "bigint" ? raw : BigInt(String(raw ?? "0"));
+}
+
+function redeemRecipientAccountId(r: RedeemRequestDataView): string {
+  const x = recordStr(r) ?? {};
+  const v = x.recipient_account_id ?? x.recipientAccountId;
+  return typeof v === "string" ? v : String(v ?? "");
+}
+
+function redeemLpAmountBigInt(r: RedeemRequestDataView): bigint {
+  const x = recordStr(r) ?? {};
+  const raw = x.lp_amount ?? x.lpAmount;
+  return typeof raw === "bigint" ? raw : BigInt(String(raw ?? "0"));
+}
+
+function redeemTokenTypeFqName(r: RedeemRequestDataView): string {
+  const x = recordStr(r) ?? {};
+  const tt = x.token_type ?? x.tokenType;
+  if (typeof tt === "string") return tt;
+  const inner = recordStr(tt);
+  if (inner && typeof inner.name === "string") return inner.name;
+  return "";
+}
+
+function redeemRecipientAccountCandidates(requests: RedeemRequestDataView[]): string[] {
+  const out: string[] = [];
+  for (const r of requests) {
+    const acc = redeemRecipientAccountId(r);
+    if (acc) out.push(acc);
+  }
+  return out;
+}
+
+/** First redeem-queue row whose recipient wxa account owner resolves (for cancel simulate). */
+export async function discoverPendingRedeemRequest(
+  client: WaterXClient,
+): Promise<DiscoveredRedeemRequest | null> {
+  let cursor = 0n;
+  let usdcFallback: string;
+  try {
+    usdcFallback = client.getPoolTokenType("USDCUSD");
+  } catch {
+    usdcFallback = "";
+  }
+
+  for (let page = 0; page < 5; page++) {
+    const { requests, nextCursor } = await getRedeemRequests(client, { cursor, pageSize: 50n });
+    for (const r of requests) {
+      const accountId = redeemRecipientAccountId(r);
+      const requestId = redeemRequestIdBigInt(r);
+      if (!accountId || requestId === 0n) continue;
+      try {
+        const ownerAddress = await getAccountOwnerByAccountId(client, accountId);
+        const tokenFq = redeemTokenTypeFqName(r) || usdcFallback;
+        if (!tokenFq) continue;
+        return {
+          accountId,
+          ownerAddress,
+          requestId,
+          lpAmount: redeemLpAmountBigInt(r),
+          redeemTokenType: tokenFq,
+        };
+      } catch {
+        /* next row */
+      }
+    }
+    if (nextCursor === undefined) break;
+    cursor = nextCursor;
+  }
+  return null;
+}
+
+/**
+ * Stateful simulate position discovery: optional env wxa account first (integration persistent slots),
+ * then global market scan across lifecycle tickers.
+ */
+export async function discoverStatefulSimulatePosition(
+  client: WaterXClient,
+  opts: DiscoverActivePositionOpts = DISCOVERY_OPTS_STATEFUL_SIMULATE,
+): Promise<DiscoveredPosition | null> {
+  for (const accountId of envWxaAccountIdHints()) {
+    for (const ticker of activeLifecycleTickersForClient(client)) {
+      try {
+        const hit = await discoverActivePositionForAccount(client, ticker, accountId, opts);
+        if (hit) return hit;
+      } catch {
+        /* try next ticker */
+      }
+    }
+  }
+
+  for (const ticker of activeLifecycleTickersForClient(client)) {
+    try {
+      const hit = await discoverActivePosition(client, ticker, opts);
+      if (hit) return hit;
+    } catch {
+      /* try next ticker */
+    }
+  }
+  return null;
+}
+
 const WLP_WALLET_OWNER_CANDIDATE_CAP = 30;
 
 function redeemRecipientWalletCandidates(requests: RedeemRequestDataView[]): string[] {
   const out: string[] = [];
   for (const r of requests) {
-    const x = recordStr(r) ?? {};
-    const acc =
-      x.recipient_account_id ??
-      x.recipientAccountId ??
-      x.recipient ??
-      x.recipient_account ??
-      x.recipientAccount;
-    if (typeof acc === "string" && acc) out.push(acc);
+    const acc = redeemRecipientAccountId(r);
+    if (acc) out.push(acc);
   }
   return out;
 }

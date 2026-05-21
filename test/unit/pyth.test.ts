@@ -27,10 +27,9 @@ describe("fetchPriceFeedsUpdateData", () => {
   it("parses Hermes binary hex data into Uint8Array", async () => {
     const payload = new Uint8Array([1, 2, 3, 4]);
     const hex = toHex(payload);
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [hex] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ binary: { data: [hex] } }), { status: 200 }),
+    ) as unknown as typeof fetch;
 
     const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xabc"]);
     expect(out.length).toBe(1);
@@ -38,15 +37,61 @@ describe("fetchPriceFeedsUpdateData", () => {
   });
 
   it("throws on non-ok HTTP response", async () => {
-    globalThis.fetch = vi.fn(async () => ({
-      ok: false,
-      status: 500,
-      text: async () => "server error",
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response("server error", { status: 500 }),
+    ) as unknown as typeof fetch;
 
     await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"])).rejects.toThrow(
       /Hermes price fetch failed: 500/,
     );
+  });
+
+  it("retries transient 503 then succeeds", async () => {
+    const prevRetries = process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
+    process.env.WATERX_PYTH_HERMES_MAX_RETRIES = "4";
+    const payload = new Uint8Array([9]);
+    const hex = toHex(payload);
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls += 1;
+      if (calls < 3) return new Response("unavailable", { status: 503 });
+      return new Response(JSON.stringify({ binary: { data: [hex] } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"]);
+      expect(out.length).toBe(1);
+      expect(calls).toBe(3);
+    } finally {
+      if (prevRetries === undefined) delete process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
+      else process.env.WATERX_PYTH_HERMES_MAX_RETRIES = prevRetries;
+    }
+  });
+
+  it("failovers beta → prod Hermes URL after exhausting per-host retries", async () => {
+    const prevRetries = process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
+    process.env.WATERX_PYTH_HERMES_MAX_RETRIES = "2";
+    const hex = toHex(new Uint8Array([3]));
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const u = String(input);
+      urls.push(u);
+      if (u.includes("hermes-beta.pyth.network")) return new Response("busy", { status: 503 });
+      if (u.includes("hermes.pyth.network") && !u.includes("hermes-beta")) {
+        return new Response(JSON.stringify({ binary: { data: [hex] } }), { status: 200 });
+      }
+      return new Response("no", { status: 404 });
+    }) as unknown as typeof fetch;
+    try {
+      const out = await fetchPriceFeedsUpdateData("https://hermes-beta.pyth.network/", ["0xaa"]);
+      expect(out.length).toBe(1);
+      expect(urls.some((x) => x.includes("hermes-beta.pyth.network"))).toBe(true);
+      expect(
+        urls.some((x) => x.includes("hermes.pyth.network") && !x.includes("hermes-beta")),
+      ).toBe(true);
+    } finally {
+      if (prevRetries === undefined) delete process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
+      else process.env.WATERX_PYTH_HERMES_MAX_RETRIES = prevRetries;
+    }
   });
 });
 
@@ -98,10 +143,12 @@ describe("on-chain pyth PTB helpers", () => {
     const { updatePythPrices } = await import("../../src/utils/pyth.ts");
     const { attachPythGrpcMocks } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const { mockAccumulatorUpdate } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
 
     const client = createUnitTestClient();
     const { feedId } = attachPythGrpcMocks(client);
@@ -114,10 +161,12 @@ describe("on-chain pyth PTB helpers", () => {
     const { refreshOraclePrices } = await import("../../src/utils/pyth.ts");
     const { attachPythGrpcMocks } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const { mockAccumulatorUpdate } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
 
     const client = createUnitTestClient();
     attachPythGrpcMocks(client);
