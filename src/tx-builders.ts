@@ -470,7 +470,17 @@ export function buildRequestCreditWithdrawTx(
 }
 
 export type ExecuteWithdrawalRoute =
-  | { kind: "wormhole"; wormholeFeeAmount?: bigint }
+  | {
+      kind: "wormhole";
+      /**
+       * `Coin<SUI>` paying the Wormhole message fee. Omit to mint a zero-value
+       * coin via `0x2::coin::zero<SUI>` — sponsor-safe (never touches `tx.gas`,
+       * so Shinami-style gas stations don't reject the PTB) and free as long as
+       * `WormholeState.message_fee == 0`. Pass an explicit coin (e.g.
+       * `tx.object(...)`) once Wormhole raises the message fee.
+       */
+      wormholeFeeCoin?: TransactionArgument;
+    }
   | { kind: "native"; assetType: string };
 
 export interface BuildExecuteWithdrawalParams {
@@ -483,18 +493,16 @@ export interface BuildExecuteWithdrawalParams {
   tx?: Transaction;
 }
 
-/**
- * Keeper: drain one parked queue entry. Wormhole route auto-splits the
- * Wormhole message fee off `tx.gas` (`wormholeFeeAmount`, default 0n —
- * raise it if the configured `WormholeState.message_fee` is non-zero).
- */
+/** Keeper: drain one parked queue entry. */
 export function buildExecuteWithdrawalTx(
   client: WaterXClient,
   params: BuildExecuteWithdrawalParams,
 ): Transaction {
   const tx = params.tx ?? new Transaction();
   if (params.route.kind === "wormhole") {
-    const fee = tx.splitCoins(tx.gas, [tx.pure.u64(params.route.wormholeFeeAmount ?? 0n)])[0]!;
+    const fee =
+      params.route.wormholeFeeCoin ??
+      tx.moveCall({ target: "0x2::coin::zero", typeArguments: ["0x2::sui::SUI"] });
     executeWithdrawalWormhole(client, tx, {
       key: params.key,
       wormholeFee: fee,
