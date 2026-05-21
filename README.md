@@ -40,7 +40,7 @@ Withdraw paths take **`collateralAmount`** for the size to pull from margin; **`
 
 Trading (`openPosition`, `closePosition`, …), account helpers (`depositToAccount`, delegates, …), high-level `build*Tx`, and orders (`placeOrder`, `cancelOrder`) all use **`accountObjectAddress`**: the **UserAccount object id** (hex). Trading paths pass it as `tx.pure.address`; registry calls use `tx.pure.id`. It is **not** a numeric registry index.
 
-`getAccountsByOwner` returns **`accountObjectAddress`** on each `AccountInfo` row.
+`getAccountsByOwner` returns a `string[]` of `accountObjectAddress`es (the on-chain `account::account_ids` view returns `vector<ID>`).
 
 High-level `build*Tx` helpers also accept optional **`collateralTokenType`** (defaults to `WaterXConfig.usdcType`). Only token types wired in `resolveTokenPriceFeed` (`src/tx-builders.ts`) get automatic Pyth updates; extend there when the protocol adds collaterals.
 
@@ -104,7 +104,7 @@ const client = WaterXClient.testnet();
 const owner = "0x..."; // Sui address
 
 const accounts = await getAccountsByOwner(client, owner);
-const accountObjectAddress = accounts[0]!.accountObjectAddress;
+const accountObjectAddress = accounts[0]!;
 
 const market = client.config.btcMarket;
 const has = await positionExists(client, market, 0n);

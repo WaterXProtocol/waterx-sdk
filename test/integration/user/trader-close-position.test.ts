@@ -124,7 +124,7 @@ describe.skipIf(!integrationCloseOneEnabled)(
 
       const fromEnv = process.env.WATERX_INTEGRATION_ACCOUNT_ID?.trim();
       const accounts = fromEnv ? [] : await getAccountsByOwner(client, owner);
-      const accountId = fromEnv ?? accounts[0]?.accountId;
+      const accountId = fromEnv ?? accounts[0];
 
       if (!accountId) {
         ctx.skip(
@@ -134,7 +134,7 @@ describe.skipIf(!integrationCloseOneEnabled)(
       }
 
       if (fromEnv) {
-        const ok = (await getAccountsByOwner(client, owner)).some((a) => a.accountId === fromEnv);
+        const ok = (await getAccountsByOwner(client, owner)).some((a) => a === fromEnv);
         if (!ok) {
           throw new Error(
             `WATERX_INTEGRATION_ACCOUNT_ID=${fromEnv} is not listed for owner ${owner}.`,

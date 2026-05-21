@@ -108,16 +108,16 @@ export async function resolveDefaultIntegrationAccountId(trader: Ed25519Keypair)
     throw new Error(`No WaterX UserAccount for integration owner ${owner}`);
   }
   if (fromEnv) {
-    const match = accounts.find((a) => normAddr(a.accountId) === normAddr(fromEnv));
+    const match = accounts.find((a) => normAddr(a) === normAddr(fromEnv));
     if (!match) {
       throw new Error(
         `WATERX_INTEGRATION_ACCOUNT_ID=${fromEnv} is not listed for owner ${owner}. ` +
           `Remove it from .env to auto-pick the first account.`,
       );
     }
-    return match.accountId;
+    return match;
   }
-  return accounts[0]!.accountId;
+  return accounts[0]!;
 }
 
 function normAddr(a: string): string {

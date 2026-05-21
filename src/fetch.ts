@@ -13,6 +13,10 @@ import { Transaction } from "@mysten/sui/transactions";
 import type { WaterXClient } from "./client.ts";
 import { DRY_RUN_SENDER } from "./constants.ts";
 import {
+  accountBalance as accountBalanceCall,
+  accountIds as accountIdsCall,
+} from "./generated/waterx_account/account.ts";
+import {
   AccountData,
   accountData as accountDataCall,
   getAccountOrders as getAccountOrdersCall,
@@ -494,4 +498,51 @@ export async function referralCodeExists(client: WaterXClient, code: string): Pr
   })(tx);
   const bytes = await simulateAndExtract(client, tx);
   return bcs.bool().parse(bytes);
+}
+
+// ============================================================================
+// wxa account reads (waterx_account — works on credit-only deployments,
+// which have no waterx_perp_view). Simulate `account::*` view functions.
+// ============================================================================
+
+/**
+ * List the wxa account IDs owned by `owner` (`account::account_ids`).
+ * Returns `[]` when the owner has never created an account. Use this to
+ * resolve the `account_id` a cross-chain deposit must target before
+ * filling the EVM `suiRecipient` field.
+ */
+export async function getAccountsByOwner(client: WaterXClient, owner: string): Promise<string[]> {
+  const tx = new Transaction();
+  accountIdsCall({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      owner,
+    },
+  })(tx);
+  const bytes = await simulateAndExtract(client, tx);
+  return bcs.vector(bcs.Address).parse(bytes);
+}
+
+/**
+ * A wxa account's stored `Balance<T>` (`account::account_balance<T>`).
+ * `coinType` defaults to the deployment's CREDIT type — i.e. the bridged
+ * balance available to withdraw. Returns `0n` for an unknown coin type.
+ */
+export async function getAccountBalance(
+  client: WaterXClient,
+  accountId: string,
+  coinType?: string,
+): Promise<bigint> {
+  const tx = new Transaction();
+  accountBalanceCall({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      accountId,
+    },
+    typeArguments: [coinType ?? client.creditType()],
+  })(tx);
+  const bytes = await simulateAndExtract(client, tx);
+  return BigInt(bcs.u64().parse(bytes));
 }

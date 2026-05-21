@@ -43,18 +43,18 @@ export async function ensureUserAccountForIntegration(
   const accounts = await getAccountsByOwner(client, owner);
 
   if (fromEnv) {
-    const match = accounts.find((a) => normAddr(a.accountId) === normAddr(fromEnv));
+    const match = accounts.find((a) => normAddr(a) === normAddr(fromEnv));
     if (!match) {
       throw new Error(
         `WATERX_INTEGRATION_ACCOUNT_ID=${fromEnv} is not listed for owner ${owner}. ` +
           `Remove it from .env to auto-pick / create, or set it to an account you own.`,
       );
     }
-    return { accountId: match.accountId, created: false };
+    return { accountId: match, created: false };
   }
 
   if (accounts.length > 0) {
-    return { accountId: accounts[0]!.accountId, created: false };
+    return { accountId: accounts[0]!, created: false };
   }
 
   const tx = new Transaction();

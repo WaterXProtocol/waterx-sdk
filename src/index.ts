@@ -1,21 +1,35 @@
 // ======== Core ========
 export { WaterXClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { PYTH_DEFAULTS, clearConfigCache, defaultConfigUrl, loadConfig } from "./config.ts";
+export {
+  PYTH_DEFAULTS,
+  WORMHOLE_DEFAULTS,
+  clearConfigCache,
+  defaultConfigUrl,
+  loadConfig,
+} from "./config.ts";
 export type {
   BasePackageEntry,
   WaterxReferralPackage,
   LoadConfigOptions,
+  NativeCustodyAsset,
+  NativeCustodyPackage,
   PythInfraConfig,
   PythRulePackage,
   PythSponsorRulePackage,
+  TestnetFaucetPackage,
+  TrustedEmitterRow,
   WaterXConfig,
   WaterXPackages,
+  WaterxCreditPackage,
   WaterxOraclePackage,
   WaterxPerpMarketEntry,
   WaterxPerpPackage,
   WaterxStakingPackage,
+  WithdrawalQueuePackage,
   WlpPackage,
+  WormholeBridgePackage,
+  WormholeInfraConfig,
   WxaAccountPackage,
 } from "./config.ts";
 
@@ -107,6 +121,21 @@ export {
   refreshOraclePrices,
   updatePythPrices,
 } from "./utils/pyth.ts";
+
+// ======== Wormhole / Wormholescan utilities (credit bridge) ========
+export {
+  fetchDepositVaa,
+  fetchVaa,
+  listBridgeWithdrawalVaas,
+  listVaasByEmitter,
+  padEvmEmitter,
+  toWormholescanEmitter,
+  vaaBase64ToBytes,
+  vaaBase64ToHex,
+  vaaBytesToBase64,
+  waitForVaa,
+} from "./utils/wormhole.ts";
+export type { VaaListItem, VaaResponse, WormholescanOptions } from "./utils/wormhole.ts";
 
 // ======== Generated BCS types (sui-ts-codegen) ========
 export {
