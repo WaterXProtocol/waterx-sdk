@@ -13,15 +13,15 @@ import { Transaction } from "@mysten/sui/transactions";
 import type { WaterXClient } from "./client.ts";
 import { DRY_RUN_SENDER } from "./constants.ts";
 import {
-  accountBalance as accountBalanceCall,
-  accountIds as accountIdsCall,
-} from "./generated/waterx_account/account.ts";
-import {
   burnFeeRate as burnFeeRateCall,
   creditSupply as creditSupplyCall,
   hasAsset as hasAssetCall,
   mintFeeRate as mintFeeRateCall,
 } from "./generated/native_custody/custody_vault.ts";
+import {
+  accountBalance as accountBalanceCall,
+  accountIds as accountIdsCall,
+} from "./generated/waterx_account/account.ts";
 import {
   AccountData,
   accountData as accountDataCall,
@@ -559,8 +559,8 @@ export async function getAccountBalance(
 
 function requireCustody(client: WaterXClient): { pkg: string; vault: string; creditType: string } {
   const nc = client.config.packages.native_custody;
-  if (!nc) {
-    throw new Error("native_custody not configured — set config.packages.native_custody");
+  if (!nc?.vault) {
+    throw new Error("native_custody not configured — set config.packages.native_custody.vault");
   }
   return { pkg: nc.published_at, vault: nc.vault, creditType: client.creditType() };
 }
