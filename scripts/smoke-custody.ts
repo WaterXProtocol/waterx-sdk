@@ -158,9 +158,12 @@ async function main(): Promise<void> {
 
   const credit = client.config.packages.waterx_credit;
   const custody = client.config.packages.native_custody;
-  if (!credit || !custody) {
-    throw new Error("waterx_credit / native_custody not in config — credit pipeline unavailable");
+  if (!credit || !custody?.vault) {
+    throw new Error(
+      "waterx_credit / native_custody.vault not in config — credit pipeline unavailable",
+    );
   }
+  const vault = custody.vault;
   const creditType = client.creditType();
 
   console.log(`Sender:        ${address}`);
@@ -179,7 +182,7 @@ async function main(): Promise<void> {
     (tx) =>
       creditSupply({
         package: custody.published_at,
-        arguments: { vault: tx.object(custody.vault) },
+        arguments: { vault: tx.object(vault) },
         typeArguments: [creditType],
       })(tx),
     (b) => BigInt(bcs.u64().parse(b)),
@@ -191,7 +194,7 @@ async function main(): Promise<void> {
       (tx) =>
         hasAsset({
           package: custody.published_at,
-          arguments: { vault: tx.object(custody.vault) },
+          arguments: { vault: tx.object(vault) },
           typeArguments: [asset.type, creditType],
         })(tx),
       (b) => bcs.bool().parse(b),

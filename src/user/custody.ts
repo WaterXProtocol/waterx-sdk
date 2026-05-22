@@ -19,20 +19,23 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import type { NativeCustodyPackage, WaterxCreditPackage } from "../config.ts";
 import * as custody from "../generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
 
-function requireCredit(client: WaterXClient): WaterxCreditPackage {
+function requireCredit(client: WaterXClient): { credit_registry: string } {
   const credit = client.config.packages.waterx_credit;
-  if (!credit) throw new Error("waterx_credit is not configured — credit pipeline unavailable");
-  return credit;
+  if (!credit?.credit_registry) {
+    throw new Error("waterx_credit is not configured — set packages.waterx_credit.credit_registry");
+  }
+  return { credit_registry: credit.credit_registry };
 }
 
-function requireCustody(client: WaterXClient): NativeCustodyPackage {
+function requireCustody(client: WaterXClient): { published_at: string; vault: string } {
   const nc = client.config.packages.native_custody;
-  if (!nc) throw new Error("native_custody is not configured — credit pipeline unavailable");
-  return nc;
+  if (!nc?.vault) {
+    throw new Error("native_custody is not configured — set packages.native_custody.vault");
+  }
+  return { published_at: nc.published_at, vault: nc.vault };
 }
 
 // ============================================================================

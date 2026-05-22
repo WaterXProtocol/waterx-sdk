@@ -105,13 +105,11 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
     },
     waterx_credit: {
       published_at: "0xf6750397c266eca69451691b5125fbf35e5c4575c98884ac3ab6f084493fd497",
-      original_id: "0xf6750397c266eca69451691b5125fbf35e5c4575c98884ac3ab6f084493fd497",
       credit_registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
       credit_type: "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD",
     },
     native_custody: {
       published_at: "0x45c2074e892975f0fb62b934824531c04d43f6e7f00bf8d1e7ce2556e84fd6ee",
-      original_id: "0x45c2074e892975f0fb62b934824531c04d43f6e7f00bf8d1e7ce2556e84fd6ee",
       vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
       assets: [
         {
