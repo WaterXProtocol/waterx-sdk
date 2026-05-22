@@ -2,7 +2,7 @@
  * E2E: WLP mint PTB with discovered wxa USDC balance (integration persistent-state seeds this).
  */
 import { buildMintWlpTx } from "@waterx/perp-sdk";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
@@ -11,9 +11,9 @@ import {
   type DiscoveredWxaAccount,
 } from "../helpers/e2e/e2e-wxa-discovery.ts";
 import {
+  assertSimulateSuccessOrSkipOracleAndState,
   simulateWithTransientRetry,
   skipHermesIfFeedUnavailable,
-  skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
 
 describe(`wlp (${e2eNetwork})`, () => {
@@ -46,7 +46,6 @@ describe(`wlp (${e2eNetwork})`, () => {
     }
     tx.setSender(row.ownerAddress);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
-    if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateSuccessOrSkipOracleAndState(ctx, sim, 1, tx);
   }, 240_000);
 });

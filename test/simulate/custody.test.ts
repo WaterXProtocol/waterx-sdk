@@ -27,9 +27,9 @@ import {
 import { loadFundedProbe } from "../helpers/e2e/e2e-funded-probe.ts";
 import {
   assertSimulateFailed,
+  assertSimulateSuccessOrSkipOracleAndState,
   simulateForTestOrSkip,
   simulateWithTransientRetry,
-  skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { selectWalletCoinsCoveringAmount } from "../integration/helpers/account-bootstrap.ts";
@@ -144,8 +144,7 @@ describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => 
     tx.setGasBudget(e2eSimulateGasBudget());
 
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
-    if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateSuccessOrSkipOracleAndState(ctx, sim, 1, tx);
   }, 240_000);
 });
 
@@ -300,8 +299,7 @@ describe.skipIf(!creditPipeline)(`custody burn simulate (${e2eNetwork})`, () => 
     tx.setGasBudget(e2eSimulateGasBudget());
 
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
-    if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateSuccessOrSkipOracleAndState(ctx, sim, 1, tx);
   }, 240_000);
 
   it("buildRedeemVaaTx is exported alongside custody mint path", () => {

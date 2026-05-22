@@ -3,9 +3,10 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { createAccount } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
+import { assertSimulateSuccess } from "../helpers/e2e/simulate-assertions.ts";
 
 describe(`account wxa (${e2eNetwork})`, () => {
   it("simulates createAccount PTB shape", async () => {
@@ -14,6 +15,6 @@ describe(`account wxa (${e2eNetwork})`, () => {
     tx.setGasBudget(50_000_000);
     createAccount(client, tx, { alias: `e2e-${Date.now()}` });
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
+    assertSimulateSuccess(sim, 1);
   }, 120_000);
 });

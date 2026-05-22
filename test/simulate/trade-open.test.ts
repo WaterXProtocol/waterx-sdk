@@ -2,11 +2,11 @@
  * E2E: market-form place order (oracle refresh + sponsor path), primary open simulate smoke.
  */
 import { buildPlaceOrderTx } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
-  isSimulateOutcome,
+  assertSimulateReached,
   skipHermesIfFeedUnavailable,
   skipIfTransientInfrastructureError,
 } from "../helpers/e2e/simulate-assertions.ts";
@@ -41,7 +41,6 @@ describe(`trade open (${e2eNetwork})`, () => {
     }
     tx.setSender(DUMMY_ACCOUNT);
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
-    expect(isSimulateOutcome(sim)).toBe(true);
+    assertSimulateReached(sim);
   }, 120_000);
 });

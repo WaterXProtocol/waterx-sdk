@@ -2,10 +2,11 @@
  * E2E: standalone `add_pre_order` / `cancel_pre_order` **tx-builders** (ghost IDs — PTB still reaches simulate).
  */
 import { buildAddPreOrderTx, buildCancelPreOrderTx } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
+  assertSimulateReached,
   simulateWithTransientRetry,
   skipHermesIfFeedUnavailable,
   skipSimulateIfOracleTransient,
@@ -35,7 +36,7 @@ describe(`trade pre-order requests (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_ACCOUNT);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 180_000);
 
   it("buildAddPreOrderTx simulates reduce-only TP leg (ghost main order)", async (ctx) => {
@@ -67,6 +68,6 @@ describe(`trade pre-order requests (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_ACCOUNT);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 180_000);
 });

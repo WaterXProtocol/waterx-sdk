@@ -3,11 +3,11 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { refreshOraclePrices } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
-  isSimulateOutcome,
+  assertSimulateSuccess,
   simulateWithTransientRetry,
   skipHermesIfFeedUnavailable,
   skipIfTransientInfrastructureError,
@@ -28,7 +28,6 @@ describe(`oracle Pyth refresh (${e2eNetwork})`, () => {
     }
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
-    expect(isSimulateOutcome(sim)).toBe(true);
+    assertSimulateSuccess(sim, 1);
   }, 180_000);
 });

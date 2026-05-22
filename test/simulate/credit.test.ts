@@ -21,6 +21,8 @@ import {
 } from "../helpers/e2e/e2e-custody.ts";
 import {
   assertSimulateFailed,
+  assertSimulateReached,
+  assertSimulateSuccessOrSkipOracleAndState,
   simulateForTestOrSkip,
   simulateWithTransientRetry,
   skipSimulateIfOracleTransient,
@@ -39,7 +41,7 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_SENDER);
     tx.setGasBudget(e2eSimulateGasBudget());
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 90_000);
 
   it("buildRequestCreditWithdrawTx wormhole route PTB shape", () => {
@@ -154,8 +156,7 @@ describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () =>
     tx.setGasBudget(e2eSimulateGasBudget());
 
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
-    if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateSuccessOrSkipOracleAndState(ctx, sim, 1, tx);
   }, 240_000);
 
   it("simulates buildRedeemVaaTx with minimal VAA bytes", async (ctx) => {
@@ -169,7 +170,7 @@ describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () =>
     tx.setGasBudget(e2eSimulateGasBudget());
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 240_000);
 });
 

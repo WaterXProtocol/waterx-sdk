@@ -3,8 +3,9 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { liquidate, matchOrders, ORDER_LIMIT_BUY, updateFundingRate } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
+import { assertSimulateReached } from "../helpers/e2e/simulate-assertions.ts";
 import { client, DUMMY_SENDER, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 
 describe(`keeper (${e2eNetwork})`, () => {
@@ -20,7 +21,7 @@ describe(`keeper (${e2eNetwork})`, () => {
       positionId: 1n,
     });
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 120_000);
 
   it("matchOrders PTB simulates", async () => {
@@ -35,7 +36,7 @@ describe(`keeper (${e2eNetwork})`, () => {
       maxFills: 2n,
     });
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 120_000);
 
   it("updateFundingRate PTB simulates", async () => {
@@ -44,6 +45,6 @@ describe(`keeper (${e2eNetwork})`, () => {
     tx.setGasBudget(40_000_000);
     updateFundingRate(client, tx, { ticker: "BTCUSD" });
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 120_000);
 });

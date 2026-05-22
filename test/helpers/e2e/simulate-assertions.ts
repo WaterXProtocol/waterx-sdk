@@ -40,10 +40,19 @@ export function extractSimulateError(result: SimulateResult): string {
   return JSON.stringify(result.FailedTransaction ?? result);
 }
 
-/** Whether {@link WaterXClient.simulate} returned a normal outcome object (not a thrown RPC error). */
+/** Whether simulate returned a gRPC outcome object (not a thrown RPC error). */
 export function isSimulateOutcome(sim: unknown): boolean {
   const k = (sim as SimulateResult).$kind;
   return k === "Transaction" || k === "FailedTransaction" || k === "Success";
+}
+
+/**
+ * Ghost / negative smoke: PTB reached chain simulate (Transaction or Move abort both OK).
+ * Do **not** use for discovery-based positive paths — use {@link assertSimulateSuccess} instead.
+ */
+export function assertSimulateReached(result: unknown): void {
+  expect(result).toBeDefined();
+  expect(isSimulateOutcome(result)).toBe(true);
 }
 
 /**
@@ -367,6 +376,10 @@ const STATE_DEPENDENT_ABORT_LOCATIONS: readonly string[] = [
   "err_insufficient_collateral",
   "err_position_flip_not_supported",
   "err_invalid_collateral_type",
+  "assert_prices_fresh",
+  "EStalePrice",
+  "ETradingSlippageExceeded",
+  "assert_close_slippage",
 ];
 
 /**

@@ -8,19 +8,33 @@ import {
   buildIncreasePositionTx,
   buildWithdrawCollateralTx,
 } from "@waterx/perp-sdk";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, it } from "vitest";
 
 import {
   discoverStatefulSimulatePosition,
   DISCOVERY_OPTS_STATEFUL_SIMULATE,
   posCollateralAmount,
+  posIsLong,
   posSize,
   type DiscoveredPosition,
 } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
-import { isSimulateOutcome } from "../helpers/e2e/simulate-assertions.ts";
+import { closeOrDecreaseAcceptablePrice } from "../integration/helpers/integration-market-snapshot.ts";
+import {
+  assertSimulateSuccess,
+  skipSimulateIfStateDependent,
+} from "../helpers/e2e/simulate-assertions.ts";
 import { runBuiltTradingTx } from "../helpers/trading/run-trading-scenario.ts";
+
+function assertDiscoveredTradingSim(
+  ctx: { skip: (reason?: string) => void },
+  sim: unknown,
+): void {
+  if (sim === undefined) return;
+  if (skipSimulateIfStateDependent(ctx, sim)) return;
+  assertSimulateSuccess(sim, 1);
+}
 
 describe(`trade on discovered position (${e2eNetwork})`, () => {
   let discovered: DiscoveredPosition | null;
@@ -56,7 +70,8 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    expect(isSimulateOutcome(sim)).toBe(true);
+    if (sim === undefined) return;
+    assertSimulateSuccess(sim, 1);
   }, 180_000);
 
   it("simulates partial decrease on discovered row", async (ctx) => {
@@ -72,7 +87,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
       ctx.skip("Position size too small for partial decrease probe");
       return;
     }
-    const ap = rawPrice(Math.max(1, Math.ceil(row.approxUsdHint * 4)));
+    const ap = closeOrDecreaseAcceptablePrice(posIsLong(d.position), row);
     const sim = await runBuiltTradingTx({
       client,
       mode: "simulate",
@@ -90,7 +105,8 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    expect(isSimulateOutcome(sim)).toBe(true);
+    if (sim === undefined) return;
+    assertDiscoveredTradingSim(ctx, sim);
   }, 180_000);
 
   it("simulates deposit collateral (+1 USDC unit)", async (ctx) => {
@@ -116,7 +132,8 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    expect(isSimulateOutcome(sim)).toBe(true);
+    if (sim === undefined) return;
+    assertSimulateSuccess(sim, 1);
   }, 180_000);
 
   it("simulates tiny withdraw collateral", async (ctx) => {
@@ -143,7 +160,8 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    expect(isSimulateOutcome(sim)).toBe(true);
+    if (sim === undefined) return;
+    assertSimulateSuccess(sim, 1);
   }, 180_000);
 
   it("simulates close with wide acceptable price", async (ctx) => {
@@ -154,6 +172,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
     }
     const row = lifecycleTickerRow(d.ticker);
     const collateralType = client.getPoolTokenType(d.collateralPoolTicker);
+    const ap = closeOrDecreaseAcceptablePrice(posIsLong(d.position), row);
     const sim = await runBuiltTradingTx({
       client,
       mode: "simulate",
@@ -165,11 +184,12 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           ticker: d.ticker,
           collateralType,
           positionId: d.positionId,
-          acceptablePrice: rawPrice(Math.max(1, Math.ceil(row.approxUsdHint * 4))),
+          acceptablePrice: ap,
           skipOraclePriceRefresh: false,
           useSponsor: true,
         }),
     });
-    expect(isSimulateOutcome(sim)).toBe(true);
+    if (sim === undefined) return;
+    assertDiscoveredTradingSim(ctx, sim);
   }, 180_000);
 });

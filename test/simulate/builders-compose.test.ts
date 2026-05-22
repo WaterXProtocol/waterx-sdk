@@ -3,7 +3,7 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { createAccount, executeTrading, increasePositionRequest } from "@waterx/perp-sdk";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, it } from "vitest";
 
 import {
   discoverStatefulSimulatePosition,
@@ -13,6 +13,8 @@ import {
 import { client, DUMMY_SENDER, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
+  assertSimulateReached,
+  assertSimulateSuccess,
   simulateWithTransientRetry,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
@@ -30,10 +32,10 @@ describe(`builders compose (${e2eNetwork})`, () => {
     tx.setGasBudget(40_000_000);
     createAccount(client, tx, { alias: `compose-${Date.now()}` });
     const sim = await client.simulate(tx);
-    expect(sim).toBeDefined();
+    assertSimulateSuccess(sim, 1);
   }, 120_000);
 
-  it("increasePositionRequest + executeTrading in one PTB when discovery hits", async (ctx) => {
+  it("increasePositionRequest + executeTrading wires one PTB (may abort without sponsor witnesses)", async (ctx) => {
     const d = discovered;
     if (!d) {
       ctx.skip("No eligible discovered position");
@@ -60,6 +62,6 @@ describe(`builders compose (${e2eNetwork})`, () => {
     tx.setSender(d.ownerAddress);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 180_000);
 });

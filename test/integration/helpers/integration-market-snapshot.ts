@@ -57,3 +57,18 @@ export function keeperOpenAcceptablePrice(isLong: boolean, row: LifecycleTestTic
   }
   return rawPrice(1);
 }
+
+/**
+ * Close / decrease slippage (`trading::assert_close_slippage`) — opposite of open:
+ * - **LONG** exit (sell): floor — use a low USD bound (`rawPrice(1)`).
+ * - **SHORT** exit (buy): ceiling — use a high USD cap.
+ */
+export function closeOrDecreaseAcceptablePrice(
+  positionIsLong: boolean,
+  row: LifecycleTestTickerRow,
+): bigint {
+  if (positionIsLong) {
+    return rawPrice(1);
+  }
+  return rawPrice(Math.max(200_000, Number(tickerRowApproxAcceptableUsdHint(row))));
+}

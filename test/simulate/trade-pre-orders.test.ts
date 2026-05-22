@@ -2,10 +2,11 @@
  * E2E: main leg + bundled TP/SL-style reduce-only pre-orders (shape coverage).
  */
 import { buildPlaceOrderTx } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
+  assertSimulateReached,
   simulateWithTransientRetry,
   skipHermesIfFeedUnavailable,
   skipIfTransientInfrastructureError,
@@ -70,7 +71,7 @@ describe(`trade pre-orders (${e2eNetwork})`, () => {
     try {
       const sim = await simulateWithTransientRetry(() => client.simulate(tx), { attempts: 5 });
       if (skipSimulateIfOracleTransient(ctx, sim)) return;
-      expect(sim).toBeDefined();
+      assertSimulateReached(sim);
     } catch (e) {
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;

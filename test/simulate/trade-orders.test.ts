@@ -2,10 +2,11 @@
  * E2E: cancel / update order builders (expected abort on bogus ids without discovery).
  */
 import { buildCancelOrderTx, buildUpdateOrderTx, ORDER_LIMIT_BUY } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
+  assertSimulateReached,
   simulateWithTransientRetry,
   skipHermesIfFeedUnavailable,
   skipIfTransientInfrastructureError,
@@ -35,7 +36,7 @@ describe(`trade orders (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_ACCOUNT);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 180_000);
 
   it("buildUpdateOrderTx simulates (ghost order id)", async (ctx) => {
@@ -63,6 +64,6 @@ describe(`trade orders (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_ACCOUNT);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateReached(sim);
   }, 180_000);
 });

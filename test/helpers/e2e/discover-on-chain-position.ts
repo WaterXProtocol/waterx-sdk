@@ -86,6 +86,12 @@ export function posSize(p: PositionDataView): bigint {
   return typeof raw === "bigint" ? raw : BigInt(String(raw ?? "0"));
 }
 
+export function posIsLong(p: PositionDataView): boolean {
+  const x = recordStr(p) ?? {};
+  const raw = x.is_long ?? x.isLong;
+  return raw === true;
+}
+
 /**
  * Map position collateral `TypeName` string → `wlp.pool_tokens` ticker key (`USDCUSD`, …).
  */

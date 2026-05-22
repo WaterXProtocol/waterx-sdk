@@ -3,15 +3,17 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { stake } from "@waterx/perp-sdk";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
+import { discoverStakingRewarderTypes } from "../helpers/e2e/staking-rewarders.ts";
 import {
   loadWxaAccountWithWlp,
   wxaDiscoverySkipReason,
   type DiscoveredWxaAccount,
 } from "../helpers/e2e/e2e-wxa-discovery.ts";
 import {
+  assertSimulateSuccess,
   simulateWithTransientRetry,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
@@ -20,9 +22,11 @@ const stakingReady = Boolean(client.config.packages.waterx_staking?.pools?.WLP);
 
 describe.skipIf(!stakingReady)(`staking (${e2eNetwork})`, () => {
   let wxa: DiscoveredWxaAccount | null;
+  let rewarderTypes: string[] = [];
 
   beforeAll(async () => {
     wxa = await loadWxaAccountWithWlp(client, 1n);
+    rewarderTypes = await discoverStakingRewarderTypes(client, "WLP");
   }, 240_000);
 
   it("stake() builds deposit + checker destroy plumbing (discovered wxa WLP)", async (ctx) => {
@@ -38,11 +42,11 @@ describe.skipIf(!stakingReady)(`staking (${e2eNetwork})`, () => {
       stakeAlias: "WLP",
       stakeType: client.wlpType(),
       stakeAmount: 1n,
-      rewarderTypes: [],
+      rewarderTypes,
     });
     tx.setSender(row.ownerAddress);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    expect(sim).toBeDefined();
+    assertSimulateSuccess(sim, 1);
   }, 180_000);
 });

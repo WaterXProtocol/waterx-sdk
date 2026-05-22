@@ -9,11 +9,12 @@ import {
   buildIncreasePositionTx,
   buildWithdrawCollateralTx,
 } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
+  assertSimulateReached,
   simulateWithTransientRetry,
   skipHermesIfFeedUnavailable,
   skipSimulateIfOracleTransient,
@@ -37,7 +38,7 @@ async function simulateTxFromBuilder(
   tx.setSender(sender);
   const sim = await simulateWithTransientRetry(() => client.simulate(tx));
   if (skipSimulateIfOracleTransient(ctx, sim)) return;
-  expect(sim).toBeDefined();
+  assertSimulateReached(sim);
 }
 
 describe(`trade ghost sizing (${e2eNetwork})`, () => {

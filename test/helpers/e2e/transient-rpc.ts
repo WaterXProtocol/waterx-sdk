@@ -37,6 +37,14 @@ export function isGrpcTransientError(err: unknown): boolean {
   return name === "RpcError" && isTransientRpcErrorMessage(msg);
 }
 
+/** Network-related `TypeError` from `fetch()` / undici — not arbitrary JS bugs. */
+function isNetworkTypeError(err: TypeError): boolean {
+  const msg = err.message ?? "";
+  if (isTransientRpcErrorMessage(msg)) return true;
+  const m = msg.toLowerCase();
+  return m.includes("fetch") || m.includes("network");
+}
+
 /**
  * Oracle feed/aggregate failures that are environment-dependent on testnet (not SDK regressions).
  */
@@ -44,10 +52,11 @@ export function isOracleTransientFailureMessage(msg: string): boolean {
   return msg.includes("::supra_rule::feed") || msg.includes("::pyth_rule::feed");
 }
 
-/** gRPC / Hermes / generic `fetch()` blips during e2e (not Move logic failures). */
+/** gRPC / Hermes / explicit network blips during e2e (not Move logic or SDK TypeErrors). */
 export function isInfrastructureTransientError(err: unknown): boolean {
   if (isGrpcTransientError(err)) return true;
-  if (err instanceof TypeError) return true;
+  if (err instanceof Error && err.name === "AbortError") return true;
+  if (err instanceof TypeError && isNetworkTypeError(err)) return true;
   const msg = err instanceof Error ? err.message : String(err);
   return isTransientRpcErrorMessage(msg);
 }
