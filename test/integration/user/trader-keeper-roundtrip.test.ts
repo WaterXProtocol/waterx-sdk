@@ -26,6 +26,7 @@ import {
   execBuiltTxWithCooldownRetries,
   execIntegrationOrSkipOracleTransient,
   execTx,
+  integrationGasBudget,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
   sleep,
@@ -49,7 +50,7 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper roundtrip
           return tx;
         })(),
         trader,
-        { gasBudget: 80_000_000 },
+        { gasBudget: integrationGasBudget("keeper") },
       ),
     );
     if (result === undefined) return;
@@ -78,7 +79,9 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper roundtrip
       }
     }
     if (!picked) {
-      ctx.skip("All lifecycle tickers already have a position — run persistent-state or close-one first");
+      ctx.skip(
+        "All lifecycle tickers already have a position — run persistent-state or close-one first",
+      );
       return;
     }
 
@@ -129,7 +132,7 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper roundtrip
           return tx;
         },
         trader,
-        { cooldownTickers: [picked!], gasBudget: 300_000_000 },
+        { cooldownTickers: [picked!], gasBudget: integrationGasBudget("keeper") },
       ),
     );
     if (openRaw === undefined) return;
@@ -166,7 +169,7 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper roundtrip
           return tx;
         },
         trader,
-        { cooldownTickers: [picked!], gasBudget: 300_000_000 },
+        { cooldownTickers: [picked!], gasBudget: integrationGasBudget("keeper") },
       ),
     );
     if (closeRaw === undefined) return;

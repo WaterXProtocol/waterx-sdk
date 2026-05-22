@@ -1,14 +1,15 @@
 /**
  * Integration wxa balance floors shared by WLP / staking gap-coverage tests.
  */
-import { getAccountBalance } from "../../../src/fetch.ts";
-import { buildMintWlpTx } from "../../../src/tx-builders.ts";
-import type { WaterXClient } from "../../../src/client.ts";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-import { E2E_PERSISTENT_WLP } from "./e2e-persistent-state.ts";
-import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
+import type { WaterXClient } from "../../../src/client.ts";
+import { getAccountBalance } from "../../../src/fetch.ts";
+import { buildMintWlpTx } from "../../../src/tx-builders.ts";
 import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
+import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
+import { E2E_PERSISTENT_WLP } from "./e2e-persistent-state.ts";
+import { integrationGasBudget } from "./integration-gas.ts";
 
 type ExecTx = (
   tx: import("@mysten/sui/transactions").Transaction,
@@ -47,7 +48,9 @@ export async function ensureIntegrationMinWlpBalance(args: {
       args.accountId,
       needFree - usdcFree,
     );
-    const depResult = await args.execTx(depTx, args.trader, { gasBudget: 80_000_000 });
+    const depResult = await args.execTx(depTx, args.trader, {
+      gasBudget: integrationGasBudget("default"),
+    });
     args.assertSuccess(depResult);
     usdcFree = await getAccountBalance(args.client, args.accountId, usdcType);
   }
@@ -63,7 +66,7 @@ export async function ensureIntegrationMinWlpBalance(args: {
         skipOraclePriceRefresh: false,
       }),
     args.trader,
-    { gasBudget: 280_000_000 },
+    { gasBudget: integrationGasBudget("wlp") },
   );
   args.assertSuccess(mintResult);
   wlpBal = await getAccountBalance(args.client, args.accountId, wlpType);

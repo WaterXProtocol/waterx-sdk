@@ -26,10 +26,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
   let discovered: DiscoveredPosition | null;
 
   beforeAll(async () => {
-    discovered = await discoverStatefulSimulatePosition(
-      client,
-      DISCOVERY_OPTS_STATEFUL_SIMULATE,
-    );
+    discovered = await discoverStatefulSimulatePosition(client, DISCOVERY_OPTS_STATEFUL_SIMULATE);
   }, 300_000);
 
   it("simulates increase on discovered row", async (ctx) => {

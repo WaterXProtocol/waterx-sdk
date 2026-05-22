@@ -37,6 +37,13 @@ export function isGrpcTransientError(err: unknown): boolean {
   return name === "RpcError" && isTransientRpcErrorMessage(msg);
 }
 
+/**
+ * Oracle feed/aggregate failures that are environment-dependent on testnet (not SDK regressions).
+ */
+export function isOracleTransientFailureMessage(msg: string): boolean {
+  return msg.includes("::supra_rule::feed") || msg.includes("::pyth_rule::feed");
+}
+
 /** gRPC / Hermes / generic `fetch()` blips during e2e (not Move logic failures). */
 export function isInfrastructureTransientError(err: unknown): boolean {
   if (isGrpcTransientError(err)) return true;

@@ -9,6 +9,8 @@ import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
   isSimulateOutcome,
   simulateWithTransientRetry,
+  skipHermesIfFeedUnavailable,
+  skipIfTransientInfrastructureError,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
 
@@ -17,7 +19,13 @@ describe(`oracle Pyth refresh (${e2eNetwork})`, () => {
     const tx = new Transaction();
     tx.setSender(DUMMY_SENDER);
     tx.setGasBudget(1_200_000_000);
-    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"]);
+    try {
+      await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"]);
+    } catch (e) {
+      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfTransientInfrastructureError(ctx, e)) return;
+      throw e;
+    }
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
     expect(sim).toBeDefined();

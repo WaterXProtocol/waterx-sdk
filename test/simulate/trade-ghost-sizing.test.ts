@@ -1,6 +1,7 @@
 /**
  * E2E: close / resize / collateral **tx-builders** with ghost `position_id` (no on-chain discovery — expect Move abort, still exercises sponsor + oracle PTB).
  */
+import type { Transaction } from "@mysten/sui/transactions";
 import {
   buildClosePositionTx,
   buildDecreasePositionTx,
@@ -8,7 +9,6 @@ import {
   buildIncreasePositionTx,
   buildWithdrawCollateralTx,
 } from "@waterx/perp-sdk";
-import type { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

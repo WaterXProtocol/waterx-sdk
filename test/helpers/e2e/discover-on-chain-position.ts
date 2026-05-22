@@ -5,6 +5,8 @@
 import type { WaterXClient } from "../../../src/client.ts";
 import type { PositionDataView, RedeemRequestDataView } from "../../../src/fetch.ts";
 import { getMarketData, getMarketPositions, getRedeemRequests } from "../../../src/fetch.ts";
+import { wxaAccountIdHints } from "./canonical-testnet-account.ts";
+import { resolveE2eNetwork } from "./e2e-client.ts";
 import { resolveDefaultUsdcCoinProbeAttempts } from "./e2e-discovery-caps.ts";
 import {
   getAccountOwnerByAccountId,
@@ -740,12 +742,7 @@ export type DiscoveredRedeemRequest = DiscoveredWxaAccount & {
 const WXA_ACCOUNT_CANDIDATE_CAP = 40;
 
 function envWxaAccountIdHints(): string[] {
-  const out: string[] = [];
-  for (const key of ["WATERX_E2E_WXA_ACCOUNT_ID", "WATERX_INTEGRATION_ACCOUNT_ID"]) {
-    const v = process.env[key]?.trim();
-    if (v) out.push(v);
-  }
-  return out;
+  return wxaAccountIdHints(resolveE2eNetwork());
 }
 
 /** Prefer integration-maintained wxa account, then redeem queue / market positions / funded probe. */
@@ -864,6 +861,48 @@ function redeemRecipientAccountCandidates(requests: RedeemRequestDataView[]): st
     if (acc) out.push(acc);
   }
   return out;
+}
+
+/** Pending redeem row for a specific wxa `accountId`, if owner resolves. */
+export async function findPendingRedeemForAccount(
+  client: WaterXClient,
+  accountId: string,
+): Promise<DiscoveredRedeemRequest | null> {
+  const want = normAddr(accountId);
+  let cursor = 0n;
+  let usdcFallback: string;
+  try {
+    usdcFallback = client.getPoolTokenType("USDCUSD");
+  } catch {
+    usdcFallback = "";
+  }
+
+  for (let page = 0; page < 5; page++) {
+    const { requests, nextCursor } = await getRedeemRequests(client, { cursor, pageSize: 50n });
+    for (const r of requests) {
+      const recipient = redeemRecipientAccountId(r);
+      if (!recipient || normAddr(recipient) !== want) continue;
+      const requestId = redeemRequestIdBigInt(r);
+      if (requestId === 0n) continue;
+      try {
+        const ownerAddress = await getAccountOwnerByAccountId(client, recipient);
+        const tokenFq = redeemTokenTypeFqName(r) || usdcFallback;
+        if (!tokenFq) continue;
+        return {
+          accountId: recipient,
+          ownerAddress,
+          requestId,
+          lpAmount: redeemLpAmountBigInt(r),
+          redeemTokenType: tokenFq,
+        };
+      } catch {
+        /* next row */
+      }
+    }
+    if (nextCursor === undefined) break;
+    cursor = nextCursor;
+  }
+  return null;
 }
 
 /** First redeem-queue row whose recipient wxa account owner resolves (for cancel simulate). */

@@ -7,7 +7,45 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../../../src/client.ts";
+import { getAccountsByOwner } from "../../../src/fetch.ts";
 import { accountBalance, accountOwner } from "../../../src/generated/waterx_account/account.ts";
+import {
+  isIntegrationTraderConfigured,
+  loadIntegrationTraderKeypair,
+} from "../integration/integration-trader-key.ts";
+import { e2eCanonicalWxaOwner } from "./canonical-testnet-account.ts";
+import { resolveE2eNetwork } from "./e2e-client.ts";
+
+function normAddr(a: string): string {
+  return a.replace(/^0x/i, "").toLowerCase();
+}
+
+/** Owners to probe via `account_ids` before legacy `account_owner(&Account)` simulate. */
+function wxaOwnerHints(): string[] {
+  const hints: string[] = [];
+  const push = (v?: string) => {
+    const t = v?.trim();
+    if (t) hints.push(t);
+  };
+  push(process.env.WATERX_E2E_WXA_OWNER);
+  push(e2eCanonicalWxaOwner(resolveE2eNetwork()));
+  push(process.env.WATERX_E2E_WALLET_USDC_OWNER);
+  push(process.env.WATERX_E2E_WLP_REDEEM_OWNER);
+  if (isIntegrationTraderConfigured()) {
+    try {
+      push(loadIntegrationTraderKeypair().getPublicKey().toSuiAddress());
+    } catch {
+      /* misconfigured key — fall through */
+    }
+  }
+  const seen = new Set<string>();
+  return hints.filter((h) => {
+    const k = normAddr(h);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
 function extractSimulateReturnBytesSync(
   result: unknown,
@@ -44,20 +82,45 @@ function extractSimulateReturnBytesSync(
   throw new Error("Unsupported simulate return shape");
 }
 
-/** Resolve registry owner address for wxa `Account` object id. */
+/**
+ * Resolve wxa account owner for registry `accountId` (`0x2::object::ID`).
+ *
+ * Accounts live inside `AccountRegistry`, not as top-level chain objects — so
+ * `account_owner(&Account)` via `tx.object(accountId)` fails. Prefer registry
+ * `account_ids(owner)` membership checks using integration / e2e owner hints.
+ */
 export async function getAccountOwnerByAccountId(
   client: WaterXClient,
   accountId: string,
 ): Promise<string> {
+  const want = normAddr(accountId);
+
+  for (const owner of wxaOwnerHints()) {
+    try {
+      const ids = await getAccountsByOwner(client, owner);
+      if (ids.some((id) => normAddr(id) === want)) return owner;
+    } catch {
+      /* try next owner hint */
+    }
+  }
+
   const pkg = client.config.packages.waterx_account.published_at;
   const tx = new Transaction();
   accountOwner({
     package: pkg,
     arguments: { account: tx.object(accountId) },
   })(tx);
-  const result = await client.simulate(tx);
-  const bytes = extractSimulateReturnBytesSync(result);
-  return bcs.Address.parse(bytes);
+  try {
+    const result = await client.simulate(tx);
+    const bytes = extractSimulateReturnBytesSync(result);
+    return bcs.Address.parse(bytes);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(
+      `Unable to resolve owner for wxa account ${accountId} (registry ID, not a standalone object). ` +
+        `Set WATERX_E2E_WXA_OWNER or run with WATERX_INTEGRATION_PRIVATE_KEY so owner hints can be probed. ${detail}`,
+    );
+  }
 }
 
 /** Stored balance for `coinType` on wxa account `accountId`. */

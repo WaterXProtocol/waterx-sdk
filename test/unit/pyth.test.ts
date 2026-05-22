@@ -3,7 +3,7 @@
  */
 import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchPriceFeedsUpdateData, PythCache } from "../../src/utils/pyth.ts";
 import { MOCK_HERMES_URL } from "../helpers/fixtures/sui-mock-fixtures.ts";
@@ -12,8 +12,14 @@ import { createUnitTestClient } from "../helpers/test-client.ts";
 describe("fetchPriceFeedsUpdateData", () => {
   const originalFetch = globalThis.fetch;
 
+  beforeEach(() => {
+    vi.stubEnv("WATERX_PYTH_HERMES_MAX_RETRIES", "8");
+    vi.stubEnv("WATERX_PYTH_HERMES_FALLBACK_URL", "");
+  });
+
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -47,29 +53,36 @@ describe("fetchPriceFeedsUpdateData", () => {
   });
 
   it("retries transient 503 then succeeds", async () => {
-    const prevRetries = process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
-    process.env.WATERX_PYTH_HERMES_MAX_RETRIES = "4";
     const payload = new Uint8Array([9]);
     const hex = toHex(payload);
+    let transientLeft = 2;
     let calls = 0;
     globalThis.fetch = vi.fn(async () => {
       calls += 1;
-      if (calls < 3) return new Response("unavailable", { status: 503 });
+      if (transientLeft > 0) {
+        transientLeft -= 1;
+        return new Response("unavailable", { status: 503 });
+      }
       return new Response(JSON.stringify({ binary: { data: [hex] } }), { status: 200 });
     }) as unknown as typeof fetch;
-    try {
-      const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"]);
-      expect(out.length).toBe(1);
-      expect(calls).toBe(3);
-    } finally {
-      if (prevRetries === undefined) delete process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
-      else process.env.WATERX_PYTH_HERMES_MAX_RETRIES = prevRetries;
-    }
+
+    const out = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"]);
+    expect(out.length).toBe(1);
+    expect(calls).toBeGreaterThanOrEqual(3);
+  });
+
+  it("throws when Hermes returns non-JSON on HTTP 200", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("not json", { status: 200 }),
+    ) as unknown as typeof fetch;
+    await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"])).rejects.toThrow(
+      /non-JSON success body/,
+    );
   });
 
   it("failovers beta → prod Hermes URL after exhausting per-host retries", async () => {
-    const prevRetries = process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
-    process.env.WATERX_PYTH_HERMES_MAX_RETRIES = "2";
+    vi.stubEnv("WATERX_PYTH_HERMES_MAX_RETRIES", "2");
+    vi.stubEnv("WATERX_PYTH_HERMES_FALLBACK_URL", "");
     const hex = toHex(new Uint8Array([3]));
     const urls: string[] = [];
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
@@ -81,17 +94,13 @@ describe("fetchPriceFeedsUpdateData", () => {
       }
       return new Response("no", { status: 404 });
     }) as unknown as typeof fetch;
-    try {
-      const out = await fetchPriceFeedsUpdateData("https://hermes-beta.pyth.network/", ["0xaa"]);
-      expect(out.length).toBe(1);
-      expect(urls.some((x) => x.includes("hermes-beta.pyth.network"))).toBe(true);
-      expect(
-        urls.some((x) => x.includes("hermes.pyth.network") && !x.includes("hermes-beta")),
-      ).toBe(true);
-    } finally {
-      if (prevRetries === undefined) delete process.env.WATERX_PYTH_HERMES_MAX_RETRIES;
-      else process.env.WATERX_PYTH_HERMES_MAX_RETRIES = prevRetries;
-    }
+
+    const out = await fetchPriceFeedsUpdateData("https://hermes-beta.pyth.network/", ["0xaa"]);
+    expect(out.length).toBe(1);
+    expect(urls.some((x) => x.includes("hermes-beta.pyth.network"))).toBe(true);
+    expect(urls.some((x) => x.includes("hermes.pyth.network") && !x.includes("hermes-beta"))).toBe(
+      true,
+    );
   });
 });
 

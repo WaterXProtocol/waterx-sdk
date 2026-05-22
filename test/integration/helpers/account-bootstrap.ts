@@ -5,7 +5,8 @@ import type { WaterXClient } from "../../../src/client.ts";
 import { getAccountsByOwner } from "../../../src/fetch.ts";
 import { createAccount, transferToAccount } from "../../../src/user/account.ts";
 import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
-import { assertSuccess } from "../setup.ts";
+import { assertIntegrationTxSuccess } from "../../helpers/integration/integration-exec.ts";
+import { integrationGasBudget } from "./integration-gas.ts";
 
 export async function selectWalletCoinsCoveringAmount(
   client: WaterXClient,
@@ -85,8 +86,8 @@ export async function ensureUserAccountForIntegration(
 
   const tx = new Transaction();
   createAccount(client, tx, { alias: "integration-bootstrap" });
-  const result = await execTx(tx, signer, { gasBudget: 50_000_000 });
-  assertSuccess(result);
+  const result = await execTx(tx, signer, { gasBudget: integrationGasBudget("accountBootstrap") });
+  assertIntegrationTxSuccess(result);
   return { accountId: accountIdFromAccountCreatedEvent(result.events), created: true };
 }
 

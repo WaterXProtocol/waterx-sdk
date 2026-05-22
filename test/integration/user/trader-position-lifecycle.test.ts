@@ -34,6 +34,7 @@ import {
   execIntegrationOrSkipSupra as execOracleOrSkipDeprecated,
   execTx,
   extractEvent,
+  integrationGasBudget,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
 } from "../setup.ts";
@@ -164,7 +165,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
                 useSponsor: true,
               }),
             trader,
-            { cooldownTickers: [ticker], gasBudget: 260_000_000 },
+            { cooldownTickers: [ticker], gasBudget: integrationGasBudget("lifecycle") },
           ),
         );
         if (placeResult === undefined) return;
@@ -174,7 +175,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
           execBuiltTxWithCooldownRetries(
             () => buildMatchOrdersAfterRefreshTx(client, { ticker, isLong: row.isLong }),
             trader,
-            { cooldownTickers: [ticker], gasBudget: 220_000_000 },
+            { cooldownTickers: [ticker], gasBudget: integrationGasBudget("lifecycle") },
           ),
         );
         if (matchRaw === undefined) return;

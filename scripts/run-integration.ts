@@ -27,7 +27,7 @@ function parseArgs(argv: string[]): { network: Network; forward: string[] } {
       cliNetwork = "testnet";
     } else if (arg === "--mainnet") {
       cliNetwork = "mainnet";
-    } else {
+    } else if (arg !== "--") {
       forward.push(arg);
     }
   }

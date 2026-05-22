@@ -1,10 +1,16 @@
 # Tests
 
+## 測試用例清單
+
+完整用例表（編號、前置條件、操作、預期結果）：**[`test/TEST-CASES.md`](./TEST-CASES.md)**（338 條，含 Unit / E2E / Integration）。
+
+重新產生：`pnpm exec tsx scripts/generate-test-cases-doc.ts`
+
 ## Local secrets (`.env.local`)
 
 Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.local`** from **`.env.example`** (Unix: tries `chmod 600`). Put **`WATERX_INTEGRATION_PRIVATE_KEY`** and other secrets only there or in your shell — see `.env.example` for precedence. **`.integration-trader.keystore`** remains supported and gitignored.
 
-Pyth **Hermes** sporadic **502/503/504**: the SDK **retries** and **automatically fails over** beta ↔ prod gateways; **`pnpm test:ci:e2e`** and **GitHub Actions** set **`WATERX_PYTH_HERMES_URL`** to **`https://hermes.pyth.network`** for stable CI-style runs — add the same in **`.env.local`** for flaky local **`pnpm test:e2e`** (`WATERX_PYTH_HERMES_FALLBACK_URL` is optional extra).
+Pyth **Hermes** sporadic **502/503/504**: the SDK **retries** and **automatically fails over** beta ↔ prod gateways. **Testnet e2e / CI** use the default **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Do **not** set **`WATERX_PYTH_HERMES_URL=https://hermes.pyth.network`** for **`pnpm test:e2e`** unless you accept Hermes skips/failures; optional **`WATERX_PYTH_HERMES_FALLBACK_URL`** for extra failover.
 
 PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and sharded **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
 
@@ -14,16 +20,16 @@ PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Li
 | ---------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **unit**               | `src/**/*.test.ts`, `test/unit/**/*.test.ts` | Fast, no chain                                                                                                                                                                                 |
 | **e2e**                | `test/simulate/**/*.test.ts`                 | **v3** `simulateTransaction` against canonical **`waterx-config`** (`WaterXClient.create`). Single Vitest fork by default (public gRPC rate limits). **Testnet default locally** (mainnet JSON often incomplete); **CI** uses the same (`pnpm exec tsx scripts/run-e2e.ts --testnet`, 3-way `--shard`). Use **`--mainnet`** when `waterx-config/main/mainnet.json` is ready. |
-| **integration-trader** | `test/integration/**/*.test.ts`            | **[v3] On-chain** integration against canonical **`waterx-config`**. Starts via **`pnpm test:integration`** (`scripts/run-integration.ts`), which aligns **`WATERX_E2E_NETWORK`** / **`WATERX_INTEGRATION_NETWORK`**. Needs **`WATERX_INTEGRATION_PRIVATE_KEY`** (or `.integration-trader.keystore`). Most suites **`describe.skipIf(!isIntegrationTraderConfigured())`**; optional env still gates destructive cases (e.g. close-one position). **`WATERX_INTEGRATION_MAX_FORKS`** caps Vitest parallelism. |
+| **integration-trader** | `test/integration/**/*.test.ts`            | **[v3] On-chain** integration against canonical **`waterx-config`**. Starts via **`pnpm test:integration`** (`scripts/run-integration.ts`), which aligns **`WATERX_E2E_NETWORK`** / **`WATERX_INTEGRATION_NETWORK`**. Needs **`WATERX_INTEGRATION_PRIVATE_KEY`** (or `.integration-trader.keystore`). Most suites **`describe.skipIf(!isIntegrationTraderConfigured())`**; optional env still gates destructive cases (e.g. close-one position). **`WATERX_INTEGRATION_MAX_FORKS`** caps Vitest parallelism. **Gas:** low default caps via **`integrationGasBudget`** (~0.01–0.02 SUI); optional **`WATERX_INTEGRATION_GAS_BUDGET`**. Tests **run first**; only **skip** (not fail) when the chain reports insufficient SUI for gas selection. Run a subset: `pnpm test:integration test/integration/user/trader-custody.test.ts`. |
 
 **Skipped counts:** Vitest reports **`skipped`** when tests opt out via **`ctx.skip`** or **`describe.skipIf`** — **environment / on-chain state**, not broken placeholders. Common cases:
 
-- **`trade-position`** / **`builders-compose`**: **`discoverStatefulSimulatePosition`** finds no eligible row → **`No eligible discovered position`** (run **`pnpm test:integration:persistent-state`** and set **`WATERX_E2E_WXA_ACCOUNT_ID`** / **`WATERX_INTEGRATION_ACCOUNT_ID`** to seed slots).
-- **`wlp`** / **`staking`**: no wxa account with USDC/WLP stored balance → skip (same persistent-state + env hint).
-- **`wlp-redeem`**: no wxa WLP or no pending redeem queue row.
-- **`read-account`** (probe paths): **`loadFundedProbe`** returns **`null`** → **`No funded probe account on chain`**.
+- **`trade-position`** / **`builders-compose`**: **`discoverStatefulSimulatePosition`** finds no eligible row → run **`pnpm test:e2e:preflight`** or set env wxa id (CI also uses built-in canonical testnet account in **`canonical-testnet-account.ts`**).
+- **`wlp`** / **`staking`**: no wxa account with USDC/WLP stored balance → same as above.
+- **`wlp-redeem`**: no wxa WLP or no pending redeem queue row (preflight enqueues pending redeem when **`WATERX_INTEGRATION_PRIVATE_KEY`** is set locally).
+- **`read-account`** (probe paths): rare skip if canonical account has no eligible position on chain.
 - **`referral`** / **`read-referral`**: referral not in config (**`describe.skipIf`**).
-- **Hermes HTTP 404 during `build*Tx`**: config feed IDs not published on the Hermes host — tests may **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra / gateway alignment, not SDK logic).
+- **Hermes HTTP 404 / 5xx during `build*Tx`**: gateway outage or feed mismatch — tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (including **`runBuiltTradingTx`** used by **`trade-position`**). E2E defaults **`WATERX_PYTH_HERMES_MAX_RETRIES=4`** in **`e2e-setup.ts`** for faster skip (not SDK default **8**).
 
 **Ghost-ID simulate** (**`trade-ghost-sizing`**, **`trade-pre-order-requests`**) does **not** depend on discovery; they still **`simulate`** the sponsor + oracle PTB (Move may **abort** on invalid ids — that is acceptable for builder smoke).
 
@@ -32,11 +38,11 @@ PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Li
 | Area        | Files |
 | ----------- | ----- |
 | Read / fetch | `read-views`, `read-pagination`, `read-account`, `read-position-order`, `read-wlp-queue`, `read-referral`, `fetch-errors` |
-| Oracle / wxa | `oracle-pyth`, `account-wxa`, `referral` |
+| Oracle / wxa | `oracle-pyth`, `account-wxa`, `referral`, `custody` (native CREDIT PSM), `credit` (bridge tx-builders + `getAccountsByOwner`) |
 | Trading      | `trade-open`, `trade-position` (discovery sender), `trade-orders`, `trade-pre-orders`, `trade-pre-order-requests` (standalone add/cancel pre), `builders-compose`, `trade-ghost-sizing` (close/inc/dec/deposit/withdraw with ghost **`position_id`**) |
 | Pool / ops   | `wlp` (discovered wxa USDC mint), `wlp-redeem` (discovered WLP + queue cancel), `staking` (discovered wxa WLP), `keeper` |
 
-Stateful flows use **`discoverStatefulSimulatePosition`** / **`discoverWxaAccountWith*`** (`test/helpers/e2e/discover-on-chain-position.ts`, **`e2e-wxa-discovery.ts`**): prefer **`WATERX_E2E_WXA_ACCOUNT_ID`** or **`WATERX_INTEGRATION_ACCOUNT_ID`**, then market scan / redeem queue / funded probe → **`getAccountOwnerByAccountId`** for **`tx.setSender`**.
+Stateful flows use **`discoverStatefulSimulatePosition`** / **`discoverWxaAccountWith*`** (`test/helpers/e2e/discover-on-chain-position.ts`, **`e2e-wxa-discovery.ts`**): prefer env **`WATERX_E2E_WXA_ACCOUNT_ID`** / **`WATERX_INTEGRATION_ACCOUNT_ID`**, else built-in testnet canonical wxa in **`canonical-testnet-account.ts`** (CI-safe, no `.env.local`), then market scan / redeem queue / funded probe → **`getAccountOwnerByAccountId`** for **`tx.setSender`**.
 
 Scratch helpers under **`test/helpers/scratch/`** remain for **scenario data** (`scratch-trading-scenarios.ts`). **`run-scratch-trading-scenario-integration.ts`** re-exports the shared v3 **`runScratchTradingScenarioIntegration`**; **`run-scratch-trading-scenario-simulate.ts`** is `@deprecated` and **always skips** — use **`trade-*`** + **`test/helpers/trading/run-trading-scenario.ts`** instead.
 
@@ -56,9 +62,9 @@ Scratch helpers under **`test/helpers/scratch/`** remain for **scenario data** (
 | `pnpm test:all`                          | all Vitest projects (**unit**, **e2e**, **integration-trader**)                                         |
 | `pnpm test:integration`                  | **integration-trader** via **`scripts/run-integration.ts --testnet`** (override with `--mainnet` or env networks) |
 | `pnpm test:integration:persistent-state` | Seed per-ticker keeper slots + WLP on integration wxa (feeds e2e discovery) |
-| `pnpm test:integration:gap`              | WLP redeem/cancel, staking stake/unstake, keeper open/close roundtrip |
+| `pnpm test:integration:gap`              | WLP redeem/cancel, staking, keeper roundtrip, custody mint, credit withdraw enqueue |
 
-**Recommended testnet loop:** **`pnpm test:integration:persistent-state`** → set **`WATERX_E2E_WXA_ACCOUNT_ID`** to your **`WATERX_INTEGRATION_ACCOUNT_ID`** in **`.env.local`** → **`pnpm test:e2e --testnet`**.
+**Recommended local testnet loop:** **`pnpm test:e2e:preflight`** (needs **`WATERX_INTEGRATION_PRIVATE_KEY`**; sets **`WATERX_E2E_WXA_ACCOUNT_ID`**, seeds keeper slots + wxa WLP + **pending redeem** on the integration wxa account for **`wlp-redeem` cancel simulate**) → **`pnpm test:e2e`**. Disable redeem enqueue with **`WATERX_E2E_PREFLIGHT_REDEEM=0`**. CI only runs **`pnpm test:e2e`** (no key, no preflight). Alternative seed: **`pnpm test:integration:persistent-state`**.
 
 Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest, e.g.
 `pnpm test:e2e --testnet -t "reads BTC"` or `pnpm test:e2e test/simulate/read-views.test.ts`.
@@ -88,7 +94,9 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 
 - Intended env: **`WATERX_INTEGRATION_PRIVATE_KEY`** or **`.integration-trader.keystore`** (`test/integration/setup.ts`); optional **`WATERX_INTEGRATION_ACCOUNT_ID`**, **`WATERX_INTEGRATION_ADDRESS`**.
 - Run: **`pnpm test:integration`** (testnet default) — same fork / gRPC patterns as simulate where applicable.
-- **Gap coverage** (on-chain, complements simulate): **`trader-e2e-persistent-state`** (seed slots), **`trader-wlp-redeem`**, **`trader-staking`**, **`trader-keeper-roundtrip`**, plus existing lifecycle / open-smoke / close-one.
+- **Gas / SUI:** defaults are **low** so gas selection needs minimal testnet SUI. Override with **`WATERX_INTEGRATION_GAS_BUDGET`** if a tx runs out of gas. No pre-flight balance gate unless you set **`WATERX_INTEGRATION_MIN_SUI_MIST`**.
+- Run only custody/credit: `pnpm test:integration -- test/integration/user/trader-custody.test.ts` (pnpm’s `--` is stripped before Vitest).
+- **Gap coverage** (on-chain, complements simulate): **`trader-e2e-persistent-state`** (seed slots), **`trader-wlp-redeem`**, **`trader-staking`**, **`trader-keeper-roundtrip`**, **`trader-custody`** / **`trader-credit-pipeline`** (native custody mint + native withdraw enqueue), plus existing lifecycle / open-smoke / close-one.
 - Helpers such as **`getAccountsByOwner`**, **`getAccountOwnerByAccountId`** operate on **wxa** **`account_id`** UUIDs.
 
 ## TypeScript scope

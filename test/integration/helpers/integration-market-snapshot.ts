@@ -4,9 +4,9 @@
 import type { WaterXClient } from "../../../src/client.ts";
 import type { MarketDataView } from "../../../src/fetch.ts";
 import { getMarketData } from "../../../src/fetch.ts";
+import { rawPrice } from "../../../src/utils/math.ts";
 import type { LifecycleTestTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { lifecycleTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
-import { rawPrice } from "../../../src/utils/math.ts";
 
 export type IntegrationMarketSnapshotMap = Record<string, MarketDataView>;
 

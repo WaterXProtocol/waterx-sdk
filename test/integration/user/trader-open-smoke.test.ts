@@ -26,6 +26,7 @@ import {
   execIntegrationOrSkipOracleTransient,
   execTx,
   extractEvent,
+  integrationGasBudget,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
 } from "../setup.ts";
@@ -124,7 +125,7 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper open smok
           return tx;
         },
         trader,
-        { cooldownTickers: [picked], gasBudget: 300_000_000 },
+        { cooldownTickers: [picked], gasBudget: integrationGasBudget("keeper") },
       ),
     );
     if (raw === undefined) return;

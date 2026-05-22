@@ -67,6 +67,11 @@ export const E2E_PERSISTENT_WLP = {
   mintPullUsdc: 25_000_000n,
 } as const;
 
+/** Small enqueue for e2e `cancelRedeemWlp` simulate (integration / preflight wxa account). */
+export const E2E_PERSISTENT_REDEEM = {
+  lpAmount: 1n,
+} as const;
+
 export function e2ePersistentMinAccountUsdcRough(): bigint {
   let sum = E2E_PERSISTENT_WLP.mintPullUsdc + 20_000_000n;
   for (const t of activeE2ePersistentPerpTickers()) {

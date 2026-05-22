@@ -8,21 +8,19 @@ import {
   discoverWxaAccountWithStoredBalance,
   discoverWxaAccountWithUsdcForWlpMint,
   discoverWxaAccountWithWlpBalance,
+  DISCOVERY_OPTS_STATEFUL_SIMULATE,
+  findPendingRedeemForAccount,
+  type DiscoveredPosition,
   type DiscoveredRedeemRequest,
   type DiscoveredWxaAccount,
-  type DiscoveredPosition,
-  DISCOVERY_OPTS_STATEFUL_SIMULATE,
 } from "./discover-on-chain-position.ts";
 import { getWlpMinDepositForCollateral } from "./fetch-read-helpers-for-tests.ts";
 
-export type {
-  DiscoveredPosition,
-  DiscoveredRedeemRequest,
-  DiscoveredWxaAccount,
-};
+export type { DiscoveredPosition, DiscoveredRedeemRequest, DiscoveredWxaAccount };
 
 export {
   discoverPendingRedeemRequest,
+  findPendingRedeemForAccount,
   discoverStatefulSimulatePosition,
   discoverWxaAccountWithStoredBalance,
   discoverWxaAccountWithUsdcForWlpMint,

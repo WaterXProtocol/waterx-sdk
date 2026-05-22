@@ -15,6 +15,7 @@ import {
 } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { assertSuccess } from "../setup.ts";
 import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
+import { integrationGasBudget } from "./integration-gas.ts";
 
 export type IntegrationExecTx = (
   tx: Transaction,
@@ -115,7 +116,9 @@ export async function ensureScratchLifecycleMinUsdc(
   if (balance < minBalance) {
     const need = minBalance - balance;
     const depTx = await buildDepositUsdcFromWalletTx(client, owner, accountId, need);
-    const depResult = await execTx(depTx, trader, { gasBudget: 50_000_000 });
+    const depResult = await execTx(depTx, trader, {
+      gasBudget: integrationGasBudget("default"),
+    });
     assertSuccess(depResult);
     balance = await getWxaAccountBalance(client, accountId, usdcType);
   }

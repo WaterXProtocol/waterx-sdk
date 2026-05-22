@@ -23,6 +23,7 @@ import {
   execBuiltTxWithCooldownRetries,
   execTx,
   extractEvent,
+  integrationGasBudget,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
 } from "../setup.ts";
@@ -134,7 +135,7 @@ describe.skipIf(!integrationCloseOneEnabled)(
             useSponsor: true,
           }),
         trader,
-        { cooldownTickers: [resolved.ticker], gasBudget: 280_000_000 },
+        { cooldownTickers: [resolved.ticker], gasBudget: integrationGasBudget("lifecycle") },
       );
 
       assertSuccess(result);

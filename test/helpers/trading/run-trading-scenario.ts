@@ -8,28 +8,17 @@ import { Transaction } from "@mysten/sui/transactions";
 import type { WaterXClient } from "../../../src/client.ts";
 import { ORDER_LIMIT_BUY, ORDER_LIMIT_SELL } from "../../../src/constants.ts";
 import { matchOrders } from "../../../src/user/trading.ts";
-import { updateTokenValue } from "../../../src/user/wlp.ts";
-import { refreshOraclePrices } from "../../../src/utils/pyth.ts";
 import { DUMMY_SENDER } from "../e2e/e2e-client.ts";
 import {
   simulateWithTransientRetry,
+  skipHermesIfFeedUnavailable,
   skipSimulateIfOracleTransient,
 } from "../e2e/simulate-assertions.ts";
+import { refreshOraclePricesForTradingEdge } from "./oracle-trading-edge.ts";
+
+export { refreshOraclePricesForTradingEdge };
 
 export type TradingRunMode = "simulate" | "execute";
-
-export async function refreshOraclePricesForTradingEdge(
-  tx: Transaction,
-  client: WaterXClient,
-  tickers: Iterable<string>,
-): Promise<void> {
-  const pool = Object.keys(client.config.packages.wlp.pool_tokens);
-  const uniq = [...new Set([...tickers, ...pool])];
-  await refreshOraclePrices(tx, client, uniq, {});
-  for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
-    updateTokenValue(client, tx, { tokenType });
-  }
-}
 
 /** Keeper `matchOrders` after oracle refresh (fills parked market-form rests). */
 export async function buildMatchOrdersAfterRefreshTx(
@@ -69,7 +58,15 @@ export async function runBuiltTradingTx(opts: {
   execGasBudget?: number;
   oracleTransientCtx?: { skip: (reason?: string) => void };
 }): Promise<unknown> {
-  const built = await opts.buildTx();
+  let built: Transaction;
+  try {
+    built = await opts.buildTx();
+  } catch (e) {
+    if (opts.oracleTransientCtx && skipHermesIfFeedUnavailable(opts.oracleTransientCtx, e)) {
+      return;
+    }
+    throw e;
+  }
   if (opts.mode === "simulate") {
     built.setSender(opts.simulateSender ?? DUMMY_SENDER);
     const sim = await simulateWithTransientRetry(() => opts.client.simulate(built));

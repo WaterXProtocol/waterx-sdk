@@ -3,7 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
 
-import { isInfrastructureTransientError, isTransientRpcErrorMessage } from "./transient-rpc.ts";
+import {
+  isInfrastructureTransientError,
+  isOracleTransientFailureMessage,
+  isTransientRpcErrorMessage,
+} from "./transient-rpc.ts";
+
+export { isOracleTransientFailureMessage };
 
 export { isTransientRpcErrorMessage };
 
@@ -41,14 +47,6 @@ export function isSimulateOutcome(sim: unknown): boolean {
 }
 
 /**
- * Oracle feed/aggregate failures that are external-state dependent on testnet and
- * should not be treated as SDK logic regressions in dry-run suites.
- */
-export function isOracleTransientFailureMessage(msg: string): boolean {
-  return msg.includes("::supra_rule::feed") || msg.includes("::pyth_rule::feed");
-}
-
-/**
  * When gRPC simulate returns `FailedTransaction` due to oracle flakiness
  * (Pyth/Supra feed/aggregate transient), skip with a **uniform** message
  * across all `test/simulate` suites (so CI diff noise is minimal and both
@@ -71,9 +69,8 @@ export function skipSimulateIfOracleTransient(
 }
 
 /**
- * When {@link refreshOraclePrices} fails before dry-run — e.g. Hermes **404** “Price ids not found” —
- * the deployment’s **`waterx-config` feed IDs** may not exist on the chosen Hermes gateway. Treat as
- * **environment mismatch**, not an SDK regression (same tier as flaky oracle paths).
+ * When {@link refreshOraclePrices} fails before dry-run — Hermes gateway / feed infra, not SDK logic.
+ * Covers **404** feed mismatch, **5xx** bursts (503/521), and HTML error pages from Cloudflare.
  */
 export function skipHermesIfFeedUnavailable(
   ctx: { skip: (reason?: string) => void },
@@ -81,9 +78,24 @@ export function skipHermesIfFeedUnavailable(
 ): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   if (!msg.includes("Hermes price fetch failed")) return false;
-  if (!msg.includes("404") && !msg.includes("Price ids not found")) return false;
-  ctx.skip(`Hermes feed / gateway mismatch: ${msg.split("\n")[0]}`);
-  return true;
+
+  const firstLine = msg.split("\n")[0] ?? msg;
+  const statusMatch = /Hermes price fetch failed: (\d{3})/.exec(firstLine);
+  const status = statusMatch ? Number(statusMatch[1]) : undefined;
+
+  if (msg.includes("Price ids not found") || status === 404) {
+    ctx.skip(`Hermes feed / gateway mismatch: ${firstLine}`);
+    return true;
+  }
+  if (status != null && (status === 429 || status >= 500)) {
+    ctx.skip(`Hermes gateway unavailable: ${firstLine}`);
+    return true;
+  }
+  if (msg.includes("Web server is down") || msg.includes("cloudflare.com")) {
+    ctx.skip(`Hermes gateway unavailable: ${firstLine}`);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -492,4 +504,45 @@ export function assertSimulateAbortMatches(
   expected: { abortCode: number; locationIncludes?: string },
 ): void {
   assertSimulateMoveAbort(result, expected);
+}
+
+/**
+ * Negative-path simulate: require `FailedTransaction` without pinning a numeric abort code
+ * (stable across contract tweaks). Optional loose message substrings when helpful.
+ */
+export function assertSimulateFailed(
+  result: unknown,
+  opts?: { messageIncludes?: readonly string[] },
+): void {
+  expect(result).toBeDefined();
+  const r = result as SimulateResult;
+  expect(
+    r.$kind,
+    r.$kind === "Transaction"
+      ? "expected simulate to fail, but transaction succeeded"
+      : `expected FailedTransaction, got ${String(r.$kind)}`,
+  ).toBe("FailedTransaction");
+  if (opts?.messageIncludes?.length) {
+    const msg = extractSimulateError(r);
+    const hit = opts.messageIncludes.some((s) => msg.includes(s));
+    expect(
+      hit,
+      `simulate error should mention one of [${opts.messageIncludes.join(", ")}]: ${msg}`,
+    ).toBe(true);
+  }
+}
+
+/** Run simulate with infra retry; skip on transient RPC/oracle flakes. Returns `undefined` when skipped. */
+export async function simulateForTestOrSkip(
+  ctx: { skip: (reason?: string) => void },
+  simulateOnce: () => Promise<unknown>,
+): Promise<unknown | undefined> {
+  try {
+    const sim = await simulateWithTransientRetry(simulateOnce);
+    if (skipSimulateIfOracleTransient(ctx, sim)) return undefined;
+    return sim;
+  } catch (e) {
+    if (skipIfTransientInfrastructureError(ctx, e)) return undefined;
+    throw e;
+  }
 }

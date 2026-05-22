@@ -16,6 +16,7 @@ import {
   buildWithdrawCollateralTx,
 } from "../../../src/tx-builders.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
+import { integrationGasBudget } from "../../integration/helpers/integration-gas.ts";
 import {
   assertMarketTickerTradeableSnapshot,
   tickerRowApproxAcceptableUsdHint,
@@ -117,7 +118,7 @@ export async function runScratchTradingScenarioIntegration(
           useSponsor: true,
         }),
       trader,
-      { cooldownTickers: [ticker], gasBudget: 250_000_000 },
+      { cooldownTickers: [ticker], gasBudget: integrationGasBudget("lifecycle") },
     ),
   );
   if (placeResult === undefined) return;
@@ -128,7 +129,7 @@ export async function runScratchTradingScenarioIntegration(
       () =>
         buildMatchOrdersAfterRefreshTx(client, { ticker, isLong: scenario.integrationOpen.isLong }),
       trader,
-      { cooldownTickers: [ticker], gasBudget: 220_000_000 },
+      { cooldownTickers: [ticker], gasBudget: integrationGasBudget("lifecycle") },
     ),
   );
   if (matchRaw === undefined) return;
