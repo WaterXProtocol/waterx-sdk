@@ -18,7 +18,7 @@ describe("e2e persistent preflight flags", () => {
     expect(shouldRunE2ePersistentPreflight()).toBe(false);
   });
 
-  it("runs from Vitest setup only when WATERX_E2E_PREFLIGHT=1 and key is configured", () => {
+  it("flag is true when WATERX_E2E_PREFLIGHT=1 and integration key is configured", () => {
     prev.WATERX_E2E_PREFLIGHT = process.env.WATERX_E2E_PREFLIGHT;
     process.env.WATERX_E2E_PREFLIGHT = "1";
     expect(shouldRunE2ePersistentPreflight()).toBe(

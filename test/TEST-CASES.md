@@ -71,7 +71,7 @@
 | U-037 | test/unit/constants.test.ts | constants | scales USD to 1e9 fixed-point | 離線 fixture / mock config；無網路、無私鑰 | 執行單元斷言（純函式、解析、匯出） | Vitest `expect` 斷言通過 |
 | U-038 | test/unit/constants.test.ts | constants | throws on non-finite USD input | 離線 fixture / mock config；無網路、無私鑰 | 呼叫被測函式（非法輸入或缺 config） | 同步拋錯或 `rejects.toThrow` |
 | U-039 | test/unit/e2e-preflight.test.ts | e2e-preflight | is off by default (pnpm test:e2e does not auto-run preflight) | 離線 fixture / mock config；無網路、無私鑰 | 執行單元斷言（純函式、解析、匯出） | Vitest `expect` 斷言通過 |
-| U-040 | test/unit/e2e-preflight.test.ts | e2e-preflight | runs from Vitest setup only when WATERX_E2E_PREFLIGHT=1 and key is configured | 離線 fixture / mock config；無網路、無私鑰 | 執行單元斷言（純函式、解析、匯出） | Vitest `expect` 斷言通過 |
+| U-040 | test/unit/e2e-preflight.test.ts | e2e-preflight | flag is true when WATERX_E2E_PREFLIGHT=1 and integration key is configured | 離線 fixture / mock config；無網路、無私鑰 | 執行單元斷言（純函式、解析、匯出） | Vitest `expect` 斷言通過 |
 | U-041 | test/unit/expected-open-trading-fee.test.ts | expected-open-trading-fee | matches Move test: 1e9 size, $50k BTC, $100k pool TVL, 5 bps base → $50 fee (10 bps total) | 離線 fixture / mock config；無網路、無私鑰 | 執行單元斷言（純函式、解析、匯出） | Vitest `expect` 斷言通過 |
 | U-042 | test/unit/expected-open-trading-fee.test.ts | expected-open-trading-fee | closing leg after long OI: short 1e9 has only base 5 bps (no worsening LP exposure) | 離線 fixture / mock config；無網路、無私鑰 | 執行單元斷言（純函式、解析、匯出） | Vitest `expect` 斷言通過 |
 | U-043 | test/unit/fetch-simulate.test.ts | fetch-simulate | getGlobalConfigData parses BCS from simulate | Mock `WaterXClient` / `fetch` / gRPC；無真實鏈 | Mock simulate / fetch，呼叫 SDK API | Vitest `expect` 斷言通過 |

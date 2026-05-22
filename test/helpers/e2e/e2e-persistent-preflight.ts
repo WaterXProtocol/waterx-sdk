@@ -70,8 +70,8 @@ function preflightLog(msg: string): void {
 }
 
 /**
- * Opt-in hook for Vitest e2e setup (off by default; `pnpm test:e2e` does not call this).
- * Prefer `pnpm test:e2e:preflight` for local seeding.
+ * True when opt-in preflight env + integration key are set (used by scripts; not wired in e2e setupFiles).
+ * Prefer `pnpm test:e2e:preflight` for local seeding — `pnpm test:e2e` / CI do not call this.
  */
 export function shouldRunE2ePersistentPreflight(): boolean {
   if (resolveE2eNetwork() !== "testnet") return false;

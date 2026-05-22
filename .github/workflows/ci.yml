@@ -162,8 +162,8 @@ jobs:
       - name: Vitest e2e (dot + JUnit)
         env:
           NODE_NO_WARNINGS: "1"
-          # Testnet `waterx-config` Pyth feed ids are on Hermes Beta (prod returns 404 → skips/failures).
-          # Unset `WATERX_PYTH_HERMES_URL` so `PYTH_DEFAULTS.TESTNET` applies; SDK retries 503 and fails over beta↔prod.
+          # Testnet feed ids are on Hermes Beta (prod Hermes 404s them). Uses PYTH_DEFAULTS.TESTNET;
+          # SDK single-fetch only — e2e skips Hermes 429/5xx via skipHermesIfFeedUnavailable.
         run: pnpm exec tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
       - name: Test report (e2e)
         uses: dorny/test-reporter@v2

@@ -10,7 +10,7 @@
 
 Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.local`** from **`.env.example`** (Unix: tries `chmod 600`). Put **`WATERX_INTEGRATION_PRIVATE_KEY`** and other secrets only there or in your shell — see `.env.example` for precedence. **`.integration-trader.keystore`** remains supported and gitignored.
 
-Pyth **Hermes** sporadic **502/503/504/521**: e2e tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use the default **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Do **not** set **`WATERX_PYTH_HERMES_URL=https://hermes.pyth.network`** for **`pnpm test:e2e`** unless you accept Hermes skips/failures.
+Pyth **Hermes** sporadic **502/503/504/521**: SDK **`fetchPriceFeedsUpdateData`** does one REST call (non-2xx throws; no retry or beta⇄prod failover). E2e simulate tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Integration tests do **not** skip pure Hermes HTTP failures (only on-chain **`::pyth_rule::feed`** transients via **`execIntegrationOrSkipOracleTransient`**).
 
 PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and sharded **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
 
