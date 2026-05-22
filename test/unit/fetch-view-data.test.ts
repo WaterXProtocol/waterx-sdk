@@ -1,12 +1,15 @@
 /**
  * Unit tests for fetch.ts view helpers (mocked simulate).
  */
+import { bcs } from "@mysten/sui/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getAccountData,
   getAccountOrders,
   getAccountPositions,
+  getCustodyAssetData,
+  getCustodyVaultData,
   getMarketData,
   getMarketOrders,
   getMarketPositions,
@@ -44,6 +47,7 @@ import {
   mockSimulatePagedNested,
   mockSimulateReturn,
 } from "../helpers/fixtures/mock-simulate.ts";
+import { MOCK_CUSTODY_ASSET_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -235,6 +239,42 @@ describe("fetch view helpers (mocked simulate)", () => {
     await expect(getRefererFor(bare, mockSuiAddress("aa"))).rejects.toThrow(
       /referral package not configured/,
     );
+  });
+
+  it("getCustodyVaultData reads creditSupply", async () => {
+    mockSimulateReturn(client, [{ bcs: bcs.u64().serialize(7_500_000n).toBytes() }]);
+    expect(await getCustodyVaultData(client)).toEqual({ creditSupply: 7_500_000n });
+  });
+
+  it("getCustodyAssetData returns registered:false when the asset is absent", async () => {
+    mockSimulateReturn(client, [{ bcs: bcs.bool().serialize(false).toBytes() }]);
+    expect(await getCustodyAssetData(client, MOCK_CUSTODY_ASSET_TYPE)).toEqual({
+      registered: false,
+      mintFeeRate: 0n,
+      burnFeeRate: 0n,
+    });
+  });
+
+  it("getCustodyAssetData reads fee rates when the asset is registered", async () => {
+    const ok = (b: Uint8Array) => ({
+      $kind: "Success",
+      commandResults: [{ returnValues: [{ bcs: b }] }],
+    });
+    vi.spyOn(client, "simulate")
+      .mockResolvedValueOnce(ok(bcs.bool().serialize(true).toBytes()) as never)
+      .mockResolvedValueOnce(ok(bcs.u128().serialize(2_000_000n).toBytes()) as never)
+      .mockResolvedValueOnce(ok(bcs.u128().serialize(5_000_000n).toBytes()) as never);
+    expect(await getCustodyAssetData(client, MOCK_CUSTODY_ASSET_TYPE)).toEqual({
+      registered: true,
+      mintFeeRate: 2_000_000n,
+      burnFeeRate: 5_000_000n,
+    });
+  });
+
+  it("throws when native_custody is not configured", async () => {
+    const bare = createUnitTestClient();
+    delete (bare.config.packages as { native_custody?: unknown }).native_custody;
+    await expect(getCustodyVaultData(bare)).rejects.toThrow(/native_custody not configured/);
   });
 });
 

@@ -162,3 +162,4 @@ export * as oracleCalls from "./generated/waterx_oracle/oracle.ts";
 export * as pythRuleCalls from "./generated/waterx_pyth_rule/pyth_rule.ts";
 export * as pythSponsorRuleCalls from "./generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
 export * as referralCalls from "./generated/waterx_referral/referral_table.ts";
+export * as nativeCustodyCalls from "./generated/native_custody/custody_vault.ts";
