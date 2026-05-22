@@ -33,7 +33,14 @@ import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transac
 import { WaterXClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { creditSupply, hasAsset } from "../src/generated/native_custody/custody_vault.ts";
-import { burnCredit, mintCreditToAccount } from "../src/index.ts";
+import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
+import {
+  burnCredit,
+  mintCreditFromRequest,
+  mintCreditToAccount,
+  requestDepositFromReceivings,
+  transferToAccount,
+} from "../src/index.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -149,6 +156,32 @@ async function firstCoin(
   return coin?.objectId ?? coin?.coinObjectId;
 }
 
+/** Full object refs of every `coinType` coin owned by `owner` — for `receivingRef`. */
+async function coinRefsOwnedBy(
+  client: WaterXClient,
+  owner: string,
+  coinType: string,
+): Promise<{ objectId: string; version: string; digest: string }[]> {
+  const res = (await client.grpcClient.listCoins({ owner, coinType })) as {
+    objects?: { objectId?: string; coinObjectId?: string }[];
+    coins?: { objectId?: string; coinObjectId?: string }[];
+  };
+  const list = res.objects ?? res.coins ?? [];
+  const refs: { objectId: string; version: string; digest: string }[] = [];
+  for (const c of list) {
+    const id = c.objectId ?? c.coinObjectId;
+    if (!id) continue;
+    const obj = (await client.grpcClient.getObject({ objectId: id })) as {
+      object?: { version?: string | number; digest?: string };
+    };
+    const o = obj.object;
+    if (o?.version != null && o.digest) {
+      refs.push({ objectId: id, version: String(o.version), digest: o.digest });
+    }
+  }
+  return refs;
+}
+
 async function main(): Promise<void> {
   const { keypair, address } = loadActiveKeypair();
   const client = await WaterXClient.create("TESTNET", { cache: true });
@@ -258,6 +291,67 @@ async function main(): Promise<void> {
       const outcome = await sim(client, address, tx, "burnCredit (sim)");
       if (doExecute && outcome === "ok") {
         await execute(client, keypair, tx, "burnCredit (execute)");
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 4. Transfer-to-object mint — transfer Coin<T> onto the account object,
+  //    then receive it via requestDepositFromReceivings → mintCreditFromRequest.
+  // ==========================================================================
+  console.log("\n=== TTO mint (transfer → receivings → mintFromRequest) ===");
+  if (!asset) {
+    console.log("  no backing asset registered in config — skipped");
+  } else if (!doExecute) {
+    console.log(
+      "  needs WATERX_CUSTODY_EXECUTE=1 — the transfer must land on-chain before it can be received",
+    );
+  } else {
+    const coinId = await firstCoin(client, address, asset.type);
+    if (!coinId) {
+      console.log(`  no Coin<${asset.type.split("::").slice(-1)[0]}> in wallet — skipped`);
+    } else {
+      // step A — transfer a fresh Coin<T> onto the account object
+      const txA = new Transaction();
+      const [part] = txA.splitCoins(txA.object(coinId), [txA.pure.u64(SMOKE_AMOUNT)]);
+      transferToAccount(client, txA, { accountId, coin: part!, coinType: asset.type });
+      if (!(await execute(client, keypair, txA, "transferToAccount (execute)"))) {
+        console.log("  transfer failed — skipping the receive/mint step");
+      } else {
+        // step B — receive the transferred coin(s) and mint CREDIT from the request
+        const refs = await coinRefsOwnedBy(client, accountId, asset.type);
+        if (refs.length === 0) {
+          console.log("  account holds no Coin<T> after transfer — skipped");
+        } else {
+          const txB = new Transaction();
+          const receivings = refs.map((r) => txB.receivingRef(r));
+          const depositReq = requestDepositFromReceivings(client, txB, {
+            accountId,
+            receivings,
+            coinType: asset.type,
+          });
+          const creditReq = mintCreditFromRequest(client, txB, {
+            depositRequest: depositReq,
+            assetType: asset.type,
+          });
+          consumeDepositDirect({
+            package: client.config.packages.waterx_account.published_at,
+            arguments: {
+              registry: txB.object(client.config.packages.waterx_account.account_registry),
+              req: creditReq as unknown as string,
+            },
+            typeArguments: [creditType],
+          })(txB);
+          const outcome = await sim(
+            client,
+            address,
+            txB,
+            "requestDepositFromReceivings+mint (sim)",
+          );
+          if (outcome === "ok") {
+            await execute(client, keypair, txB, "TTO mint (execute)");
+          }
+        }
       }
     }
   }

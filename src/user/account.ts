@@ -11,7 +11,11 @@
  * or a `TransactionArgument`).
  */
 
-import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+import type {
+  Transaction,
+  TransactionArgument,
+  TransactionObjectArgument,
+} from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
 import * as wxa from "../generated/waterx_account/account.ts";
@@ -182,6 +186,49 @@ export function requestDeposit(
       registry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       coin: params.coin as unknown as string,
+      extraData: Array.from(params.extraData ?? new Uint8Array()),
+    },
+    typeArguments: [params.coinType],
+  })(tx);
+  return req as unknown as TransactionArgument;
+}
+
+export interface RequestDepositFromReceivingsParams {
+  /** wxa account ID receiving the deposit. */
+  accountId: string;
+  /**
+   * `Receiving<Coin<T>>` arguments — one per `Coin<T>` previously transferred
+   * onto the account's address. Build each with
+   * `tx.receivingRef({ objectId, version, digest })`.
+   */
+  receivings: TransactionArgument[];
+  /** Fully-qualified coin type `T`. */
+  coinType: string;
+  /** Optional opaque extra data forwarded to the policy. */
+  extraData?: Uint8Array;
+}
+
+/**
+ * Build `account::request_deposit_from_receivings<T>` — drains `Coin<T>`
+ * objects previously transferred onto the account's address (the
+ * transfer-to-object path) into a single `DepositRequest<T>`. Returns the
+ * `DepositRequest<T>` argument.
+ */
+export function requestDepositFromReceivings(
+  client: WaterXClient,
+  tx: Transaction,
+  params: RequestDepositFromReceivingsParams,
+): TransactionArgument {
+  const receivings = tx.makeMoveVec({
+    type: `0x2::transfer::Receiving<0x2::coin::Coin<${params.coinType}>>`,
+    elements: params.receivings as unknown as TransactionObjectArgument[],
+  });
+  const [req] = wxa.requestDepositFromReceivings({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      accountId: params.accountId,
+      receivings: receivings as unknown as string[],
       extraData: Array.from(params.extraData ?? new Uint8Array()),
     },
     typeArguments: [params.coinType],
