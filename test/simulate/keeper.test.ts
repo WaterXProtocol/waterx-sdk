@@ -5,8 +5,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import { liquidate, matchOrders, ORDER_LIMIT_BUY, updateFundingRate } from "@waterx/perp-sdk";
 import { describe, it } from "vitest";
 
-import { assertSimulateReached } from "../helpers/e2e/simulate-assertions.ts";
 import { client, DUMMY_SENDER, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
+import { assertSimulateReached } from "../helpers/e2e/simulate-assertions.ts";
 
 describe(`keeper (${e2eNetwork})`, () => {
   const collateralType = client.getPoolTokenType("USDCUSD");

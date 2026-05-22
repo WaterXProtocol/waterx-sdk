@@ -13,14 +13,16 @@ describe("transient-rpc", () => {
 
   it("treats network TypeError as transient infra", () => {
     expect(isInfrastructureTransientError(new TypeError("fetch failed"))).toBe(true);
-    expect(isInfrastructureTransientError(new TypeError("NetworkError when attempting fetch"))).toBe(
-      true,
-    );
+    expect(
+      isInfrastructureTransientError(new TypeError("NetworkError when attempting fetch")),
+    ).toBe(true);
   });
 
   it("does not treat arbitrary TypeError as transient infra", () => {
     expect(
-      isInfrastructureTransientError(new TypeError("Cannot read properties of undefined (reading 'x')")),
+      isInfrastructureTransientError(
+        new TypeError("Cannot read properties of undefined (reading 'x')"),
+      ),
     ).toBe(false);
   });
 

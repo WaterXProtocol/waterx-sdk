@@ -6,7 +6,6 @@ import { stake } from "@waterx/perp-sdk";
 import { beforeAll, describe, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
-import { discoverStakingRewarderTypes } from "../helpers/e2e/staking-rewarders.ts";
 import {
   loadWxaAccountWithWlp,
   wxaDiscoverySkipReason,
@@ -17,6 +16,7 @@ import {
   simulateWithTransientRetry,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
+import { discoverStakingRewarderTypes } from "../helpers/e2e/staking-rewarders.ts";
 
 const stakingReady = Boolean(client.config.packages.waterx_staking?.pools?.WLP);
 

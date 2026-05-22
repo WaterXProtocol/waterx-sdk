@@ -20,17 +20,14 @@ import {
 } from "../helpers/e2e/discover-on-chain-position.ts";
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
-import { closeOrDecreaseAcceptablePrice } from "../integration/helpers/integration-market-snapshot.ts";
 import {
   assertSimulateSuccess,
   skipSimulateIfStateDependent,
 } from "../helpers/e2e/simulate-assertions.ts";
 import { runBuiltTradingTx } from "../helpers/trading/run-trading-scenario.ts";
+import { closeOrDecreaseAcceptablePrice } from "../integration/helpers/integration-market-snapshot.ts";
 
-function assertDiscoveredTradingSim(
-  ctx: { skip: (reason?: string) => void },
-  sim: unknown,
-): void {
+function assertDiscoveredTradingSim(ctx: { skip: (reason?: string) => void }, sim: unknown): void {
   if (sim === undefined) return;
   if (skipSimulateIfStateDependent(ctx, sim)) return;
   assertSimulateSuccess(sim, 1);
