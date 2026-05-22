@@ -15,7 +15,7 @@
  *   pnpm test:e2e --testnet test/simulate/fetch-errors.test.ts
  *   pnpm test:e2e --coverage                      # forwarded to vitest
  *   WATERX_E2E_MAX_FORKS=3 pnpm test:e2e        # parallel test **files** (2–8; may 429 on public gRPC)
- *   (`--shard i/n` is forwarded too; GitHub CI uses that in `.github/workflows/ci.yml`, not package.json scripts.)
+ *   (`--shard i/n` is forwarded to vitest for local splits; CI runs one unsharded job.)
  */
 import { spawn } from "node:child_process";
 import path from "node:path";

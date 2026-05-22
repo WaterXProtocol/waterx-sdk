@@ -2,7 +2,7 @@
 
 ## 測試用例清單
 
-完整用例表（編號、前置條件、操作、預期結果）：**[`test/TEST-CASES.md`](./TEST-CASES.md)**（338 條，含 Unit / E2E / Integration）。
+完整用例表（編號、前置條件、操作、預期結果）：**[`test/TEST-CASES.md`](./TEST-CASES.md)**（339 條，含 Unit / E2E / Integration）。
 
 重新產生：`pnpm exec tsx scripts/generate-test-cases-doc.ts`
 
@@ -12,14 +12,14 @@ Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.l
 
 Pyth **Hermes** sporadic **502/503/504/521**: SDK **`fetchPriceFeedsUpdateData`** does one REST call (non-2xx throws; no retry or beta⇄prod failover). E2e simulate tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Integration tests do **not** skip pure Hermes HTTP failures (only on-chain **`::pyth_rule::feed`** transients via **`execIntegrationOrSkipOracleTransient`**).
 
-PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and sharded **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
+PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and a single **`test-e2e`** job running **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
 
 ## Vitest projects
 
 | Project                | Glob                                         | Notes                                                                                                                                                                                          |
 | ---------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **unit**               | `src/**/*.test.ts`, `test/unit/**/*.test.ts` | Fast, no chain                                                                                                                                                                                 |
-| **e2e**                | `test/simulate/**/*.test.ts`                 | **v3** `simulateTransaction` against canonical **`waterx-config`** (`WaterXClient.create`). Single Vitest fork by default (public gRPC rate limits). **Testnet default locally** (mainnet JSON often incomplete); **CI** uses the same (`pnpm exec tsx scripts/run-e2e.ts --testnet`, 3-way `--shard`). Use **`--mainnet`** when `waterx-config/main/mainnet.json` is ready. |
+| **e2e**                | `test/simulate/**/*.test.ts`                 | **v3** `simulateTransaction` against canonical **`waterx-config`** (`WaterXClient.create`). Single Vitest fork by default (public gRPC rate limits). **Testnet default locally** (mainnet JSON often incomplete); **CI** runs the same command in one job (`pnpm exec tsx scripts/run-e2e.ts --testnet`, no **`--shard`**). Use **`--mainnet`** when `waterx-config/main/mainnet.json` is ready. |
 | **integration-trader** | `test/integration/**/*.test.ts`            | **[v3] On-chain** integration against canonical **`waterx-config`**. Starts via **`pnpm test:integration`** (`scripts/run-integration.ts`), which aligns **`WATERX_E2E_NETWORK`** / **`WATERX_INTEGRATION_NETWORK`**. Needs **`WATERX_INTEGRATION_PRIVATE_KEY`** (or `.integration-trader.keystore`). Most suites **`describe.skipIf(!isIntegrationTraderConfigured())`**; optional env still gates destructive cases (e.g. close-one position). **`WATERX_INTEGRATION_MAX_FORKS`** caps Vitest parallelism. **Gas:** low default caps via **`integrationGasBudget`** (~0.01–0.02 SUI); optional **`WATERX_INTEGRATION_GAS_BUDGET`**. Tests **run first**; only **skip** (not fail) when the chain reports insufficient SUI for gas selection. Run a subset: `pnpm test:integration test/integration/user/trader-custody.test.ts`. |
 
 **Skipped counts:** Vitest reports **`skipped`** when tests opt out via **`ctx.skip`** or **`describe.skipIf`** — **environment / on-chain state**, not broken placeholders. Common cases:
@@ -75,14 +75,14 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 | ----------------------------- | ----------------------------------------------------------------------------------------------- |
 | `pnpm test:ci`                | **`test:ci:full`**: unit (coverage + JUnit) then **`test:ci:e2e`** (**testnet**, JUnit XML)    |
 | `pnpm test:ci:unit`           | Unit + coverage + `test-results-unit.xml`                                                      |
-| `pnpm test:ci:e2e`            | Simulate e2e on **testnet** + `test-results-simulate-testnet.xml` (same network as CI shards) |
+| `pnpm test:ci:e2e`            | Simulate e2e on **testnet** + `test-results-simulate-testnet.xml` (same network as CI e2e job) |
 | `pnpm test:ci:e2e:testnet`    | Same flags/output as **`test:ci:e2e`** (explicit alias)                                         |
 | `pnpm test:ci:e2e:mainnet`    | Mainnet + `test-results-simulate-mainnet.xml`                                                   |
 | `pnpm test:ci:e2e:coverage`   | **`pnpm exec tsx scripts/run-e2e.ts --testnet --coverage`**                                    |
 
 **Discovery audit:** **`pnpm audit:e2e-discovery --testnet`** lists live testnet **`discover*`** usages (helps keep simulate discovery consistent).
 
-**GitHub Actions** shards **`pnpm exec tsx scripts/run-e2e.ts --testnet … --shard=i/3`** across three runners. Use **`pnpm test:e2e:mainnet`** (or **`WATERX_E2E_NETWORK=mainnet`**) when you intentionally exercise **mainnet** and config is complete.
+**GitHub Actions** runs one **`test-e2e`** job with **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (no matrix / **`--shard`**). Use **`pnpm test:e2e:mainnet`** (or **`WATERX_E2E_NETWORK=mainnet`**) when you intentionally exercise **mainnet** and config is complete.
 
 ## Simulate / e2e: network + discovery
 
