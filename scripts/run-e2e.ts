@@ -6,12 +6,12 @@
  * Network resolution precedence:
  *   1. `--testnet` or `--mainnet` CLI flag
  *   2. `WATERX_E2E_NETWORK` env var
- *   3. **testnet** (default — mainnet config is not fully deployed)
+ *   3. **testnet** (default until canonical mainnet.json is complete)
  *
  * Examples:
  *   pnpm test:e2e                                 # testnet (default)
- *   pnpm test:e2e --mainnet                       # mainnet (sparse config until deployed)
- *   pnpm test:e2e --testnet -t "config views"    # testnet + test-name filter
+ *   pnpm test:e2e --mainnet                       # mainnet when config is ready
+ *   pnpm test:e2e --testnet -t "reads BTC"        # testnet + test-name filter
  *   pnpm test:e2e --testnet test/simulate/fetch-errors.test.ts
  *   pnpm test:e2e --coverage                      # forwarded to vitest
  *   WATERX_E2E_MAX_FORKS=3 pnpm test:e2e        # parallel test **files** (2–8; may 429 on public gRPC)
@@ -20,6 +20,10 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
+
+loadRepoEnvFiles();
 
 type Network = "testnet" | "mainnet";
 

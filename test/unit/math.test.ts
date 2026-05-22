@@ -460,4 +460,8 @@ describe("WLP math", () => {
     const fee = calcDynamicFeeBps(50_000, 100_000, 80_000, 5000, base, false);
     expect(fee).toBeGreaterThanOrEqual(base);
   });
+
+  it("calcDynamicFeeBps returns base when average target value is zero", () => {
+    expect(calcDynamicFeeBps(1, 0, 1_000_000, 5000, 25, true)).toBe(25);
+  });
 });

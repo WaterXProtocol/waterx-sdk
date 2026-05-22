@@ -1,10 +1,16 @@
 import type { WaterXClient } from "@waterx/perp-sdk";
 
+import { e2eCanonicalWxaAccountIds, e2eCanonicalWxaOwner } from "./canonical-testnet-account.ts";
 import {
+  discoverActivePositionForAccount,
   discoverFundedProbe,
   type DiscoverActivePositionOpts,
 } from "./discover-on-chain-position.ts";
-import { PROBE_MIN_ACCOUNT_USDC } from "./e2e-client.ts";
+import { PROBE_MIN_ACCOUNT_USDC, resolveE2eNetwork } from "./e2e-client.ts";
+import { activeLifecycleTickersForClient } from "./lifecycle-test-markets.ts";
+
+/** USDC gate for canonical integration wxa (lower than public `PROBE_MIN_ACCOUNT_USDC`). */
+const CANONICAL_PROBE_MIN_ACCOUNT_USDC = 6_000_000n;
 
 /** Subset of {@link discoverFundedProbe} result needed for `setSender` / `accountId` wiring in e2e. */
 export type FundedProbe = {
@@ -13,11 +19,41 @@ export type FundedProbe = {
 };
 
 /** Resolve one funded probe owner + TTO account id, or `null` when discovery finds nothing. */
+async function loadFundedProbeFromCanonicalAccount(
+  client: WaterXClient,
+  extraDiscoverOpts?: Omit<DiscoverActivePositionOpts, "minAccountUsdcBalance">,
+): Promise<FundedProbe | null> {
+  const accountId = e2eCanonicalWxaAccountIds(resolveE2eNetwork())[0];
+  const owner = e2eCanonicalWxaOwner(resolveE2eNetwork());
+  if (!accountId || !owner) return null;
+
+  for (const ticker of activeLifecycleTickersForClient(client)) {
+    try {
+      const hit = await discoverActivePositionForAccount(client, ticker, accountId, {
+        minAccountUsdcBalance: CANONICAL_PROBE_MIN_ACCOUNT_USDC,
+        minAccountBalanceForPositionCollateral: CANONICAL_PROBE_MIN_ACCOUNT_USDC,
+        requireCooldownElapsed: false,
+        maxLeverageUtilizationPercent: 99,
+        ...extraDiscoverOpts,
+      });
+      if (hit) {
+        return { accountId: hit.accountObjectAddress, owner: hit.ownerAddress };
+      }
+    } catch {
+      /* try next ticker */
+    }
+  }
+  return null;
+}
+
 export async function loadFundedProbe(
   client: WaterXClient,
   minAccountUsdcBalance: bigint = PROBE_MIN_ACCOUNT_USDC,
   extraDiscoverOpts?: Omit<DiscoverActivePositionOpts, "minAccountUsdcBalance">,
 ): Promise<FundedProbe | null> {
+  const canonical = await loadFundedProbeFromCanonicalAccount(client, extraDiscoverOpts);
+  if (canonical) return canonical;
+
   const d = await discoverFundedProbe(client, {
     minAccountUsdcBalance,
     ...extraDiscoverOpts,

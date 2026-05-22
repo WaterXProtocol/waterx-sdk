@@ -1,6 +1,6 @@
 # Single PR pipeline for `main`: replaces legacy `lint.yml` + `unit-test.yml` (no duplicate runs).
 # Core: pnpm lint, typecheck, build, test:ci:unit + matrix e2e shards (Vitest --shard, parallel jobs).
-# Extra: Trivy, Semgrep, gitleaks, pnpm audit. Integration tests stay local (`pnpm test:integration`).
+# Extra: Trivy, Semgrep, gitleaks, pnpm audit. On-chain integration is local-only (`pnpm test:integration`; needs keys + funded wallet — not run in CI).
 
 name: CI
 
@@ -140,7 +140,7 @@ jobs:
           path: coverage/
           retention-days: 7
 
-  # Simulate e2e (single job — only 3 test files today; re-enable Vitest --shard matrix when the suite grows).
+  # Simulate e2e (single job shards ~19 tests under test/simulate; adjust --shard/i/N if runtime grows).
   test-e2e:
     needs: setup
     runs-on: ubuntu-latest
@@ -162,6 +162,8 @@ jobs:
       - name: Vitest e2e (dot + JUnit)
         env:
           NODE_NO_WARNINGS: "1"
+          # Testnet `waterx-config` Pyth feed ids are on Hermes Beta (prod returns 404 → skips/failures).
+          # Unset `WATERX_PYTH_HERMES_URL` so `PYTH_DEFAULTS.TESTNET` applies; SDK retries 503 and fails over beta↔prod.
         run: pnpm exec tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
       - name: Test report (e2e)
         uses: dorny/test-reporter@v2

@@ -1,90 +1,69 @@
 import { Transaction } from "@mysten/sui/transactions";
-import {
-  PYTH_PRICE_FEED_IDS,
-  PYTH_TESTNET_FEED_IDS,
-  PythCache,
-  updatePythPrices,
-  type WaterXClient,
-} from "@waterx/perp-sdk";
+import { PythCache, updatePythPrices, type WaterXClient } from "@waterx/perp-sdk";
 
-import type { BaseAsset } from "../../../src/constants.ts";
 import { DUMMY_SENDER } from "./e2e-client.ts";
-import { activeLifecycleTestBasesForClient } from "./lifecycle-test-markets.ts";
+import { activeLifecycleTickersForClient } from "./lifecycle-test-markets.ts";
 import { fetchSimulatedUsdPricesForBases } from "./oracle-simulate-multi-asset.ts";
 
+function normalizeFeedId(hex?: string): string | undefined {
+  if (!hex) return undefined;
+  return hex.replace(/^0x/i, "").toLowerCase();
+}
+
 /**
- * Hermes → Pyth update + simulate so on-chain `PriceInfoObject`s are fresh before
- * resize / `addPriceFeeds` probes. Include **collateral** feeds (USDC/USDSUI) so
- * `resolve_size` paths do not hit `err_total_weight_not_enough` (204) on stale
- * collateral aggregates.
+ * Hermes → Pyth price update inside one simulate so `PriceInfoObject`s are touched before trading probes.
+ * Uses configured `pyth_rule.feeds` for lifecycle tickers + pool collateral tickers.
  */
-export async function warmPythHermesForBases(
+export async function warmPythHermesForTickers(
   client: WaterXClient,
   cache: PythCache,
-  bases: readonly BaseAsset[],
+  tickers: readonly string[],
 ): Promise<void> {
   try {
-    const pythCfg = client.config.pythConfig;
-    const feedIdTable =
-      client.config.network === "TESTNET" ? PYTH_TESTNET_FEED_IDS : PYTH_PRICE_FEED_IDS;
+    const feeds = client.config.packages.pyth_rule?.feeds ?? {};
     const feedSet = new Set<string>();
-    for (const base of bases) {
-      const m = client.getMarketEntry(base);
-      const fid = feedIdTable[m.feedKey]?.replace(/^0x/, "");
+    for (const t of tickers) {
+      const fid = normalizeFeedId(feeds[t]?.feed_id);
       if (fid) feedSet.add(fid);
     }
-    for (const col of Object.values(client.config.collaterals)) {
-      const fid = feedIdTable[col.feedKey]?.replace(/^0x/, "");
+    const poolTokens = client.config.packages.wlp?.pool_tokens ?? {};
+    for (const poolTicker of Object.keys(poolTokens)) {
+      const fid = normalizeFeedId(feeds[poolTicker]?.feed_id);
       if (fid) feedSet.add(fid);
     }
 
-    if (pythCfg && feedSet.size > 0) {
+    if (feedSet.size > 0) {
       const warmTx = new Transaction();
       warmTx.setSender(DUMMY_SENDER);
       warmTx.setGasBudget(1_200_000_000);
-      await updatePythPrices(warmTx, client.grpcClient, pythCfg, [...feedSet], cache);
-
-      await client.grpcClient.simulateTransaction({
-        transaction: warmTx,
-        include: { effects: true },
-      });
+      await updatePythPrices(warmTx, client, [...feedSet], cache);
+      await client.simulate(warmTx);
     }
   } catch {
-    /* Hermes flaky — callers retry with stale on-chain data */
+    /* Hermes flaky — callers proceed with on-chain state */
   }
 }
 
 /**
- * Probes oracle USD prices for all lifecycle bases via a single simulate TX.
- *
- * Before probing, issues a Hermes update inside the simulate TX so that Pyth
- * `PriceInfoObject`s carry fresh data — avoids `err_total_weight_not_enough (204)`
- * when on-chain prices are stale.  A shared `PythCache` is used so Hermes +
- * on-chain reads are fetched once across all feeds.
- *
- * If Hermes is unreachable or the simulate fails, the test is skipped.
- */
-/**
- * Retry up to `attempts` times (fresh `PythCache` each attempt) before
- * declaring the oracle bundle unavailable. Parallel forks easily trigger
- * transient 204 `err_total_weight_not_enough` on shared Hermes / on-chain feeds.
+ * Hint USD table for lifecycle tickers (no bucket oracle bundle).
+ * Optionally warms Hermes+Pyth once per attempt via {@link warmPythHermesForTickers}.
  */
 export async function lifecycleOracleUsdOrSkip(
   client: WaterXClient,
   ctx: { skip: (reason?: string) => void },
   attempts = 3,
-): Promise<Record<BaseAsset, number> | null> {
-  const bases = activeLifecycleTestBasesForClient(client);
-  if (bases.length === 0) return {} as Record<BaseAsset, number>;
+): Promise<Record<string, number> | null> {
+  const tickers = activeLifecycleTickersForClient(client);
+  if (tickers.length === 0) return {} as Record<string, number>;
 
   let lastErrorMsg: string | null = null;
   for (let i = 0; i < Math.max(1, attempts); i++) {
     const cache = new PythCache();
-    await warmPythHermesForBases(client, cache, bases);
+    await warmPythHermesForTickers(client, cache, tickers);
     try {
-      const prices = await fetchSimulatedUsdPricesForBases(client, bases, { pythCache: cache });
+      const prices = await fetchSimulatedUsdPricesForBases(client, tickers, { pythCache: cache });
       if (Object.keys(prices).length > 0) return prices;
-      lastErrorMsg = "no base prices resolved";
+      lastErrorMsg = "no ticker prices resolved";
     } catch (e) {
       lastErrorMsg = e instanceof Error ? e.message : String(e);
     }
@@ -92,6 +71,6 @@ export async function lifecycleOracleUsdOrSkip(
       await new Promise((r) => setTimeout(r, 400 + i * 600));
     }
   }
-  ctx.skip(`Oracle bundle simulate failed (${attempts} attempts): ${lastErrorMsg}`);
+  ctx.skip(`Oracle hint bundle failed (${attempts} attempts): ${lastErrorMsg}`);
   return null;
 }

@@ -1,46 +1,37 @@
 /**
- * Shared pieces for **scratch** integration lifecycles (open → mutate → close, no persistent slots).
- * Reuses {@link buildResizeSizingProbeTransaction} / {@link parseResizeSizingProbeResult} so
- * preflight sizing matches `trading::resize` + live oracle, aligned with simulate suite helpers.
+ * Shared pieces for **scratch** integration lifecycles (wxa balances, env ticker selection).
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { getAccountBalance, type WaterXClient } from "@waterx/perp-sdk";
+import type { WaterXClient } from "@waterx/perp-sdk";
 import { expect } from "vitest";
 
-import type { BaseAsset } from "../../../src/constants.ts";
-import type { MarketData } from "../../../src/view-types.ts";
-import { activeLifecycleTestBasesIntegration } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { getWxaAccountBalance } from "../../helpers/e2e/fetch-read-helpers-for-tests.ts";
+import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
 import {
-  assertSimulateSuccess,
-  skipSimulateIfOracleTransient,
-} from "../../helpers/e2e/simulate-assertions.ts";
-import {
-  buildResizeSizingProbeTransaction,
-  parseResizeSizingProbeResult,
-  type ResizeSizingProbeParams,
-} from "../../helpers/trading/simulate-resize-size.ts";
+  activeLifecycleTestBasesIntegration,
+  canonicalLifecycleTicker,
+  LIFECYCLE_TEST_TICKER_ORDER,
+} from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { assertSuccess } from "../setup.ts";
 import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
+import { integrationGasBudget } from "./integration-gas.ts";
 
 export type IntegrationExecTx = (
   tx: Transaction,
   signer: Ed25519Keypair,
   opts?: { gasBudget?: number },
-) => Promise<{
-  events: Array<{ type: string; parsedJson: unknown }>;
-  effects?: { status?: unknown };
-}>;
+) => Promise<NormalizedIntegrationTxResult>;
 
-export function selectedIntegrationLifecycleBasesFromEnv(): BaseAsset[] {
-  const all = activeLifecycleTestBasesIntegration();
+export function selectedIntegrationLifecycleBasesFromEnv(client: WaterXClient): string[] {
+  const all = activeLifecycleTestBasesIntegration(client);
   const raw = process.env.WATERX_INTEGRATION_BASES?.trim();
   if (!raw) return all;
 
   const selected = raw
     .split(",")
-    .map((s) => s.trim().toUpperCase())
-    .filter((s) => s.length > 0) as BaseAsset[];
+    .map((s) => canonicalLifecycleTicker(s.trim()))
+    .filter((s) => s.length > 0);
   const uniq = [...new Set(selected)];
   const invalid = uniq.filter((b) => !all.includes(b));
   if (invalid.length > 0) {
@@ -50,7 +41,38 @@ export function selectedIntegrationLifecycleBasesFromEnv(): BaseAsset[] {
   }
   if (!uniq.length) {
     throw new Error(
-      `WATERX_INTEGRATION_BASES is empty after parsing. Use comma-separated bases like BTC,ETH.`,
+      `WATERX_INTEGRATION_BASES is empty after parsing. Use comma-separated tickers like BTC,ETH or BTCUSD.`,
+    );
+  }
+  return uniq;
+}
+
+/**
+ * Parses `WATERX_INTEGRATION_BASES` against the static ticker table (**no WaterX client**).
+ * Intended for Vitest **test discovery**: titles resolve before integration `WaterXClient` bootstrap.
+ * Throws on symbols outside {@link LIFECYCLE_TEST_TICKER_ORDER}.
+ */
+export function integrationLifecycleBasesConfiguredOrStaticDefault(): readonly string[] {
+  const raw = process.env.WATERX_INTEGRATION_BASES?.trim();
+  if (!raw) return LIFECYCLE_TEST_TICKER_ORDER;
+
+  const selected = raw
+    .split(",")
+    .map((s) => canonicalLifecycleTicker(s.trim()))
+    .filter((s) => s.length > 0);
+  const uniq = [...new Set(selected)];
+  const allowed = new Set(LIFECYCLE_TEST_TICKER_ORDER);
+  const invalid = uniq.filter((b) => !allowed.has(b));
+  if (invalid.length > 0) {
+    throw new Error(
+      `Invalid WATERX_INTEGRATION_BASES: ${invalid.join(", ")}. Allowed: ${[
+        ...LIFECYCLE_TEST_TICKER_ORDER,
+      ].join(", ")}`,
+    );
+  }
+  if (!uniq.length) {
+    throw new Error(
+      `WATERX_INTEGRATION_BASES is empty after parsing. Use comma-separated tickers like BTC,ETH or BTCUSD.`,
     );
   }
   return uniq;
@@ -79,7 +101,7 @@ export function leverageBpsFromPositionOpened(ev: unknown): bigint {
 }
 
 /**
- * Top up account USDC to at least `minBalance` (smallest units) from the signer's wallet.
+ * Top up wxa account USDC to at least `minBalance` (smallest units) from the signer's wallet.
  */
 export async function ensureScratchLifecycleMinUsdc(
   client: WaterXClient,
@@ -89,47 +111,36 @@ export async function ensureScratchLifecycleMinUsdc(
   minBalance: bigint,
   execTx: IntegrationExecTx,
 ): Promise<void> {
-  const usdcType = client.config.collaterals.USDC.type;
-  let balance = await getAccountBalance(client, accountId, usdcType);
+  const usdcType = client.getPoolTokenType("USDCUSD");
+  let balance = await getWxaAccountBalance(client, accountId, usdcType);
   if (balance < minBalance) {
     const need = minBalance - balance;
     const depTx = await buildDepositUsdcFromWalletTx(client, owner, accountId, need);
-    const depResult = await execTx(depTx, trader, { gasBudget: 50_000_000 });
+    const depResult = await execTx(depTx, trader, {
+      gasBudget: integrationGasBudget("default"),
+    });
     assertSuccess(depResult);
-    balance = await getAccountBalance(client, accountId, usdcType);
+    balance = await getWxaAccountBalance(client, accountId, usdcType);
   }
   expect(balance).toBeGreaterThanOrEqual(minBalance);
 }
 
-/**
- * Dry-run `trading::resize` for one base (same wiring as {@link buildResolveSize}). On transient
- * oracle failure, calls `ctx.skip` and returns `undefined`.
- */
+/** @deprecated v2 resize probe — not ported for v3 tickers yet. */
 export async function simulateResizeForIntegrationOrSkip(
   ctx: { skip: (reason?: string) => void },
-  client: WaterXClient,
-  base: BaseAsset,
-  params: ResizeSizingProbeParams,
+  _client: WaterXClient,
+  _ticker: string,
+  _params: unknown,
 ): Promise<bigint | undefined> {
-  const bases = [base];
-  const { tx, resizeCommandIndexByBase } = await buildResizeSizingProbeTransaction(
-    client,
-    bases,
-    params,
-  );
-  const raw = await client.simulate(tx);
-  if (skipSimulateIfOracleTransient(ctx, raw)) return undefined;
-  assertSimulateSuccess(raw, tx.getData().commands.length, { transaction: tx });
-  const sizes = parseResizeSizingProbeResult(raw, bases, resizeCommandIndexByBase);
-  return sizes[base]!;
+  ctx.skip("v3: simulateResizeForIntegrationOrSkip not ported");
+  return undefined;
 }
 
-/** Assert simulated `resize` output is tradable for the current market snapshot.
- *  v2 removed `lot_size` / `min_size`; only a positive result is required. */
+/** Assert simulated resize output is positive (snapshot unused on v3 path). */
 export function expectResizeProbeMatchesSnapshot(
-  base: BaseAsset,
+  ticker: string,
   sized: bigint,
-  _snap: MarketData,
+  _snap: unknown,
 ): void {
-  expect(sized, `${base}: resize probe > 0`).toBeGreaterThan(0n);
+  expect(sized, `${ticker}: resize probe > 0`).toBeGreaterThan(0n);
 }

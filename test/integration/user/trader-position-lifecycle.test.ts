@@ -2,76 +2,92 @@ import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { positionExists } from "../../../src/fetch.ts";
-import { buildClosePositionTx, buildOpenPositionTx } from "../../../src/tx-builders.ts";
+import { buildClosePositionTx, buildPlaceOrderTx } from "../../../src/tx-builders.ts";
+import { rawPrice } from "../../../src/utils/math.ts";
 import {
+  activeLifecycleTestBasesIntegration,
   LIFECYCLE_APPROX_PRICE_CHAIN_SMOKE_MIN_USDC,
   LIFECYCLE_MIN_ACCOUNT_USDC,
-  lifecycleRow,
+  lifecycleTickerRow,
 } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { runScratchTradingScenarioIntegration } from "../../helpers/scratch/run-scratch-trading-scenario-integration.ts";
 import { scratchTradingScenarios } from "../../helpers/scratch/scratch-trading-scenarios.ts";
+import type { ScratchIntegrationDeps } from "../../helpers/trading/integration-scratch-lifecycle.ts";
+import { buildMatchOrdersAfterRefreshTx } from "../../helpers/trading/run-trading-scenario.ts";
 import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";
 import {
-  assertMarketSnapshotTradeable,
+  assertMarketTickerTradeableSnapshot,
   fetchIntegrationMarketSummaries,
+  tickerRowApproxAcceptableUsdHint,
   type IntegrationMarketSnapshotMap,
 } from "../helpers/integration-market-snapshot.ts";
 import {
   ensureScratchLifecycleMinUsdc,
+  integrationLifecycleBasesConfiguredOrStaticDefault,
   positionIdFromOpened,
-  selectedIntegrationLifecycleBasesFromEnv,
 } from "../helpers/scratch-lifecycle.ts";
 import {
   assertSuccess,
   client,
+  clientInit,
   execBuiltTxWithCooldownRetries,
-  execIntegrationOrSkipSupra,
+  execIntegrationOrSkipSupra as execOracleOrSkipDeprecated,
   execTx,
   extractEvent,
+  integrationGasBudget,
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
 } from "../setup.ts";
 
-function scenariosForIntegrationEnv() {
-  const bases = new Set(selectedIntegrationLifecycleBasesFromEnv());
-  return scratchTradingScenarios(client).filter((s) => bases.has(s.base));
-}
+const INTEGRATION_LIFECYCLE_VITEST_TICKERS = [
+  ...integrationLifecycleBasesConfiguredOrStaticDefault(),
+];
 
-/**
- * Data-driven scratch lifecycle: {@link scratchTradingScenarios} × env-selected bases.
- * Opt-in `WATERX_INTEGRATION_APPROX_PRICE_CHAIN`: oracle-cached `approxPrice` open+close on first selected base.
- */
 describe.skipIf(!isIntegrationTraderConfigured())(
-  "Integration: data-driven scratch lifecycle (testnet)",
+  "Integration: scratch lifecycle chains (place + fill + adjusts + close)",
   () => {
-    const scenarios = scenariosForIntegrationEnv();
     const approxPriceChainSmoke = Boolean(
       process.env.WATERX_INTEGRATION_APPROX_PRICE_CHAIN?.trim(),
     );
+
     let marketAtStart: IntegrationMarketSnapshotMap;
 
     beforeAll(async () => {
-      marketAtStart = await fetchIntegrationMarketSummaries(
-        client,
-        scenarios.map((s) => s.base),
-      );
+      await clientInit;
+      const deployed = new Set(activeLifecycleTestBasesIntegration(client));
+      const want = INTEGRATION_LIFECYCLE_VITEST_TICKERS.filter((t) => deployed.has(t));
+      const bases = want.length > 0 ? want : [...deployed];
+      marketAtStart = await fetchIntegrationMarketSummaries(client, bases);
     }, 180_000);
 
-    const integrationDeps = (trader: Ed25519Keypair) => ({
+    const integrationDeps = (trader: Ed25519Keypair): ScratchIntegrationDeps => ({
       client,
       trader,
       execBuiltTxWithCooldownRetries,
-      execIntegrationOrSkipSupra,
+      execIntegrationOrSkipSupra: execOracleOrSkipDeprecated,
       extractEvent,
       assertSuccess,
       marketAtStart,
     });
 
-    describe.each(scenarios)("$id — full chain", (scenario) => {
+    describe.each(INTEGRATION_LIFECYCLE_VITEST_TICKERS)("%s — full chain", (ticker) => {
       it("open → deposit → withdraw → increase → decrease → close", async (ctx) => {
+        await clientInit;
+
+        const deployed = activeLifecycleTestBasesIntegration(client);
+        if (!deployed.includes(ticker)) {
+          ctx.skip(`${ticker} not listed in waterx-config for this network`);
+          return;
+        }
+        const scenario = scratchTradingScenarios(client).find((s) => s.base === ticker);
+        if (!scenario) {
+          ctx.skip(`scratch scenario missing for ${ticker}`);
+          return;
+        }
+
         const trader = loadIntegrationTraderKeypair();
         const owner = trader.getPublicKey().toSuiAddress();
-        console.info(`[integration scratch][${scenario.id}] start`);
+        console.info(`[integration][${scenario.id}] start`);
 
         const { accountId } = await ensureUserAccountForIntegration(client, trader, execTx);
         await ensureScratchLifecycleMinUsdc(
@@ -89,20 +105,30 @@ describe.skipIf(!isIntegrationTraderConfigured())(
           scenario,
           accountId,
         );
-        console.info(`[integration scratch][${scenario.id}] done`);
-      }, 600_000);
+        console.info(`[integration][${scenario.id}] done`);
+      }, 900_000);
     });
 
     it.skipIf(!approxPriceChainSmoke)(
-      "opt-in: first selected base — open + close via table approxPrice",
+      "opt-in: smallest scenario — simulate place + match sanity on first env-selected ticker",
       async (ctx) => {
-        const base = scenarios[0]!.base;
-        const row = lifecycleRow(base);
+        await clientInit;
+
+        const deployed = activeLifecycleTestBasesIntegration(client);
+        const ticker =
+          INTEGRATION_LIFECYCLE_VITEST_TICKERS.find((t) => deployed.includes(t)) ?? deployed[0];
+        if (!ticker) {
+          ctx.skip("No lifecycle ticker deployed");
+          return;
+        }
+        const scenario = scratchTradingScenarios(client).find((s) => s.base === ticker);
+        if (!scenario) {
+          ctx.skip(`No scratch scenario for ticker ${ticker}`);
+          return;
+        }
+        const row = lifecycleTickerRow(ticker);
         const trader = loadIntegrationTraderKeypair();
         const owner = trader.getPublicKey().toSuiAddress();
-        console.info(
-          `[integration scratch][${base}] approxPrice chain (WATERX_INTEGRATION_APPROX_PRICE_CHAIN)`,
-        );
 
         const { accountId } = await ensureUserAccountForIntegration(client, trader, execTx);
         await ensureScratchLifecycleMinUsdc(
@@ -114,54 +140,73 @@ describe.skipIf(!isIntegrationTraderConfigured())(
           execTx,
         );
 
-        const entry = client.getMarketEntry(base);
-        const cooldownMarketIds = [entry.marketId];
-        const snap = marketAtStart[base]!;
-        assertMarketSnapshotTradeable(snap, base);
+        const snap = marketAtStart[ticker]!;
+        assertMarketTickerTradeableSnapshot(snap, ticker);
+        const ap = rawPrice(Number(tickerRowApproxAcceptableUsdHint(row)));
+        const collateralType = client.getPoolTokenType("USDCUSD");
 
-        const lev = row.simulateLeverage ?? row.leverage;
-        const collateral = row.simulateOpenCollateral;
-
-        const openResult = await execIntegrationOrSkipSupra(ctx, () =>
+        const placeResult = await execOracleOrSkipDeprecated(ctx, () =>
           execBuiltTxWithCooldownRetries(
             () =>
-              buildOpenPositionTx(client, {
+              buildPlaceOrderTx(client, {
+                ticker,
                 accountId,
-                base,
-                isLong: row.isLong,
-                leverage: lev,
-                collateralAmount: collateral,
+                collateralType,
+                collateralTicker: "USDCUSD",
+                main: {
+                  isLong: row.isLong,
+                  isStopOrder: false,
+                  reduceOnly: false,
+                  size: row.e2ePtb.openSize,
+                  acceptablePrice: ap,
+                  collateralAmount: scenario.integrationOpen.collateral,
+                },
+                skipOraclePriceRefresh: false,
+                useSponsor: true,
               }),
             trader,
-            { cooldownMarketIds },
+            { cooldownTickers: [ticker], gasBudget: integrationGasBudget("lifecycle") },
           ),
         );
-        if (openResult === undefined) return;
-        assertSuccess(openResult);
-        const opened = extractEvent(openResult, "PositionOpened");
-        expect(opened).toBeDefined();
-        const positionId = positionIdFromOpened(opened);
-        expect(await positionExists(client, entry.marketId, positionId, entry.baseType)).toBe(true);
+        if (placeResult === undefined) return;
+        assertSuccess(placeResult);
+
+        const matchRaw = await execOracleOrSkipDeprecated(ctx, () =>
+          execBuiltTxWithCooldownRetries(
+            () => buildMatchOrdersAfterRefreshTx(client, { ticker, isLong: row.isLong }),
+            trader,
+            { cooldownTickers: [ticker], gasBudget: integrationGasBudget("lifecycle") },
+          ),
+        );
+        if (matchRaw === undefined) return;
+        assertSuccess(matchRaw);
+
+        const openedEv =
+          extractEvent(placeResult, "PositionOpened") ?? extractEvent(matchRaw, "PositionOpened");
+        const positionIdBig = BigInt(positionIdFromOpened(openedEv));
+        expect(await positionExists(client, { ticker, positionId: positionIdBig })).toBe(true);
 
         const closeResult = await execBuiltTxWithCooldownRetries(
           () =>
             buildClosePositionTx(client, {
               accountId,
-              base,
-              positionId,
-              acceptablePrice: 0n,
+              ticker,
+              collateralType,
+              positionId: positionIdBig,
+              acceptablePrice: ap,
+              collateralTicker: "USDCUSD",
+              skipOraclePriceRefresh: false,
+              useSponsor: true,
             }),
           trader,
-          { cooldownMarketIds },
+          { cooldownTickers: [ticker] },
         );
         assertSuccess(closeResult);
         expect(extractEvent(closeResult, "PositionClosed")).toBeDefined();
-        expect(await positionExists(client, entry.marketId, positionId, entry.baseType)).toBe(
-          false,
-        );
-        console.info(`[integration scratch][${base}] approxPrice chain done`);
+
+        console.info(`[integration][approxPriceChain][${ticker}] done`);
       },
-      600_000,
+      900_000,
     );
   },
 );

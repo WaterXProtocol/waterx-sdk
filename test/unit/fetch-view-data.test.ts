@@ -5,9 +5,11 @@ import { bcs } from "@mysten/sui/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getAccountBalance,
   getAccountData,
   getAccountOrders,
   getAccountPositions,
+  getAccountsByOwner,
   getCustodyAssetData,
   getCustodyVaultData,
   getMarketData,
@@ -47,7 +49,10 @@ import {
   mockSimulatePagedNested,
   mockSimulateReturn,
 } from "../helpers/fixtures/mock-simulate.ts";
-import { MOCK_CUSTODY_ASSET_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
+import {
+  MOCK_CUSTODY_ASSET_TYPE,
+  MOCK_USDC_TYPE,
+} from "../helpers/fixtures/mock-testnet-config.ts";
 import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -238,6 +243,29 @@ describe("fetch view helpers (mocked simulate)", () => {
     delete (bare.config.packages as { waterx_referral?: unknown }).waterx_referral;
     await expect(getRefererFor(bare, mockSuiAddress("aa"))).rejects.toThrow(
       /referral package not configured/,
+    );
+  });
+
+  it("getAccountsByOwner decodes address vector", async () => {
+    const owner = mockSuiAddress("ee");
+    const ids = [mockSuiAddress("f1"), mockSuiAddress("f2")];
+    mockSimulateReturn(client, [{ bcs: bcs.vector(bcs.Address).serialize(ids).toBytes() }]);
+    expect(await getAccountsByOwner(client, owner)).toEqual(ids);
+  });
+
+  it("getAccountBalance defaults to creditType and accepts explicit coinType", async () => {
+    mockSimulateReturn(client, [{ bcs: bcs.u64().serialize(42_000n).toBytes() }]);
+    expect(await getAccountBalance(client, mockSuiAddress("aa"))).toBe(42_000n);
+
+    mockSimulateReturn(client, [{ bcs: bcs.u64().serialize(99n).toBytes() }]);
+    expect(await getAccountBalance(client, mockSuiAddress("aa"), MOCK_USDC_TYPE)).toBe(99n);
+  });
+
+  it("getAccountBalance throws when credit_type missing and coinType omitted", async () => {
+    const bare = createUnitTestClient();
+    delete bare.config.packages.waterx_credit;
+    await expect(getAccountBalance(bare, mockSuiAddress("aa"))).rejects.toThrow(
+      /credit_type missing/,
     );
   });
 

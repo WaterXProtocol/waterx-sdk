@@ -2,6 +2,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { WaterXClient } from "../../src/client.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -9,9 +10,12 @@ import {
   buildClosePositionTx,
   buildDecreasePositionTx,
   buildDepositCollateralTx,
+  buildExecuteWithdrawalTx,
   buildIncreasePositionTx,
   buildMintWlpTx,
   buildPlaceOrderTx,
+  buildRedeemVaaTx,
+  buildRequestCreditWithdrawTx,
   buildUpdateOrderTx,
   buildWithdrawCollateralTx,
   openPythSponsorFund,
@@ -19,7 +23,11 @@ import {
 } from "../../src/tx-builders.ts";
 import { placeOrderRequest } from "../../src/user/order.ts";
 import { rawPrice } from "../../src/utils/math.ts";
-import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
+import {
+  MOCK_CUSTODY_ASSET_TYPE,
+  MOCK_TESTNET_CONFIG,
+  MOCK_USDC_TYPE,
+} from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -171,10 +179,12 @@ describe("tx-builders (v3)", () => {
   it("buildPlaceOrderTx with oracle refresh and sponsor reimburse", async () => {
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
     const tx = await buildPlaceOrderTx(client, {
@@ -189,10 +199,12 @@ describe("tx-builders (v3)", () => {
   it("buildMintWlpTx with oracle refresh", async () => {
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
     const tx = await buildMintWlpTx(client, {
@@ -218,5 +230,79 @@ describe("tx-builders (v3)", () => {
     const tx = new Transaction();
     const out = await buildPlaceOrderTx(client, { ...common, main: baseOrder, tx });
     expect(out).toBe(tx);
+  });
+
+  it("buildRedeemVaaTx chains redeem_vaa + consume_deposit_direct", () => {
+    const tx = buildRedeemVaaTx(client, { vaaBytes: new Uint8Array([0x01, 0x02]) });
+    expect(tx.getData().commands?.length).toBe(2);
+  });
+
+  it("buildRequestCreditWithdrawTx — wormhole and native routes", () => {
+    const wormhole = buildRequestCreditWithdrawTx(client, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      amount: 1_000n,
+      recipient: PTB_DUMMY_ACCOUNT_ID,
+      route: {
+        kind: "wormhole",
+        evmDestinationChain: 10002,
+        evmRecipient: "0x1111111111111111111111111111111111111111",
+        evmToken: "0x2222222222222222222222222222222222222222",
+      },
+    });
+    expect(wormhole.getData().commands?.length).toBe(4);
+
+    const native = buildRequestCreditWithdrawTx(client, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      amount: 500n,
+      recipient: PTB_DUMMY_ACCOUNT_ID,
+      route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
+    });
+    expect(native.getData().commands?.length).toBe(4);
+  });
+
+  it("buildExecuteWithdrawalTx — wormhole (default zero fee) and native", () => {
+    const wormhole = buildExecuteWithdrawalTx(client, {
+      key: 1n,
+      route: { kind: "wormhole" },
+    });
+    expect(wormhole.getData().commands?.length).toBeGreaterThanOrEqual(1);
+
+    const native = buildExecuteWithdrawalTx(client, {
+      key: 2n,
+      route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
+    });
+    expect(native.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("buildRequestCreditWithdrawTx rejects invalid wormhole chain id", () => {
+    expect(() =>
+      buildRequestCreditWithdrawTx(client, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        amount: 1n,
+        recipient: PTB_DUMMY_ACCOUNT_ID,
+        route: {
+          kind: "wormhole",
+          evmDestinationChain: 99_999,
+          evmRecipient: "0x1111111111111111111111111111111111111111",
+          evmToken: "0x2222222222222222222222222222222222222222",
+        },
+      }),
+    ).toThrow(/u16 \(0\.\.65535\)/);
+  });
+
+  it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", () => {
+    const cfg = structuredClone(MOCK_TESTNET_CONFIG);
+    delete cfg.packages.withdrawal_queue;
+    const noQueue = new WaterXClient("TESTNET", cfg, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    expect(() =>
+      buildRequestCreditWithdrawTx(noQueue, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        amount: 1n,
+        recipient: PTB_DUMMY_ACCOUNT_ID,
+        route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
+      }),
+    ).toThrow(/withdrawal_queue not configured/);
   });
 });

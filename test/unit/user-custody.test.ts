@@ -58,6 +58,15 @@ describe("user/custody PTB builders (native_custody)", () => {
     expect(tx.getData().commands?.length).toBe(1);
   });
 
+  it("mintCreditFromRequest defaults creditType to client.creditType()", () => {
+    const tx = new Transaction();
+    mintCreditFromRequest(client, tx, {
+      depositRequest: tx.object(PTB_DUMMY_DEPOSIT_COIN),
+      assetType: MOCK_CUSTODY_ASSET_TYPE,
+    });
+    expect(tx.getData().commands?.length).toBe(1);
+  });
+
   it("mintCreditToAccount chains mint + consume_deposit_direct", () => {
     const tx = new Transaction();
     mintCreditToAccount(client, tx, {
@@ -94,5 +103,50 @@ describe("user/custody PTB builders (native_custody)", () => {
         creditType: MOCK_CREDIT_TYPE,
       }),
     ).toThrow(/waterx_credit is not configured/);
+  });
+
+  it("throws when native_custody vault is missing but credit is present", () => {
+    const noCustody = structuredClone(MOCK_TESTNET_CONFIG);
+    delete noCustody.packages.native_custody;
+    const clientNoCustody = new WaterXClient("TESTNET", noCustody, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    expect(() =>
+      burnCredit(clientNoCustody, new Transaction(), {
+        accountId,
+        creditCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
+        assetType: MOCK_CUSTODY_ASSET_TYPE,
+      }),
+    ).toThrow(/native_custody is not configured/);
+  });
+
+  it("mintCreditToAccount throws when waterx_credit is missing", () => {
+    const noCredit = structuredClone(MOCK_TESTNET_CONFIG);
+    delete noCredit.packages.waterx_credit;
+    const clientNoCredit = new WaterXClient("TESTNET", noCredit, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    expect(() =>
+      mintCreditToAccount(clientNoCredit, new Transaction(), {
+        accountId,
+        assetCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
+        assetType: MOCK_CUSTODY_ASSET_TYPE,
+      }),
+    ).toThrow(/waterx_credit is not configured/);
+  });
+
+  it("mintCreditToAccount throws when native_custody vault is missing", () => {
+    const noCustody = structuredClone(MOCK_TESTNET_CONFIG);
+    delete noCustody.packages.native_custody;
+    const clientNoCustody = new WaterXClient("TESTNET", noCustody, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    expect(() =>
+      mintCreditToAccount(clientNoCustody, new Transaction(), {
+        accountId,
+        assetCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
+        assetType: MOCK_CUSTODY_ASSET_TYPE,
+      }),
+    ).toThrow(/native_custody is not configured/);
   });
 });

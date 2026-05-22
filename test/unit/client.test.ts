@@ -4,7 +4,10 @@ import { WaterXClient } from "../../src/client.ts";
 import * as configModule from "../../src/config.ts";
 import { PYTH_DEFAULTS } from "../../src/config.ts";
 import type { WlpPackage } from "../../src/config.ts";
-import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
+import {
+  MOCK_CUSTODY_ASSET_TYPE,
+  MOCK_TESTNET_CONFIG,
+} from "../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("WaterXClient (offline)", () => {
@@ -94,6 +97,46 @@ describe("WaterXClient (offline)", () => {
     const ids = client.packageIds();
     expect(ids.waterx_perp).toBe(client.config.packages.waterx_perp.published_at);
     expect(ids.bucket_framework).toBeTruthy();
+  });
+
+  it("getCredit / creditType / getBridge / wormholeStateId", () => {
+    expect(client.getCredit().credit_registry).toMatch(/^0x/);
+    expect(client.creditType()).toContain("::");
+    expect(client.getBridge().published_at).toMatch(/^0x/);
+    expect(client.wormholeStateId()).toMatch(/^0x/);
+  });
+
+  it("wormholeStateId falls back to network defaults when bridge omits wormhole_state", () => {
+    const bare = createUnitTestClient();
+    bare.config.packages.wormhole_bridge = {
+      ...bare.config.packages.wormhole_bridge!,
+      wormhole_state: undefined as unknown as string,
+    };
+    expect(bare.wormholeStateId()).toBe(bare.wormhole.state_id);
+  });
+
+  it("getNativeAssets / getNativeAsset", () => {
+    const assets = client.getNativeAssets();
+    expect(assets.length).toBeGreaterThan(0);
+    expect(client.getNativeAsset(MOCK_CUSTODY_ASSET_TYPE).type).toBe(MOCK_CUSTODY_ASSET_TYPE);
+    expect(() => client.getNativeAsset("0xdead::nope::NOPE")).toThrow(
+      /No native custody asset registered/,
+    );
+  });
+
+  it("throws when credit / bridge / custody packages are absent", () => {
+    const bare = createUnitTestClient();
+    delete bare.config.packages.waterx_credit;
+    expect(() => bare.getCredit()).toThrow(/waterx_credit not configured/);
+    expect(() => bare.creditType()).toThrow(/credit_type missing/);
+
+    const noBridge = createUnitTestClient();
+    delete noBridge.config.packages.wormhole_bridge;
+    expect(() => noBridge.getBridge()).toThrow(/wormhole_bridge not configured/);
+
+    const noCustody = createUnitTestClient();
+    delete noCustody.config.packages.native_custody;
+    expect(() => noCustody.getNativeAssets()).toThrow(/native_custody not configured/);
   });
 });
 
