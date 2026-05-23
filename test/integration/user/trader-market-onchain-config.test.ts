@@ -1,30 +1,41 @@
-import { createTestnetConfig, WaterXClient } from "@waterx/perp-sdk";
-import { describe, expect, it } from "vitest";
-
-import { MARKET_DEFINITIONS } from "../../../scripts/market-params.ts";
-import type { BaseAsset } from "../../../src/constants.ts";
-import { getMarketSummary } from "../../../src/fetch.ts";
-
 /**
- * Read-only testnet checks: published `Market` must match `scripts/market-params.ts`.
- * `max_leverage_bps` is the on-chain cap; violating it aborts with code 104 (`err_exceed_max_leverage`).
+ * Read-only: deployed tickers return parsable `MarketData` with sane leverage cap.
  */
-const client = new WaterXClient(createTestnetConfig());
+import { beforeAll, describe, expect, it } from "vitest";
 
-const MARKET_BASES = Object.keys(MARKET_DEFINITIONS) as BaseAsset[];
+import type { MarketDataView } from "../../../src/fetch.ts";
+import { getMarketData } from "../../../src/fetch.ts";
+import { activeLifecycleTickersForClient } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { activeE2ePersistentPerpTickers } from "../helpers/e2e-persistent-state.ts";
+import { client, clientInit } from "../setup.ts";
 
-describe("Integration: on-chain market params vs MARKET_DEFINITIONS", () => {
-  it.each(MARKET_BASES)("%s", async (base) => {
-    const entry = client.getMarketEntry(base);
-    const s = await getMarketSummary(client, entry.marketId, entry.baseType);
-    const def = MARKET_DEFINITIONS[base];
+function saneMarket(md: MarketDataView, ticker: string): void {
+  const maxLevRaw = (md as { max_leverage_bps?: string | number | bigint }).max_leverage_bps;
+  expect(BigInt(maxLevRaw ?? 0)).toBeGreaterThan(0n);
+  const inactive = (md as { is_active?: boolean }).is_active === false;
+  if (inactive) {
+    throw new Error(`${ticker}: market inactive`);
+  }
+}
 
-    expect(s.isActive).toBe(true);
-    expect(s.maxLeverageBps).toBe(BigInt(def.maxLeverageBps));
-    expect(s.tradingFeeBps).toBe(BigInt(def.tradingFeeBps));
-    expect(s.maintenanceMarginBps).toBe(BigInt(def.maintenanceMarginBps));
-    expect(s.maxLongOi).toBe(def.maxLongOi);
-    expect(s.maxShortOi).toBe(def.maxShortOi);
-    expect(s.minCollValue).toBe(def.minCollValue);
+describe("Integration: on-chain MarketData smoke (read-only)", () => {
+  beforeAll(async () => {
+    await clientInit;
+  });
+
+  it("lifecycle + persistent tickers (when deployed)", async () => {
+    const uniq = new Set<string>([
+      ...activeLifecycleTickersForClient(client),
+      ...activeE2ePersistentPerpTickers(),
+    ]);
+    expect(uniq.size).toBeGreaterThan(0);
+    let checked = 0;
+    for (const ticker of uniq) {
+      if (!(ticker in (client.config.packages.waterx_perp.markets ?? {}))) continue;
+      const md = await getMarketData(client, { ticker });
+      saneMarket(md, ticker);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

@@ -83,10 +83,9 @@ describe("pyth on-chain helper branches", () => {
   });
 
   it("fetchPriceFeedsUpdateData throws when Hermes returns empty binary", async () => {
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ binary: { data: [] } }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ binary: { data: [] } }), { status: 200 }),
+    ) as unknown as typeof fetch;
 
     await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0x1"])).rejects.toThrow(
       /Hermes returned no binary price data/,

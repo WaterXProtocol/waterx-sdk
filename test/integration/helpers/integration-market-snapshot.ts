@@ -1,39 +1,74 @@
 /**
- * Integration testnet market snapshot: one `getMarketSummary` per base per run.
- * Note: SDK `MarketData` omits on-chain `min_size` / `lot_size`; e2e uses
- * `getMarketTradingSizeConstraints` (gRPC object JSON) when sizing opens/decreases.
+ * Integration market snapshot via v3 view `MarketData`.
  */
 import type { WaterXClient } from "../../../src/client.ts";
-import type { BaseAsset } from "../../../src/constants.ts";
-import { getMarketSummary } from "../../../src/fetch.ts";
-import type { MarketData } from "../../../src/view-types.ts";
+import type { MarketDataView } from "../../../src/fetch.ts";
+import { getMarketData } from "../../../src/fetch.ts";
+import { rawPrice } from "../../../src/utils/math.ts";
+import type { LifecycleTestTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
+import { lifecycleTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
 
-export type IntegrationMarketSnapshotMap = Record<BaseAsset, MarketData>;
+export type IntegrationMarketSnapshotMap = Record<string, MarketDataView>;
 
-/**
- * Fetches `view::market_summary` for each base (sequential — avoids gRPC burst).
- */
+/** One `MarketData` per ticker (sequential RPC). */
 export async function fetchIntegrationMarketSummaries(
   client: WaterXClient,
-  bases: readonly BaseAsset[],
+  tickers: readonly string[],
 ): Promise<IntegrationMarketSnapshotMap> {
-  const out = {} as Partial<IntegrationMarketSnapshotMap>;
-  for (const base of bases) {
-    const entry = client.getMarketEntry(base);
-    out[base] = await getMarketSummary(client, entry.marketId, entry.baseType);
+  const out: Record<string, MarketDataView> = {};
+  for (const ticker of tickers) {
+    void client.getMarket(ticker);
+    out[ticker] = await getMarketData(client, { ticker });
   }
-  return out as IntegrationMarketSnapshotMap;
+  return out;
 }
 
-/** Throws if snapshot is not usable for trading-style integration tests (no vitest dependency). */
-export function assertMarketSnapshotTradeable(snap: MarketData, label = "market"): void {
-  if (!snap.isActive) throw new Error(`${label}: market inactive`);
+/** @deprecated Prefer {@link assertMarketTickerTradeableSnapshot}. */
+export function assertMarketSnapshotTradeable(snap: MarketDataView, label = "market"): void {
+  assertMarketTickerTradeableSnapshot(snap, label);
+}
+
+/** Throw if inactive (no Vitest). */
+export function assertMarketTickerTradeableSnapshot(snap: MarketDataView, label = "market"): void {
+  const raw = snap as Record<string, unknown>;
+  const active = raw.is_active ?? raw.isActive;
+  if (active === false) {
+    throw new Error(`${label}: market inactive`);
+  }
+}
+
+/** @deprecated Prefer static sizes from lifecycle table (`e2ePtb`). */
+export function alignPositionSizeToMarket(size: bigint): bigint {
+  return size;
+}
+
+export function tickerRowApproxAcceptableUsdHint(row: LifecycleTestTickerRow): bigint {
+  return BigInt(Math.max(1, Math.ceil(row.approxUsdHint * 4)));
 }
 
 /**
- * Legacy no-op. On-chain trading still lot-aligns / min-floors **position size**; use
- * `alignExplicitTradingSize` + `getMarketTradingSizeConstraints` in tests.
+ * Keeper / market-form **open** slippage limit (`trading::assert_open_slippage`):
+ * - **LONG**: ceiling — execution price must be `<= acceptablePrice` (use a high USD cap).
+ * - **SHORT**: floor — execution price must be `>= acceptablePrice` (use a low USD floor).
  */
-export function alignPositionSizeToMarket(size: bigint, _lot?: bigint, _min?: bigint): bigint {
-  return size;
+export function keeperOpenAcceptablePrice(isLong: boolean, row: LifecycleTestTickerRow): bigint {
+  if (isLong) {
+    return rawPrice(Math.max(200_000, Number(tickerRowApproxAcceptableUsdHint(row))));
+  }
+  return rawPrice(1);
+}
+
+/**
+ * Close / decrease slippage (`trading::assert_close_slippage`) — opposite of open:
+ * - **LONG** exit (sell): floor — use a low USD bound (`rawPrice(1)`).
+ * - **SHORT** exit (buy): ceiling — use a high USD cap.
+ */
+export function closeOrDecreaseAcceptablePrice(
+  positionIsLong: boolean,
+  row: LifecycleTestTickerRow,
+): bigint {
+  if (positionIsLong) {
+    return rawPrice(1);
+  }
+  return rawPrice(Math.max(200_000, Number(tickerRowApproxAcceptableUsdHint(row))));
 }

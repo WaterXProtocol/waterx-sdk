@@ -3,7 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
 
-import { isTransientRpcErrorMessage } from "./transient-rpc.ts";
+import {
+  isInfrastructureTransientError,
+  isOracleTransientFailureMessage,
+  isTransientRpcErrorMessage,
+} from "./transient-rpc.ts";
+
+export { isOracleTransientFailureMessage };
 
 export { isTransientRpcErrorMessage };
 
@@ -12,7 +18,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SIMULATE_DUMP_DIR = path.resolve(__dirname, "..", "..", "simulate-dumps");
 
 export type SimulateResult = {
-  $kind?: string;
+  /** gRPC returns `"Transaction"` on dry-run success; some mocks use `"Success"`. */
+  $kind?: "Success" | "Transaction" | "FailedTransaction" | string;
   commandResults?: unknown[];
   Transaction?: Record<string, unknown>;
   FailedTransaction?: {
@@ -33,16 +40,19 @@ export function extractSimulateError(result: SimulateResult): string {
   return JSON.stringify(result.FailedTransaction ?? result);
 }
 
+/** Whether simulate returned a gRPC outcome object (not a thrown RPC error). */
+export function isSimulateOutcome(sim: unknown): boolean {
+  const k = (sim as SimulateResult).$kind;
+  return k === "Transaction" || k === "FailedTransaction" || k === "Success";
+}
+
 /**
- * Oracle feed/aggregate failures that are external-state dependent on testnet and
- * should not be treated as SDK logic regressions in dry-run suites.
+ * Ghost / negative smoke: PTB reached chain simulate (Transaction or Move abort both OK).
+ * Do **not** use for discovery-based positive paths — use {@link assertSimulateSuccess} instead.
  */
-export function isOracleTransientFailureMessage(msg: string): boolean {
-  return (
-    msg.includes("err_total_weight_not_enough") ||
-    msg.includes("::supra_rule::feed") ||
-    msg.includes("::pyth_rule::feed")
-  );
+export function assertSimulateReached(result: unknown): void {
+  expect(result).toBeDefined();
+  expect(isSimulateOutcome(result)).toBe(true);
 }
 
 /**
@@ -67,6 +77,75 @@ export function skipSimulateIfOracleTransient(
   return true;
 }
 
+/**
+ * When {@link refreshOraclePrices} fails before dry-run — Hermes gateway / feed infra, not SDK logic.
+ * Covers **404** feed mismatch, **5xx** bursts (503/521), and HTML error pages from Cloudflare.
+ */
+export function skipHermesIfFeedUnavailable(
+  ctx: { skip: (reason?: string) => void },
+  error: unknown,
+): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (!msg.includes("Hermes price fetch failed")) return false;
+
+  const firstLine = msg.split("\n")[0] ?? msg;
+  const statusMatch = /Hermes price fetch failed: (\d{3})/.exec(firstLine);
+  const status = statusMatch ? Number(statusMatch[1]) : undefined;
+
+  if (msg.includes("Price ids not found") || status === 404) {
+    ctx.skip(`Hermes feed / gateway mismatch: ${firstLine}`);
+    return true;
+  }
+  if (status != null && (status === 429 || status >= 500)) {
+    ctx.skip(`Hermes gateway unavailable: ${firstLine}`);
+    return true;
+  }
+  if (msg.includes("Web server is down") || msg.includes("cloudflare.com")) {
+    ctx.skip(`Hermes gateway unavailable: ${firstLine}`);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * When gRPC / network fails after retries (e.g. **`RpcError: fetch failed`** on public endpoints),
+ * treat as infra flake — same tier as oracle transient skips.
+ */
+export function skipIfTransientInfrastructureError(
+  ctx: { skip: (reason?: string) => void },
+  error: unknown,
+): boolean {
+  if (!isInfrastructureTransientError(error)) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  ctx.skip(`Transient RPC/network failure: ${msg.split("\n")[0]}`);
+  return true;
+}
+
+/**
+ * Retry an async step (builder, Hermes, gRPC simulate) on transient infra errors.
+ */
+export async function withInfrastructureRetry<T>(
+  fn: () => Promise<T>,
+  opts: { attempts?: number; backoffMs?: number } = {},
+): Promise<T> {
+  const attempts = Math.max(1, opts.attempts ?? 5);
+  const baseBackoff = opts.backoffMs ?? 600;
+  let last: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (!isInfrastructureTransientError(e)) throw e;
+      if (i < attempts - 1) {
+        const jitter = Math.floor(Math.random() * 300);
+        await new Promise((r) => setTimeout(r, baseBackoff * (i + 1) + jitter));
+      }
+    }
+  }
+  throw last;
+}
+
 /** Whether a simulate result is a FailedTransaction whose MoveAbort matches a transient oracle pattern. */
 export function isSimulateOracleTransient(result: unknown): boolean {
   const r = result as SimulateResult;
@@ -78,8 +157,8 @@ export function isSimulateOracleTransient(result: unknown): boolean {
  * Run `simulate()` with a small retry budget for two kinds of transient
  * failures that commonly appear under parallel e2e load:
  *
- * 1. `FailedTransaction` with `err_total_weight_not_enough` (Pyth/Supra
- *    aggregate stale or half-updated) — retried with a fresh bundle.
+ * 1. `FailedTransaction` matching {@link isOracleTransientFailureMessage} (feed paths) —
+ *    retried once more after backoff.
  * 2. Thrown gRPC/HTTP errors such as `Too Many Requests` / `RESOURCE_EXHAUSTED`
  *    / `Deadline Exceeded` — public RPC rate limit.
  *
@@ -101,8 +180,7 @@ export async function simulateWithTransientRetry(
       if (!isSimulateOracleTransient(last)) return last;
     } catch (e) {
       lastError = e;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!isTransientRpcErrorMessage(msg)) throw e;
+      if (!isInfrastructureTransientError(e)) throw e;
     }
     if (i < attempts - 1) {
       // Exponential-ish backoff + jitter so parallel forks don't resync retries.
@@ -298,6 +376,10 @@ const STATE_DEPENDENT_ABORT_LOCATIONS: readonly string[] = [
   "err_insufficient_collateral",
   "err_position_flip_not_supported",
   "err_invalid_collateral_type",
+  "assert_prices_fresh",
+  "EStalePrice",
+  "ETradingSlippageExceeded",
+  "assert_close_slippage",
 ];
 
 /**
@@ -435,4 +517,45 @@ export function assertSimulateAbortMatches(
   expected: { abortCode: number; locationIncludes?: string },
 ): void {
   assertSimulateMoveAbort(result, expected);
+}
+
+/**
+ * Negative-path simulate: require `FailedTransaction` without pinning a numeric abort code
+ * (stable across contract tweaks). Optional loose message substrings when helpful.
+ */
+export function assertSimulateFailed(
+  result: unknown,
+  opts?: { messageIncludes?: readonly string[] },
+): void {
+  expect(result).toBeDefined();
+  const r = result as SimulateResult;
+  expect(
+    r.$kind,
+    r.$kind === "Transaction"
+      ? "expected simulate to fail, but transaction succeeded"
+      : `expected FailedTransaction, got ${String(r.$kind)}`,
+  ).toBe("FailedTransaction");
+  if (opts?.messageIncludes?.length) {
+    const msg = extractSimulateError(r);
+    const hit = opts.messageIncludes.some((s) => msg.includes(s));
+    expect(
+      hit,
+      `simulate error should mention one of [${opts.messageIncludes.join(", ")}]: ${msg}`,
+    ).toBe(true);
+  }
+}
+
+/** Run simulate with infra retry; skip on transient RPC/oracle flakes. Returns `undefined` when skipped. */
+export async function simulateForTestOrSkip(
+  ctx: { skip: (reason?: string) => void },
+  simulateOnce: () => Promise<unknown>,
+): Promise<unknown | undefined> {
+  try {
+    const sim = await simulateWithTransientRetry(simulateOnce);
+    if (skipSimulateIfOracleTransient(ctx, sim)) return undefined;
+    return sim;
+  } catch (e) {
+    if (skipIfTransientInfrastructureError(ctx, e)) return undefined;
+    throw e;
+  }
 }

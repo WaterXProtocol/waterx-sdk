@@ -1,10 +1,14 @@
 import {
   buildClosePositionTx,
   buildPlaceOrderTx,
+  buildRedeemVaaTx,
+  buildRequestCreditWithdrawTx,
   burnCredit,
   claimReward,
   closePositionRequest,
+  custodyMint,
   executeTrading,
+  fetchDepositVaa,
   getMarketData,
   mintCredit,
   mintCreditFromRequest,
@@ -46,5 +50,12 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof burnCredit).toBe("function");
     expect(typeof nativeCustodyCalls.mint).toBe("function");
     expect(typeof nativeCustodyCalls.burn).toBe("function");
+  });
+
+  it("exports credit-bridge builders and wormhole helpers", () => {
+    expect(typeof buildRedeemVaaTx).toBe("function");
+    expect(typeof buildRequestCreditWithdrawTx).toBe("function");
+    expect(typeof custodyMint).toBe("function");
+    expect(typeof fetchDepositVaa).toBe("function");
   });
 });

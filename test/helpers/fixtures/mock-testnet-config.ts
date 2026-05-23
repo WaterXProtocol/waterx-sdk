@@ -108,6 +108,17 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       credit_registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
       credit_type: "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD",
     },
+    wormhole_bridge: {
+      published_at: "0x8a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12",
+      wormhole_state: "0x9b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
+      trusted_emitters: [],
+      bridge: "0x7a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234",
+      emitter_cap: "0x6a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234",
+    },
+    withdrawal_queue: {
+      published_at: "0x5a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234",
+      queue: "0x4a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234",
+    },
     native_custody: {
       published_at: "0x45c2074e892975f0fb62b934824531c04d43f6e7f00bf8d1e7ce2556e84fd6ee",
       vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
