@@ -71,15 +71,15 @@ function parseTestFile(absPath: string, tier: Tier): CaseRow[] {
 function inferPreconditions(tier: Tier, file: string, suite: string, name: string): string {
   if (tier === "unit") {
     if (file.includes("fetch-view") || file.includes("fetch-simulate") || file.includes("pyth"))
-      return "Mock `WaterXClient` / `fetch` / gRPC；無真實鏈";
-    if (file.includes("config-load")) return "Mock `fetch` 回傳 JSON；或記憶體 cache";
-    return "離線 fixture / mock config；無網路、無私鑰";
+      return "Mock `WaterXClient` / `fetch` / gRPC; no real chain";
+    if (file.includes("config-load")) return "Mock `fetch` returning JSON; or in-memory cache";
+    return "Offline fixture / mock config; no network, no private key";
   }
   if (tier === "integration") {
-    return "`WATERX_INTEGRATION_PRIVATE_KEY` 或 `.integration-trader.keystore`；testnet `waterx-config`；簽名者 SUI 足夠 gas";
+    return "`WATERX_INTEGRATION_PRIVATE_KEY` or `.integration-trader.keystore`; testnet `waterx-config`; signer has enough SUI for gas";
   }
   const base =
-    "`WaterXClient.create` + testnet gRPC；`waterx-config`；可選 `WATERX_E2E_WXA_ACCOUNT_ID` / canonical wxa";
+    "`WaterXClient.create` + testnet gRPC; `waterx-config`; optional `WATERX_E2E_WXA_ACCOUNT_ID` / canonical wxa";
   if (
     file.includes("oracle") ||
     name.includes("refresh") ||
@@ -94,7 +94,7 @@ function inferPreconditions(tier: Tier, file: string, suite: string, name: strin
     name.includes("buildAdd") ||
     name.includes("buildUpdate")
   )
-    return `${base}；Hermes Pyth 可用（503/521 可能 skip）`;
+    return `${base}; Hermes Pyth available (may skip on 503/521)`;
   if (
     file.includes("wlp") ||
     file.includes("staking") ||
@@ -102,60 +102,64 @@ function inferPreconditions(tier: Tier, file: string, suite: string, name: strin
     file.includes("builders-compose") ||
     file.includes("read-account")
   )
-    return `${base}；鏈上 wxa 有餘額/持倉（無則 \`ctx.skip\`）`;
+    return `${base}; on-chain wxa has balance/position (else \`ctx.skip\`)`;
   if (file.includes("ghost") || file.includes("pre-order"))
-    return `${base}；使用 ghost id，不要求真實持倉`;
+    return `${base}; uses ghost id, no real position required`;
   return base;
 }
 
 function inferOperation(tier: Tier, file: string, name: string): string {
   if (tier === "unit") {
     if (name.includes("throws") || name.includes("rejects"))
-      return `呼叫被測函式（非法輸入或缺 config）`;
+      return `Call the function under test (invalid input or missing config)`;
     if (name.includes("composes") || name.includes("emits") || name.includes("wires"))
-      return `建立 PTB，檢查 \`moveCall\` 目標與參數`;
+      return `Build PTB and assert \`moveCall\` target + args`;
     if (name.includes("simulate") || name.includes("mock"))
-      return `Mock simulate / fetch，呼叫 SDK API`;
-    return `執行單元斷言（純函式、解析、匯出）`;
+      return `Mock simulate / fetch, call SDK API`;
+    return `Run unit assertion (pure fn / parse / export)`;
   }
   if (tier === "integration") {
     if (name.includes("open") || name.includes("close") || name.includes("lifecycle"))
-      return `簽名並 \`signAndExecute\` 多步交易（開倉/調整/平倉）`;
+      return `Sign and \`signAndExecute\` multi-step tx (open / adjust / close)`;
     if (name.includes("mint") || name.includes("CREDIT"))
-      return `鏈上 mint / enqueue withdraw 等簽名交易`;
+      return `Signed on-chain mint / enqueue withdraw tx`;
     if (name.includes("stake") || name.includes("redeem") || name.includes("keeper"))
-      return `簽名執行 WLP/staking/keeper PTB`;
-    return `簽名執行整合場景 PTB`;
+      return `Sign and execute WLP / staking / keeper PTB`;
+    return `Sign and execute integration-scenario PTB`;
   }
   if (name.startsWith("get") || name.includes("lists") || name.includes("loads"))
-    return `\`simulate\` 或 view 查詢鏈上狀態`;
+    return `\`simulate\` or view query for on-chain state`;
   if (name.includes("simulates") || name.includes("build"))
-    return `組 PTB → \`devInspectTransactionBlock\` / simulate`;
-  if (name.includes("composes") || name.includes("PTB")) return `組 PTB 並檢查指令或 simulate`;
-  return `執行 e2e 場景（simulate）`;
+    return `Build PTB -> \`devInspectTransactionBlock\` / simulate`;
+  if (name.includes("composes") || name.includes("PTB"))
+    return `Build PTB and inspect commands or simulate`;
+  return `Run e2e scenario (simulate)`;
 }
 
 function inferExpected(tier: Tier, name: string): string {
   if (tier === "unit") {
     if (name.includes("throws") || name.includes("rejects") || name.includes("fails"))
-      return "同步拋錯或 `rejects.toThrow`";
-    if (name.includes("returns empty") || name.includes("empty array")) return "回傳空集合，不拋錯";
-    if (name.includes("retries") || name.includes("failover")) return "重試後成功或拋出最終錯誤";
-    return "Vitest `expect` 斷言通過";
+      return "Synchronous throw or `rejects.toThrow`";
+    if (name.includes("returns empty") || name.includes("empty array"))
+      return "Returns empty collection, no throw";
+    if (name.includes("retries") || name.includes("failover"))
+      return "Succeeds after retry or throws final error";
+    return "Vitest `expect` assertions pass";
   }
   if (name.includes("throws") || name.includes("rejects") || name.includes("fails"))
-    return "simulate/執行 abort 或明確錯誤；非法輸入必失敗";
+    return "Simulate / execute aborts or errors; invalid input must fail";
   if (tier === "integration") {
     if (name.includes("when") || name.includes("skip"))
-      return "`assertSuccess` 或環境/部署不符時 `ctx.skip`";
-    return "`assertSuccess`；鏈上狀態符合場景；gas/oracle 不足則 `ctx.skip`";
+      return "`assertSuccess`; or `ctx.skip` when env / deployment doesn't match";
+    return "`assertSuccess`; on-chain state matches; `ctx.skip` on insufficient gas / oracle";
   }
-  if (name.includes("returns empty") || name.includes("empty")) return "回傳空集合，不拋錯";
+  if (name.includes("returns empty") || name.includes("empty"))
+    return "Returns empty collection, no throw";
   if (name.includes("simulates") || name.includes("simulate"))
-    return "simulate 完成（允許 Move abort 於 ghost/無效 id）或 RPC 成功";
+    return "Simulate completes (Move abort allowed for ghost / invalid id) or RPC succeeds";
   if (name.includes("skip") || name.includes("when"))
-    return "斷言通過；或前置不足 / Hermes 不可用時 `ctx.skip`";
-  return "斷言通過（型別/值/PTB 結構）";
+    return "Assertions pass; or `ctx.skip` when prerequisites missing / Hermes unavailable";
+  return "Assertions pass (type / value / PTB structure)";
 }
 
 function mdEscape(s: string): string {
@@ -164,7 +168,7 @@ function mdEscape(s: string): string {
 
 function renderTable(rows: CaseRow[]): string {
   const lines = [
-    "| 編號 | 模組/檔案 | 測試套件 | 用例名稱 | 前置條件 | 操作步驟 | 預期結果 |",
+    "| ID | Module / File | Suite | Case Name | Preconditions | Operation | Expected |",
     "| --- | --- | --- | --- | --- | --- | --- |",
   ];
   for (const r of rows) {
@@ -199,34 +203,34 @@ function main() {
   const intRows = all.filter((r) => r.tier === "integration");
 
   const header = [
-    "# WaterX SDK 測試用例清單",
+    "# WaterX SDK Test Case Inventory",
     "",
-    "> 自動產生：pnpm exec tsx scripts/generate-test-cases-doc.ts",
-    `> 產生時間：${new Date().toISOString().slice(0, 10)}`,
-    `> 統計：**Unit ${counts.unit}** · **E2E (simulate) ${counts.e2e}** · **Integration ${counts.integration}** · 合計 **${all.length}**`,
+    "> Auto-generated: pnpm exec tsx scripts/generate-test-cases-doc.ts",
+    `> Generated: ${new Date().toISOString().slice(0, 10)}`,
+    `> Stats: **Unit ${counts.unit}** · **E2E (simulate) ${counts.e2e}** · **Integration ${counts.integration}** · Total **${all.length}**`,
     "",
-    "## 編號規則",
+    "## ID Scheme",
     "",
-    "| 前綴 | 專案 | 執行指令 | 說明 |",
+    "| Prefix | Tier | Command | Notes |",
     "| --- | --- | --- | --- |",
-    "| **U-xxx** | unit | pnpm test:unit | 離線 mock，無鏈上簽名 |",
+    "| **U-xxx** | unit | pnpm test:unit | Offline mock, no on-chain signing |",
     "| **E-xxx** | e2e | pnpm test:e2e | testnet simulateTransaction |",
-    "| **I-xxx** | integration | pnpm test:integration | testnet 真實簽名執行 |",
+    "| **I-xxx** | integration | pnpm test:integration | testnet, real signed execution |",
     "",
-    "## 欄位說明",
+    "## Column Definitions",
     "",
-    "- **前置條件**：環境、config、私鑰、鏈上狀態、外部 Hermes 等。",
-    "- **操作步驟**：測試實際呼叫的 SDK API 或交易流程（摘要）。",
-    "- **預期結果**：Vitest 斷言目標；含 ctx.skip / describe.skipIf 時表示允許跳過。",
+    "- **Preconditions**: env, config, private key, on-chain state, external Hermes, etc.",
+    "- **Operation**: SDK API or tx flow the test actually exercises (summary).",
+    "- **Expected**: Vitest assertion target; `ctx.skip` / `describe.skipIf` means a skip is allowed.",
     "",
-    "## 共通跳過條件（E2E / Integration）",
+    "## Common Skip Conditions (E2E / Integration)",
     "",
-    "- 無 integration 私鑰 → 整檔 describe.skipIf",
-    "- 無 wxa 餘額/持倉/待贖回列 → ctx.skip",
-    "- Hermes 404 / 5xx / 521 → skipHermesIfFeedUnavailable（E2E）",
-    "- SUI gas 不足 → integration skipIfInsufficientSui",
+    "- No integration private key -> entire file `describe.skipIf`",
+    "- No wxa balance / position / pending redeem row -> `ctx.skip`",
+    "- Hermes 404 / 5xx / 521 -> `skipHermesIfFeedUnavailable` (E2E)",
+    "- Insufficient SUI for gas -> integration `skipIfInsufficientSui`",
     "",
-    "> **注意**：`describe.each` / `it.each` 在原始碼中可能只佔一列，執行時會依參數展開（例如 lifecycle 每個 ticker 各跑一遍）。",
+    "> **Note**: `describe.each` / `it.each` may appear as a single row in source but expand per parameter at run time (e.g. lifecycle runs once per ticker).",
     "",
     "---",
     "",
@@ -234,14 +238,14 @@ function main() {
 
   const body = [
     header,
-    "## 一、Unit 測試（test/unit/）\n\n",
+    "## 1. Unit tests (`test/unit/`)\n\n",
     renderTable(unitRows),
-    "\n\n---\n\n## 二、E2E Simulate 測試（test/simulate/）\n\n",
+    "\n\n---\n\n## 2. E2E simulate tests (`test/simulate/`)\n\n",
     renderTable(e2eRows),
-    "\n\n---\n\n## 三、Integration 測試（test/integration/）\n\n",
+    "\n\n---\n\n## 3. Integration tests (`test/integration/`)\n\n",
     renderTable(intRows),
-    "\n\n---\n\n## 附錄：依檔案索引\n\n",
-    "| 檔案 | 用例數 | 編號範圍 |\n| --- | ---: | --- |\n",
+    "\n\n---\n\n## Appendix: Index by file\n\n",
+    "| File | Cases | ID Range |\n| --- | ---: | --- |\n",
   ];
 
   for (const tier of ["unit", "e2e", "integration"] as Tier[]) {
@@ -253,7 +257,7 @@ function main() {
       byFile.set(r.file, arr);
     }
     for (const [file, rs] of [...byFile.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-      body.push(`| ${file} | ${rs.length} | ${rs[0]!.id}–${rs[rs.length - 1]!.id} |\n`);
+      body.push(`| ${file} | ${rs.length} | ${rs[0]!.id}-${rs[rs.length - 1]!.id} |\n`);
     }
   }
 

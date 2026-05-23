@@ -1,10 +1,10 @@
 # Tests
 
-## 測試用例清單
+## Test Case Inventory
 
-完整用例表（編號、前置條件、操作、預期結果）：**[`test/TEST-CASES.md`](./TEST-CASES.md)**（339 條，含 Unit / E2E / Integration）。
+Full case table (ID, preconditions, operation, expected): **[`test/TEST-CASES.md`](./TEST-CASES.md)** (343 cases across Unit / E2E / Integration).
 
-重新產生：`pnpm exec tsx scripts/generate-test-cases-doc.ts`
+Regenerate: `pnpm exec tsx scripts/generate-test-cases-doc.ts`
 
 ## Local secrets (`.env.local`)
 
