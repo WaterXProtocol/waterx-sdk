@@ -6,9 +6,14 @@
 /**
  * Generalized multi-account framework for the WaterX ecosystem.
  * 
- * Pure custody layer. Accounts hold per-T `Balance<T>` as dynamic fields keyed by
- * `BalanceKey<T>()`, with a `VecMap<TypeName, u64>` mirror on each `Account` for
- * fast enumeration. External flow in/out is mediated by hot-potato
+ * Pure custody layer. Each `Account` parks per-T `Balance<T>` in the **address
+ * accumulator** at `account.id.to_address()` (Sui's funds accumulator system) —
+ * credits via `balance::send_funds`, debits via
+ * `balance::withdraw_funds_from_object` + `balance::redeem_funds`.
+ * `Account.balances: VecMap<TypeName, u64>` is a synchronous on-chain mirror; the
+ * accumulator's only on-chain read API (`settled_funds_value`) is settled-snapshot
+ * only, so the framework keeps the mirror to drive views and emit friendly
+ * `EInsufficientBalance` aborts. External flow in/out is mediated by hot-potato
  * `DepositRequest<T>` / `WithdrawRequest<T>` that the framework issues; a
  * registered policy module destroys the potato with its own witness and decides
  * what final asset to put back into the account (e.g. a PSM policy turns
@@ -19,14 +24,22 @@
  * is the only authority needed, since only that module can construct a value of
  * its witness type.
  * 
- * Types of T:
+ * All inbound paths (`request_deposit<T>`, `transfer_coin<T>`, `put<T, P>`,
+ * `receive<T>`) require `T` to be in `AccountRegistry.allowed_types`
+ * (admin-managed via `allow_type<T>` / `disallow_type<T>`). Outbound paths
+ * (`request_withdraw<T>`, `take<T, P>`, `consume_withdraw`) are NOT gated, so
+ * disallowing a type acts as a circuit-breaker without stranding existing
+ * balances.
+ * 
+ * Types of T (assuming `allow_type<T>` already ran):
  * 
  * - Has registered deposit policy → `request_deposit<T>` works.
  * - Has registered withdraw policy → `request_withdraw<T>` works.
  * - Neither → "Parkable". Coins can sit on the account address via
- *   `transfer_coin<T>` or external `transfer::public_transfer`, but nothing the
+ *   `transfer_coin<T>` (gated by `allowed_types`) or external
+ *   `transfer::public_transfer` (which the framework cannot gate); nothing the
  *   framework does will fold them into the account until a policy is registered
- *   (or owner drains via `receive_coin`).
+ *   (or owner drains via `receive<T>`).
  */
 
 import { MoveStruct, MoveTuple, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
@@ -42,14 +55,16 @@ import * as type_name_2 from './deps/std/type_name.ts';
 import * as vec_map_1 from './deps/sui/vec_map.ts';
 import * as type_name_3 from './deps/std/type_name.ts';
 import * as type_name_4 from './deps/std/type_name.ts';
-import * as vec_map_2 from './deps/sui/vec_map.ts';
-import * as type_name_5 from './deps/std/type_name.ts';
 import * as vec_set_1 from './deps/sui/vec_set.ts';
-import * as vec_set_2 from './deps/sui/vec_set.ts';
-import * as vec_map_3 from './deps/sui/vec_map.ts';
+import * as type_name_5 from './deps/std/type_name.ts';
+import * as vec_map_2 from './deps/sui/vec_map.ts';
 import * as type_name_6 from './deps/std/type_name.ts';
-import * as vec_map_4 from './deps/sui/vec_map.ts';
+import * as vec_set_2 from './deps/sui/vec_set.ts';
+import * as vec_set_3 from './deps/sui/vec_set.ts';
+import * as vec_map_3 from './deps/sui/vec_map.ts';
 import * as type_name_7 from './deps/std/type_name.ts';
+import * as vec_map_4 from './deps/sui/vec_map.ts';
+import * as type_name_8 from './deps/std/type_name.ts';
 import * as balance_1 from './deps/sui/balance.ts';
 import * as balance_2 from './deps/sui/balance.ts';
 const $moduleName = '@waterx/account::account';
@@ -88,17 +103,31 @@ export const AccountRegistry = new MoveStruct({ name: `${$moduleName}::AccountRe
          */
         withdraw_policies: vec_map_1.VecMap(type_name_3.TypeName, type_name_4.TypeName),
         /**
+         * Admin-managed whitelist of inbound type names. Every framework entry point that
+         * introduces fresh state for a `T` into an account asserts membership:
+         * `request_deposit<T>` / `request_deposit_from_receivings<T>` / `transfer_coin<T>`
+         * / `put<T, P>` / `receive<T>`. Stops users (and buggy protocols) from pushing
+         * arbitrary types into wxa accounts. Outbound paths (`take`, `request_withdraw`,
+         * `consume_withdraw`, `account_debit`) are intentionally NOT gated so existing
+         * balances can always exit even after admin disallows a type (security
+         * circuit-breaker model). For balance flows the entry is the inner `T` of
+         * `Balance<T>` (e.g. `USDC`); for `receive<X>` the entry is the full received type
+         * (e.g. `Coin<USDC>` or some `RewardNFT`), so a single allow_type<T> covers
+         * balance flow but owners wanting to drain TTO'd `Coin<T>` objects via `receive`
+         * need a separate `allow_type<Coin<T>>` entry.
+         */
+        allowed_types: vec_set_1.VecSet(type_name_5.TypeName),
+        /**
          * Per-T aggregate of `Balance<T>` currently held inside accounts. Incremented in
          * `put<T, P>`, decremented in `take<T, P>` and `request_withdraw<T>`. Does _not_
          * include balance held by protocols (after `take`) or sitting in flight inside a
          * `DepositRequest` / `WithdrawRequest` hot potato.
          */
-        balances: vec_map_2.VecMap(type_name_5.TypeName, bcs.u64()),
-        allowed_versions: vec_set_1.VecSet(bcs.u16()),
-        managers: vec_set_2.VecSet(bcs.Address),
+        balances: vec_map_2.VecMap(type_name_6.TypeName, bcs.u64()),
+        allowed_versions: vec_set_2.VecSet(bcs.u16()),
+        managers: vec_set_3.VecSet(bcs.Address),
         paused: bcs.bool()
     } });
-export const BalanceKey = new MoveTuple({ name: `${$moduleName}::BalanceKey<phantom T>`, fields: [bcs.bool()] });
 export const ProtocolDataKey = new MoveTuple({ name: `${$moduleName}::ProtocolDataKey<phantom PROTOCOL>`, fields: [bcs.bool()] });
 export const Delegate = new MoveStruct({ name: `${$moduleName}::Delegate`, fields: {
         delegate_address: bcs.Address,
@@ -110,7 +139,7 @@ export const Delegate = new MoveStruct({ name: `${$moduleName}::Delegate`, field
          * protocol's module interprets its own bits. Owner always has `PERM_ALL` per
          * protocol regardless of this field.
          */
-        protocol_permissions: vec_map_3.VecMap(type_name_6.TypeName, bcs.u32()),
+        protocol_permissions: vec_map_3.VecMap(type_name_7.TypeName, bcs.u32()),
         expires_at_ms: bcs.option(bcs.u64())
     } });
 export const Account = new MoveStruct({ name: `${$moduleName}::Account`, fields: {
@@ -119,11 +148,11 @@ export const Account = new MoveStruct({ name: `${$moduleName}::Account`, fields:
         alias: bcs.string(),
         delegates: bcs.vector(Delegate),
         /**
-         * Mirror of the per-T `Balance<T>` values stored as dynamic fields under
-         * `BalanceKey<T>()` on this UID. Always equals the matching stored balance's
-         * `value()`.
+         * Synchronous mirror of the per-T `Balance<T>` held in the address accumulator at
+         * `id.to_address()`. Invariant: for every entry `(TypeName(T), v)`, the
+         * funds-accumulator entry for `Balance<T>` at this address equals `v`.
          */
-        balances: vec_map_4.VecMap(type_name_7.TypeName, bcs.u64())
+        balances: vec_map_4.VecMap(type_name_8.TypeName, bcs.u64())
     } });
 export const DepositRequest = new MoveStruct({ name: `${$moduleName}::DepositRequest<phantom T>`, fields: {
         account_id: bcs.Address,
@@ -667,6 +696,123 @@ export function delistProtocol(options: DelistProtocolOptions) {
         package: packageAddress,
         module: 'account',
         function: 'delist_protocol',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface IsTypeAllowedArguments {
+    registry: RawTransactionArgument<string>;
+}
+export interface IsTypeAllowedOptions {
+    package?: string;
+    arguments: IsTypeAllowedArguments | [
+        registry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function isTypeAllowed(options: IsTypeAllowedOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'is_type_allowed',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AllowedTypesArguments {
+    registry: RawTransactionArgument<string>;
+}
+export interface AllowedTypesOptions {
+    package?: string;
+    arguments: AllowedTypesArguments | [
+        registry: RawTransactionArgument<string>
+    ];
+}
+export function allowedTypes(options: AllowedTypesOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'allowed_types',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AllowTypeArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface AllowTypeOptions {
+    package?: string;
+    arguments: AllowTypeArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: add `T` to the inbound-types whitelist. Strict — aborts if `T` is already
+ * allowed. After this, `request_deposit<T>` / `request_deposit_from_receivings<T>`
+ * / `transfer_coin<T>` / `put<T, P>` / `receive<T>` will accept `T`.
+ */
+export function allowType(options: AllowTypeOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'allow_type',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface DisallowTypeArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface DisallowTypeOptions {
+    package?: string;
+    arguments: DisallowTypeArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: remove `T` from the inbound-types whitelist. Strict — aborts if `T` is
+ * not currently allowed. **Does not touch existing balances**: accounts that
+ * already hold `Balance<T>` keep it and can still drain it via
+ * `request_withdraw<T>` / `take<T, P>`. Only future inbound paths are blocked.
+ */
+export function disallowType(options: DisallowTypeOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'disallow_type',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
