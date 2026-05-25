@@ -24,12 +24,17 @@
  * is the only authority needed, since only that module can construct a value of
  * its witness type.
  * 
- * All inbound paths (`request_deposit<T>`, `transfer_coin<T>`, `put<T, P>`,
- * `receive<T>`) require `T` to be in `AccountRegistry.allowed_types`
- * (admin-managed via `allow_type<T>` / `disallow_type<T>`). Outbound paths
- * (`request_withdraw<T>`, `take<T, P>`, `consume_withdraw`) are NOT gated, so
- * disallowing a type acts as a circuit-breaker without stranding existing
- * balances.
+ * Inbound paths (`request_deposit<T>`, `transfer_coin<T>`, `receive<T>`,
+ * `take<T, P>`) require `T` to be in `AccountRegistry.allowed_types`
+ * (admin-managed via `allow_type<T>` / `disallow_type<T>`). Outbound / payback
+ * paths (`request_withdraw<T>`, `consume_withdraw`, `put<T, P>`) are NOT gated, so
+ * disallowing a type acts as a true circuit-breaker — it stops new T from entering
+ * (deposit pipeline, protocol takes) but never strands existing balances: users
+ * can always `request_withdraw` what they hold, and protocols can always `put`
+ * back what they took earlier (e.g. perp `close_position` works on every existing
+ * position regardless of disallow). `put`'s only gates are witness privacy +
+ * `protocol_whitelist`; admin's tool to stop a misbehaving protocol from
+ * credit-spamming is `delist_protocol<P>`.
  * 
  * Types of T (assuming `allow_type<T>` already ran):
  * 
@@ -103,18 +108,27 @@ export const AccountRegistry = new MoveStruct({ name: `${$moduleName}::AccountRe
          */
         withdraw_policies: vec_map_1.VecMap(type_name_3.TypeName, type_name_4.TypeName),
         /**
-         * Admin-managed whitelist of inbound type names. Every framework entry point that
-         * introduces fresh state for a `T` into an account asserts membership:
-         * `request_deposit<T>` / `request_deposit_from_receivings<T>` / `transfer_coin<T>`
-         * / `put<T, P>` / `receive<T>`. Stops users (and buggy protocols) from pushing
-         * arbitrary types into wxa accounts. Outbound paths (`take`, `request_withdraw`,
-         * `consume_withdraw`, `account_debit`) are intentionally NOT gated so existing
-         * balances can always exit even after admin disallows a type (security
-         * circuit-breaker model). For balance flows the entry is the inner `T` of
-         * `Balance<T>` (e.g. `USDC`); for `receive<X>` the entry is the full received type
-         * (e.g. `Coin<USDC>` or some `RewardNFT`), so a single allow_type<T> covers
-         * balance flow but owners wanting to drain TTO'd `Coin<T>` objects via `receive`
-         * need a separate `allow_type<Coin<T>>` entry.
+         * Admin-managed whitelist of types `T` that can flow INTO the framework as NEW
+         * value. Every framework entry point that introduces a fresh `T` (either to be
+         * tracked as user balance or to be drawn for protocol use) asserts membership:
+         * `request_deposit<T>` / `request_deposit_from_receivings<T>` (user-initiated
+         * deposit pipeline) / `transfer_coin<T>` / `receive<T>` (TTO-side push / drain) /
+         * `take<T, P>` (protocol-initiated draw of new T from a stored balance — admin can
+         * stop protocols from opening new T-denominated positions by disallowing T).
+         *
+         * **NOT** gated: `put<T, P>`, `request_withdraw<T>`, `consume_withdraw<T, P>`,
+         * `account_debit<T>`. These are outbound from the protocol's perspective
+         * (returning T that was previously taken) or from the framework's perspective
+         * (draining T the account already holds). Leaving them ungated makes
+         * `disallow_type<T>` a true circuit-breaker — it stops new T from entering the
+         * system without freezing existing positions inside protocols or stranding
+         * wxa-resident balances.
+         *
+         * For balance flows the entry is the inner `T` of `Balance<T>` (e.g. `USDC`); for
+         * `receive<X>` the entry is the full received type (e.g. `Coin<USDC>` or some
+         * `RewardNFT`), so a single allow_type<T> covers balance flow but owners wanting
+         * to drain TTO'd `Coin<T>` objects via `receive` need a separate
+         * `allow_type<Coin<T>>` entry.
          */
         allowed_types: vec_set_1.VecSet(type_name_5.TypeName),
         /**
@@ -765,7 +779,8 @@ export interface AllowTypeOptions {
 /**
  * Admin: add `T` to the inbound-types whitelist. Strict — aborts if `T` is already
  * allowed. After this, `request_deposit<T>` / `request_deposit_from_receivings<T>`
- * / `transfer_coin<T>` / `put<T, P>` / `receive<T>` will accept `T`.
+ * / `transfer_coin<T>` / `receive<T>` / `take<T, P>` will accept `T`. `put<T, P>`
+ * is ungated by design and works regardless of allow state.
  */
 export function allowType(options: AllowTypeOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -1663,7 +1678,7 @@ export interface TakeOptions<P extends BcsType<any>> {
     ];
 }
 /**
- * Splits `amount` of `Balance<T>` off `account_id` for protocol `P` to use. Three
+ * Splits `amount` of `Balance<T>` off `account_id` for protocol `P` to use. Four
  * gates compose:
  *
  * 1.  **Witness privacy.** Only the module that defines `P` can produce a value of
@@ -1671,7 +1686,11 @@ export interface TakeOptions<P extends BcsType<any>> {
  * 2.  **Protocol whitelist.** `P` must be in `protocol_whitelist` (admin-managed).
  *     Stops any deployed module that happens to own a `drop` witness from draining
  *     accounts.
- * 3.  **Per-account auth.** `sender_request.address()` must be the account's owner
+ * 3.  **Type allowed.** `T` must be in `allowed_types`. This is the
+ *     circuit-breaker half of the gate: `disallow_type<T>` blocks protocols from
+ *     opening new `T`-denominated positions, while `put<T, P>` stays open so
+ *     existing positions can always close.
+ * 4.  **Per-account auth.** `sender_request.address()` must be the account's owner
  *     OR a non-expired delegate — even a legitimate whitelisted protocol cannot
  *     move funds out of an account that doesn't know the caller. This mirrors EOA
  *     semantics: the account never pays out without the owner (or a delegated key)
@@ -1721,7 +1740,12 @@ export interface PutOptions<P extends BcsType<any>> {
     ];
 }
 /**
- * Joins `bal` into `account_id`'s stored `Balance<T>`. Symmetric to `take<T, P>`.
+ * Joins `bal` into `account_id`'s stored `Balance<T>`. Symmetric to `take<T, P>`
+ * for the protocol payback half. **Not** gated on `allowed_types`: protocols must
+ * always be able to return T they previously took, otherwise a mid-life
+ * `disallow_type<T>` would strand existing positions inside the protocol. The
+ * witness + `protocol_whitelist` gates remain — admin's tool to stop a misbehaving
+ * protocol from credit-spamming is `delist_protocol<P>`, not the type whitelist.
  * Zero-value balances are silently destroyed.
  */
 export function put<P extends BcsType<any>>(options: PutOptions<P>) {
