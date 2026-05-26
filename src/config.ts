@@ -54,10 +54,25 @@ export interface WaterxPerpPackage extends BasePackageEntry {
   markets: Record<string, WaterxPerpMarketEntry>;
 }
 
+export interface RewarderEntry {
+  /** `Rewarder<STAKE, R>` shared object ID. */
+  rewarder_id: string;
+  /** Fully-qualified reward coin Move type (e.g. `0x2::sui::SUI`). */
+  coin_type: string;
+  /** Reward coin display decimals. */
+  decimals: number;
+}
+
 export interface WaterxStakingPackage extends BasePackageEntry {
   admin_cap?: string;
   /** Map of stake-type alias (e.g. `"WLP"`) → `StakingPool<STAKE>` shared object ID. */
   pools?: Record<string, string>;
+  /**
+   * Map of stake-type alias → reward-token alias → rewarder metadata.
+   * Reward-token alias is display-only (e.g. `"SUI"`, `"MOCK_SUI"`); the
+   * fully-qualified coin Move type lives on the {@link RewarderEntry}.
+   */
+  rewarders?: Record<string, Record<string, RewarderEntry>>;
 }
 
 export interface WlpPackage extends BasePackageEntry {

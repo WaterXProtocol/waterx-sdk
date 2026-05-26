@@ -175,6 +175,25 @@ export class WaterXClient {
     return `${w.original_id}::wlp::WLP`;
   }
 
+  /**
+   * List of rewarders registered for a staking pool alias, e.g. `"WLP"`.
+   * Returns an empty array if the deployment has no rewarders configured.
+   * Each entry carries the rewarder shared object ID + the fully-qualified
+   * reward coin type, so callers don't need a separate alias-to-type lookup.
+   */
+  getRewarders(
+    stakeAlias: string,
+  ): { alias: string; rewarder_id: string; coin_type: string; decimals: number }[] {
+    const map = this.config.packages.waterx_staking?.rewarders?.[stakeAlias];
+    if (!map) return [];
+    return Object.entries(map).map(([alias, entry]) => ({ alias, ...entry }));
+  }
+
+  /** Type list of every reward coin for a stake pool — convenience for stake/unstake/claim. */
+  getRewarderTypes(stakeAlias: string): string[] {
+    return this.getRewarders(stakeAlias).map((r) => r.coin_type);
+  }
+
   /** `waterx_credit` package entry, throws if the deployment has no bridge. */
   getCredit() {
     const c = this.config.packages.waterx_credit;

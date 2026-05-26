@@ -2197,7 +2197,9 @@ export interface OpenPositionByKeeperOptions {
  * Keeper-only: open a new position for an account, funded by the keeper's own
  * `Coin<C_TOKEN>` (campaign / airdrop use case). The keeper bypasses
  * `min_coll_value` on this path — `increase_position` and `place_order` still
- * enforce it for all callers including keepers.
+ * enforce it for all callers including keepers. Returns the new `position_id` so
+ * the keeper (or a composing protocol, e.g. waterx_voucher's `record_open`) can
+ * reference it in the same PTB.
  */
 export function openPositionByKeeper(options: OpenPositionByKeeperOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -2256,7 +2258,8 @@ export interface ClosePositionByKeeperOptions {
 }
 /**
  * Risk-manager-only: force-close a position (emergency use). Reads
- * `account_object_address` from the position directly, like `liquidate`.
+ * `account_object_address` from the position directly, like `liquidate`. Returns
+ * the closed `position_id` for PTB composition.
  */
 export function closePositionByKeeper(options: ClosePositionByKeeperOptions) {
     const packageAddress = options.package ?? '@waterx/perp';

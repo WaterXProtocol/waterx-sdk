@@ -579,7 +579,7 @@ export interface MintWlpWithPricingTvlArguments {
     ticker: RawTransactionArgument<string>;
     pricingTvlUsd: RawTransactionArgument<string>;
     minLpAmount: RawTransactionArgument<number | bigint>;
-    sender: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
 }
 export interface MintWlpWithPricingTvlOptions {
     package?: string;
@@ -591,7 +591,7 @@ export interface MintWlpWithPricingTvlOptions {
         ticker: RawTransactionArgument<string>,
         pricingTvlUsd: RawTransactionArgument<string>,
         minLpAmount: RawTransactionArgument<number | bigint>,
-        sender: RawTransactionArgument<string>
+        accountId: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -611,7 +611,7 @@ export function mintWlpWithPricingTvl(options: MintWlpWithPricingTvlOptions) {
         'address',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["pool", "globalConfig", "deposit", "oracle", "ticker", "pricingTvlUsd", "minLpAmount", "sender"];
+    const parameterNames = ["pool", "globalConfig", "deposit", "oracle", "ticker", "pricingTvlUsd", "minLpAmount", "accountId"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'lp_pool',

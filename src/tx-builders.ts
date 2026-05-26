@@ -41,7 +41,7 @@ import {
   type PlaceOrderRequestParams,
   type UpdateOrderRequestParams,
 } from "./user/order.ts";
-import { stake, unstake } from "./user/staking.ts";
+import { claimReward, stake, unstake } from "./user/staking.ts";
 import {
   closePositionRequest,
   decreasePositionRequest,
@@ -108,6 +108,33 @@ function newTx(opts?: CommonBuildOpts): Transaction {
 }
 
 /**
+ * Refresh every WLP pool-token oracle (+ caller-supplied extra tickers) and
+ * bump each pool token's `last_price_refresh_timestamp` so the pool's
+ * `assert_prices_fresh` passes when the next `mint_wlp` / `request_redeem` /
+ * trading `execute` runs in the same PTB.
+ */
+async function refreshWlpPoolOracles(
+  tx: Transaction,
+  client: WaterXClient,
+  extraTickers: string[],
+  opts: {
+    cache?: PythCache;
+    sponsorFund?: { fund: TransactionArgument; packageId: string };
+    lpType?: string;
+  },
+): Promise<void> {
+  const poolTickers = getCollateralAssets(client.config);
+  const oracleTickers = Array.from(new Set([...extraTickers, ...poolTickers]));
+  await refreshOraclePrices(tx, client, oracleTickers, {
+    cache: opts.cache,
+    sponsorFund: opts.sponsorFund,
+  });
+  for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
+    updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
+  }
+}
+
+/**
  * Build the *Request + execute envelope with optional Pyth sponsor flow:
  *
  *   [fund = sponsor.request()]
@@ -132,21 +159,11 @@ async function wrapRequestAndExecute(
   if (useSponsor) sponsorFund = openPythSponsorFund(tx, client);
 
   if (!opts?.skipOraclePriceRefresh) {
-    // (a) Refresh every pool-token oracle + the base ticker. The pool's
-    //     `assert_prices_fresh` walks every TokenPoolInfo and requires each
-    //     to have been recently update_token_value'd, so we feed Pyth for
-    //     all of them in one PTB. Base ticker is added on top.
-    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
-    const oracleTickers = Array.from(new Set([req.ticker, collateralTicker, ...poolTickers]));
-    await refreshOraclePrices(tx, client, oracleTickers, {
+    await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
       cache: opts?.pythCache,
       sponsorFund,
+      lpType: req.lpType,
     });
-    // (b) Bump each pool token's `last_price_refresh_timestamp` so the
-    //     in-execute freshness assertion passes.
-    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
-      updateTokenValue(client, tx, { tokenType, lpType: req.lpType });
-    }
   }
 
   const tradingReq = buildRequest(sponsorFund);
@@ -405,12 +422,10 @@ export async function buildMintWlpTx(
   const tx = newTx(params);
 
   if (!params.skipOraclePriceRefresh) {
-    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
-    const oracleTickers = Array.from(new Set([params.depositTicker, ...poolTickers]));
-    await refreshOraclePrices(tx, client, oracleTickers, { cache: params.pythCache });
-    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
-      updateTokenValue(client, tx, { tokenType, lpType: params.lpType });
-    }
+    await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
+      cache: params.pythCache,
+      lpType: params.lpType,
+    });
   }
 
   mintWlp(client, tx, params);
@@ -427,8 +442,9 @@ export interface BuildMintAndStakeWlpParams extends BuildMintWlpParams {
    */
   stakeAlias?: string;
   /**
-   * Rewarder types to settle on the stake deposit. Order must match the pool's
-   * on-chain `rewarder_ids`. Defaults to `["0x2::sui::SUI"]`.
+   * Rewarder coin types to settle on the stake deposit. Order must match the
+   * pool's on-chain `rewarder_ids`. Defaults to every rewarder configured for
+   * the stake pool in `waterx_staking.rewarders[stakeAlias]`.
    */
   rewarderTypes?: string[];
 }
@@ -449,21 +465,20 @@ export async function buildMintAndStakeWlpTx(
   const tx = newTx(params);
 
   if (!params.skipOraclePriceRefresh) {
-    const poolTickers = getCollateralAssets(client.config);
-    const oracleTickers = Array.from(new Set([params.depositTicker, ...poolTickers]));
-    await refreshOraclePrices(tx, client, oracleTickers, { cache: params.pythCache });
-    for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
-      updateTokenValue(client, tx, { tokenType, lpType: params.lpType });
-    }
+    await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
+      cache: params.pythCache,
+      lpType: params.lpType,
+    });
   }
 
+  const stakeAlias = params.stakeAlias ?? "WLP";
   const lpAmount = mintWlp(client, tx, params);
   stake(client, tx, {
     accountId: params.accountId,
-    stakeAlias: params.stakeAlias ?? "WLP",
+    stakeAlias,
     stakeType: params.lpType ?? client.wlpType(),
     stakeAmount: lpAmount,
-    rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
+    rewarderTypes: params.rewarderTypes ?? client.getRewarderTypes(stakeAlias),
     bucketAccount: params.bucketAccount,
   });
   return tx;
@@ -479,7 +494,10 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
   withdrawalAmount: bigint | number;
   /** Staking pool alias. Defaults to `"WLP"`. */
   stakeAlias?: string;
-  /** Rewarder types to settle on unstake. Defaults to `["0x2::sui::SUI"]`. */
+  /**
+   * Rewarder coin types to settle on unstake. Defaults to every rewarder
+   * configured for the stake pool in `waterx_staking.rewarders[stakeAlias]`.
+   */
   rewarderTypes?: string[];
 }
 
@@ -496,13 +514,14 @@ export function buildUnstakeAndRequestRedeemWlpTx(
   params: BuildUnstakeAndRequestRedeemWlpParams,
 ): Transaction {
   const tx = newTx(params);
+  const stakeAlias = params.stakeAlias ?? "WLP";
 
   unstake(client, tx, {
     accountId: params.accountId,
-    stakeAlias: params.stakeAlias ?? "WLP",
+    stakeAlias,
     stakeType: params.lpType ?? client.wlpType(),
     withdrawalAmount: params.withdrawalAmount,
-    rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
+    rewarderTypes: params.rewarderTypes ?? client.getRewarderTypes(stakeAlias),
     bucketAccount: params.bucketAccount,
   });
 
@@ -531,7 +550,10 @@ export interface BuildCancelRedeemAndStakeWlpParams extends CancelRedeemWlpParam
   stakeAmount: bigint | number;
   /** Staking pool alias. Defaults to `"WLP"`. */
   stakeAlias?: string;
-  /** Rewarder types to settle on stake. Defaults to `["0x2::sui::SUI"]`. */
+  /**
+   * Rewarder coin types to settle on stake. Defaults to every rewarder
+   * configured for the stake pool in `waterx_staking.rewarders[stakeAlias]`.
+   */
   rewarderTypes?: string[];
 }
 
@@ -546,6 +568,7 @@ export function buildCancelRedeemAndStakeWlpTx(
   params: BuildCancelRedeemAndStakeWlpParams,
 ): Transaction {
   const tx = newTx(params);
+  const stakeAlias = params.stakeAlias ?? "WLP";
 
   cancelRedeemWlp(client, tx, {
     requestId: params.requestId,
@@ -555,12 +578,65 @@ export function buildCancelRedeemAndStakeWlpTx(
 
   stake(client, tx, {
     accountId: params.accountId,
-    stakeAlias: params.stakeAlias ?? "WLP",
+    stakeAlias,
     stakeType: params.lpType ?? client.wlpType(),
     stakeAmount: params.stakeAmount,
-    rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
+    rewarderTypes: params.rewarderTypes ?? client.getRewarderTypes(stakeAlias),
     bucketAccount: params.bucketAccount,
   });
+
+  return tx;
+}
+
+// ============================================================================
+// Claim rewards → wxa account (TTO)
+// ============================================================================
+
+export interface BuildClaimRewardsToAccountParams extends CommonBuildOpts {
+  accountId: string;
+  /** Staking pool alias. Defaults to `"WLP"`. */
+  stakeAlias?: string;
+  /** Fully-qualified stake coin type. Defaults to `client.wlpType()`. */
+  stakeType?: string;
+  /**
+   * Reward coin types to claim. Defaults to every rewarder configured for the
+   * stake pool in `waterx_staking.rewarders[stakeAlias]`.
+   */
+  rewarderTypes?: string[];
+  bucketAccount?: string | TransactionArgument;
+}
+
+/**
+ * Claims every accrued reward for `accountId` on the given stake pool. Each
+ * resulting `Coin<R>` is TTO'd to the wxa account's UID address via
+ * `wxa_account::transfer_coin<R>` (the default behaviour of the Move
+ * `staking::claim` entry — no deposit-policy registration required for the
+ * reward token). The account owner collects each coin via
+ * `wxa_account::receive` in a separate user action.
+ */
+export function buildClaimRewardsToAccountTx(
+  client: WaterXClient,
+  params: BuildClaimRewardsToAccountParams,
+): Transaction {
+  const tx = newTx(params);
+  const stakeAlias = params.stakeAlias ?? "WLP";
+  const stakeType = params.stakeType ?? client.wlpType();
+  const rewarderTypes = params.rewarderTypes ?? client.getRewarderTypes(stakeAlias);
+  if (rewarderTypes.length === 0) {
+    throw new Error(
+      `buildClaimRewardsToAccountTx: no rewarders configured for stakeAlias=${stakeAlias}`,
+    );
+  }
+
+  for (const rewardType of rewarderTypes) {
+    claimReward(client, tx, {
+      accountId: params.accountId,
+      stakeAlias,
+      stakeType,
+      rewardType,
+      bucketAccount: params.bucketAccount,
+    });
+  }
 
   return tx;
 }
