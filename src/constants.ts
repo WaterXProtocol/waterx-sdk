@@ -12,13 +12,12 @@ export const FLOAT_SCALE = 1_000_000_000n;
 export const DOUBLE_SCALE = 1_000_000_000_000_000_000n;
 
 // ======== Token decimals ========
-/** On-chain decimal precision for SUI-native coins. */
-export const TOKEN_DECIMALS = {
-  SUI: 9,
-  USDC: 6,
-  USDSUI: 6,
-  WLP: 6,
-} as const satisfies Record<string, number>;
+/** SUI coin decimals (gas + staking rewards). */
+export const SUI_DECIMALS = 9;
+/** WLP LP-token decimals. */
+export const WLP_DECIMALS = 6;
+/** Shared decimals for trading collateral / WLP backing assets (USDC, USDSUI). */
+export const COLLATERAL_DECIMALS = 6;
 
 // ======== Fee rates & risk parameters ========
 /** Default crypto market trading fee rate (3 bps). Per-market value lives in MarketConfig. */
