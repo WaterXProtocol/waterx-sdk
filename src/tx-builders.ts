@@ -64,6 +64,7 @@ import {
   type MintWlpParams,
   type RequestRedeemWlpParams,
 } from "./user/wlp.ts";
+import { getCollateralAssets } from "./utils/config.ts";
 import {
   openPythSponsorFund,
   PythCache,
@@ -448,10 +449,10 @@ export async function buildMintAndStakeWlpTx(
   const tx = newTx(params);
 
   if (!params.skipOraclePriceRefresh) {
-    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    const poolTickers = getCollateralAssets(client.config);
     const oracleTickers = Array.from(new Set([params.depositTicker, ...poolTickers]));
     await refreshOraclePrices(tx, client, oracleTickers, { cache: params.pythCache });
-    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
+    for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
       updateTokenValue(client, tx, { tokenType, lpType: params.lpType });
     }
   }
@@ -461,7 +462,7 @@ export async function buildMintAndStakeWlpTx(
     accountId: params.accountId,
     stakeAlias: params.stakeAlias ?? "WLP",
     stakeType: params.lpType ?? client.wlpType(),
-    stakeAmount: lpAmount as unknown as bigint,
+    stakeAmount: lpAmount,
     rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
     bucketAccount: params.bucketAccount,
   });
@@ -495,13 +496,12 @@ export function buildUnstakeAndRequestRedeemWlpTx(
   params: BuildUnstakeAndRequestRedeemWlpParams,
 ): Transaction {
   const tx = newTx(params);
-  const withdrawalAmount = BigInt(params.withdrawalAmount);
 
   unstake(client, tx, {
     accountId: params.accountId,
     stakeAlias: params.stakeAlias ?? "WLP",
     stakeType: params.lpType ?? client.wlpType(),
-    withdrawalAmount,
+    withdrawalAmount: params.withdrawalAmount,
     rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
     bucketAccount: params.bucketAccount,
   });
@@ -509,7 +509,7 @@ export function buildUnstakeAndRequestRedeemWlpTx(
   requestRedeemWlp(client, tx, {
     accountId: params.accountId,
     redeemTokenType: params.redeemTokenType,
-    lpAmount: withdrawalAmount,
+    lpAmount: params.withdrawalAmount,
     lpType: params.lpType,
     bucketAccount: params.bucketAccount,
   });
