@@ -369,7 +369,7 @@ export const WlpEquityChanged = new MoveStruct({ name: `${$moduleName}::WlpEquit
         memo: bcs.string()
     } });
 export const WlpMinted = new MoveStruct({ name: `${$moduleName}::WlpMinted`, fields: {
-        account_id: bcs.Address,
+        account_object_address: bcs.Address,
         wlp_type: type_name_20.TypeName,
         token_type: type_name_21.TypeName,
         deposit_amount: bcs.u64(),
@@ -384,7 +384,7 @@ export const WlpMinted = new MoveStruct({ name: `${$moduleName}::WlpMinted`, fie
         memo: bcs.string()
     } });
 export const WlpRedeemRequested = new MoveStruct({ name: `${$moduleName}::WlpRedeemRequested`, fields: {
-        account_id: bcs.Address,
+        account_object_address: bcs.Address,
         wlp_type: type_name_22.TypeName,
         token_type: type_name_23.TypeName,
         wlp_amount: bcs.u64(),
@@ -392,7 +392,7 @@ export const WlpRedeemRequested = new MoveStruct({ name: `${$moduleName}::WlpRed
         memo: bcs.string()
     } });
 export const WlpRedeemCancelled = new MoveStruct({ name: `${$moduleName}::WlpRedeemCancelled`, fields: {
-        account_id: bcs.Address,
+        account_object_address: bcs.Address,
         wlp_type: type_name_24.TypeName,
         token_type: type_name_25.TypeName,
         request_id: bcs.u64(),
@@ -400,7 +400,7 @@ export const WlpRedeemCancelled = new MoveStruct({ name: `${$moduleName}::WlpRed
         memo: bcs.string()
     } });
 export const WlpRedeemRejected = new MoveStruct({ name: `${$moduleName}::WlpRedeemRejected`, fields: {
-        account_id: bcs.Address,
+        account_object_address: bcs.Address,
         operator_address: bcs.Address,
         wlp_type: type_name_26.TypeName,
         token_type: type_name_27.TypeName,
@@ -409,7 +409,7 @@ export const WlpRedeemRejected = new MoveStruct({ name: `${$moduleName}::WlpRede
         memo: bcs.string()
     } });
 export const WlpRedeemSettled = new MoveStruct({ name: `${$moduleName}::WlpRedeemSettled`, fields: {
-        account_id: bcs.Address,
+        account_object_address: bcs.Address,
         wlp_type: type_name_28.TypeName,
         token_type: type_name_29.TypeName,
         request_id: bcs.u64(),
@@ -1275,7 +1275,7 @@ export function emitWlpEquityChanged(options: EmitWlpEquityChangedOptions) {
     });
 }
 export interface EmitWlpMintedArguments {
-    accountId: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
     wlpType: RawTransactionArgument<string>;
     tokenType: RawTransactionArgument<string>;
     depositAmount: RawTransactionArgument<number | bigint>;
@@ -1286,7 +1286,7 @@ export interface EmitWlpMintedArguments {
 export interface EmitWlpMintedOptions {
     package?: string;
     arguments: EmitWlpMintedArguments | [
-        accountId: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
         wlpType: RawTransactionArgument<string>,
         tokenType: RawTransactionArgument<string>,
         depositAmount: RawTransactionArgument<number | bigint>,
@@ -1306,7 +1306,7 @@ export function emitWlpMinted(options: EmitWlpMintedOptions) {
         'u64',
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["accountId", "wlpType", "tokenType", "depositAmount", "wlpAmount", "feeAmount", "sharePrice"];
+    const parameterNames = ["accountObjectAddress", "wlpType", "tokenType", "depositAmount", "wlpAmount", "feeAmount", "sharePrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'events',
@@ -1315,7 +1315,7 @@ export function emitWlpMinted(options: EmitWlpMintedOptions) {
     });
 }
 export interface EmitWlpRedeemRequestedArguments {
-    accountId: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
     wlpType: RawTransactionArgument<string>;
     tokenType: RawTransactionArgument<string>;
     wlpAmount: RawTransactionArgument<number | bigint>;
@@ -1324,7 +1324,7 @@ export interface EmitWlpRedeemRequestedArguments {
 export interface EmitWlpRedeemRequestedOptions {
     package?: string;
     arguments: EmitWlpRedeemRequestedArguments | [
-        accountId: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
         wlpType: RawTransactionArgument<string>,
         tokenType: RawTransactionArgument<string>,
         wlpAmount: RawTransactionArgument<number | bigint>,
@@ -1340,7 +1340,7 @@ export function emitWlpRedeemRequested(options: EmitWlpRedeemRequestedOptions) {
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["accountId", "wlpType", "tokenType", "wlpAmount", "requestId"];
+    const parameterNames = ["accountObjectAddress", "wlpType", "tokenType", "wlpAmount", "requestId"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'events',
@@ -1349,7 +1349,7 @@ export function emitWlpRedeemRequested(options: EmitWlpRedeemRequestedOptions) {
     });
 }
 export interface EmitWlpRedeemCancelledArguments {
-    accountId: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
     wlpType: RawTransactionArgument<string>;
     tokenType: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
@@ -1358,7 +1358,7 @@ export interface EmitWlpRedeemCancelledArguments {
 export interface EmitWlpRedeemCancelledOptions {
     package?: string;
     arguments: EmitWlpRedeemCancelledArguments | [
-        accountId: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
         wlpType: RawTransactionArgument<string>,
         tokenType: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>,
@@ -1374,7 +1374,7 @@ export function emitWlpRedeemCancelled(options: EmitWlpRedeemCancelledOptions) {
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["accountId", "wlpType", "tokenType", "requestId", "wlpAmount"];
+    const parameterNames = ["accountObjectAddress", "wlpType", "tokenType", "requestId", "wlpAmount"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'events',
@@ -1383,7 +1383,7 @@ export function emitWlpRedeemCancelled(options: EmitWlpRedeemCancelledOptions) {
     });
 }
 export interface EmitWlpRedeemRejectedArguments {
-    accountId: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
     operatorAddress: RawTransactionArgument<string>;
     wlpType: RawTransactionArgument<string>;
     tokenType: RawTransactionArgument<string>;
@@ -1393,7 +1393,7 @@ export interface EmitWlpRedeemRejectedArguments {
 export interface EmitWlpRedeemRejectedOptions {
     package?: string;
     arguments: EmitWlpRedeemRejectedArguments | [
-        accountId: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
         operatorAddress: RawTransactionArgument<string>,
         wlpType: RawTransactionArgument<string>,
         tokenType: RawTransactionArgument<string>,
@@ -1411,7 +1411,7 @@ export function emitWlpRedeemRejected(options: EmitWlpRedeemRejectedOptions) {
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["accountId", "operatorAddress", "wlpType", "tokenType", "requestId", "wlpAmount"];
+    const parameterNames = ["accountObjectAddress", "operatorAddress", "wlpType", "tokenType", "requestId", "wlpAmount"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'events',
@@ -1420,7 +1420,7 @@ export function emitWlpRedeemRejected(options: EmitWlpRedeemRejectedOptions) {
     });
 }
 export interface EmitWlpRedeemSettledArguments {
-    accountId: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
     wlpType: RawTransactionArgument<string>;
     tokenType: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
@@ -1431,7 +1431,7 @@ export interface EmitWlpRedeemSettledArguments {
 export interface EmitWlpRedeemSettledOptions {
     package?: string;
     arguments: EmitWlpRedeemSettledArguments | [
-        accountId: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
         wlpType: RawTransactionArgument<string>,
         tokenType: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>,
@@ -1451,7 +1451,7 @@ export function emitWlpRedeemSettled(options: EmitWlpRedeemSettledOptions) {
         'u64',
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["accountId", "wlpType", "tokenType", "requestId", "redeemAmount", "feeAmount", "sharePrice"];
+    const parameterNames = ["accountObjectAddress", "wlpType", "tokenType", "requestId", "redeemAmount", "feeAmount", "sharePrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'events',
