@@ -41,6 +41,7 @@ import {
   type PlaceOrderRequestParams,
   type UpdateOrderRequestParams,
 } from "./user/order.ts";
+import { stake, unstake } from "./user/staking.ts";
 import {
   closePositionRequest,
   decreasePositionRequest,
@@ -54,7 +55,15 @@ import {
   type IncreasePositionRequestParams,
   type WithdrawCollateralRequestParams,
 } from "./user/trading.ts";
-import { mintWlp, updateTokenValue, type MintWlpParams } from "./user/wlp.ts";
+import {
+  cancelRedeemWlp,
+  mintWlp,
+  requestRedeemWlp,
+  updateTokenValue,
+  type CancelRedeemWlpParams,
+  type MintWlpParams,
+  type RequestRedeemWlpParams,
+} from "./user/wlp.ts";
 import {
   openPythSponsorFund,
   PythCache,
@@ -404,6 +413,155 @@ export async function buildMintWlpTx(
   }
 
   mintWlp(client, tx, params);
+  return tx;
+}
+
+// ============================================================================
+// WLP mint + stake (atomic)
+// ============================================================================
+
+export interface BuildMintAndStakeWlpParams extends BuildMintWlpParams {
+  /**
+   * Staking pool alias (key into `waterx_staking.pools`). Defaults to `"WLP"`.
+   */
+  stakeAlias?: string;
+  /**
+   * Rewarder types to settle on the stake deposit. Order must match the pool's
+   * on-chain `rewarder_ids`. Defaults to `["0x2::sui::SUI"]`.
+   */
+  rewarderTypes?: string[];
+}
+
+/**
+ * Mints WLP and immediately stakes the minted amount into the WLP staking pool
+ * in the same PTB. The mint's `lp_amount` return is piped directly into the
+ * `stake` call so no precision loss / dust can occur.
+ *
+ * Use this instead of `buildMintWlpTx` when the product flow is "deposit USD
+ * and earn rewards" — un-staked WLP sitting in the wxa account's `Balance<WLP>`
+ * slot earns nothing.
+ */
+export async function buildMintAndStakeWlpTx(
+  client: WaterXClient,
+  params: BuildMintAndStakeWlpParams,
+): Promise<Transaction> {
+  const tx = newTx(params);
+
+  if (!params.skipOraclePriceRefresh) {
+    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    const oracleTickers = Array.from(new Set([params.depositTicker, ...poolTickers]));
+    await refreshOraclePrices(tx, client, oracleTickers, { cache: params.pythCache });
+    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
+      updateTokenValue(client, tx, { tokenType, lpType: params.lpType });
+    }
+  }
+
+  const lpAmount = mintWlp(client, tx, params);
+  stake(client, tx, {
+    accountId: params.accountId,
+    stakeAlias: params.stakeAlias ?? "WLP",
+    stakeType: params.lpType ?? client.wlpType(),
+    stakeAmount: lpAmount as unknown as bigint,
+    rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
+    bucketAccount: params.bucketAccount,
+  });
+  return tx;
+}
+
+// ============================================================================
+// WLP unstake + request-redeem (atomic)
+// ============================================================================
+
+export interface BuildUnstakeAndRequestRedeemWlpParams
+  extends Omit<RequestRedeemWlpParams, "lpAmount">, CommonBuildOpts {
+  /** Amount of staked WLP to unstake and enqueue for redemption. */
+  withdrawalAmount: bigint | number;
+  /** Staking pool alias. Defaults to `"WLP"`. */
+  stakeAlias?: string;
+  /** Rewarder types to settle on unstake. Defaults to `["0x2::sui::SUI"]`. */
+  rewarderTypes?: string[];
+}
+
+/**
+ * Unstakes WLP from the staking pool and immediately enqueues a redeem request
+ * in the same PTB. Mirror of `buildMintAndStakeWlpTx` for withdrawals.
+ *
+ * Does NOT refresh oracles — `request_redeem` runs `assert_prices_fresh`
+ * internally; callers must pre-pump a price refresh into the shared PTB
+ * (e.g. via `refreshOraclePrices` + `updateTokenValue`) before calling this.
+ */
+export function buildUnstakeAndRequestRedeemWlpTx(
+  client: WaterXClient,
+  params: BuildUnstakeAndRequestRedeemWlpParams,
+): Transaction {
+  const tx = newTx(params);
+  const withdrawalAmount = BigInt(params.withdrawalAmount);
+
+  unstake(client, tx, {
+    accountId: params.accountId,
+    stakeAlias: params.stakeAlias ?? "WLP",
+    stakeType: params.lpType ?? client.wlpType(),
+    withdrawalAmount,
+    rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
+    bucketAccount: params.bucketAccount,
+  });
+
+  requestRedeemWlp(client, tx, {
+    accountId: params.accountId,
+    redeemTokenType: params.redeemTokenType,
+    lpAmount: withdrawalAmount,
+    lpType: params.lpType,
+    bucketAccount: params.bucketAccount,
+  });
+
+  return tx;
+}
+
+// ============================================================================
+// WLP cancel-redeem + re-stake (atomic)
+// ============================================================================
+
+export interface BuildCancelRedeemAndStakeWlpParams extends CancelRedeemWlpParams, CommonBuildOpts {
+  accountId: string;
+  /**
+   * WLP amount (base units) that was originally enqueued by `request_redeem`
+   * and is being returned to the wxa account by `cancel_redeem` — gets
+   * re-staked into the WLP staking pool in the same PTB.
+   */
+  stakeAmount: bigint | number;
+  /** Staking pool alias. Defaults to `"WLP"`. */
+  stakeAlias?: string;
+  /** Rewarder types to settle on stake. Defaults to `["0x2::sui::SUI"]`. */
+  rewarderTypes?: string[];
+}
+
+/**
+ * Cancels a pending WLP redeem request and re-stakes the returned WLP in the
+ * same PTB. Third partner of `buildMintAndStakeWlpTx` /
+ * `buildUnstakeAndRequestRedeemWlpTx`; together they keep the product
+ * invariant that user-held WLP is always staked.
+ */
+export function buildCancelRedeemAndStakeWlpTx(
+  client: WaterXClient,
+  params: BuildCancelRedeemAndStakeWlpParams,
+): Transaction {
+  const tx = newTx(params);
+
+  cancelRedeemWlp(client, tx, {
+    requestId: params.requestId,
+    lpType: params.lpType,
+    bucketAccount: params.bucketAccount,
+  });
+
+  stake(client, tx, {
+    accountId: params.accountId,
+    stakeAlias: params.stakeAlias ?? "WLP",
+    stakeType: params.lpType ?? client.wlpType(),
+    stakeAmount: params.stakeAmount,
+    rewarderTypes: params.rewarderTypes ?? ["0x2::sui::SUI"],
+    bucketAccount: params.bucketAccount,
+  });
+
   return tx;
 }
 

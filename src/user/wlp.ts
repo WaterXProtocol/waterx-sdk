@@ -34,9 +34,17 @@ export interface MintWlpParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function mintWlp(client: WaterXClient, tx: Transaction, params: MintWlpParams): void {
+/**
+ * Returns the minted `lp_amount` as a `TransactionArgument` so callers can
+ * pipe it into a follow-up move call (e.g. `stake`) in the same PTB.
+ */
+export function mintWlp(
+  client: WaterXClient,
+  tx: Transaction,
+  params: MintWlpParams,
+): TransactionArgument {
   const req = makeSenderRequest(client, tx, params.bucketAccount);
-  lp.mintWlp({
+  const lpAmount = lp.mintWlp({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
       pool: tx.object(client.config.packages.wlp.wlp_pool),
@@ -51,6 +59,7 @@ export function mintWlp(client: WaterXClient, tx: Transaction, params: MintWlpPa
     },
     typeArguments: [params.lpType ?? client.wlpType(), params.depositTokenType],
   })(tx);
+  return lpAmount as unknown as TransactionArgument;
 }
 
 function requireWlpAum(client: WaterXClient): string {
