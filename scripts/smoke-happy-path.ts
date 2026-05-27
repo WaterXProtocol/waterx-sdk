@@ -38,6 +38,7 @@ import {
   requestDeposit,
 } from "../src/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -127,6 +128,7 @@ async function extractOrderId(digest: string): Promise<bigint | undefined> {
 }
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   if (!accountId) throw new Error("set WATERX_SMOKE_ACCOUNT_ID to a wxa account id you own");
 
@@ -135,7 +137,7 @@ async function main(): Promise<void> {
   console.log(`AccountId: ${accountId}`);
 
   const client = await WaterXClient.create("TESTNET", { cache: true });
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.getPoolTokenType("USD");
 
   // ============================================================================
   // 1. Deposit USDC into the wxa account

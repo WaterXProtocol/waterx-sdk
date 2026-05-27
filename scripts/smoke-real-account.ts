@@ -38,6 +38,7 @@ import {
 } from "../src/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -104,7 +105,7 @@ async function signAndExecute(
       const detail = (await client.grpcClient.getTransaction({
         digest,
         include: { events: true, objectChanges: true } as never,
-      })) as Record<string, unknown>;
+      })) as { Transaction?: { events?: unknown[] } };
       if (process.env.WATERX_SMOKE_DEBUG === "1") {
         console.log(
           JSON.stringify(detail, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2).slice(
@@ -113,10 +114,7 @@ async function signAndExecute(
           ),
         );
       }
-      const e1 = (detail.events ?? []) as unknown[];
-      const e2 = ((detail.transaction as { events?: unknown[] } | undefined)?.events ??
-        []) as unknown[];
-      events = e1.length ? e1 : e2;
+      events = detail.Transaction?.events ?? [];
     } catch (e) {
       console.warn(`  (could not fetch events for ${digest}: ${String(e).slice(0, 200)})`);
     }
@@ -146,6 +144,7 @@ async function simulate(
 }
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   console.log("=== Loading local Sui CLI signer ===");
   const { keypair, address } = loadActiveKeypair();
   console.log(`  sender: ${address}`);
@@ -164,16 +163,18 @@ async function main(): Promise<void> {
       throw new Error("createAccount failed; cannot proceed with real-account smoke");
     }
     // Find the new account id from SubAccountCreated / AccountCreated events.
+    // grpc shape: detail.Transaction.events[].{ eventType, json }
     interface EventLite {
-      type?: string;
-      parsedJson?: { account_object_address?: string };
+      eventType?: string;
+      json?: { account_object_address?: string };
     }
     const evs = (res.events ?? []) as EventLite[];
     const acctEvt = evs.find(
       (e) =>
-        (e.type ?? "").includes("AccountCreated") || (e.type ?? "").includes("SubAccountCreated"),
+        (e.eventType ?? "").includes("AccountCreated") ||
+        (e.eventType ?? "").includes("SubAccountCreated"),
     );
-    accountId = acctEvt?.parsedJson?.account_object_address;
+    accountId = acctEvt?.json?.account_object_address;
     if (!accountId) {
       throw new Error(
         `createAccount succeeded but no AccountCreated event found in tx ${res.digest}`,
@@ -234,7 +235,7 @@ async function main(): Promise<void> {
   //    real account passes the wxa auth check (we expect EPositionNotFound /
   //    EOrderNotFound / EInsufficientBalance rather than EUnauthorized).
   const BTC = "BTCUSD";
-  const USDC = client.getPoolTokenType("USDCUSD");
+  const USDC = client.getPoolTokenType("USD");
 
   console.log("\n=== Trading PTBs (simulate-only) ===");
 

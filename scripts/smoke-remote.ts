@@ -9,10 +9,12 @@
  */
 import { WaterXClient } from "../src/client.ts";
 import { defaultConfigUrl } from "../src/config.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const overrideUrl = process.env.WATERX_CONFIG_URL;
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   const t0 = Date.now();
   console.log(`fetching config: ${overrideUrl ?? defaultConfigUrl("TESTNET")}`);
   const client = await WaterXClient.create("TESTNET", {
@@ -56,7 +58,7 @@ async function main(): Promise<void> {
   console.log(`  getMarket("BTCUSD")        ${JSON.stringify(client.getMarket("BTCUSD"))}`);
   console.log(`  getAggregator("BTCUSD")    ${client.getAggregator("BTCUSD")}`);
   console.log(`  getPythFeed("BTCUSD")      ${JSON.stringify(client.getPythFeed("BTCUSD"))}`);
-  console.log(`  getPoolTokenType("USDCUSD") ${client.getPoolTokenType("USDCUSD")}`);
+  console.log(`  getPoolTokenType("USD")    ${client.getPoolTokenType("USD")}`);
   console.log(`  wlpType()                  ${client.wlpType()}`);
 
   console.log("\n=== One simulate (sanity) ===");

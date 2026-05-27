@@ -41,6 +41,7 @@ import {
   requestDepositFromReceivings,
   transferToAccount,
 } from "../src/index.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -183,6 +184,7 @@ async function coinRefsOwnedBy(
 }
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   const { keypair, address } = loadActiveKeypair();
   const client = await WaterXClient.create("TESTNET", { cache: true });
 

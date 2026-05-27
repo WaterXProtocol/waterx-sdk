@@ -39,6 +39,7 @@ import {
   totalStakeAmount as totalStakeAmountCall,
 } from "../src/generated/waterx_staking/waterx_staking.ts";
 import { stake, unstake } from "../src/index.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -182,6 +183,7 @@ async function readStakingWhitelisted(client: WaterXClient): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   if (!accountId) throw new Error("set WATERX_SMOKE_ACCOUNT_ID to a wxa account id you own");
 
@@ -192,6 +194,17 @@ async function main(): Promise<void> {
   const client = await WaterXClient.create("TESTNET", { cache: true });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
+
+  // Canonical testnet config may have an empty waterx_staking.pools map until
+  // an admin registers a pool; bail cleanly rather than crash mid-snapshot.
+  const stakingPools = client.config.packages.waterx_staking?.pools ?? {};
+  if (!stakingPools[stakeAlias]) {
+    console.log(
+      `\nwaterx_staking.pools[${stakeAlias}] not registered in this config — skipping smoke.`,
+    );
+    console.log(`Available pool aliases: ${Object.keys(stakingPools).join(", ") || "(none)"}`);
+    return;
+  }
 
   // ============================================================================
   // 1. Pre-flight view

@@ -33,6 +33,7 @@ import {
 } from "../src/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const CONFIG_PATH = resolve(import.meta.dirname, "..", "..", "waterx-config", "testnet.json");
 
@@ -129,6 +130,7 @@ async function runCase(
 }
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   console.log(`Loading config from ${CONFIG_PATH}`);
   const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
   const client = new WaterXClient("TESTNET", config);
@@ -155,7 +157,7 @@ async function main(): Promise<void> {
   );
   console.log(`  wlpType()             ${client.wlpType()}`);
 
-  const USDC_TYPE = client.getPoolTokenType("USDCUSD");
+  const USDC_TYPE = client.getPoolTokenType("USD");
   const BTC_TICKER = "BTCUSD";
 
   console.log("\n=== Builder smoke ===");
