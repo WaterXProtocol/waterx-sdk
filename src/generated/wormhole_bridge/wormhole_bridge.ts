@@ -9,6 +9,7 @@ import * as vec_map from './deps/sui/vec_map.ts';
 import * as vec_map_1 from './deps/sui/vec_map.ts';
 import * as consumed_vaas from './deps/wormhole_sdk/consumed_vaas.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
+import * as vec_set_1 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/wormhole-bridge::wormhole_bridge';
 export const WormholeBridge = new MoveStruct({ name: `${$moduleName}::WormholeBridge`, fields: {
         dummy_field: bcs.bool()
@@ -33,7 +34,16 @@ export const Bridge = new MoveStruct({ name: `${$moduleName}::Bridge`, fields: {
         window_start_ms_burn: bcs.u64(),
         max_burn_per_tx: bcs.u64(),
         paused: bcs.bool(),
-        burn_nonce: bcs.u64()
+        burn_nonce: bcs.u64(),
+        /**
+         * Admin-managed package-version allowlist used by admin and keeper paths that
+         * don't already thread `&CreditRegistry`. redeem_vaa / burn_for_withdrawal keep
+         * the CreditRegistry-based `assert_valid_package` check; this set covers the
+         * add_trusted_emitter / remove_trusted_emitter / add_supported_evm_token /
+         * remove_supported_evm_token / set_rate_limits / set_paused / emergency_pause /
+         * add_keeper / remove_keeper paths.
+         */
+        allowed_versions: vec_set_1.VecSet(bcs.u16())
     } });
 export interface PackageVersionOptions {
     package?: string;
@@ -461,6 +471,74 @@ export function removeKeeper(options: RemoveKeeperOptions) {
         package: packageAddress,
         module: 'wormhole_bridge',
         function: 'remove_keeper',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AddVersionArguments {
+    bridge: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface AddVersionOptions {
+    package?: string;
+    arguments: AddVersionArguments | [
+        bridge: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+}
+/**
+ * Admin: whitelist a package version on this bridge. Skips the version check
+ * itself so admin can recover from a stuck state.
+ *
+ * Struct-first param order to match `credit_registry::add_package_version` and
+ * `custody_vault::add_version` — same-named cross-package admin API for deploy
+ * scripts to template across all three.
+ */
+export function addVersion(options: AddVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'add_version',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RemoveVersionArguments {
+    bridge: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface RemoveVersionOptions {
+    package?: string;
+    arguments: RemoveVersionArguments | [
+        bridge: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+}
+/**
+ * Admin: remove a package version from this bridge's allowlist. Skips the version
+ * check itself.
+ */
+export function removeVersion(options: RemoveVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'remove_version',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

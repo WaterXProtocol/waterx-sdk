@@ -850,13 +850,12 @@ export interface ClaimOptions {
     ];
 }
 /**
- * Claims any accrued reward `R` for `account_id`'s stake position and TTOs the
- * resulting `Coin<R>` to the wxa account's UID address via
- * `wxa_account::transfer_coin<R>`. The account owner / `PERM_WITHDRAW` delegate
- * can later collect it with `wxa_account::receive_coin<R>` — this avoids requiring
- * a registered deposit policy for every reward token. Auth: `request.address()`
- * must hold `PERM_CLAIM_REWARD` on `account_id`. Zero-amount claims are a no-op
- * (no transfer).
+ * Claims any accrued reward `R` for `account_id`'s stake position and credits the
+ * resulting `Balance<R>` directly into the wxa account's stored balance via
+ * `put<R, WaterXStaking>`. The user can later extract it via the normal
+ * `request_withdraw<R>` flow (or restake / reuse it from stored balance). Auth:
+ * `request.address()` must hold `PERM_CLAIM_REWARD` on `account_id`. Zero-amount
+ * claims are a no-op.
  */
 export function claim(options: ClaimOptions) {
     const packageAddress = options.package ?? '@waterx/staking';

@@ -9,6 +9,7 @@ import * as limited_supply from './limited_supply.ts';
 import * as table from './deps/sui/table.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as type_name from './deps/std/type_name.ts';
+import * as vec_set_1 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/credit::credit_registry';
 export const CapKey = new MoveTuple({ name: `${$moduleName}::CapKey`, fields: [bcs.bool()] });
 export const Mint = new MoveStruct({ name: `${$moduleName}::Mint<phantom CREDIT, phantom M>`, fields: {
@@ -60,8 +61,29 @@ export const CreditRegistry = new MoveStruct({ name: `${$moduleName}::CreditRegi
         beneficiary_address: bcs.Address,
         offset_supply: bcs.u64(),
         personal_burn_cap: PersonalBurnCap,
-        protocol_burn_cap: ProtocolBurnCap
+        protocol_burn_cap: ProtocolBurnCap,
+        /**
+         * Admin-managed package-version allowlist for the registry's own upgrade
+         * lifecycle. Distinct from `ModuleConfig.valid_versions` which tracks per-module
+         * witness versions. Every mutating public entry asserts
+         * `PACKAGE_VERSION ∈ allowed_versions`; admin uses `add_package_version` /
+         * `remove_package_version` to kill-switch a deprecated package after upgrade.
+         */
+        allowed_versions: vec_set_1.VecSet(bcs.u16())
     } });
+export interface PackageVersionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function packageVersion(options: PackageVersionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/credit';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_registry',
+        function: 'package_version',
+    });
+}
 export interface CreateCreditRegistryArguments {
     _: RawTransactionArgument<string>;
     treasuryCap: RawTransactionArgument<string>;
@@ -125,6 +147,78 @@ export function setBeneficiaryAddress(options: SetBeneficiaryAddressOptions) {
         package: packageAddress,
         module: 'credit_registry',
         function: 'set_beneficiary_address',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AddPackageVersionArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface AddPackageVersionOptions {
+    package?: string;
+    arguments: AddPackageVersionArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: whitelist a package version on this registry. Skips the version check
+ * itself so admin can recover from a stuck state.
+ */
+export function addPackageVersion(options: AddPackageVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/credit';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_registry',
+        function: 'add_package_version',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RemovePackageVersionArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface RemovePackageVersionOptions {
+    package?: string;
+    arguments: RemovePackageVersionArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: remove a package version from this registry's allowlist. Skips the
+ * version check itself.
+ */
+export function removePackageVersion(options: RemovePackageVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/credit';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'credit_registry',
+        function: 'remove_package_version',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -512,6 +606,7 @@ export function burn<M extends BcsType<any>>(options: BurnOptions<M>) {
 export interface CollectArguments<M extends BcsType<any>> {
     registry: RawTransactionArgument<string>;
     Witness: RawTransactionArgument<M>;
+    version: RawTransactionArgument<number>;
     memo: RawTransactionArgument<string>;
     balance: RawTransactionArgument<string>;
 }
@@ -520,6 +615,7 @@ export interface CollectOptions<M extends BcsType<any>> {
     arguments: CollectArguments<M> | [
         registry: RawTransactionArgument<string>,
         Witness: RawTransactionArgument<M>,
+        version: RawTransactionArgument<number>,
         memo: RawTransactionArgument<string>,
         balance: RawTransactionArgument<string>
     ];
@@ -535,10 +631,11 @@ export function collect<M extends BcsType<any>>(options: CollectOptions<M>) {
     const argumentsTypes = [
         null,
         `${options.typeArguments[2]}`,
+        'u16',
         '0x1::string::String',
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["registry", "Witness", "memo", "balance"];
+    const parameterNames = ["registry", "Witness", "version", "memo", "balance"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'credit_registry',

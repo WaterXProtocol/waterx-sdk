@@ -8,15 +8,15 @@
  * 
  * User-side path uses a hot-potato `TradingRequest<C_TOKEN>` (no abilities),
  * consumed in the same PTB by `trading::execute`. `execute` does the work inline
- * and returns `()` — user payouts route through `wxa_account::put`, not back out
- * as a `Coin<C_TOKEN>`.
+ * and returns droppable `TradingResponse` receipts — user payouts route through
+ * `wxa_account::put`, not back out as a `Coin<C_TOKEN>`.
  * 
  * PTB flow:
  * 
  * 1.  let request = trading::place_order_request(...);
  * 2.  // External rules add witnesses: my_rule::check(&mut request, ...);
- * 3.  trading::execute(global_config, wxa_registry, market_registry, ticker, pool,
- *     request, oracle, clock, ctx);
+ * 3.  let responses = trading::execute(global_config, wxa_registry,
+ *     market_registry, ticker, pool, request, oracle, clock, ctx);
  */
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
@@ -67,6 +67,162 @@ export const MarketRegistry = new MoveStruct({ name: `${$moduleName}::MarketRegi
         /** Tickers of registered markets, mirrored from the DOF for cheap iteration. */
         listed_tickers: bcs.vector(bcs.string())
     } });
+export interface ActionOpenPositionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionOpenPosition(options: ActionOpenPositionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_open_position',
+    });
+}
+export interface ActionClosePositionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionClosePosition(options: ActionClosePositionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_close_position',
+    });
+}
+export interface ActionPlaceOrderOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionPlaceOrder(options: ActionPlaceOrderOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_place_order',
+    });
+}
+export interface ActionCancelOrderOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionCancelOrder(options: ActionCancelOrderOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_cancel_order',
+    });
+}
+export interface ActionDepositCollateralOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionDepositCollateral(options: ActionDepositCollateralOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_deposit_collateral',
+    });
+}
+export interface ActionWithdrawCollateralOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionWithdrawCollateral(options: ActionWithdrawCollateralOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_withdraw_collateral',
+    });
+}
+export interface ActionLiquidateOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionLiquidate(options: ActionLiquidateOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_liquidate',
+    });
+}
+export interface ActionIncreasePositionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionIncreasePosition(options: ActionIncreasePositionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_increase_position',
+    });
+}
+export interface ActionDecreasePositionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionDecreasePosition(options: ActionDecreasePositionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_decrease_position',
+    });
+}
+export interface ActionUpdateOrderOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionUpdateOrder(options: ActionUpdateOrderOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_update_order',
+    });
+}
+export interface ActionCancelPreOrderOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionCancelPreOrder(options: ActionCancelPreOrderOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_cancel_pre_order',
+    });
+}
+export interface ActionAddPreOrderOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function actionAddPreOrder(options: ActionAddPreOrderOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'action_add_pre_order',
+    });
+}
 export interface CreateMarketArguments {
     Cap: RawTransactionArgument<string>;
     symbol: RawTransactionArgument<string>;
@@ -1208,7 +1364,7 @@ export interface LiquidateOptions {
  * Creates a request to liquidate a position (keeper only). Reads
  * account_object_address from the position directly. Keeper-only: liquidate an
  * undercollateralized position. Single-call — no `TradingRequest` hot potato to
- * manage.
+ * manage. Returns a droppable receipt vector for PTB composition.
  */
 export function liquidate(options: LiquidateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -1264,7 +1420,8 @@ export interface BatchLiquidateOptions {
 /**
  * Keeper-only: scans a page of positions and liquidates every liquidatable one.
  * Iterates positions by internal index `[page_index * page_size, ...)`. No-op if
- * the page is out of range or no positions qualify.
+ * the page is out of range or no positions qualify. Returns droppable receipts for
+ * every liquidated position.
  */
 export function batchLiquidate(options: BatchLiquidateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -1946,6 +2103,13 @@ export interface ExecuteWithdrawCollateralOptions {
         string
     ];
 }
+/**
+ * Returns `(returned_collateral_amount, position_collateral_amount)`: the first is
+ * the amount actually credited back to the wxa account (read off the `Balance`
+ * rather than echoing the requested `amount`, so the response field can't drift if
+ * `pos.withdraw_collateral` ever gains clamping semantics); the second is the
+ * post-action position collateral.
+ */
 export function executeWithdrawCollateral(options: ExecuteWithdrawCollateralOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -2197,7 +2361,9 @@ export interface OpenPositionByKeeperOptions {
  * Keeper-only: open a new position for an account, funded by the keeper's own
  * `Coin<C_TOKEN>` (campaign / airdrop use case). The keeper bypasses
  * `min_coll_value` on this path — `increase_position` and `place_order` still
- * enforce it for all callers including keepers.
+ * enforce it for all callers including keepers. Returns a droppable receipt vector
+ * so the keeper or a composing protocol can reference the position in the same
+ * PTB.
  */
 export function openPositionByKeeper(options: OpenPositionByKeeperOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -2256,7 +2422,8 @@ export interface ClosePositionByKeeperOptions {
 }
 /**
  * Risk-manager-only: force-close a position (emergency use). Reads
- * `account_object_address` from the position directly, like `liquidate`.
+ * `account_object_address` from the position directly, like `liquidate`. Returns a
+ * droppable receipt vector for PTB composition.
  */
 export function closePositionByKeeper(options: ClosePositionByKeeperOptions) {
     const packageAddress = options.package ?? '@waterx/perp';

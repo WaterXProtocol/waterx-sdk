@@ -32,26 +32,32 @@
 import { MoveStruct, MoveTuple, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
+import * as object_table from './deps/sui/object_table.ts';
 import * as table from './deps/sui/table.ts';
-import * as table_1 from './deps/sui/table.ts';
-import * as vec_set from './deps/sui/vec_set.ts';
-import * as type_name from './deps/std/type_name.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
+import * as type_name from './deps/std/type_name.ts';
+import * as vec_set from './deps/sui/vec_set.ts';
 import * as type_name_1 from './deps/std/type_name.ts';
-import * as type_name_2 from './deps/std/type_name.ts';
 import * as vec_map_1 from './deps/sui/vec_map.ts';
-import * as type_name_3 from './deps/std/type_name.ts';
-import * as type_name_4 from './deps/std/type_name.ts';
-import * as vec_map_2 from './deps/sui/vec_map.ts';
-import * as type_name_5 from './deps/std/type_name.ts';
+import * as type_name_2 from './deps/std/type_name.ts';
 import * as vec_set_1 from './deps/sui/vec_set.ts';
+import * as type_name_3 from './deps/std/type_name.ts';
+import * as vec_map_2 from './deps/sui/vec_map.ts';
+import * as type_name_4 from './deps/std/type_name.ts';
 import * as vec_set_2 from './deps/sui/vec_set.ts';
+import * as type_name_5 from './deps/std/type_name.ts';
 import * as vec_map_3 from './deps/sui/vec_map.ts';
 import * as type_name_6 from './deps/std/type_name.ts';
+import * as vec_set_3 from './deps/sui/vec_set.ts';
+import * as vec_set_4 from './deps/sui/vec_set.ts';
+import * as balance_1 from './deps/sui/balance.ts';
+import * as sheet from './deps/bucket_v2_framework/sheet.ts';
 import * as vec_map_4 from './deps/sui/vec_map.ts';
 import * as type_name_7 from './deps/std/type_name.ts';
-import * as balance_1 from './deps/sui/balance.ts';
+import * as vec_map_5 from './deps/sui/vec_map.ts';
+import * as type_name_8 from './deps/std/type_name.ts';
 import * as balance_2 from './deps/sui/balance.ts';
+import * as balance_3 from './deps/sui/balance.ts';
 const $moduleName = '@waterx/account::account';
 export const ACCOUNT = new MoveStruct({ name: `${$moduleName}::ACCOUNT`, fields: {
         dummy_field: bcs.bool()
@@ -59,20 +65,37 @@ export const ACCOUNT = new MoveStruct({ name: `${$moduleName}::ACCOUNT`, fields:
 export const AdminCap = new MoveStruct({ name: `${$moduleName}::AdminCap`, fields: {
         id: bcs.Address
     } });
+export const WaterXAccount = new MoveStruct({ name: `${$moduleName}::WaterXAccount`, fields: {
+        dummy_field: bcs.bool()
+    } });
 export const AccountRegistry = new MoveStruct({ name: `${$moduleName}::AccountRegistry`, fields: {
         id: bcs.Address,
-        accounts: table.Table,
-        owner_index: table_1.Table,
+        /**
+         * `ObjectTable` (not plain `Table`) so each `Account` retains a distinct on-chain
+         * address that off-chain callers can query directly via `getObject(account_id)`
+         * instead of walking dynamic-field handles on the registry UID.
+         */
+        accounts: object_table.ObjectTable,
+        owner_index: table.Table,
         /**
          * Admin-managed whitelist of protocol witness types allowed to move funds
          * (`take<T, P>` / `put<T, P>`) and mutate per-account protocol data
-         * (`new_data<P, D>` / `borrow_data_mut<P, D>` / `remove_data<P, D>`).
-         * Witness-construction privacy alone is not sufficient — any package can deploy
-         * its own witness type, so without this whitelist any deployed module could drain
-         * any account. Admin opts each protocol in once via
-         * `whitelist_protocol<P>(&AdminCap, registry, clock)`.
+         * (`new_data<P, D>` / `borrow_data_mut<P, D>` / `remove_data<P, D>`). For each
+         * whitelisted `P`, the value is the set of asset types `T` that protocol is
+         * allowed to draw via `take<T, P>` — admin opts each pair in via two phases:
+         * `whitelist_protocol<P>(registry, &AdminCap)` registers `P` with an empty asset
+         * set, then `allow_protocol_asset<P, T>(registry,  &AdminCap)` adds each T.
+         *
+         * Gates:
+         *
+         * - `take<T, P>` requires both `P` whitelisted AND `T` in `protocol_whitelist[P]`
+         *   (plus per-account auth on the caller).
+         * - `put<T, P>` requires only `P` whitelisted. The T-gate stays open even after
+         *   `disallow_protocol_asset<P, T>`, so existing positions can always close.
+         * - `new_data<P, _>` / `borrow_data_mut<P, _>` / `remove_data<P, _>` require only
+         *   `P` whitelisted.
          */
-        protocol_whitelist: vec_set.VecSet(type_name.TypeName),
+        protocol_whitelist: vec_map.VecMap(type_name.TypeName, vec_set.VecSet(type_name_1.TypeName)),
         /**
          * `T → registered DepositPolicy witness TypeName`. Presence means
          * `request_deposit<T>` / `request_deposit_from_receivings<T>` are permitted; only
@@ -80,25 +103,33 @@ export const AccountRegistry = new MoveStruct({ name: `${$moduleName}::AccountRe
          * `consume_deposit<T, P>` to unwrap the resulting `DepositRequest<T>`. Deposit
          * policy registration is independent of `protocol_whitelist` — a policy can be the
          * _consumer_ of a request without being allowed to `take`/`put`.
+         * `T → set of DepositPolicy witness TypeNames`. Multiple policies can be
+         * registered per T to support extension (a new policy added alongside the old) and
+         * migration (both coexist while consumers switch). `request_deposit<T>` requires
+         * the set to be non-empty; `consume_deposit<T, P>` requires P to be in the set.
          */
-        deposit_policies: vec_map.VecMap(type_name_1.TypeName, type_name_2.TypeName),
+        deposit_policies: vec_map_1.VecMap(type_name_2.TypeName, vec_set_1.VecSet(type_name_3.TypeName)),
         /**
-         * `T → registered WithdrawPolicy witness TypeName`. Symmetric to
-         * `deposit_policies` for `request_withdraw<T>` / `consume_withdraw`.
+         * `T → set of WithdrawPolicy witness TypeNames`. Symmetric to `deposit_policies`
+         * for `request_withdraw<T>` / `consume_withdraw`.
          */
-        withdraw_policies: vec_map_1.VecMap(type_name_3.TypeName, type_name_4.TypeName),
+        withdraw_policies: vec_map_2.VecMap(type_name_4.TypeName, vec_set_2.VecSet(type_name_5.TypeName)),
         /**
          * Per-T aggregate of `Balance<T>` currently held inside accounts. Incremented in
          * `put<T, P>`, decremented in `take<T, P>` and `request_withdraw<T>`. Does _not_
          * include balance held by protocols (after `take`) or sitting in flight inside a
          * `DepositRequest` / `WithdrawRequest` hot potato.
          */
-        balances: vec_map_2.VecMap(type_name_5.TypeName, bcs.u64()),
-        allowed_versions: vec_set_1.VecSet(bcs.u16()),
-        managers: vec_set_2.VecSet(bcs.Address),
+        balances: vec_map_3.VecMap(type_name_6.TypeName, bcs.u64()),
+        allowed_versions: vec_set_3.VecSet(bcs.u16()),
+        managers: vec_set_4.VecSet(bcs.Address),
         paused: bcs.bool()
     } });
-export const BalanceKey = new MoveTuple({ name: `${$moduleName}::BalanceKey<phantom T>`, fields: [bcs.bool()] });
+export const VaultKey = new MoveTuple({ name: `${$moduleName}::VaultKey<phantom T>`, fields: [bcs.bool()] });
+export const Vault = new MoveStruct({ name: `${$moduleName}::Vault<phantom T>`, fields: {
+        balance: balance_1.Balance,
+        sheet: sheet.Sheet
+    } });
 export const ProtocolDataKey = new MoveTuple({ name: `${$moduleName}::ProtocolDataKey<phantom PROTOCOL>`, fields: [bcs.bool()] });
 export const Delegate = new MoveStruct({ name: `${$moduleName}::Delegate`, fields: {
         delegate_address: bcs.Address,
@@ -110,7 +141,7 @@ export const Delegate = new MoveStruct({ name: `${$moduleName}::Delegate`, field
          * protocol's module interprets its own bits. Owner always has `PERM_ALL` per
          * protocol regardless of this field.
          */
-        protocol_permissions: vec_map_3.VecMap(type_name_6.TypeName, bcs.u32()),
+        protocol_permissions: vec_map_4.VecMap(type_name_7.TypeName, bcs.u32()),
         expires_at_ms: bcs.option(bcs.u64())
     } });
 export const Account = new MoveStruct({ name: `${$moduleName}::Account`, fields: {
@@ -123,18 +154,22 @@ export const Account = new MoveStruct({ name: `${$moduleName}::Account`, fields:
          * `BalanceKey<T>()` on this UID. Always equals the matching stored balance's
          * `value()`.
          */
-        balances: vec_map_4.VecMap(type_name_7.TypeName, bcs.u64())
+        balances: vec_map_5.VecMap(type_name_8.TypeName, bcs.u64())
     } });
 export const DepositRequest = new MoveStruct({ name: `${$moduleName}::DepositRequest<phantom T>`, fields: {
         account_id: bcs.Address,
-        balance: balance_1.Balance,
+        balance: balance_2.Balance,
         extra_data: bcs.vector(bcs.u8())
     } });
 export const WithdrawRequest = new MoveStruct({ name: `${$moduleName}::WithdrawRequest<phantom T>`, fields: {
         account_id: bcs.Address,
-        balance: balance_2.Balance,
+        balance: balance_3.Balance,
         recipient: bcs.Address,
         extra_data: bcs.vector(bcs.u8())
+    } });
+export const AccountKey = new MoveStruct({ name: `${$moduleName}::AccountKey`, fields: {
+        owner: bcs.Address,
+        index: bcs.u64()
     } });
 export interface PermNoneOptions {
     package?: string;
@@ -579,6 +614,33 @@ export function isProtocolWhitelisted(options: IsProtocolWhitelistedOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface IsProtocolAssetAllowedArguments {
+    registry: RawTransactionArgument<string>;
+}
+export interface IsProtocolAssetAllowedOptions {
+    package?: string;
+    arguments: IsProtocolAssetAllowedArguments | [
+        registry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function isProtocolAssetAllowed(options: IsProtocolAssetAllowedOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'is_protocol_asset_allowed',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface ProtocolWhitelistArguments {
     registry: RawTransactionArgument<string>;
 }
@@ -616,9 +678,9 @@ export interface WhitelistProtocolOptions {
     ];
 }
 /**
- * Admin: add witness type `P` to the protocol whitelist. Only modules whose
- * witness type is whitelisted can call `take` / `put` and the witness-gated
- * data-slot helpers. Strict — aborts if `P` is already listed.
+ * Admin: register witness type `P` with an empty asset set. After this, admin must
+ * call `allow_protocol_asset<P, T>` for each T the protocol may draw. Strict —
+ * aborts if `P` is already listed.
  */
 export function whitelistProtocol(options: WhitelistProtocolOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -650,11 +712,11 @@ export interface DelistProtocolOptions {
     ];
 }
 /**
- * Admin: remove witness type `P` from the protocol whitelist. After this, every
- * `take<T, P>` / `put<T, P>` and witness-gated data-slot call aborts. Existing
- * data slots and protocol-held balances are untouched — only future calls are
- * blocked, so admin can pause a misbehaving protocol without stranding state on
- * accounts.
+ * Admin: remove witness type `P` (and its entire asset set) from the protocol
+ * whitelist. After this, every `take<T, P>` / `put<T, P>` and witness-gated
+ * data-slot call aborts. Existing data slots and protocol-held balances are
+ * untouched — only future calls are blocked, so admin can pause a misbehaving
+ * protocol without stranding state on accounts.
  */
 export function delistProtocol(options: DelistProtocolOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -671,6 +733,77 @@ export function delistProtocol(options: DelistProtocolOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface AllowProtocolAssetArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface AllowProtocolAssetOptions {
+    package?: string;
+    arguments: AllowProtocolAssetArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * Admin: add asset type `T` to protocol `P`'s allowed-asset set. After this,
+ * `take<T, P>` is permitted (subject to per-account auth). Aborts if `P` is not
+ * whitelisted or if `T` is already in the set.
+ */
+export function allowProtocolAsset(options: AllowProtocolAssetOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'allow_protocol_asset',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface DisallowProtocolAssetArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface DisallowProtocolAssetOptions {
+    package?: string;
+    arguments: DisallowProtocolAssetArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * Admin: remove asset type `T` from protocol `P`'s allowed-asset set. Blocks
+ * future `take<T, P>` calls but `put<T, P>` on `T` stays open so existing
+ * positions can always close. Aborts if `P` is not whitelisted or if `T` is not in
+ * the set.
+ */
+export function disallowProtocolAsset(options: DisallowProtocolAssetOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'disallow_protocol_asset',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface IsDepositPolicyRegisteredArguments {
     registry: RawTransactionArgument<string>;
 }
@@ -683,6 +816,11 @@ export interface IsDepositPolicyRegisteredOptions {
         string
     ];
 }
+/**
+ * Returns true if `T` has at least one deposit policy registered. Used by
+ * `request_deposit<T>` to gate inflow and by `withdraw_from_funds<T>` to refuse
+ * policy-managed types.
+ */
 export function isDepositPolicyRegistered(options: IsDepositPolicyRegisteredOptions) {
     const packageAddress = options.package ?? '@waterx/account';
     const argumentsTypes = [
@@ -709,6 +847,7 @@ export interface IsWithdrawPolicyRegisteredOptions {
         string
     ];
 }
+/** Returns true if `T` has at least one withdraw policy registered. */
 export function isWithdrawPolicyRegistered(options: IsWithdrawPolicyRegisteredOptions) {
     const packageAddress = options.package ?? '@waterx/account';
     const argumentsTypes = [
@@ -723,19 +862,25 @@ export function isWithdrawPolicyRegistered(options: IsWithdrawPolicyRegisteredOp
         typeArguments: options.typeArguments
     });
 }
-export interface DepositPolicyArguments {
+export interface IsDepositPolicyRegisteredForArguments {
     registry: RawTransactionArgument<string>;
 }
-export interface DepositPolicyOptions {
+export interface IsDepositPolicyRegisteredForOptions {
     package?: string;
-    arguments: DepositPolicyArguments | [
+    arguments: IsDepositPolicyRegisteredForArguments | [
         registry: RawTransactionArgument<string>
     ];
     typeArguments: [
+        string,
         string
     ];
 }
-export function depositPolicy(options: DepositPolicyOptions) {
+/**
+ * Returns true if the specific witness `P` is one of T's registered deposit
+ * policies. `consume_deposit<T, P>` aborts `EPolicyMismatch` when this would
+ * return false.
+ */
+export function isDepositPolicyRegisteredFor(options: IsDepositPolicyRegisteredForOptions) {
     const packageAddress = options.package ?? '@waterx/account';
     const argumentsTypes = [
         null
@@ -744,24 +889,25 @@ export function depositPolicy(options: DepositPolicyOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'account',
-        function: 'deposit_policy',
+        function: 'is_deposit_policy_registered_for',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
 }
-export interface WithdrawPolicyArguments {
+export interface IsWithdrawPolicyRegisteredForArguments {
     registry: RawTransactionArgument<string>;
 }
-export interface WithdrawPolicyOptions {
+export interface IsWithdrawPolicyRegisteredForOptions {
     package?: string;
-    arguments: WithdrawPolicyArguments | [
+    arguments: IsWithdrawPolicyRegisteredForArguments | [
         registry: RawTransactionArgument<string>
     ];
     typeArguments: [
+        string,
         string
     ];
 }
-export function withdrawPolicy(options: WithdrawPolicyOptions) {
+export function isWithdrawPolicyRegisteredFor(options: IsWithdrawPolicyRegisteredForOptions) {
     const packageAddress = options.package ?? '@waterx/account';
     const argumentsTypes = [
         null
@@ -770,7 +916,65 @@ export function withdrawPolicy(options: WithdrawPolicyOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'account',
-        function: 'withdraw_policy',
+        function: 'is_withdraw_policy_registered_for',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface DepositPoliciesForArguments {
+    registry: RawTransactionArgument<string>;
+}
+export interface DepositPoliciesForOptions {
+    package?: string;
+    arguments: DepositPoliciesForArguments | [
+        registry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Returns the full set of deposit-policy witness typenames registered for `T`, as
+ * a `vector<TypeName>` copy (TypeName is `copy + drop +  store`, so this is
+ * cheap). Aborts if T has no policies. Off-chain consumers wanting iteration
+ * without the copy should walk the full `deposit_policies()` map instead.
+ */
+export function depositPoliciesFor(options: DepositPoliciesForOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'deposit_policies_for',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface WithdrawPoliciesForArguments {
+    registry: RawTransactionArgument<string>;
+}
+export interface WithdrawPoliciesForOptions {
+    package?: string;
+    arguments: WithdrawPoliciesForArguments | [
+        registry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function withdrawPoliciesFor(options: WithdrawPoliciesForOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'withdraw_policies_for',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -835,10 +1039,11 @@ export interface RegisterDepositPolicyOptions {
     ];
 }
 /**
- * Admin: register witness type `P` as the deposit policy for `T`. Only the module
- * that defines `P` can construct one, so this binds `T`'s deposit flow exclusively
- * to that module. Aborts if `T` is already registered — admin must
- * `unregister_deposit_policy<T>` first to swap.
+ * Admin: register witness type `P` as a deposit policy for `T`. Multiple policies
+ * can coexist per T to support extension (a new module added alongside the old)
+ * and migration (consumers switch one at a time). Idempotent — adding an
+ * already-registered `(T, P)` pair is a silent no-op so admin can re-run deploy
+ * scripts safely.
  */
 export function registerDepositPolicy(options: RegisterDepositPolicyOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -896,12 +1101,15 @@ export interface UnregisterDepositPolicyOptions {
         _: RawTransactionArgument<string>
     ];
     typeArguments: [
+        string,
         string
     ];
 }
 /**
- * Admin: remove the deposit policy for `T`. Existing `Balance<T>` on accounts is
- * unaffected; only new `request_deposit<T>` is blocked.
+ * Admin: remove `P` from T's deposit-policy set. Other registered policies for `T`
+ * keep working. If `P` is the last entry, the `T` key is cleaned up so
+ * `is_deposit_policy_registered<T>` returns false. Aborts if `(T, P)` isn't
+ * registered.
  */
 export function unregisterDepositPolicy(options: UnregisterDepositPolicyOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -929,6 +1137,7 @@ export interface UnregisterWithdrawPolicyOptions {
         _: RawTransactionArgument<string>
     ];
     typeArguments: [
+        string,
         string
     ];
 }
@@ -972,6 +1181,42 @@ export function createAccount(options: CreateAccountOptions) {
         package: packageAddress,
         module: 'account',
         function: 'create_account',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface DeriveAccountAddressArguments {
+    registry: RawTransactionArgument<string>;
+    owner: RawTransactionArgument<string>;
+    index: RawTransactionArgument<number | bigint>;
+}
+export interface DeriveAccountAddressOptions {
+    package?: string;
+    arguments: DeriveAccountAddressArguments | [
+        registry: RawTransactionArgument<string>,
+        owner: RawTransactionArgument<string>,
+        index: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * Off-chain view: compute the address a future `create_account` call will produce
+ * for `(owner, index)`. Mirrors `derived_object::derive_address` keyed on
+ * `AccountKey`. Useful for SDKs that want to address an account before it exists,
+ * or to discover all of an owner's accounts by iterating index from 0 up to
+ * `MAX_ACCOUNTS_PER_OWNER` and checking `has_account` against each derived
+ * address.
+ */
+export function deriveAccountAddress(options: DeriveAccountAddressOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        'address',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "owner", "index"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'derive_account_address',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -1284,6 +1529,56 @@ export function requestDepositFromReceivings(options: RequestDepositFromReceivin
         typeArguments: options.typeArguments
     });
 }
+export interface RequestDepositFromFundsArguments {
+    registry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    accumulatorRoot: RawTransactionArgument<string>;
+    extraData: RawTransactionArgument<number[]>;
+}
+export interface RequestDepositFromFundsOptions {
+    package?: string;
+    arguments: RequestDepositFromFundsArguments | [
+        registry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        accumulatorRoot: RawTransactionArgument<string>,
+        extraData: RawTransactionArgument<number[]>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Drains every `Balance<T>` sitting at the account's UID-derived address in Sui's
+ * native funds accumulator and wraps the total into a single `DepositRequest<T>`.
+ * Useful for accounts that receive `Coin<T>` via `0x2::balance::send_funds<T>` (or
+ * any path that lands T at `account_id.to_address()` directly) and want it folded
+ * into framework custody through the deposit-policy pipeline.
+ *
+ * The total drained equals `settled_funds_value<T>(root, addr)` as of the last
+ * consensus commit — within the writing PTB itself, that read returns the pre-tx
+ * value, so SDKs should treat this as a between-tx drain. Permissionless
+ * (crediting an account is always allowed), pause-free, requires `T` to have a
+ * registered deposit policy. Returns a deposit request even when the address holds
+ * zero T (the carried balance is `Balance::zero()` in that case) — callers can
+ * short-circuit off-chain by checking `settled_funds_value` first.
+ */
+export function requestDepositFromFunds(options: RequestDepositFromFundsOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID',
+        null,
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "accountId", "accumulatorRoot", "extraData"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'request_deposit_from_funds',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface ConsumeDepositArguments<P extends BcsType<any>> {
     registry: RawTransactionArgument<string>;
     req: RawTransactionArgument<string>;
@@ -1469,13 +1764,19 @@ export interface ReceiveOptions {
 }
 /**
  * Account-owner drain of a TTO'd object on the account's UID. Generic over
- * `T: key + store` — works for `Coin<X>`, NFTs, or any other transferable object
- * externally transferred to the account address. Auth: account owner or a
- * `PERM_RECEIVE` delegate (kept separate from `PERM_WITHDRAW` so reward-collection
- * rights don't imply balance-drain rights). Returns the received object to the
- * caller's PTB. Bypasses the deposit-policy flow — use this for tokens / objects
- * that have no registered deposit policy (e.g. reward coins TTO'd via
- * `transfer_coin` from a protocol's claim path).
+ * `T: key + store` — works for NFTs, reward objects, or `Coin<X>` where `X` has no
+ * registered deposit policy.
+ *
+ * **Policy-managed Coin<X> is rejected.** If `T == Coin<X>` and `X` has a deposit
+ * policy registered, this aborts `EUseRequestDepositInstead` to keep policy-routed
+ * inflow on the deposit-policy pipeline — bypassing via `receive` would skip the
+ * conversion / authorization the policy is supposed to enforce. Use
+ * `request_deposit_from_receivings<X>` or `request_deposit_from_funds<X>` for
+ * inflow when X has a deposit policy.
+ *
+ * Auth: account owner or a `PERM_RECEIVE` delegate (kept separate from
+ * `PERM_WITHDRAW` so reward-collection rights don't imply balance-drain rights).
+ * Returns the received object to the caller's PTB.
  */
 export function receive(options: ReceiveOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -1491,6 +1792,55 @@ export function receive(options: ReceiveOptions) {
         package: packageAddress,
         module: 'account',
         function: 'receive',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface WithdrawFromFundsArguments {
+    registry: RawTransactionArgument<string>;
+    senderRequest: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    accumulatorRoot: RawTransactionArgument<string>;
+}
+export interface WithdrawFromFundsOptions {
+    package?: string;
+    arguments: WithdrawFromFundsArguments | [
+        registry: RawTransactionArgument<string>,
+        senderRequest: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        accumulatorRoot: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Drains every `Balance<T>` sitting at the account's UID-derived address in Sui's
+ * native funds accumulator and returns it directly as a `Balance<T>`. Symmetric to
+ * `request_deposit_from_funds<T>`, but explicitly for `T` that has **no**
+ * registered deposit policy — policy-managed inflow must route through the
+ * deposit-policy pipeline instead. The intent is to let owners (or `PERM_WITHDRAW`
+ * delegates) pull policy-less inflow (reward tokens TTO'd via `send_funds`,
+ * miscellaneous `Balance<T>` the SDK parked at the address) straight out.
+ *
+ * Auth: same as `request_withdraw<T>` — `PERM_WITHDRAW` or owner. Aborts
+ * `EUseRequestDepositInstead` if `T` has a deposit policy registered. Pause-gated.
+ * Returns `Balance::zero<T>()` when the address holds no T.
+ */
+export function withdrawFromFunds(options: WithdrawFromFundsOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::object::ID',
+        null,
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "senderRequest", "accountId", "accumulatorRoot"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'withdraw_from_funds',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

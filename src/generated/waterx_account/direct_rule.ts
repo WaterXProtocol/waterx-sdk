@@ -28,7 +28,7 @@
  * direct_rule::consume_deposit_direct<T>(&mut registry, req);
  * // ...later:
  * let wreq = registry.request_withdraw<T>(&sender_req, account_id, amount, recipient, extra_data, &clock);
- * direct_rule::consume_withdraw_direct<T>(&mut registry, wreq, ctx);
+ * direct_rule::consume_withdraw_direct<T>(&mut registry, wreq);
  * ```
  */
 
@@ -88,7 +88,10 @@ export interface ConsumeWithdrawDirectOptions {
 }
 /**
  * Consume a `WithdrawRequest<T>` that was registered against `DirectRule` and pay
- * out `Coin<T>` to the request's recipient.
+ * out the `Balance<T>` to the request's recipient via the address accumulator. If
+ * the recipient is itself a wxa account, the payout composes with any other inflow
+ * and can be folded back into stored balance via `request_deposit_from_funds<T>`
+ * in a follow-up PTB leg.
  */
 export function consumeWithdrawDirect(options: ConsumeWithdrawDirectOptions) {
     const packageAddress = options.package ?? '@waterx/account';
