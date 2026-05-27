@@ -78,7 +78,10 @@ async function main(): Promise<void> {
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   if (!accountId) {
-    throw new Error("WATERX_SMOKE_ACCOUNT_ID is required (your wxa account id)");
+    throw new Error(
+      "mint-usd-from-mock-usdc: WATERX_SMOKE_ACCOUNT_ID is required. " +
+        "Run scripts/create-wxa-account.ts first and export the printed id.",
+    );
   }
   const amount = BigInt(process.env.MINT_AMOUNT ?? "1000000");
   const doExecute = process.env.EXECUTE === "1";
@@ -108,10 +111,16 @@ async function main(): Promise<void> {
   console.log(`mode:        ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
   const coin = await pickCoin(client, address, asset.type);
-  if (!coin) throw new Error(`no Coin<${assetLabel}> in wallet ${address}`);
+  if (!coin) {
+    throw new Error(
+      `mint-usd-from-mock-usdc: no Coin<${assetLabel}> in wallet ${address}. ` +
+        `Mint MOCK_USDC from the testnet faucet first.`,
+    );
+  }
   if (coin.balance < amount) {
     throw new Error(
-      `Coin<${assetLabel}> balance ${coin.balance} < requested ${amount} (object ${coin.objectId})`,
+      `mint-usd-from-mock-usdc: Coin<${assetLabel}> balance ${coin.balance} < requested ${amount} ` +
+        `(object ${coin.objectId}). Top up MOCK_USDC or lower MINT_AMOUNT.`,
     );
   }
   console.log(`source coin: ${coin.objectId} (balance ${coin.balance})`);

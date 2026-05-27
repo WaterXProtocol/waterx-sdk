@@ -26,7 +26,7 @@ run(async () => {
     accountId: requireEnv("WATERX_ACCOUNT_ID"),
     amount: BigInt(process.env.WATERX_AMOUNT ?? "1000000"),
     recipient: process.env.WATERX_RECIPIENT ?? address,
-    coinType: client.getPoolTokenType("USDCUSD"),
+    coinType: client.creditType(),
   });
 
   await simThenMaybeExecute(client, tx, "requestWithdraw", keypair);

@@ -25,7 +25,7 @@ run(async () => {
     accountId: requireEnv("WATERX_ACCOUNT_ID"),
     stakeAlias: process.env.WATERX_STAKE_ALIAS ?? "WLP",
     stakeType: client.wlpType(),
-    rewardType: process.env.WATERX_REWARD_TYPE ?? client.getPoolTokenType("USDCUSD"),
+    rewardType: process.env.WATERX_REWARD_TYPE ?? client.creditType(),
   });
 
   await simThenMaybeExecute(client, tx, "claimReward", keypair);

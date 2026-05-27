@@ -25,7 +25,7 @@ run(async () => {
   const { keypair, address } = loadActiveKeypair();
   const accountId = requireEnv("WATERX_ACCOUNT_ID");
   const amount = BigInt(process.env.WATERX_AMOUNT ?? "50000000");
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.creditType();
 
   // Find a USDC coin to deposit from.
   const coins = (await client.grpcClient.listCoins({ owner: address, coinType: usdcType })) as {

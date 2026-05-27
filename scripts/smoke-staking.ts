@@ -33,6 +33,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
+import { getAccountBalance } from "../src/fetch.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
 import {
   stakeExists as stakeExistsCall,
@@ -185,7 +186,12 @@ async function readStakingWhitelisted(client: WaterXClient): Promise<boolean> {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
-  if (!accountId) throw new Error("set WATERX_SMOKE_ACCOUNT_ID to a wxa account id you own");
+  if (!accountId) {
+    throw new Error(
+      "smoke-staking: WATERX_SMOKE_ACCOUNT_ID is required. " +
+        "Run scripts/create-wxa-account.ts first.",
+    );
+  }
 
   const { keypair, address } = loadActiveKeypair();
   console.log(`Sender:    ${address}`);
@@ -194,6 +200,15 @@ async function main(): Promise<void> {
   const client = await WaterXClient.create("TESTNET", { cache: true });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
+
+  // Preflight: wxa must hold enough WLP to stake.
+  const wlpBalance = await getAccountBalance(client, accountId, client.wlpType());
+  if (wlpBalance < stakeAmount) {
+    throw new Error(
+      `smoke-staking: wxa WLP balance ${wlpBalance} < stake ${stakeAmount}. ` +
+        `Run scripts/deposit-to-wlp.ts first (or lower WATERX_STAKE_AMOUNT).`,
+    );
+  }
 
   // Canonical testnet config may have an empty waterx_staking.pools map until
   // an admin registers a pool; bail cleanly rather than crash mid-snapshot.

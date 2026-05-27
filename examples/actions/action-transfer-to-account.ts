@@ -22,7 +22,7 @@ run(async () => {
   const client = await buildClient();
   const { keypair, address } = loadActiveKeypair();
   const amount = BigInt(process.env.WATERX_AMOUNT ?? "1000000");
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.creditType();
 
   const coins = (await client.grpcClient.listCoins({ owner: address, coinType: usdcType })) as {
     objects?: { objectId?: string; balance?: string }[];

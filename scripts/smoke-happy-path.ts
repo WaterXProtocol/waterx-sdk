@@ -130,7 +130,12 @@ async function extractOrderId(digest: string): Promise<bigint | undefined> {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
-  if (!accountId) throw new Error("set WATERX_SMOKE_ACCOUNT_ID to a wxa account id you own");
+  if (!accountId) {
+    throw new Error(
+      "smoke-happy-path: WATERX_SMOKE_ACCOUNT_ID is required. " +
+        "Run scripts/create-wxa-account.ts first.",
+    );
+  }
 
   const { keypair, address } = loadActiveKeypair();
   console.log(`Sender:    ${address}`);

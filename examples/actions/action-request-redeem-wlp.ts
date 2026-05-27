@@ -24,7 +24,7 @@ run(async () => {
 
   requestRedeemWlp(client, tx, {
     accountId: requireEnv("WATERX_ACCOUNT_ID"),
-    redeemTokenType: client.getPoolTokenType("USDCUSD"),
+    redeemTokenType: client.creditType(),
     lpAmount: BigInt(process.env.WATERX_LP_AMOUNT ?? "1000000"),
   });
 

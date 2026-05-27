@@ -126,7 +126,14 @@ async function wrapRequestAndExecute(
     //     `assert_prices_fresh` walks every TokenPoolInfo and requires each
     //     to have been recently update_token_value'd, so we feed Pyth for
     //     all of them in one PTB. Base ticker is added on top.
-    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    //
+    //     Some canonical configs key pool_tokens by coin symbol (e.g. "USD")
+    //     while pyth_rule.feeds is keyed by oracle ticker ("USDCUSD"); skip
+    //     pool keys that have no matching feed rather than throwing.
+    const feeds = client.config.packages.pyth_rule?.feeds ?? {};
+    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens).filter(
+      (t) => feeds[t] !== undefined,
+    );
     const oracleTickers = Array.from(new Set([req.ticker, collateralTicker, ...poolTickers]));
     await refreshOraclePrices(tx, client, oracleTickers, {
       cache: opts?.pythCache,
@@ -395,7 +402,13 @@ export async function buildMintWlpTx(
   const tx = newTx(params);
 
   if (!params.skipOraclePriceRefresh) {
-    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    // Skip pool_tokens keys that have no matching pyth feed — the canonical
+    // testnet config keys pool_tokens by coin symbol ("USD") while
+    // pyth_rule.feeds is keyed by oracle ticker ("USDCUSD").
+    const feeds = client.config.packages.pyth_rule?.feeds ?? {};
+    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens).filter(
+      (t) => feeds[t] !== undefined,
+    );
     const oracleTickers = Array.from(new Set([params.depositTicker, ...poolTickers]));
     await refreshOraclePrices(tx, client, oracleTickers, { cache: params.pythCache });
     for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {

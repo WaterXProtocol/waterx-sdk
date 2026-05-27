@@ -124,7 +124,12 @@ async function main(): Promise<void> {
   const { keypair, address } = loadActiveKeypair();
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
-  if (!accountId) throw new Error("WATERX_SMOKE_ACCOUNT_ID is required (your wxa account id)");
+  if (!accountId) {
+    throw new Error(
+      "deposit-to-wlp: WATERX_SMOKE_ACCOUNT_ID is required. " +
+        "Run scripts/create-wxa-account.ts first.",
+    );
+  }
   const depositAmount = BigInt(process.env.DEPOSIT_AMOUNT ?? "1000000");
   const minLpAmount = BigInt(process.env.MIN_LP_AMOUNT ?? "0");
   const doExecute = process.env.EXECUTE === "1";
@@ -148,7 +153,10 @@ async function main(): Promise<void> {
   const usdBalance = await getAccountBalance(client, accountId, usdType);
   console.log(`wxa USD bal:   ${usdBalance}`);
   if (usdBalance < depositAmount) {
-    throw new Error(`wxa USD balance ${usdBalance} < deposit ${depositAmount}`);
+    throw new Error(
+      `deposit-to-wlp: wxa USD balance ${usdBalance} < deposit ${depositAmount}. ` +
+        `Run scripts/mint-usd-from-mock-usdc.ts first (or lower DEPOSIT_AMOUNT).`,
+    );
   }
 
   // Precheck: WaterXPerp must be allowed to `take<USD>` from the wxa account.

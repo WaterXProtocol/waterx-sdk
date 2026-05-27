@@ -87,7 +87,9 @@ async function main(): Promise<void> {
   const detail = (await client.grpcClient.getTransaction({
     digest,
     include: { events: true } as never,
-  })) as { Transaction?: { events?: { eventType?: string; json?: { account_object_address?: string } }[] } };
+  })) as {
+    Transaction?: { events?: { eventType?: string; json?: { account_object_address?: string } }[] };
+  };
   const evs = detail.Transaction?.events ?? [];
   const acctEvt = evs.find((e) => (e.eventType ?? "").includes("AccountCreated"));
   const newId = acctEvt?.json?.account_object_address;

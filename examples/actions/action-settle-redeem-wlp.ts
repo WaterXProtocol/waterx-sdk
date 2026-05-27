@@ -21,7 +21,7 @@ run(async () => {
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
   const tx = new Transaction();
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.creditType();
 
   // Pool freshness: all pool-token oracles + bump each token's
   // last_price_refresh_timestamp so `assert_prices_fresh` inside
