@@ -6,7 +6,6 @@
  *   pnpm smoke:chain               # full chain, EXECUTE=1 each step
  *   pnpm smoke:chain --dry-run     # simulate-only mode for every step
  *   pnpm smoke:chain --include-claim
- *   pnpm smoke:chain --include-referral
  *
  * Steps (in order):
  *   0. smoke-remote           — config repo reachability
@@ -47,14 +46,12 @@ interface Step {
 interface CliFlags {
   dryRun: boolean;
   includeClaim: boolean;
-  includeReferral: boolean;
 }
 
 function parseFlags(argv: string[]): CliFlags {
   return {
     dryRun: argv.includes("--dry-run"),
     includeClaim: argv.includes("--include-claim"),
-    includeReferral: argv.includes("--include-referral"),
   };
 }
 
@@ -83,9 +80,6 @@ function buildChain(flags: CliFlags): Step[] {
       args: { env: { WATERX_CUSTODY_EXECUTE: "1" } },
     },
   );
-  if (flags.includeReferral) {
-    chain.push({ name: "smoke-referral", script: "scripts/smoke-referral.ts" });
-  }
   return chain;
 }
 
@@ -145,7 +139,6 @@ async function main(): Promise<void> {
   if (flags.dryRun) {
     delete chainEnv.EXECUTE;
     delete chainEnv.WATERX_CUSTODY_EXECUTE;
-    delete chainEnv.WATERX_REFERRAL_EXECUTE;
   } else {
     chainEnv.EXECUTE = "1";
   }
@@ -160,7 +153,7 @@ async function main(): Promise<void> {
 
   console.log(
     `[smoke-chain] mode=${flags.dryRun ? "DRY-RUN" : "EXECUTE"} steps=${chain.length} ` +
-      `include-claim=${flags.includeClaim} include-referral=${flags.includeReferral}`,
+      `include-claim=${flags.includeClaim}`,
   );
 
   const results: StepResult[] = [];

@@ -32,12 +32,6 @@ visible at step 1 instead of step 5.
 | Step | Flag | Why opt-in |
 |------|------|------------|
 | `smoke-staking-claim` | `--include-claim` | testnet's WLP staking pool has no rewarders configured; the script aborts in preflight unless that changes. |
-| `smoke-referral` | `--include-referral` | independent flow (no chain dependency); referral codes can only be claimed once per address, so chaining it makes re-runs noisy. |
-
-Excluded from the default chain entirely:
-
-- `smoke-real-account.ts` — alternative path that creates its own
-  account inline; redundant with step 2.
 
 ## Running
 
@@ -49,7 +43,7 @@ pnpm smoke:chain
 pnpm smoke:chain:dry
 
 # with optional steps
-pnpm exec tsx scripts/run-smoke-chain.ts --include-claim --include-referral
+pnpm exec tsx scripts/run-smoke-chain.ts --include-claim
 
 # reuse an existing account (skips creating a new one)
 WATERX_SMOKE_ACCOUNT_ID=0x… pnpm smoke:chain

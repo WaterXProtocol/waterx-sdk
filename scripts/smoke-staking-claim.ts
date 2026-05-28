@@ -290,7 +290,7 @@ async function main(): Promise<void> {
   console.log("\n=== Pre-flight (raw simulate) ===");
   if (!(await readStakingWhitelisted(client))) {
     throw new Error(
-      "WaterXStaking witness not whitelisted on AccountRegistry — run scripts/admin-whitelist-staking.ts first",
+      "WaterXStaking witness not whitelisted on AccountRegistry — admin must whitelist the staking witness on the wxa AccountRegistry first",
     );
   }
   await snapshot(client, accountId, rewarderTypes, "pre-flight");
