@@ -4,7 +4,7 @@
  *
  * To add a market: extend {@link LIFECYCLE_TEST_MARKETS}; iteration uses {@link activeLifecycleTestBasesForClient}.
  */
-import type { WaterXClient } from "@waterx/perp-sdk";
+import type { WaterXClient } from "@waterx/sdk";
 
 import {
   activeLifecycleTestBasesForClient,

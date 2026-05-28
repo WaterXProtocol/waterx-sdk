@@ -2,7 +2,7 @@
  * E2E: keeper entrypoints compose without PTB wiring errors (simulate may abort).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { liquidate, matchOrders, ORDER_LIMIT_BUY, updateFundingRate } from "@waterx/perp-sdk";
+import { liquidate, matchOrders, ORDER_LIMIT_BUY, updateFundingRate } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

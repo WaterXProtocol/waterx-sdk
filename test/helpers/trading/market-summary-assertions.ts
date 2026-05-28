@@ -1,4 +1,4 @@
-import type { MarketData } from "@waterx/perp-sdk";
+import type { MarketData } from "@waterx/sdk";
 import { expect } from "vitest";
 
 /** Testnet OI is non-deterministic; require bigint + >= 0 so missing parse fails. */

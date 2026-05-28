@@ -3,7 +3,7 @@
  * Self-contained roundtrip (does not rely on external positions left open for e2e).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { closePositionByKeeper, openPositionByKeeper, updateFundingRate } from "@waterx/perp-sdk";
+import { closePositionByKeeper, openPositionByKeeper, updateFundingRate } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { getMarketData } from "../../../src/fetch.ts";

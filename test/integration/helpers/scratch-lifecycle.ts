@@ -3,7 +3,7 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import type { WaterXClient } from "@waterx/perp-sdk";
+import type { WaterXClient } from "@waterx/sdk";
 import { expect } from "vitest";
 
 import { getWxaAccountBalance } from "../../helpers/e2e/fetch-read-helpers-for-tests.ts";

@@ -18,7 +18,7 @@ import {
   placeOrderRequest,
   stake,
   WaterXClient,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 describe("SDK package wiring (v3)", () => {

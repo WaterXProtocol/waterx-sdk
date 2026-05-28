@@ -1,12 +1,7 @@
 /**
  * E2E: global / market / pool / token-pool views + client shorthand accessors.
  */
-import {
-  getGlobalConfigData,
-  getMarketData,
-  getPoolData,
-  getTokenPoolData,
-} from "@waterx/perp-sdk";
+import { getGlobalConfigData, getMarketData, getPoolData, getTokenPoolData } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

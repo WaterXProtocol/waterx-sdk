@@ -2,7 +2,7 @@
  * E2E: referral table builders (skipped when `waterx_referral` missing from config).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { setReferralCode } from "@waterx/perp-sdk";
+import { setReferralCode } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

@@ -8,7 +8,7 @@
     "rewriteRelativeImportExtensions": false,
     "rootDirs": ["src", "test", "scripts", "examples"],
     "paths": {
-      "@waterx/perp-sdk": ["./src/index.ts"]
+      "@waterx/sdk": ["./src/index.ts"]
     }
   },
   "include": [

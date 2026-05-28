@@ -8,7 +8,7 @@ import {
   buildDepositCollateralTx,
   buildIncreasePositionTx,
   buildWithdrawCollateralTx,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

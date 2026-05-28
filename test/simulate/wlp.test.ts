@@ -1,7 +1,7 @@
 /**
  * E2E: WLP mint PTB with discovered wxa USDC balance (integration persistent-state seeds this).
  */
-import { buildMintWlpTx } from "@waterx/perp-sdk";
+import { buildMintWlpTx } from "@waterx/sdk";
 import { beforeAll, describe, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

@@ -1,7 +1,7 @@
 /**
  * E2E: wxa account + per-account positions / orders via view simulate.
  */
-import { getAccountData, getAccountOrders, getAccountPositions } from "@waterx/perp-sdk";
+import { getAccountData, getAccountOrders, getAccountPositions } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

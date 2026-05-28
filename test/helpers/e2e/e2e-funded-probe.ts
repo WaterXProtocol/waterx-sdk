@@ -1,4 +1,4 @@
-import type { WaterXClient } from "@waterx/perp-sdk";
+import type { WaterXClient } from "@waterx/sdk";
 
 import { e2eCanonicalWxaAccountIds, e2eCanonicalWxaOwner } from "./canonical-testnet-account.ts";
 import {
