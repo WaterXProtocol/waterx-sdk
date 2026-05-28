@@ -35,6 +35,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
+import { getAccountBalance } from "../src/fetch.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
 import {
   realtimeRewardAmount as realtimeRewardAmountCall,
@@ -42,6 +43,7 @@ import {
   totalStakeAmount as totalStakeAmountCall,
 } from "../src/generated/waterx_staking/waterx_staking.ts";
 import { claimReward, stake, unstake } from "../src/index.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
@@ -236,8 +238,14 @@ async function snapshot(
 }
 
 async function main(): Promise<void> {
+  loadRepoEnvFiles();
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
-  if (!accountId) throw new Error("set WATERX_SMOKE_ACCOUNT_ID");
+  if (!accountId) {
+    throw new Error(
+      "smoke-staking-claim: WATERX_SMOKE_ACCOUNT_ID is required. " +
+        "Run scripts/create-wxa-account.ts first.",
+    );
+  }
 
   const { keypair, address } = loadActiveKeypair();
   console.log(`Sender:    ${address}`);
@@ -248,6 +256,15 @@ async function main(): Promise<void> {
   const waitMs = Number(process.env.WATERX_REWARD_WAIT_MS ?? "15000");
   const pollMs = Number(process.env.WATERX_POLL_INTERVAL_MS ?? "1500");
 
+  // Bail cleanly if the WLP staking pool isn't registered in this config
+  // (canonical testnet ships with an empty waterx_staking.pools map).
+  const stakingPools = client.config.packages.waterx_staking?.pools ?? {};
+  if (!stakingPools["WLP"]) {
+    console.log("\nwaterx_staking.pools[WLP] not registered in this config — skipping smoke.");
+    console.log(`Available pool aliases: ${Object.keys(stakingPools).join(", ") || "(none)"}`);
+    return;
+  }
+
   // ============================================================================
   // 1. Discover rewarders + pre-flight
   // ============================================================================
@@ -256,13 +273,24 @@ async function main(): Promise<void> {
   console.log(`\nRewarders configured (${rewarderTypes.length}):`);
   for (const r of rewarderTypes) console.log(`  • ${r}`);
   if (rewarderTypes.length === 0) {
-    throw new Error("no rewarders configured on the WLP staking pool");
+    throw new Error(
+      "smoke-staking-claim: no rewarders configured on the WLP staking pool. " +
+        "Configure a rewarder via admin tooling or skip this smoke.",
+    );
+  }
+
+  const wlpBalance = await getAccountBalance(client, accountId, client.wlpType());
+  if (wlpBalance < stakeAmount) {
+    throw new Error(
+      `smoke-staking-claim: wxa WLP balance ${wlpBalance} < stake ${stakeAmount}. ` +
+        `Run scripts/deposit-to-wlp.ts first (or lower WATERX_STAKE_AMOUNT).`,
+    );
   }
 
   console.log("\n=== Pre-flight (raw simulate) ===");
   if (!(await readStakingWhitelisted(client))) {
     throw new Error(
-      "WaterXStaking witness not whitelisted on AccountRegistry — run scripts/admin-whitelist-staking.ts first",
+      "WaterXStaking witness not whitelisted on AccountRegistry — admin must whitelist the staking witness on the wxa AccountRegistry first",
     );
   }
   await snapshot(client, accountId, rewarderTypes, "pre-flight");

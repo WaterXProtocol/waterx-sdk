@@ -18,7 +18,7 @@ import { buildMintWlpTx } from "../../src/index.ts";
 run(async () => {
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.creditType();
 
   const tx = await buildMintWlpTx(client, {
     accountId: requireEnv("WATERX_ACCOUNT_ID"),

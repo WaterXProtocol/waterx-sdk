@@ -20,7 +20,7 @@ run(async () => {
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
   const accountId = requireEnv("WATERX_ACCOUNT_ID");
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.creditType();
   const size = BigInt(process.env.WATERX_SIZE ?? rawPrice(0.0001).toString());
 
   const tx = await buildPlaceOrderTx(client, {

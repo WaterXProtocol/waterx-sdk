@@ -9,6 +9,7 @@ import * as float_1 from './deps/bucket_v2_framework/float.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as balance_1 from './deps/sui/balance.ts';
 import * as sheet_1 from './deps/bucket_v2_framework/sheet.ts';
+import * as vec_set from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/native-custody::custody_vault';
 export const NativeCustody = new MoveStruct({ name: `${$moduleName}::NativeCustody`, fields: {
         dummy_field: bcs.bool()
@@ -31,7 +32,15 @@ export const SingleVault = new MoveStruct({ name: `${$moduleName}::SingleVault<p
     } });
 export const CustodyVault = new MoveStruct({ name: `${$moduleName}::CustodyVault<phantom CREDIT>`, fields: {
         id: bcs.Address,
-        credit_supply: bcs.u64()
+        credit_supply: bcs.u64(),
+        /**
+         * Admin-managed package-version allowlist used by admin paths that don't already
+         * thread `&CreditRegistry`. mint/burn paths keep the CreditRegistry-based
+         * `assert_valid_package` check; this set covers `add_asset` /
+         * `set_min_burn_amount` / `set_asset_deprecated` / `set_fee_config` so admin can
+         * kill-switch the package without touching `CreditRegistry.module_config_map`.
+         */
+        allowed_versions: vec_set.VecSet(bcs.u16())
     } });
 export const VaultKey = new MoveTuple({ name: `${$moduleName}::VaultKey<phantom T>`, fields: [bcs.bool()] });
 export interface PackageVersionOptions {
@@ -99,6 +108,78 @@ export function createVault(options: CreateVaultOptions) {
         package: packageAddress,
         module: 'custody_vault',
         function: 'create_vault',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AddVersionArguments {
+    vault: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface AddVersionOptions {
+    package?: string;
+    arguments: AddVersionArguments | [
+        vault: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: whitelist a package version on this vault. Skips the version check itself
+ * so admin can recover from a stuck state.
+ */
+export function addVersion(options: AddVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/native-custody';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["vault", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'custody_vault',
+        function: 'add_version',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RemoveVersionArguments {
+    vault: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface RemoveVersionOptions {
+    package?: string;
+    arguments: RemoveVersionArguments | [
+        vault: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: remove a package version from this vault's allowlist. Skips the version
+ * check itself.
+ */
+export function removeVersion(options: RemoveVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/native-custody';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["vault", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'custody_vault',
+        function: 'remove_version',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

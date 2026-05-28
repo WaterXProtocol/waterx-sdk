@@ -8,6 +8,7 @@ import * as type_name from './deps/std/type_name.ts';
 import * as balance from './deps/sui/balance.ts';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
+import * as vec_set_1 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/withdrawal-queue::withdrawal_queue';
 export const WithdrawQueue = new MoveStruct({ name: `${$moduleName}::WithdrawQueue`, fields: {
         dummy_field: bcs.bool()
@@ -46,7 +47,13 @@ export const Queue = new MoveStruct({ name: `${$moduleName}::Queue<phantom CREDI
          * `execute_native`. Without this gate any caller could route any user's queue
          * entry through the burn path (audit finding #3).
          */
-        executors: vec_set.VecSet(bcs.Address)
+        executors: vec_set.VecSet(bcs.Address),
+        /**
+         * Admin-managed package-version allowlist. Every mutating public entry asserts
+         * `PACKAGE_VERSION ∈ allowed_versions`; admin uses `add_version` /
+         * `remove_version` to kill-switch a deprecated package after a contract upgrade.
+         */
+        allowed_versions: vec_set_1.VecSet(bcs.u16())
     } });
 export const Enqueued = new MoveStruct({ name: `${$moduleName}::Enqueued<phantom CREDIT>`, fields: {
         key: bcs.u64(),
@@ -75,6 +82,19 @@ export const ExecutorUpdated = new MoveStruct({ name: `${$moduleName}::ExecutorU
         executor: bcs.Address,
         added: bcs.bool()
     } });
+export interface PackageVersionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function packageVersion(options: PackageVersionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/withdrawal-queue';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'withdrawal_queue',
+        function: 'package_version',
+    });
+}
 export interface RouteWormholeArguments {
     evmDestinationChain: RawTransactionArgument<number>;
     evmRecipient: RawTransactionArgument<number[]>;
@@ -245,16 +265,92 @@ export function isExecutor(options: IsExecutorOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface CancelEntryArguments {
+export interface AddVersionArguments {
     queue: RawTransactionArgument<string>;
     _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface AddVersionOptions {
+    package?: string;
+    arguments: AddVersionArguments | [
+        queue: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: whitelist a package version. New deployments add their own version here
+ * before the upgrade so in-flight calls don't abort during the rollover window.
+ * Skips the version check itself so admin can recover from a stuck state.
+ */
+export function addVersion(options: AddVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/withdrawal-queue';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["queue", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'withdrawal_queue',
+        function: 'add_version',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RemoveVersionArguments {
+    queue: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    version: RawTransactionArgument<number>;
+}
+export interface RemoveVersionOptions {
+    package?: string;
+    arguments: RemoveVersionArguments | [
+        queue: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        version: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: remove a package version from the allowlist. Kill-switches the prior
+ * version after an upgrade. Skips the version check itself so admin can recover
+ * from a stuck state.
+ */
+export function removeVersion(options: RemoveVersionOptions) {
+    const packageAddress = options.package ?? '@waterx/withdrawal-queue';
+    const argumentsTypes = [
+        null,
+        null,
+        'u16'
+    ] satisfies (string | null)[];
+    const parameterNames = ["queue", "_", "version"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'withdrawal_queue',
+        function: 'remove_version',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface CancelEntryArguments {
+    queue: RawTransactionArgument<string>;
+    accountRegistry: RawTransactionArgument<string>;
+    request: RawTransactionArgument<string>;
     key: RawTransactionArgument<number | bigint>;
 }
 export interface CancelEntryOptions {
     package?: string;
     arguments: CancelEntryArguments | [
         queue: RawTransactionArgument<string>,
-        _: RawTransactionArgument<string>,
+        accountRegistry: RawTransactionArgument<string>,
+        request: RawTransactionArgument<string>,
         key: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -262,22 +358,35 @@ export interface CancelEntryOptions {
     ];
 }
 /**
- * Admin escape hatch (audit finding #5): refund a parked entry's `Balance<CREDIT>`
- * to a recipient address when the entry can no longer be executed — e.g. the
- * `extra_data` body is malformed (handcrafted by the caller instead of via
- * `route_*`), or admin has since `remove_trusted_emitter`'d the destination chain
- * or `set_asset_deprecated`'d the native asset. Without this, such entries
- * permanently lock both the balance and the queue slot. Recipient is
- * `Entry.recipient` (the address the original `request_withdraw` named).
+ * Refund a parked entry's `Balance<CREDIT>` back to the **originating wxa
+ * account** when the entry can no longer be executed — e.g. the `extra_data` body
+ * is malformed (handcrafted by the caller instead of via `route_*`), or admin has
+ * since `remove_trusted_emitter`'d the destination chain or
+ * `set_asset_deprecated`'d the native asset. Without this, such entries
+ * permanently lock both the balance and the queue slot (audit finding #5).
+ *
+ * Auth: either a registered queue keeper (`request.address() ∈  queue.executors`)
+ * OR an address authorized on the originating wxa account
+ * (`account_registry.is_account_authorized(entry.account_id,  caller, now)` —
+ * owner or non-expired delegate). The user can self-cancel without waiting for the
+ * keeper, and the keeper can clean up stale entries proactively.
+ *
+ * The refund goes to `Entry.account_id` (the originating wxa account), not
+ * `Entry.recipient` (the external destination the user picked) —
+ * `request_withdraw<CREDIT>` debited the user's account on enqueue, so the
+ * symmetric cancel re-credits that same account. The user can re-issue
+ * `request_withdraw` from the restored stored balance once the route is fixed.
  */
 export function cancelEntry(options: CancelEntryOptions) {
     const packageAddress = options.package ?? '@waterx/withdrawal-queue';
     const argumentsTypes = [
         null,
         null,
-        'u64'
+        null,
+        'u64',
+        '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["queue", "_", "key"];
+    const parameterNames = ["queue", "accountRegistry", "request", "key"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'withdrawal_queue',

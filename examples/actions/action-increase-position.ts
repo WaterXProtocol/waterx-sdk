@@ -19,7 +19,7 @@ run(async () => {
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
   const accountId = requireEnv("WATERX_ACCOUNT_ID");
-  const usdcType = client.getPoolTokenType("USDCUSD");
+  const usdcType = client.creditType();
 
   const tx = await buildIncreasePositionTx(client, {
     ticker: process.env.WATERX_TICKER ?? "BTCUSD",
