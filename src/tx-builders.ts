@@ -505,16 +505,24 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
  * Unstakes WLP from the staking pool and immediately enqueues a redeem request
  * in the same PTB. Mirror of `buildMintAndStakeWlpTx` for withdrawals.
  *
- * Does NOT refresh oracles — `request_redeem` runs `assert_prices_fresh`
- * internally; callers must pre-pump a price refresh into the shared PTB
- * (e.g. via `refreshOraclePrices` + `updateTokenValue`) before calling this.
+ * Refreshes every WLP pool-token oracle by default — `request_redeem` runs
+ * `assert_prices_fresh` internally, so a stale oracle would abort the PTB.
+ * Pass `skipOraclePriceRefresh: true` only when the caller is composing this
+ * into a larger PTB that already pre-pumps prices.
  */
-export function buildUnstakeAndRequestRedeemWlpTx(
+export async function buildUnstakeAndRequestRedeemWlpTx(
   client: WaterXClient,
   params: BuildUnstakeAndRequestRedeemWlpParams,
-): Transaction {
+): Promise<Transaction> {
   const tx = newTx(params);
   const stakeAlias = params.stakeAlias ?? "WLP";
+
+  if (!params.skipOraclePriceRefresh) {
+    await refreshWlpPoolOracles(tx, client, [], {
+      cache: params.pythCache,
+      lpType: params.lpType,
+    });
+  }
 
   unstake(client, tx, {
     accountId: params.accountId,

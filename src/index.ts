@@ -75,6 +75,7 @@ export {
   SUI_DECIMALS,
   WLP_DECIMALS,
   COLLATERAL_DECIMALS,
+  TOKEN_DECIMALS,
 } from "./constants.ts";
 export type { Network } from "./constants.ts";
 

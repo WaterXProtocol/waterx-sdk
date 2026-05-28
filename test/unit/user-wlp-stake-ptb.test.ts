@@ -42,12 +42,13 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("buildUnstakeAndRequestRedeemWlpTx chains unstake -> request_redeem with rewarder settlement", () => {
-    const tx = buildUnstakeAndRequestRedeemWlpTx(client, {
+  it("buildUnstakeAndRequestRedeemWlpTx chains unstake -> request_redeem with rewarder settlement", async () => {
+    const tx = await buildUnstakeAndRequestRedeemWlpTx(client, {
       accountId,
       redeemTokenType: MOCK_USDC_TYPE,
       withdrawalAmount: 500_000n,
       rewarderTypes: [rewardType],
+      skipOraclePriceRefresh: true,
     });
     // staking::redeem + 1 rewarder settle + destroy_withdraw_checker + request_redeem
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
