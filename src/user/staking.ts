@@ -48,8 +48,12 @@ export interface StakeParams {
   stakeAlias: string;
   /** Fully-qualified `STAKE` coin type for the type argument. */
   stakeType: string;
-  /** Amount to take from the wxa account into the staking pool. */
-  stakeAmount: bigint | number;
+  /**
+   * Amount to take from the wxa account into the staking pool. Accepts a
+   * `TransactionArgument` so callers can chain it from a previous PTB call
+   * (e.g. the `lp_amount` returned by `mintWlp`).
+   */
+  stakeAmount: bigint | number | TransactionArgument;
   /** Rewarder types to settle on this deposit. Order matters and must match the pool's `rewarder_ids` set on-chain. */
   rewarderTypes?: string[];
   bucketAccount?: string | TransactionArgument;
@@ -97,7 +101,7 @@ export interface UnstakeParams {
   accountId: string;
   stakeAlias: string;
   stakeType: string;
-  withdrawalAmount: bigint | number;
+  withdrawalAmount: bigint | number | TransactionArgument;
   rewarderTypes?: string[];
   bucketAccount?: string | TransactionArgument;
 }

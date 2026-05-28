@@ -299,3 +299,48 @@ export function transferToAccount(
     typeArguments: [params.coinType],
   })(tx);
 }
+
+// ============================================================================
+// Receive a TTO'd object back into the caller's PTB
+// ============================================================================
+
+export interface ReceiveParams {
+  accountId: string;
+  /**
+   * `Receiving<T>` argument for the TTO'd object. Construct via
+   * `tx.receivingRef({ objectId, version, digest })` from the on-chain
+   * object's ID/version/digest (e.g. from
+   * `FundsReaderService.listUnreceivedRewardCoins` on the BE).
+   */
+  receiving: TransactionArgument;
+  /** Fully-qualified `T` Move type — typically `Coin<R>` for reward coins. */
+  receivingType: string;
+  bucketAccount?: string | TransactionArgument;
+}
+
+/**
+ * Calls `waterx_account::receive<T>` to drain a TTO'd object on the
+ * account's UID. Returns the received object to the caller's PTB so it
+ * can be merged / transferred / consumed downstream in the same tx.
+ *
+ * Bypasses the deposit-policy flow — use for reward coins (and other
+ * tokens / objects) that have no registered deposit policy.
+ */
+export function receive(
+  client: WaterXClient,
+  tx: Transaction,
+  params: ReceiveParams,
+): TransactionArgument {
+  const req = makeSenderRequest(client, tx, params.bucketAccount);
+  const out = wxa.receive({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      senderRequest: req as unknown as string,
+      accountId: params.accountId,
+      receiving: params.receiving as unknown as string,
+    },
+    typeArguments: [params.receivingType],
+  })(tx);
+  return out as unknown as TransactionArgument;
+}

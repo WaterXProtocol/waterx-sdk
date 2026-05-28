@@ -72,6 +72,9 @@ export {
   PERM_WITHDRAW_COLLATERAL,
   STOCK_FEE_RATE,
   MS_PER_YEAR,
+  SUI_DECIMALS,
+  WLP_DECIMALS,
+  COLLATERAL_DECIMALS,
   TOKEN_DECIMALS,
 } from "./constants.ts";
 export type { Network } from "./constants.ts";

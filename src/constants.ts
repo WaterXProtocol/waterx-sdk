@@ -12,12 +12,24 @@ export const FLOAT_SCALE = 1_000_000_000n;
 export const DOUBLE_SCALE = 1_000_000_000_000_000_000n;
 
 // ======== Token decimals ========
-/** On-chain decimal precision for SUI-native coins. */
+/** SUI coin decimals (gas + staking rewards). */
+export const SUI_DECIMALS = 9;
+/** WLP LP-token decimals. */
+export const WLP_DECIMALS = 6;
+/** Shared decimals for trading collateral / WLP backing assets (USDC, USDSUI). */
+export const COLLATERAL_DECIMALS = 6;
+
+/**
+ * @deprecated Import the individual `SUI_DECIMALS` / `WLP_DECIMALS` /
+ * `COLLATERAL_DECIMALS` constants instead. Kept as a back-compat shim so
+ * downstream code that still does `import { TOKEN_DECIMALS }` keeps working;
+ * removed in a future major.
+ */
 export const TOKEN_DECIMALS = {
-  SUI: 9,
-  USDC: 6,
-  USDSUI: 6,
-  WLP: 6,
+  SUI: SUI_DECIMALS,
+  USDC: COLLATERAL_DECIMALS,
+  USDSUI: COLLATERAL_DECIMALS,
+  WLP: WLP_DECIMALS,
 } as const satisfies Record<string, number>;
 
 // ======== Fee rates & risk parameters ========
