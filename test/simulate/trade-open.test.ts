@@ -1,7 +1,7 @@
 /**
  * E2E: market-form place order (oracle refresh + sponsor path), primary open simulate smoke.
  */
-import { buildPlaceOrderTx } from "@waterx/perp-sdk";
+import { buildPlaceOrderTx } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

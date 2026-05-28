@@ -4,7 +4,7 @@
  * E2e setup must **not** batch-simulate legacy bucket aggregators — oracle freshness is per-PTB via Pyth.
  */
 
-import type { WaterXClient } from "@waterx/perp-sdk";
+import type { WaterXClient } from "@waterx/sdk";
 
 import { getUsdHintForTicker, hintBasePriceUsdForTicker } from "./oracle-pyth-context.ts";
 

@@ -1,7 +1,7 @@
 /**
  * E2E: dry-run a market-order place PTB (oracle refresh + request + execute).
  */
-import { buildPlaceOrderTx } from "@waterx/perp-sdk";
+import { buildPlaceOrderTx } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

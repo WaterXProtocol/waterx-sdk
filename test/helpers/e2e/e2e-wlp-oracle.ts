@@ -1,5 +1,5 @@
 import type { Transaction } from "@mysten/sui/transactions";
-import { refreshOraclePrices } from "@waterx/perp-sdk";
+import { refreshOraclePrices } from "@waterx/sdk";
 
 import type { WaterXClient } from "../../../src/client.ts";
 import { updateTokenValue } from "../../../src/user/wlp.ts";

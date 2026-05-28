@@ -1,4 +1,4 @@
-# @waterx/perp-sdk
+# @waterx/sdk
 
 TypeScript SDK for the WaterX perpetual protocol on Sui: build PTBs with **gRPC** (`@mysten/sui`), run read-only **simulateTransaction** queries, and optional **Pyth** helpers.
 
@@ -14,7 +14,7 @@ pnpm build
 Consumers:
 
 ```bash
-pnpm add @waterx/perp-sdk @mysten/sui
+pnpm add @waterx/sdk @mysten/sui
 ```
 
 ### Breaking changes (WLP high-level builders)
@@ -53,7 +53,7 @@ All network I/O uses **gRPC** (`SuiGrpcClient`). Trading helpers require `bucket
 **Testnet (built-in constants):**
 
 ```ts
-import { WaterXClient } from "@waterx/perp-sdk";
+import { WaterXClient } from "@waterx/sdk";
 
 const client = WaterXClient.testnet();
 // optional: custom fullnode gRPC URL
@@ -63,7 +63,7 @@ const client = WaterXClient.testnet();
 **Custom config (any network):**
 
 ```ts
-import { createTestnetConfig, WaterXClient, type WaterXConfig } from "@waterx/perp-sdk";
+import { createTestnetConfig, WaterXClient, type WaterXConfig } from "@waterx/sdk";
 
 const config: WaterXConfig = {
   ...createTestnetConfig(),
@@ -83,7 +83,7 @@ const client = new WaterXClient(config);
 Uses gRPC `simulateTransaction` + BCS (no signer).
 
 ```ts
-import { getPoolSummary, getWlpTotalSupply, getWlpTvlUsd, WaterXClient } from "@waterx/perp-sdk";
+import { getPoolSummary, getWlpTotalSupply, getWlpTvlUsd, WaterXClient } from "@waterx/sdk";
 
 const client = WaterXClient.testnet();
 
@@ -98,7 +98,7 @@ const tvl = await getWlpTvlUsd(client);
 ### Read-only: accounts & position
 
 ```ts
-import { getAccountsByOwner, getPosition, positionExists, WaterXClient } from "@waterx/perp-sdk";
+import { getAccountsByOwner, getPosition, positionExists, WaterXClient } from "@waterx/sdk";
 
 const client = WaterXClient.testnet();
 const owner = "0x..."; // Sui address
@@ -121,7 +121,7 @@ Returns a `Transaction` you sign and execute with the same client.
 
 ```ts
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { buildOpenPositionTx, WaterXClient } from "@waterx/perp-sdk";
+import { buildOpenPositionTx, WaterXClient } from "@waterx/sdk";
 
 const client = WaterXClient.testnet();
 // Use your own keypair or any @mysten/sui Signer (e.g. wallet adapter).

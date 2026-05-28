@@ -1,4 +1,4 @@
-import { getMarketSummary, type WaterXClient } from "@waterx/perp-sdk";
+import { getMarketSummary, type WaterXClient } from "@waterx/sdk";
 import { expect } from "vitest";
 
 import type { BaseAsset } from "../../../src/constants.ts";

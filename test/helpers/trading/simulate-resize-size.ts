@@ -13,7 +13,7 @@ import {
   type BaseAsset,
   type CollateralAsset,
   type WaterXClient,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 
 import { DUMMY_SENDER } from "../e2e/testnet.ts";
 

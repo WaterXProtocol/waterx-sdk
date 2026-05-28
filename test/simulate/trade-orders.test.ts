@@ -1,7 +1,7 @@
 /**
  * E2E: cancel / update order builders (expected abort on bogus ids without discovery).
  */
-import { buildCancelOrderTx, buildUpdateOrderTx, ORDER_LIMIT_BUY } from "@waterx/perp-sdk";
+import { buildCancelOrderTx, buildUpdateOrderTx, ORDER_LIMIT_BUY } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

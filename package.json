@@ -1,5 +1,5 @@
 {
-  "name": "@waterx/perp-sdk",
+  "name": "@waterx/sdk",
   "version": "2.1.0",
   "description": "WaterX Perpetual Protocol SDK",
   "license": "MIT",

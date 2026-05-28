@@ -1,9 +1,9 @@
 import path from "path";
 import { defineConfig } from "vitest/config";
 
-/** `@waterx/perp-sdk` must resolve per Vitest project (multi-project mode). */
+/** `@waterx/sdk` must resolve per Vitest project (multi-project mode). */
 const perpSdkAlias = {
-  "@waterx/perp-sdk": path.resolve(__dirname, "./src/index.ts"),
+  "@waterx/sdk": path.resolve(__dirname, "./src/index.ts"),
 };
 
 /**

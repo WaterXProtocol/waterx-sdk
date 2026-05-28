@@ -14,7 +14,7 @@
  * to the on-chain audit trail of one onboarding flow.
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { stake } from "@waterx/perp-sdk";
+import { stake } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ORDER_TAG_WILDCARD } from "../../../src/constants.ts";

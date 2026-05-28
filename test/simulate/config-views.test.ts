@@ -1,7 +1,7 @@
 /**
  * E2E: read-only view queries against testnet via simulateTransaction.
  */
-import { getGlobalConfigData, getMarketData, getPoolData, positionExists } from "@waterx/perp-sdk";
+import { getGlobalConfigData, getMarketData, getPoolData, positionExists } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

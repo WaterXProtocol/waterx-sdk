@@ -7,7 +7,7 @@ import {
   buildRequestCreditWithdrawTx,
   getAccountsByOwner,
   listBridgeWithdrawalVaas,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
@@ -139,7 +139,7 @@ describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () =>
     }
 
     const creditType = client.creditType();
-    const { getAccountBalance } = await import("@waterx/perp-sdk");
+    const { getAccountBalance } = await import("@waterx/sdk");
     const bal = await getAccountBalance(client, row.accountId, creditType);
     if (bal < 1n) {
       ctx.skip(`wxa CREDIT balance is zero — fund via integration mint first`);
@@ -198,7 +198,7 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
     }
 
     const creditType = client.creditType();
-    const { getAccountBalance } = await import("@waterx/perp-sdk");
+    const { getAccountBalance } = await import("@waterx/sdk");
     const bal = await getAccountBalance(client, row.accountId, creditType);
     if (bal === 0n) {
       ctx.skip("wxa CREDIT balance is zero — cannot probe over-withdraw");
@@ -256,7 +256,7 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
     }
 
     const creditType = client.creditType();
-    const { getAccountBalance } = await import("@waterx/perp-sdk");
+    const { getAccountBalance } = await import("@waterx/sdk");
     const bal = await getAccountBalance(client, row.accountId, creditType);
     if (bal === 0n) {
       ctx.skip("wxa CREDIT balance is zero — cannot probe unregistered asset route");
