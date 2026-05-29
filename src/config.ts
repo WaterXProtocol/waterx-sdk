@@ -320,8 +320,7 @@ export interface LoadConfigOptions {
   timeoutMs?: number;
 }
 
-const CONFIG_REPO_RAW_BASE =
-  "https://raw.githubusercontent.com/WaterXProtocol/waterx-config";
+const CONFIG_REPO_RAW_BASE = "https://raw.githubusercontent.com/WaterXProtocol/waterx-config";
 
 /** Default git ref for the canonical config when none is pinned. */
 const DEFAULT_CONFIG_REF = "main";
