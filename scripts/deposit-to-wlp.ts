@@ -34,7 +34,7 @@ import {
 } from "../src/generated/waterx_account/account.ts";
 import { setPriceRefreshThresholdMs } from "../src/generated/waterx_perp/global_config.ts";
 import { mintWlp, updateTokenValue } from "../src/user/wlp.ts";
-import { refreshOraclePrices } from "../src/utils/pyth.ts";
+import { aggregateTickerWithPyth, refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
@@ -133,6 +133,11 @@ async function main(): Promise<void> {
   const depositAmount = BigInt(process.env.DEPOSIT_AMOUNT ?? "1000000");
   const minLpAmount = BigInt(process.env.MIN_LP_AMOUNT ?? "0");
   const doExecute = process.env.EXECUTE === "1";
+  // SKIP_PRICE_UPDATE=1 mints without refreshing the oracle / bumping
+  // TokenPoolInfo.value_usd — relies on the pool prices already being fresh
+  // within price_refresh_threshold_ms. Mirrors buildMintWlpTx's
+  // `skipOraclePriceRefresh: true`.
+  const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
 
   const client = await WaterXClient.create("TESTNET", { cache: true });
 
@@ -148,6 +153,7 @@ async function main(): Promise<void> {
   console.log(`lp token:      ${wlpType}`);
   console.log(`deposit raw:   ${depositAmount} (USD, 6 dec)`);
   console.log(`min lp raw:    ${minLpAmount}`);
+  console.log(`price update:  ${skipPriceUpdate ? "SKIPPED" : "refresh + updateTokenValue"}`);
   console.log(`mode:          ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
   const usdBalance = await getAccountBalance(client, accountId, usdType);
@@ -267,10 +273,23 @@ async function main(): Promise<void> {
   }
 
   const tx = new Transaction();
-  await refreshOraclePrices(tx, client, [ticker]);
-  // Push the freshly-aggregated oracle price into TokenPoolInfo.value_usd /
-  // last_price_refresh_timestamp so lp_pool::assert_prices_fresh accepts it.
-  updateTokenValue(client, tx, { tokenType: usdType });
+  if (skipPriceUpdate) {
+    // "Don't update the price": skip the Hermes fetch + on-chain Pyth push
+    // (updatePythPrices) and the TokenPoolInfo.value_usd bump. mint_wlp still
+    // calls oracle::get_price, which aborts EStalePrice unless oracle::aggregate
+    // ran THIS PTB — so we re-aggregate the price already sitting on-chain.
+    // Only works while that on-chain Pyth price is within pyth_rule tolerance.
+    const feed = client.getPythFeed(ticker);
+    aggregateTickerWithPyth(tx, client, {
+      ticker,
+      priceInfoObjectId: feed.price_info_object,
+    });
+  } else {
+    await refreshOraclePrices(tx, client, [ticker]);
+    // Push the freshly-aggregated oracle price into TokenPoolInfo.value_usd /
+    // last_price_refresh_timestamp so lp_pool::assert_prices_fresh accepts it.
+    updateTokenValue(client, tx, { tokenType: usdType });
+  }
   mintWlp(client, tx, {
     accountId,
     depositTokenType: usdType,
