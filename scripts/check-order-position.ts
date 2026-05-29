@@ -13,8 +13,7 @@ function j(v: unknown): string {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await WaterXClient.create("TESTNET", { cache: true });
-  const accountId =
-    process.env.WATERX_ACCOUNT_ID ?? process.env.WATERX_SMOKE_ACCOUNT_ID ?? "";
+  const accountId = process.env.WATERX_ACCOUNT_ID ?? process.env.WATERX_SMOKE_ACCOUNT_ID ?? "";
   const ticker = process.env.WATERX_TICKER ?? "BTCUSD";
   if (!accountId) throw new Error("set WATERX_ACCOUNT_ID");
 

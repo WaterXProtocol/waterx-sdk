@@ -30,7 +30,8 @@ function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
     const raw = fromBase64(enc);
     if (raw.length !== 33 || raw[0] !== 0x00) continue;
     const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === active) return { keypair: kp, address: kp.toSuiAddress() };
+    if (kp.toSuiAddress().toLowerCase() === active)
+      return { keypair: kp, address: kp.toSuiAddress() };
   }
   throw new Error(`no key matches ${active}`);
 }
@@ -74,7 +75,9 @@ async function main(): Promise<void> {
     FailedTransaction?: { status?: { error?: { message?: string } } };
   };
   if (sim.$kind === "FailedTransaction") {
-    throw new Error(`simulate aborted: ${sim.FailedTransaction?.status?.error?.message ?? "(no msg)"}`);
+    throw new Error(
+      `simulate aborted: ${sim.FailedTransaction?.status?.error?.message ?? "(no msg)"}`,
+    );
   }
   console.log("  ✓ simulate ok");
 
