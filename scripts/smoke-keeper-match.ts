@@ -70,6 +70,7 @@ import {
   matchOrders,
   updateTokenValue,
 } from "../src/index.ts";
+import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
@@ -314,7 +315,7 @@ async function main(): Promise<void> {
     // Pool freshness: refresh every pool token's oracle + base ticker, then
     // bump each pool token's last_price_refresh_timestamp so the in-call
     // `assert_prices_fresh` passes.
-    const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+    const poolTickers = getCollateralAssets(client.config);
     const oracleTickers = Array.from(new Set([BTC, "USDCUSD", ...poolTickers]));
     await refreshOraclePrices(matchTx, client, oracleTickers);
     for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
