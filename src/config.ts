@@ -298,9 +298,17 @@ export interface WaterXConfig {
 export interface LoadConfigOptions {
   /**
    * Override the default config URL. Use this to point at a staging branch
-   * (`?ref=staging`) or a local mirror during development.
+   * (`?ref=staging`) or a local mirror during development. Takes precedence
+   * over {@link configRef}.
    */
   configUrl?: string;
+  /**
+   * Pin the canonical config to a specific git ref — a commit SHA, branch,
+   * or tag — instead of the default `main` branch. Resolves to
+   * `https://raw.githubusercontent.com/WaterXProtocol/waterx-config/<ref>/<network>.json`.
+   * Ignored when {@link configUrl} is set.
+   */
+  configRef?: string;
   /**
    * Reuse a previously-fetched config from the in-memory cache (keyed by
    * the effective URL). Default: false (always fetch fresh).
@@ -312,11 +320,18 @@ export interface LoadConfigOptions {
   timeoutMs?: number;
 }
 
-const DEFAULT_CONFIG_URL_BASE =
-  "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main";
+const CONFIG_REPO_RAW_BASE =
+  "https://raw.githubusercontent.com/WaterXProtocol/waterx-config";
 
-export function defaultConfigUrl(network: Network): string {
-  return `${DEFAULT_CONFIG_URL_BASE}/${network.toLowerCase()}.json`;
+/** Default git ref for the canonical config when none is pinned. */
+const DEFAULT_CONFIG_REF = "main";
+
+/**
+ * Build the canonical config URL for `network`, optionally pinned to a
+ * specific git `ref` (commit SHA, branch, or tag). Defaults to `main`.
+ */
+export function defaultConfigUrl(network: Network, ref: string = DEFAULT_CONFIG_REF): string {
+  return `${CONFIG_REPO_RAW_BASE}/${ref}/${network.toLowerCase()}.json`;
 }
 
 const cache = new Map<string, WaterXConfig>();
@@ -329,7 +344,7 @@ export async function loadConfig(
   network: Network,
   opts: LoadConfigOptions = {},
 ): Promise<WaterXConfig> {
-  const url = opts.configUrl ?? defaultConfigUrl(network);
+  const url = opts.configUrl ?? defaultConfigUrl(network, opts.configRef);
   if (opts.cache && cache.has(url)) {
     return cache.get(url)!;
   }

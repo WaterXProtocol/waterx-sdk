@@ -58,6 +58,10 @@ const c2 = await WaterXClient.create("MAINNET", {
   cache: true, // optional in-process cache, default off
 });
 
+// Pin the canonical config to a specific git ref (commit SHA, branch, or
+// tag) instead of `main`. Ignored when `configUrl` is set.
+const c3 = await WaterXClient.create("TESTNET", { configRef: "a1b2c3d" });
+
 // Canonical-schema lookups:
 client.config.packages.waterx_perp.global_config;       // shared GlobalConfig
 client.config.packages.waterx_perp.markets["BTCUSD"];   // { market, config }
