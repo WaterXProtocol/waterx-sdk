@@ -9,8 +9,35 @@
     "url": "https://github.com/WaterXProtocol/waterx-sdk.git"
   },
   "type": "module",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
+  "main": "dist/src/sdk.js",
+  "types": "dist/src/sdk.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/sdk.d.ts",
+      "import": "./dist/src/sdk.js"
+    },
+    "./perp": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./perp/*": {
+      "types": "./dist/src/*.d.ts",
+      "import": "./dist/src/*.js"
+    },
+    "./prediction": {
+      "types": "./dist/src/prediction/index.d.ts",
+      "import": "./dist/src/prediction/index.js"
+    },
+    "./prediction/*": {
+      "types": "./dist/src/prediction/*.d.ts",
+      "import": "./dist/src/prediction/*.js"
+    },
+    "./generated/*": {
+      "types": "./dist/src/generated/*.d.ts",
+      "import": "./dist/src/generated/*.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "LICENSE",
@@ -26,15 +53,26 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" \"vitest.config.ts\" \"eslint.config.mjs\" \"sui-codegen.config.mjs\"",
     "env:init": "tsx scripts/init-local-env.ts",
     "typecheck": "tsc --noEmit",
-    "test:integration": "tsx scripts/run-integration.ts --testnet",
-    "test:integration:mainnet": "tsx scripts/run-integration.ts --mainnet",
-    "test:integration:lifecycle": "tsx scripts/run-integration.ts --testnet test/integration/user/trader-position-lifecycle.test.ts",
-    "test:integration:market-config": "tsx scripts/run-integration.ts --testnet test/integration/user/trader-market-onchain-config.test.ts",
-    "test:integration:persistent-state": "tsx scripts/run-integration.ts --testnet test/integration/user/trader-e2e-persistent-state.test.ts",
-    "test:integration:gap": "tsx scripts/run-integration.ts --testnet test/integration/user/trader-wlp-redeem.test.ts test/integration/user/trader-staking.test.ts test/integration/user/trader-keeper-roundtrip.test.ts test/integration/user/trader-custody.test.ts test/integration/user/trader-credit-pipeline.test.ts",
-    "test:integration:onboarding": "tsx scripts/run-integration.ts --testnet test/integration/user/trader-full-onboarding.test.ts",
+    "test": "vitest run --project unit --project predict-unit",
+    "test:unit": "vitest run --project unit --project predict-unit",
+    "test:unit:perp": "vitest run --project unit",
+    "test:unit:predict": "vitest run --project predict-unit",
+    "test:e2e": "vitest run --project e2e --project predict-e2e",
+    "test:e2e:perp": "vitest run --project e2e",
+    "test:e2e:predict": "vitest run --project predict-e2e",
+    "test:integration": "pnpm test:integration:perp && pnpm test:integration:predict",
+    "test:integration:perp": "tsx scripts/run-integration.ts --testnet",
+    "test:integration:predict": "vitest run --project predict-integration",
+    "test:integration:perp:mainnet": "tsx scripts/run-integration.ts --mainnet",
+    "test:integration:perp:lifecycle": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-position-lifecycle.test.ts",
+    "test:integration:perp:market-config": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-market-onchain-config.test.ts",
+    "test:integration:perp:persistent-state": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-e2e-persistent-state.test.ts",
+    "test:integration:perp:gap": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-wlp-redeem.test.ts test/perp/integration/user/trader-staking.test.ts test/perp/integration/user/trader-keeper-roundtrip.test.ts test/perp/integration/user/trader-custody.test.ts test/perp/integration/user/trader-credit-pipeline.test.ts",
+    "test:integration:perp:onboarding": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-full-onboarding.test.ts",
     "smoke:chain": "tsx scripts/run-smoke-chain.ts",
-    "smoke:chain:dry": "tsx scripts/run-smoke-chain.ts --dry-run"
+    "smoke:chain:dry": "tsx scripts/run-smoke-chain.ts --dry-run",
+    "seed:testnet": "tsx test/prediction/scripts/seed-testnet.ts",
+    "predict:list-accounts": "tsx test/prediction/scripts/list-accounts.ts"
   },
   "peerDependencies": {
     "@mysten/bcs": "^1.9.0",

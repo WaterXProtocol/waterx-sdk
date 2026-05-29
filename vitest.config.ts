@@ -1,10 +1,22 @@
 import path from "path";
 import { defineConfig } from "vitest/config";
 
-/** `@waterx/perp-sdk` must resolve per Vitest project (multi-project mode). */
-const perpSdkAlias = {
-  "@waterx/perp-sdk": path.resolve(__dirname, "./src/index.ts"),
-};
+/**
+ * Aliases must resolve per Vitest project (multi-project mode):
+ * - `@waterx/perp-sdk` → perp barrel (legacy/internal).
+ * - `~predict/*` / `~predict-scripts/*` → prediction sources/scripts (used by the
+ *   merged prediction test suite). Regex form keeps `~predict-scripts` from being
+ *   swallowed by the `~predict` prefix.
+ */
+const aliases = [
+  { find: "@waterx/perp-sdk", replacement: path.resolve(__dirname, "./src/index.ts") },
+  {
+    find: /^~predict-scripts\//,
+    replacement: path.resolve(__dirname, "./test/prediction/scripts") + "/",
+  },
+  { find: /^~predict-tests\//, replacement: path.resolve(__dirname, "./test/prediction") + "/" },
+  { find: /^~predict\//, replacement: path.resolve(__dirname, "./src/prediction") + "/" },
+];
 
 /**
  * E2E simulate hits shared gRPC; default is **one fork** (serial files) to avoid
@@ -61,7 +73,7 @@ const coverageBlock = {
 };
 
 export default defineConfig({
-  resolve: { alias: perpSdkAlias },
+  resolve: { alias: aliases },
   test: {
     coverage: coverageBlock,
     /**
@@ -73,10 +85,10 @@ export default defineConfig({
     slowTestThreshold: 15_000,
     projects: [
       {
-        resolve: { alias: perpSdkAlias },
+        resolve: { alias: aliases },
         test: {
           name: "unit",
-          include: ["src/**/*.test.ts", "test/unit/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "test/perp/unit/**/*.test.ts"],
           environment: "node",
           exclude: ["**/node_modules/**", "**/dist/**"],
           testTimeout: 30_000,
@@ -84,35 +96,83 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias: perpSdkAlias },
+        resolve: { alias: aliases },
         test: {
           name: "e2e",
-          include: ["test/simulate/**/*.test.ts"],
+          include: ["test/perp/e2e/**/*.test.ts"],
           environment: "node",
           exclude: ["**/node_modules/**", "**/dist/**"],
           testTimeout: 120_000,
           hookTimeout: 30_000,
-          setupFiles: ["./test/helpers/load-repo-env-setup.ts", "./test/helpers/e2e/e2e-setup.ts"],
+          setupFiles: [
+            "./test/perp/helpers/load-repo-env-setup.ts",
+            "./test/perp/helpers/e2e/e2e-setup.ts",
+          ],
           /** Parallelism: see `e2ePoolOptions` / env `WATERX_E2E_MAX_FORKS`. */
           poolOptions: e2ePoolOptions(),
           sequence: { concurrent: false },
         },
       },
       {
-        resolve: { alias: perpSdkAlias },
+        resolve: { alias: aliases },
         test: {
           name: "integration-trader",
-          include: ["test/integration/**/*.test.ts"],
+          include: ["test/perp/integration/**/*.test.ts"],
           environment: "node",
           exclude: ["**/node_modules/**", "**/dist/**"],
           testTimeout: 300_000,
           hookTimeout: 120_000,
           setupFiles: [
-            "./test/helpers/load-repo-env-setup.ts",
-            "./test/integration/vitest-integration-setup.ts",
+            "./test/perp/helpers/load-repo-env-setup.ts",
+            "./test/perp/integration/vitest-integration-setup.ts",
           ],
           /** One fork by default — see `integrationTraderPoolOptions`. */
           poolOptions: integrationTraderPoolOptions(),
+          sequence: { concurrent: false },
+        },
+      },
+      // ======== Prediction line ========
+      {
+        resolve: { alias: aliases },
+        test: {
+          name: "predict-unit",
+          include: ["test/prediction/unit/**/*.test.ts"],
+          environment: "node",
+          exclude: ["**/node_modules/**", "**/dist/**"],
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
+        },
+      },
+      {
+        resolve: { alias: aliases },
+        test: {
+          name: "predict-e2e",
+          include: ["test/prediction/e2e/**/*.test.ts"],
+          environment: "node",
+          exclude: ["**/node_modules/**", "**/dist/**"],
+          setupFiles: ["./test/prediction/setup-e2e.ts"],
+          testTimeout: 120_000,
+          hookTimeout: 30_000,
+          // All e2e files share an in-process discovery cache; one fork avoids
+          // parallel testnet RPC bursts (429). See prediction-sdk's vitest config.
+          pool: "forks",
+          poolOptions: { forks: { singleFork: true } },
+          sequence: { concurrent: false },
+        },
+      },
+      {
+        resolve: { alias: aliases },
+        test: {
+          name: "predict-integration",
+          include: ["test/prediction/integration/**/*.test.ts"],
+          environment: "node",
+          exclude: ["**/node_modules/**", "**/dist/**"],
+          setupFiles: ["./test/prediction/setup-integration.ts"],
+          testTimeout: 180_000,
+          hookTimeout: 180_000,
+          // Integration signs+executes against testnet with one gas coin — single fork.
+          pool: "forks",
+          poolOptions: { forks: { singleFork: true } },
           sequence: { concurrent: false },
         },
       },

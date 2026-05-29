@@ -1,0 +1,159 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`admin PTB builders > addKeeper / removeKeeper 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "add_keeper",
+    "module": "global_config",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`admin PTB builders > addKeeper / removeKeeper 2`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "remove_keeper",
+    "module": "global_config",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`admin PTB builders > adminWithdraw 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "admin_withdraw",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`admin PTB builders > createMarketRegistry 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+    ],
+    "function": "create_market_registry",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`admin PTB builders > depositSettlement 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "deposit_settlement",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`admin PTB builders > pauseMarket / unpauseMarket 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "pause_market",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`admin PTB builders > pauseMarket / unpauseMarket 2`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "unpause_market",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`admin PTB builders > setMinReserve 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "set_min_reserve",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`admin PTB builders > setOrderCancelCooldownMs 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "set_order_cancel_cooldown_ms",
+    "module": "waterx_prediction",
+    "package": "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+    "typeArguments": [
+      "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    ],
+  },
+]
+`;

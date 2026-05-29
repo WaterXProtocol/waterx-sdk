@@ -6,23 +6,27 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": false,
-    "rootDirs": ["src", "test", "scripts", "examples"],
+    "rootDirs": ["src", "test", "tests", "scripts", "examples"],
     "paths": {
-      "@waterx/perp-sdk": ["./src/index.ts"]
+      "@waterx/perp-sdk": ["./src/index.ts"],
+      "~predict/*": ["./src/prediction/*"],
+      "~predict-scripts/*": ["./test/prediction/scripts/*"],
+      "~predict-tests/*": ["./test/prediction/*"]
     }
   },
   "include": [
     "src",
     "scripts",
     "examples",
-    "test/unit",
-    "test/simulate",
-    "test/helpers/fixtures",
-    "test/helpers/test-client.ts",
-    "test/helpers/e2e/e2e-client.ts",
-    "test/helpers/e2e/e2e-setup.ts",
-    "test/helpers/e2e/transient-rpc.ts",
-    "test/helpers/trading/expected-open-trading-fee.ts"
+    "test/prediction",
+    "test/perp/unit",
+    "test/perp/e2e",
+    "test/perp/helpers/fixtures",
+    "test/perp/helpers/test-client.ts",
+    "test/perp/helpers/e2e/e2e-client.ts",
+    "test/perp/helpers/e2e/e2e-setup.ts",
+    "test/perp/helpers/e2e/transient-rpc.ts",
+    "test/perp/helpers/trading/expected-open-trading-fee.ts"
   ],
   "exclude": ["node_modules", "**/__tests__/*"]
 }

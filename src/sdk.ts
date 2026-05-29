@@ -1,0 +1,21 @@
+/**
+ * Package root for `@waterx/sdk` (`.` export).
+ *
+ * - `Client` — the unified facade (`client.perp.*` / `client.predict.*`).
+ * - `perp` / `prediction` — namespaces exposing each line's full API; use these
+ *   to disambiguate the builder names that collide across the two lines.
+ * - The flat re-export below preserves the legacy `@waterx/perp-sdk` surface at
+ *   the package root for one major cycle (DEPRECATED — removed next major).
+ *
+ * Prediction is reachable only via the `prediction` namespace / `@waterx/sdk/prediction`
+ * (never flat at the root) because its builder names collide with perp's.
+ */
+
+export { Client } from "./unified-client.ts";
+export type { ClientCreateOptions, PerpModule, PredictModule } from "./unified-client.ts";
+
+export * as perp from "./index.ts";
+export * as prediction from "./prediction/index.ts";
+
+// DEPRECATED flat perp surface (migration aid from `@waterx/perp-sdk`).
+export * from "./index.ts";
