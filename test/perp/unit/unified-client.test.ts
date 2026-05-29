@@ -55,20 +55,30 @@ describe("unified Client facade", () => {
     expect(client.predict.placeOrder).not.toBe(predOps.placeOrder);
   });
 
-  it("coverage guard: every builder/view function is exposed on its module", () => {
-    const perpExpected = fnNames({ ...perpUser, ...perpTx, ...perpFetch });
+  it("coverage guard: client-first builders are bound; non-client-first helpers are not", () => {
+    // Helpers whose first arg is NOT the line client must not be exposed as bound
+    // facade methods (binding would pass the client where a value is expected).
+    const NON_CLIENT_FIRST = ["extractReturnBytes"];
+    const expected = (ns: object) => fnNames(ns).filter((n) => !NON_CLIENT_FIRST.includes(n));
+
+    const perpExpected = expected({ ...perpUser, ...perpTx, ...perpFetch });
     for (const name of perpExpected) {
       expect((client.perp as Record<string, unknown>)[name], `perp.${name} missing`).toBeTypeOf(
         "function",
       );
     }
-    const predExpected = fnNames({ ...predAccount, ...predAdmin, ...predOps, ...predFetch });
+    const predExpected = expected({ ...predAccount, ...predAdmin, ...predOps, ...predFetch });
     for (const name of predExpected) {
       expect(
         (client.predict as Record<string, unknown>)[name],
         `predict.${name} missing`,
       ).toBeTypeOf("function");
     }
+
+    // Regression guard (bot-reported): a non-client-first helper exported from
+    // fetch.ts must NOT be bound onto the facade.
+    expect((client.predict as Record<string, unknown>).extractReturnBytes).toBeUndefined();
+
     // Sanity: the surfaces are non-trivial (guards against an empty-spread regression).
     expect(perpExpected.length).toBeGreaterThan(20);
     expect(predExpected.length).toBeGreaterThan(20);

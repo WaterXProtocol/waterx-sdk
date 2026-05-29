@@ -34,12 +34,23 @@ import * as perpTx from "./tx-builders.ts";
 import * as perpUser from "./user/index.ts";
 
 /**
- * Map a namespace of `(client, ...args) => R` free functions to the same
- * surface with the client pre-bound: `(...args) => R`. Non-function exports
- * (and functions whose first arg is not the client) pass through unchanged.
+ * Exports from the spread builder/view modules that are NOT client-first — their
+ * first argument is not the line client, so they must not become bound facade
+ * methods (binding would pass the client where a value is expected). This is the
+ * single source of truth shared by the runtime (skip) and the type (`Omit`).
+ * Keep in sync by auditing `export function` first-params across the spread modules.
+ */
+const NON_CLIENT_FIRST = ["extractReturnBytes"] as const;
+type NonClientFirstKey = (typeof NON_CLIENT_FIRST)[number];
+const NON_CLIENT_FIRST_SET: ReadonlySet<string> = new Set(NON_CLIENT_FIRST);
+
+/**
+ * Map a namespace of `(client, ...args) => R` free functions to the same surface
+ * with the client pre-bound: `(...args) => R`. Non-client-first helpers (see
+ * `NON_CLIENT_FIRST`) are dropped, so the static type and the runtime agree.
  */
 type ClientBound<NS, C> = {
-  [K in keyof NS]: NS[K] extends (client: C, ...args: infer A) => infer R
+  [K in keyof Omit<NS, NonClientFirstKey>]: NS[K] extends (client: C, ...args: infer A) => infer R
     ? (...args: A) => R
     : NS[K];
 };
@@ -47,6 +58,7 @@ type ClientBound<NS, C> = {
 function bindClient<C, NS extends object>(client: C, ns: NS): ClientBound<NS, C> {
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(ns)) {
+    if (NON_CLIENT_FIRST_SET.has(key)) continue; // not client-first → not a facade method
     const value = (ns as Record<string, unknown>)[key];
     out[key] =
       typeof value === "function"
