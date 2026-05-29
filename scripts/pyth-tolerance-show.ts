@@ -23,9 +23,11 @@ async function main(): Promise<void> {
 
   console.log(`pyth_rule.config: ${configId}`);
   console.log(`oracle.listing_cap: ${listingCap}`);
-  console.log(`feeds (tickers): ${Object.keys(client.config.packages.pyth_rule.feeds).join(", ")}\n`);
+  console.log(
+    `feeds (tickers): ${Object.keys(client.config.packages.pyth_rule.feeds).join(", ")}\n`,
+  );
 
-  const cfg = await rpc(client.config.network, "sui_getObject", [
+  const cfg = await rpc(client.network.toLowerCase(), "sui_getObject", [
     configId,
     { showContent: true },
   ]);
@@ -37,7 +39,7 @@ async function main(): Promise<void> {
     console.log(`  ${e.fields.key} -> ${e.fields.value}s`);
   }
 
-  const capObj = await rpc(client.config.network, "sui_getObject", [
+  const capObj = await rpc(client.network.toLowerCase(), "sui_getObject", [
     listingCap,
     { showOwner: true },
   ]);

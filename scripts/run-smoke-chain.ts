@@ -117,7 +117,7 @@ async function runStep(step: Step, env: NodeJS.ProcessEnv): Promise<StepResult> 
       }
     });
     child.on("error", (e) => {
-      console.error(`[${step.name}] spawn error:`, e);
+      console.error("[%s] spawn error:", step.name, e);
       resolveStep({ step, exitCode: 1, durationMs: Date.now() - startedAt });
     });
     child.on("exit", (code) => {

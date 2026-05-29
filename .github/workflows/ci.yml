@@ -1,5 +1,5 @@
 # Single PR pipeline for `main`: replaces legacy `lint.yml` + `unit-test.yml` (no duplicate runs).
-# Core: pnpm lint, typecheck, build, test:ci:unit + single test-e2e job (simulate only).
+# Core: pnpm lint, typecheck, build, vitest unit (coverage) + single test-e2e job (simulate only).
 # Extra: Trivy, Semgrep, gitleaks, pnpm audit. On-chain integration is local-only (`pnpm test:integration`; needs keys + funded wallet — not run in CI).
 
 name: CI
@@ -107,7 +107,7 @@ jobs:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Vitest — unit + coverage + JUnit
-        run: pnpm test:ci:unit
+        run: pnpm exec vitest run --project unit --coverage --reporter=dot --reporter=junit --outputFile=test-results-unit.xml
       - name: Test report (unit)
         uses: dorny/test-reporter@v2
         if: always()
@@ -164,7 +164,8 @@ jobs:
           NODE_NO_WARNINGS: "1"
           # Testnet feed ids are on Hermes Beta (prod Hermes 404s them). Uses PYTH_DEFAULTS.TESTNET;
           # SDK single-fetch only — e2e skips Hermes 429/5xx via skipHermesIfFeedUnavailable.
-        run: pnpm exec tsx scripts/run-e2e.ts --testnet --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
+          WATERX_E2E_NETWORK: testnet
+        run: pnpm exec vitest run --project e2e --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
       - name: Test report (e2e)
         uses: dorny/test-reporter@v2
         if: always()
