@@ -46,7 +46,14 @@ async function main(): Promise<void> {
   const pkg = client.config.packages.pyth_rule.published_at;
   const configId = client.config.packages.pyth_rule.config;
   const listingCap = client.config.packages.waterx_oracle.listing_cap;
-  const tickers = Object.keys(client.config.packages.pyth_rule.feeds);
+  const allTickers = Object.keys(client.config.packages.pyth_rule.feeds);
+  // TICKERS=USDCUSD,BTCUSD restricts the set; default = every feed.
+  const filter = process.env.TICKERS?.split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const tickers = filter?.length ? filter : allTickers;
+  const unknown = tickers.filter((t) => !allTickers.includes(t));
+  if (unknown.length) throw new Error(`unknown ticker(s): ${unknown.join(", ")}`);
 
   console.log(`sender:        ${address}`);
   console.log(`pyth_rule cfg: ${configId}`);
