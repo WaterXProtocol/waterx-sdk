@@ -31,6 +31,7 @@ Frontend-facing read paths via `simulateTransaction` + BCS-decode:
 | `view-market-positions.ts` | paginated `getMarketPositions({ ticker, ... })` |
 | `view-market-orders.ts` | paginated `getMarketOrders({ ticker, ... })` |
 | `view-redeem-requests.ts` | paginated `getRedeemRequests()` |
+| `view-consolidatable-balances.ts` | parked funds + TTO'd coins at an account address (what `action-consolidate-to-usd` folds into USD) |
 | `view-referer-for.ts` | `getRefererFor(referee)` |
 | `view-is-valid-referral-code.ts` | `isValidReferralCode(code)` syntax check |
 | `view-referral-code-exists.ts` | `referralCodeExists(code)` on-chain check |

@@ -36,6 +36,7 @@ import {
   simThenMaybeExecute,
 } from "../_shared.ts";
 import type { WaterXClient } from "../../src/client.ts";
+import { getConsolidatableBalances } from "../../src/fetch.ts";
 import { consumeDepositDirect } from "../../src/generated/waterx_account/direct_rule.ts";
 import {
   mintCreditFromRequest,
@@ -71,61 +72,48 @@ run(async () => {
   const { keypair } = loadActiveKeypair();
   const accountId = requireEnv("WATERX_ACCOUNT_ID");
   const usdType = client.creditType();
-  // A wxa account ID is also its fundable address.
-  const accountAddress = accountId;
 
-  const assets = client.getNativeAssets();
-  if (assets.length === 0) throw new Error("no native-custody backing assets configured");
+  // One gRPC sweep over every backing asset: parked funds + TTO'd coin refs.
+  const rows = await getConsolidatableBalances(client, accountId);
+  if (rows.length === 0) throw new Error("no native-custody backing assets configured");
 
   const tx = new Transaction();
   let legs = 0;
 
-  for (const asset of assets) {
+  for (const row of rows) {
     const tags: string[] = [];
 
     // --- Funds-accumulator leg (transfer_coin / send_funds path). ---
     // `mint` rejects a zero-amount deposit, so only add this leg when the
-    // accumulator actually holds something. `addressBalance` is the parked
-    // funds balance (as of the last commit), distinct from owned coins.
-    const bal = (await client.grpcClient.getBalance({
-      owner: accountAddress,
-      coinType: asset.type,
-    })) as { balance?: { addressBalance?: string } };
-    if (BigInt(bal.balance?.addressBalance ?? "0") > 0n) {
+    // accumulator actually holds something.
+    if (row.fundsBalance > 0n) {
       const fromFunds = requestDepositFromFunds(client, tx, {
         accountId,
-        coinType: asset.type,
+        coinType: row.assetType,
       });
-      foldRequestToUsd(client, tx, fromFunds, asset.type, usdType);
+      foldRequestToUsd(client, tx, fromFunds, row.assetType, usdType);
       legs += 1;
-      tags.push(`funds ${bal.balance!.addressBalance}`);
+      tags.push(`funds ${row.fundsBalance}`);
     }
 
     // --- Receivings leg (TTO'd Coin<T> path). ---
     // Only add when raw coins were published onto the account address.
-    const coins = (await client.grpcClient.listCoins({
-      owner: accountAddress,
-      coinType: asset.type,
-    })) as {
-      objects?: { objectId?: string; version?: string; digest?: string }[];
-    };
-    const refs = (coins.objects ?? []).filter((c) => c.objectId && c.version && c.digest);
-    if (refs.length > 0) {
-      const receivings = refs.map((c) =>
-        tx.receivingRef({ objectId: c.objectId!, version: c.version!, digest: c.digest! }),
+    if (row.ttoCoins.length > 0) {
+      const receivings = row.ttoCoins.map((c) =>
+        tx.receivingRef(c),
       ) as unknown as TransactionArgument[];
       const fromReceivings = requestDepositFromReceivings(client, tx, {
         accountId,
-        coinType: asset.type,
+        coinType: row.assetType,
         receivings,
       });
-      foldRequestToUsd(client, tx, fromReceivings, asset.type, usdType);
+      foldRequestToUsd(client, tx, fromReceivings, row.assetType, usdType);
       legs += 1;
-      tags.push(`${refs.length} TTO'd coin(s)`);
+      tags.push(`${row.ttoCoins.length} TTO'd coin(s)`);
     }
 
     console.log(
-      `  • ${asset.type}: ${tags.length ? tags.join(" + ") + " → USD" : "nothing parked"}`,
+      `  • ${row.assetType}: ${tags.length ? tags.join(" + ") + " → USD" : "nothing parked"}`,
     );
   }
 

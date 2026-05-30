@@ -553,6 +553,84 @@ export async function getAccountBalance(
   return BigInt(bcs.u64().parse(bytes));
 }
 
+/** One backing asset's consolidatable (parked, not-yet-bridged) balance. */
+export interface ConsolidatableBalance {
+  /** Backing-asset Move type `T`. */
+  assetType: string;
+  /** Asset's on-chain decimals (`NativeCustodyAsset.decimal`). */
+  decimal: number;
+  /**
+   * Funds-accumulator balance — `transfer_coin` / `balance::send_funds<T>`
+   * lands a `Balance<T>` at the address. Drained via `requestDepositFromFunds`.
+   */
+  fundsBalance: bigint;
+  /**
+   * Total of owned `Coin<T>` objects (TTO'd onto the address). Drained via
+   * `requestDepositFromReceivings` using `ttoCoins` as the receiving refs.
+   */
+  ttoBalance: bigint;
+  /** Object refs for each TTO'd `Coin<T>` — pass to `tx.receivingRef(...)`. */
+  ttoCoins: { objectId: string; version: string; digest: string }[];
+  /** `fundsBalance + ttoBalance`. Zero ⇒ nothing parked for this asset. */
+  total: bigint;
+}
+
+/**
+ * The **consolidatable** ("可歸集") balances parked at a wxa account's address,
+ * one row per `client.getNativeAssets()` backing asset.
+ *
+ * A wxa `accountId` doubles as a fundable on-chain address, so a backing asset
+ * can land there two ways — a funds accumulator (`send_funds<T>` → `Balance<T>`,
+ * `getBalance().addressBalance`) or raw TTO'd `Coin<T>` objects
+ * (`getBalance().balance`, with refs from `listCoins`). Both are read straight
+ * off gRPC, not via `waterx_perp_view`.
+ *
+ * This is distinct from {@link getAccountBalance}, which reads the account's
+ * *internal* bridged `Balance<T>` — already-consolidated, withdrawable credit.
+ *
+ * Pass `assetTypes` to restrict the scan; defaults to every native asset.
+ * Rows with a zero `total` are included so callers can show "nothing parked".
+ */
+export async function getConsolidatableBalances(
+  client: WaterXClient,
+  accountId: string,
+  assetTypes?: string[],
+): Promise<ConsolidatableBalance[]> {
+  // A wxa account ID is also its fundable address.
+  const accountAddress = accountId;
+  const assets = client.getNativeAssets().filter((a) => !assetTypes || assetTypes.includes(a.type));
+
+  return Promise.all(
+    assets.map(async (asset) => {
+      // `balance` = owned Coin<T> total (TTO'd), `addressBalance` = parked funds.
+      const bal = (await client.grpcClient.getBalance({
+        owner: accountAddress,
+        coinType: asset.type,
+      })) as { balance?: { balance?: string; addressBalance?: string } };
+      const fundsBalance = BigInt(bal.balance?.addressBalance ?? "0");
+      const ttoBalance = BigInt(bal.balance?.balance ?? "0");
+
+      // Object refs for the TTO'd leg (each becomes one Receiving<Coin<T>>).
+      const coins = (await client.grpcClient.listCoins({
+        owner: accountAddress,
+        coinType: asset.type,
+      })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
+      const ttoCoins = (coins.objects ?? [])
+        .filter((c) => c.objectId && c.version && c.digest)
+        .map((c) => ({ objectId: c.objectId!, version: c.version!, digest: c.digest! }));
+
+      return {
+        assetType: asset.type,
+        decimal: asset.decimal,
+        fundsBalance,
+        ttoBalance,
+        ttoCoins,
+        total: fundsBalance + ttoBalance,
+      };
+    }),
+  );
+}
+
 // ============================================================================
 // Native custody (custody_vault)
 // ============================================================================
