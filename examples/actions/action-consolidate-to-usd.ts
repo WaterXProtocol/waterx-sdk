@@ -17,9 +17,10 @@
  * account by `direct_rule::consume_deposit_direct<USD>`. Net effect: scattered
  * USDC / USDSUI → a single USD balance under the account.
  *
- * Per backing asset registered on the custody vault, this example builds the
- * funds-drain leg always and the receivings-drain leg whenever TTO'd coins are
- * found at the account address — all in one PTB.
+ * Per backing asset registered on the custody vault, this example adds a
+ * funds-drain leg when the accumulator holds a balance and a receivings-drain
+ * leg when TTO'd coins sit at the account address — all in one PTB. (`mint`
+ * rejects zero-amount deposits, so empty legs are skipped.)
  *
  *   WATERX_ACCOUNT_ID=0x... \
  *     pnpm exec tsx examples/actions/action-consolidate-to-usd.ts
@@ -80,15 +81,25 @@ run(async () => {
   let legs = 0;
 
   for (const asset of assets) {
+    const tags: string[] = [];
+
     // --- Funds-accumulator leg (transfer_coin / send_funds path). ---
-    // Permissionless, no object refs; drains a zero balance harmlessly when
-    // nothing is parked, so we always include it.
-    const fromFunds = requestDepositFromFunds(client, tx, {
-      accountId,
+    // `mint` rejects a zero-amount deposit, so only add this leg when the
+    // accumulator actually holds something. `addressBalance` is the parked
+    // funds balance (as of the last commit), distinct from owned coins.
+    const bal = (await client.grpcClient.getBalance({
+      owner: accountAddress,
       coinType: asset.type,
-    });
-    foldRequestToUsd(client, tx, fromFunds, asset.type, usdType);
-    legs += 1;
+    })) as { balance?: { addressBalance?: string } };
+    if (BigInt(bal.balance?.addressBalance ?? "0") > 0n) {
+      const fromFunds = requestDepositFromFunds(client, tx, {
+        accountId,
+        coinType: asset.type,
+      });
+      foldRequestToUsd(client, tx, fromFunds, asset.type, usdType);
+      legs += 1;
+      tags.push(`funds ${bal.balance!.addressBalance}`);
+    }
 
     // --- Receivings leg (TTO'd Coin<T> path). ---
     // Only add when raw coins were published onto the account address.
@@ -110,12 +121,18 @@ run(async () => {
       });
       foldRequestToUsd(client, tx, fromReceivings, asset.type, usdType);
       legs += 1;
-      console.log(`  • ${asset.type}: ${refs.length} TTO'd coin(s) + funds → USD`);
-    } else {
-      console.log(`  • ${asset.type}: funds → USD`);
+      tags.push(`${refs.length} TTO'd coin(s)`);
     }
+
+    console.log(
+      `  • ${asset.type}: ${tags.length ? tags.join(" + ") + " → USD" : "nothing parked"}`,
+    );
   }
 
-  console.log(`  consolidating ${assets.length} asset(s) across ${legs} drain leg(s) into USD`);
+  if (legs === 0) {
+    console.log("  nothing to consolidate — no funds or coins parked at the account address");
+    return;
+  }
+  console.log(`  consolidating across ${legs} drain leg(s) into USD`);
   await simThenMaybeExecute(client, tx, "consolidateToUsd", keypair);
 });
