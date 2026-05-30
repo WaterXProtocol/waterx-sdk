@@ -45,6 +45,7 @@ Each builds the PTB, runs `client.simulate(tx)`, optionally executes:
 - `action-request-deposit.ts` — deposit USDC via `requestDeposit` + `consumeDepositDirect`
 - `action-request-withdraw.ts` — withdraw from a wxa account
 - `action-transfer-to-account.ts` — push a coin directly to a wxa account balance
+- `action-consolidate-to-usd.ts` — fold USDC/USDSUI parked at an account address into USD via `requestDepositFromFunds` + `requestDepositFromReceivings`
 - `action-add-delegate.ts` — grant a delegate with permission bitmask
 - `action-remove-delegate.ts` — revoke a delegate
 - `action-set-delegate-permission.ts` — per-protocol permission grant
