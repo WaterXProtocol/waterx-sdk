@@ -611,13 +611,28 @@ export async function getConsolidatableBalances(
       const ttoBalance = BigInt(bal.balance?.balance ?? "0");
 
       // Object refs for the TTO'd leg (each becomes one Receiving<Coin<T>>).
-      const coins = (await client.grpcClient.listCoins({
-        owner: accountAddress,
-        coinType: asset.type,
-      })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
-      const ttoCoins = (coins.objects ?? [])
-        .filter((c) => c.objectId && c.version && c.digest)
-        .map((c) => ({ objectId: c.objectId!, version: c.version!, digest: c.digest! }));
+      // `listCoins` is paginated — drain every page so `ttoCoins` covers the
+      // whole `ttoBalance`; a partial list would leave coins un-consolidated
+      // while still reporting them here.
+      const ttoCoins: { objectId: string; version: string; digest: string }[] = [];
+      let cursor: string | null = null;
+      do {
+        const page = (await client.grpcClient.listCoins({
+          owner: accountAddress,
+          coinType: asset.type,
+          cursor,
+        })) as {
+          objects?: { objectId?: string; version?: string; digest?: string }[];
+          hasNextPage?: boolean;
+          cursor?: string | null;
+        };
+        for (const c of page.objects ?? []) {
+          if (c.objectId && c.version && c.digest) {
+            ttoCoins.push({ objectId: c.objectId, version: c.version, digest: c.digest });
+          }
+        }
+        cursor = page.hasNextPage ? (page.cursor ?? null) : null;
+      } while (cursor);
 
       return {
         assetType: asset.type,
