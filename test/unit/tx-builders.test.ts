@@ -46,6 +46,8 @@ const common = {
   collateralType: MOCK_USDC_TYPE,
   skipOraclePriceRefresh: true,
   useSponsor: false,
+  // Unit-test client has a fake grpcUrl; the consolidate sweep would hit the network.
+  consolidateToUsd: false,
 } as const;
 
 describe("tx-builders (v3)", () => {
@@ -70,6 +72,7 @@ describe("tx-builders (v3)", () => {
       main: baseOrder,
       skipOraclePriceRefresh: true,
       useSponsor: false,
+      consolidateToUsd: false,
     });
     const defaultSponsor = await buildPlaceOrderTx(client, {
       ticker: common.ticker,
@@ -77,6 +80,7 @@ describe("tx-builders (v3)", () => {
       collateralType: common.collateralType,
       main: baseOrder,
       skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
     });
     expect(defaultSponsor.getData().commands!.length).toBeGreaterThan(
       withoutSponsor.getData().commands!.length,
@@ -172,6 +176,7 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
@@ -213,6 +218,7 @@ describe("tx-builders (v3)", () => {
       depositTicker: "USDCUSD",
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
@@ -237,8 +243,8 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBe(2);
   });
 
-  it("buildRequestCreditWithdrawTx — wormhole and native routes", () => {
-    const wormhole = buildRequestCreditWithdrawTx(client, {
+  it("buildRequestCreditWithdrawTx — wormhole and native routes", async () => {
+    const wormhole = await buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 1_000n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
@@ -248,14 +254,16 @@ describe("tx-builders (v3)", () => {
         evmRecipient: "0x1111111111111111111111111111111111111111",
         evmToken: "0x2222222222222222222222222222222222222222",
       },
+      consolidateToUsd: false,
     });
     expect(wormhole.getData().commands?.length).toBe(4);
 
-    const native = buildRequestCreditWithdrawTx(client, {
+    const native = await buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 500n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
       route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
+      consolidateToUsd: false,
     });
     expect(native.getData().commands?.length).toBe(4);
   });
@@ -274,8 +282,8 @@ describe("tx-builders (v3)", () => {
     expect(native.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("buildRequestCreditWithdrawTx rejects invalid wormhole chain id", () => {
-    expect(() =>
+  it("buildRequestCreditWithdrawTx rejects invalid wormhole chain id", async () => {
+    await expect(
       buildRequestCreditWithdrawTx(client, {
         accountId: PTB_DUMMY_ACCOUNT_ID,
         amount: 1n,
@@ -286,23 +294,25 @@ describe("tx-builders (v3)", () => {
           evmRecipient: "0x1111111111111111111111111111111111111111",
           evmToken: "0x2222222222222222222222222222222222222222",
         },
+        consolidateToUsd: false,
       }),
-    ).toThrow(/u16 \(0\.\.65535\)/);
+    ).rejects.toThrow(/u16 \(0\.\.65535\)/);
   });
 
-  it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", () => {
+  it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", async () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     delete cfg.packages.withdrawal_queue;
     const noQueue = new WaterXClient("TESTNET", cfg, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
-    expect(() =>
+    await expect(
       buildRequestCreditWithdrawTx(noQueue, {
         accountId: PTB_DUMMY_ACCOUNT_ID,
         amount: 1n,
         recipient: PTB_DUMMY_ACCOUNT_ID,
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
+        consolidateToUsd: false,
       }),
-    ).toThrow(/withdrawal_queue not configured/);
+    ).rejects.toThrow(/withdrawal_queue not configured/);
   });
 });

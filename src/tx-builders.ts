@@ -17,6 +17,8 @@
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "./client.ts";
+import { consumeDepositDirect } from "./generated/waterx_account/direct_rule.ts";
+import { requestDepositFromFunds, requestDepositFromReceivings } from "./user/account.ts";
 import {
   consumeCreditDeposit,
   enqueueWithdrawal,
@@ -29,6 +31,7 @@ import {
   type RedeemVaaParams,
   type RouteWormholeParams,
 } from "./user/credit.ts";
+import { mintCreditFromRequest } from "./user/custody.ts";
 import {
   addPreOrderRequest,
   cancelOrderRequest,
@@ -95,6 +98,29 @@ export interface CommonBuildOpts {
    * Pass `false` only when the market checklist is empty.
    */
   useSponsor?: boolean;
+  /**
+   * Pre-sweep parked backing assets (USDC, USDsui, …) at the wxa account's
+   * address into the protocol's USD credit before the main action — drains
+   * the funds accumulator and any TTO'd `Coin<T>` objects, mints USD 1:1
+   * via `native_custody`, and settles into the account in the same PTB.
+   *
+   * Default: true. Set to `false` to skip (e.g. caller already swept, or
+   * deployment has no `native_custody`).
+   *
+   * Each enabled call adds 2 grpc reads per configured backing asset
+   * (`getBalance` + `listCoins`). Empty legs are skipped — the on-chain
+   * `mint` rejects zero-amount deposits.
+   *
+   * Silently no-ops when `native_custody` / `waterx_credit` aren't
+   * configured for the loaded deployment.
+   */
+  consolidateToUsd?: boolean;
+  /**
+   * Override the address scanned for parked backing assets. Defaults to
+   * the wxa `accountId` (a wxa account ID doubles as its fundable address).
+   * Only honored when {@link consolidateToUsd} is enabled.
+   */
+  accountAddress?: string;
 }
 
 interface RequestParams {
@@ -146,7 +172,7 @@ async function refreshWlpPoolOracles(
 async function wrapRequestAndExecute(
   client: WaterXClient,
   tx: Transaction,
-  req: RequestParams,
+  req: RequestParams & { accountId: string },
   collateralTicker: string,
   opts: CommonBuildOpts | undefined,
   buildRequest: (sponsorFund?: {
@@ -154,6 +180,8 @@ async function wrapRequestAndExecute(
     packageId: string;
   }) => TransactionArgument,
 ): Promise<void> {
+  await maybeConsolidate(client, tx, req.accountId, opts);
+
   const useSponsor = opts?.useSponsor ?? true;
   let sponsorFund: { fund: TransactionArgument; packageId: string } | undefined;
   if (useSponsor) sponsorFund = openPythSponsorFund(tx, client);
@@ -178,6 +206,142 @@ async function wrapRequestAndExecute(
     lpType: req.lpType,
     request: tradingReq,
   });
+}
+
+// ============================================================================
+// Consolidate parked backing assets → USD credit (pre-action sweep)
+// ============================================================================
+
+export interface AppendConsolidateToUsdParams {
+  /** wxa account receiving the USD credit. */
+  accountId: string;
+  /**
+   * Address scanned for parked funds / TTO'd coins. Defaults to `accountId`
+   * (a wxa account ID doubles as its fundable address).
+   */
+  accountAddress?: string;
+  /** CREDIT coin Move type. Defaults to `client.creditType()`. */
+  creditType?: string;
+}
+
+/**
+ * For every backing asset registered on `native_custody`, append two drain
+ * legs to `tx`:
+ *
+ *   `requestDepositFromFunds<T>`      → `mintCreditFromRequest<T, USD>` → `consumeDepositDirect<USD>`
+ *   `requestDepositFromReceivings<T>` → `mintCreditFromRequest<T, USD>` → `consumeDepositDirect<USD>`
+ *
+ * Empty legs are skipped — the on-chain `mint` rejects zero-amount deposits.
+ * Returns the number of drain legs added (useful for logging / early-out).
+ *
+ * Silently no-ops when `native_custody` / `waterx_credit` aren't configured
+ * for the loaded deployment.
+ */
+export async function appendConsolidateToUsd(
+  client: WaterXClient,
+  tx: Transaction,
+  params: AppendConsolidateToUsdParams,
+): Promise<number> {
+  if (!client.config.packages.native_custody?.vault) return 0;
+  if (!client.config.packages.waterx_credit?.credit_type) return 0;
+
+  const usdType = params.creditType ?? client.creditType();
+  const accountAddress = params.accountAddress ?? params.accountId;
+
+  let legs = 0;
+  for (const asset of client.getNativeAssets()) {
+    // Funds-accumulator leg (transfer_coin / send_funds path).
+    const bal = (await client.getBalance({
+      owner: accountAddress,
+      coinType: asset.type,
+    })) as { balance?: { addressBalance?: string } };
+    if (BigInt(bal.balance?.addressBalance ?? "0") > 0n) {
+      const fromFunds = requestDepositFromFunds(client, tx, {
+        accountId: params.accountId,
+        coinType: asset.type,
+      });
+      foldDepositRequestToUsd(client, tx, fromFunds, asset.type, usdType);
+      legs += 1;
+    }
+
+    // Receivings leg (TTO'd Coin<T> path).
+    const coins = (await client.listCoins({
+      owner: accountAddress,
+      coinType: asset.type,
+    })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
+    const refs = (coins.objects ?? []).filter(
+      (c): c is { objectId: string; version: string; digest: string } =>
+        !!c.objectId && !!c.version && !!c.digest,
+    );
+    if (refs.length > 0) {
+      const receivings = refs.map((c) =>
+        tx.receivingRef({ objectId: c.objectId, version: c.version, digest: c.digest }),
+      ) as unknown as TransactionArgument[];
+      const fromReceivings = requestDepositFromReceivings(client, tx, {
+        accountId: params.accountId,
+        coinType: asset.type,
+        receivings,
+      });
+      foldDepositRequestToUsd(client, tx, fromReceivings, asset.type, usdType);
+      legs += 1;
+    }
+  }
+  return legs;
+}
+
+function foldDepositRequestToUsd(
+  client: WaterXClient,
+  tx: Transaction,
+  depositRequest: TransactionArgument,
+  assetType: string,
+  usdType: string,
+): void {
+  const usdReq = mintCreditFromRequest(client, tx, {
+    depositRequest,
+    assetType,
+    creditType: usdType,
+  });
+  consumeDepositDirect({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      req: usdReq as unknown as string,
+    },
+    typeArguments: [usdType],
+  })(tx);
+}
+
+/** Internal: run the sweep iff `consolidateToUsd !== false`. */
+async function maybeConsolidate(
+  client: WaterXClient,
+  tx: Transaction,
+  accountId: string,
+  opts: CommonBuildOpts | undefined,
+): Promise<void> {
+  if (opts?.consolidateToUsd === false) return;
+  await appendConsolidateToUsd(client, tx, {
+    accountId,
+    accountAddress: opts?.accountAddress,
+  });
+}
+
+export interface BuildConsolidateToUsdParams
+  extends AppendConsolidateToUsdParams, Pick<CommonBuildOpts, "tx"> {}
+
+/**
+ * Standalone PTB that drains every backing asset parked at the account's
+ * address into USD credit under the account — see {@link appendConsolidateToUsd}.
+ *
+ * Returns an empty `Transaction` when nothing is parked. Callers can
+ * `client.simulate(tx)` to detect a no-op before submitting.
+ */
+export async function buildConsolidateToUsdTx(
+  client: WaterXClient,
+  params: BuildConsolidateToUsdParams,
+): Promise<Transaction> {
+  const tx = params.tx ?? new Transaction();
+  await appendConsolidateToUsd(client, tx, params);
+  return tx;
 }
 
 // ============================================================================
@@ -421,6 +585,8 @@ export async function buildMintWlpTx(
 ): Promise<Transaction> {
   const tx = newTx(params);
 
+  await maybeConsolidate(client, tx, params.accountId, params);
+
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       cache: params.pythCache,
@@ -463,6 +629,8 @@ export async function buildMintAndStakeWlpTx(
   params: BuildMintAndStakeWlpParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
+
+  await maybeConsolidate(client, tx, params.accountId, params);
 
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
@@ -516,6 +684,8 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
 ): Promise<Transaction> {
   const tx = newTx(params);
   const stakeAlias = params.stakeAlias ?? "WLP";
+
+  await maybeConsolidate(client, tx, params.accountId, params);
 
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [], {
@@ -571,12 +741,14 @@ export interface BuildCancelRedeemAndStakeWlpParams extends CancelRedeemWlpParam
  * `buildUnstakeAndRequestRedeemWlpTx`; together they keep the product
  * invariant that user-held WLP is always staked.
  */
-export function buildCancelRedeemAndStakeWlpTx(
+export async function buildCancelRedeemAndStakeWlpTx(
   client: WaterXClient,
   params: BuildCancelRedeemAndStakeWlpParams,
-): Transaction {
+): Promise<Transaction> {
   const tx = newTx(params);
   const stakeAlias = params.stakeAlias ?? "WLP";
+
+  await maybeConsolidate(client, tx, params.accountId, params);
 
   cancelRedeemWlp(client, tx, {
     requestId: params.requestId,
@@ -622,10 +794,10 @@ export interface BuildClaimRewardsToAccountParams extends CommonBuildOpts {
  * reward token). The account owner collects each coin via
  * `wxa_account::receive` in a separate user action.
  */
-export function buildClaimRewardsToAccountTx(
+export async function buildClaimRewardsToAccountTx(
   client: WaterXClient,
   params: BuildClaimRewardsToAccountParams,
-): Transaction {
+): Promise<Transaction> {
   const tx = newTx(params);
   const stakeAlias = params.stakeAlias ?? "WLP";
   const stakeType = params.stakeType ?? client.wlpType();
@@ -635,6 +807,8 @@ export function buildClaimRewardsToAccountTx(
       `buildClaimRewardsToAccountTx: no rewarders configured for stakeAlias=${stakeAlias}`,
     );
   }
+
+  await maybeConsolidate(client, tx, params.accountId, params);
 
   for (const rewardType of rewarderTypes) {
     claimReward(client, tx, {
@@ -674,7 +848,10 @@ export type CreditWithdrawRoute =
   | ({ kind: "wormhole" } & RouteWormholeParams)
   | { kind: "native"; assetType: string };
 
-export interface BuildRequestCreditWithdrawParams {
+export interface BuildRequestCreditWithdrawParams extends Pick<
+  CommonBuildOpts,
+  "tx" | "consolidateToUsd" | "accountAddress"
+> {
   accountId: string;
   amount: bigint | number;
   /** Sui-side recipient (honored for native payouts; ignored for wormhole). */
@@ -682,7 +859,6 @@ export interface BuildRequestCreditWithdrawParams {
   route: CreditWithdrawRoute;
   creditType?: string;
   bucketAccount?: string | TransactionArgument;
-  tx?: Transaction;
 }
 
 /**
@@ -690,11 +866,12 @@ export interface BuildRequestCreditWithdrawParams {
  * then `withdrawal_queue::enqueue<CREDIT>` — all in one PTB. A keeper later
  * drains the parked entry via {@link buildExecuteWithdrawalTx}.
  */
-export function buildRequestCreditWithdrawTx(
+export async function buildRequestCreditWithdrawTx(
   client: WaterXClient,
   params: BuildRequestCreditWithdrawParams,
-): Transaction {
+): Promise<Transaction> {
   const tx = params.tx ?? new Transaction();
+  await maybeConsolidate(client, tx, params.accountId, params);
   const route =
     params.route.kind === "wormhole"
       ? routeWormhole(client, tx, params.route)
