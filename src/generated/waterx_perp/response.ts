@@ -7,9 +7,8 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
-import * as float_1 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/perp::response';
 export const TradingResponse = new MoveStruct({ name: `${$moduleName}::TradingResponse`, fields: {
         /** Trading market object id. */
@@ -41,15 +40,15 @@ export const TradingResponse = new MoveStruct({ name: `${$moduleName}::TradingRe
         /** Executed or requested size when surfaced by the path; zero if not applicable. */
         size: float.Float,
         /** Execution or trigger price when surfaced by the path; zero if not applicable. */
-        execution_price: float_1.Float
+        execution_price: float.Float
     } });
 export interface MarketIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface MarketIdOptions {
     package?: string;
     arguments: MarketIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function marketId(options: MarketIdOptions) {
@@ -66,12 +65,12 @@ export function marketId(options: MarketIdOptions) {
     });
 }
 export interface AccountIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface AccountIdOptions {
     package?: string;
     arguments: AccountIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function accountId(options: AccountIdOptions) {
@@ -88,12 +87,12 @@ export function accountId(options: AccountIdOptions) {
     });
 }
 export interface ActionArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ActionOptions {
     package?: string;
     arguments: ActionArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function action(options: ActionOptions) {
@@ -110,12 +109,12 @@ export function action(options: ActionOptions) {
     });
 }
 export interface SenderArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface SenderOptions {
     package?: string;
     arguments: SenderArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function sender(options: SenderOptions) {
@@ -132,12 +131,12 @@ export function sender(options: SenderOptions) {
     });
 }
 export interface OrderIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface OrderIdOptions {
     package?: string;
     arguments: OrderIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function orderId(options: OrderIdOptions) {
@@ -154,12 +153,12 @@ export function orderId(options: OrderIdOptions) {
     });
 }
 export interface PositionIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface PositionIdOptions {
     package?: string;
     arguments: PositionIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function positionId(options: PositionIdOptions) {
@@ -176,12 +175,12 @@ export function positionId(options: PositionIdOptions) {
     });
 }
 export interface PnlAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface PnlAmountOptions {
     package?: string;
     arguments: PnlAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function pnlAmount(options: PnlAmountOptions) {
@@ -198,12 +197,12 @@ export function pnlAmount(options: PnlAmountOptions) {
     });
 }
 export interface PnlIsProfitArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface PnlIsProfitOptions {
     package?: string;
     arguments: PnlIsProfitArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function pnlIsProfit(options: PnlIsProfitOptions) {
@@ -220,12 +219,12 @@ export function pnlIsProfit(options: PnlIsProfitOptions) {
     });
 }
 export interface FeeAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface FeeAmountOptions {
     package?: string;
     arguments: FeeAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function feeAmount(options: FeeAmountOptions) {
@@ -242,12 +241,12 @@ export function feeAmount(options: FeeAmountOptions) {
     });
 }
 export interface ReturnedCollateralAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ReturnedCollateralAmountOptions {
     package?: string;
     arguments: ReturnedCollateralAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function returnedCollateralAmount(options: ReturnedCollateralAmountOptions) {
@@ -264,12 +263,12 @@ export function returnedCollateralAmount(options: ReturnedCollateralAmountOption
     });
 }
 export interface InputCollateralAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface InputCollateralAmountOptions {
     package?: string;
     arguments: InputCollateralAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 /**
@@ -290,12 +289,12 @@ export function inputCollateralAmount(options: InputCollateralAmountOptions) {
     });
 }
 export interface PositionCollateralAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface PositionCollateralAmountOptions {
     package?: string;
     arguments: PositionCollateralAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 /**
@@ -316,12 +315,12 @@ export function positionCollateralAmount(options: PositionCollateralAmountOption
     });
 }
 export interface IsLongArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface IsLongOptions {
     package?: string;
     arguments: IsLongArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function isLong(options: IsLongOptions) {
@@ -338,12 +337,12 @@ export function isLong(options: IsLongOptions) {
     });
 }
 export interface SizeArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface SizeOptions {
     package?: string;
     arguments: SizeArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function size(options: SizeOptions) {
@@ -360,12 +359,12 @@ export function size(options: SizeOptions) {
     });
 }
 export interface ExecutionPriceArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ExecutionPriceOptions {
     package?: string;
     arguments: ExecutionPriceArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function executionPrice(options: ExecutionPriceOptions) {
@@ -395,8 +394,8 @@ export interface NewArguments {
     inputCollateralAmount: RawTransactionArgument<number | bigint>;
     positionCollateralAmount: RawTransactionArgument<number | bigint>;
     isLong: RawTransactionArgument<boolean>;
-    size: RawTransactionArgument<string>;
-    executionPrice: RawTransactionArgument<string>;
+    size: TransactionArgument;
+    executionPrice: TransactionArgument;
 }
 export interface NewOptions {
     package?: string;
@@ -414,8 +413,8 @@ export interface NewOptions {
         inputCollateralAmount: RawTransactionArgument<number | bigint>,
         positionCollateralAmount: RawTransactionArgument<number | bigint>,
         isLong: RawTransactionArgument<boolean>,
-        size: RawTransactionArgument<string>,
-        executionPrice: RawTransactionArgument<string>
+        size: TransactionArgument,
+        executionPrice: TransactionArgument
     ];
 }
 /**

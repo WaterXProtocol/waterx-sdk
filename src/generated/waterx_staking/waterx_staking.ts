@@ -3,21 +3,11 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as double from './deps/bucket_v2_framework/double.ts';
 import * as balance from './deps/sui/balance.ts';
-import * as balance_1 from './deps/sui/balance.ts';
-import * as balance_2 from './deps/sui/balance.ts';
-import * as double_1 from './deps/bucket_v2_framework/double.ts';
-import * as double_2 from './deps/bucket_v2_framework/double.ts';
 import * as table from './deps/sui/table.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
-import * as vec_set_1 from './deps/sui/vec_set.ts';
-import * as vec_set_2 from './deps/sui/vec_set.ts';
-import * as balance_3 from './deps/sui/balance.ts';
-import * as table_1 from './deps/sui/table.ts';
-import * as vec_set_3 from './deps/sui/vec_set.ts';
-import * as vec_set_4 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/staking::waterx_staking';
 export const Create = new MoveStruct({ name: `${$moduleName}::Create`, fields: {
         vault_id: bcs.Address,
@@ -78,10 +68,10 @@ export const RewardData = new MoveStruct({ name: `${$moduleName}::RewardData<pha
     } });
 export const Rewarder = new MoveStruct({ name: `${$moduleName}::Rewarder<phantom STAKE, phantom R>`, fields: {
         id: bcs.Address,
-        source: balance_1.Balance,
-        pool: balance_2.Balance,
-        flow_rate: double_1.Double,
-        unit: double_2.Double,
+        source: balance.Balance,
+        pool: balance.Balance,
+        flow_rate: double.Double,
+        unit: double.Double,
         timestamp: bcs.u64(),
         total_stake_snapshot: bcs.u64(),
         reward_table: table.Table
@@ -101,19 +91,19 @@ export const DepositChecker = new MoveStruct({ name: `${$moduleName}::DepositChe
 export const WithdrawChecker = new MoveStruct({ name: `${$moduleName}::WithdrawChecker<phantom STAKE>`, fields: {
         account: bcs.Address,
         prev_stake_amount: bcs.u64(),
-        rewarder_ids: vec_set_1.VecSet(bcs.Address)
+        rewarder_ids: vec_set.VecSet(bcs.Address)
     } });
 export const AdminCap = new MoveStruct({ name: `${$moduleName}::AdminCap`, fields: {
         id: bcs.Address
     } });
 export const StakingPool = new MoveStruct({ name: `${$moduleName}::StakingPool<phantom STAKE>`, fields: {
         id: bcs.Address,
-        versions: vec_set_2.VecSet(bcs.u16()),
-        stake: balance_3.Balance,
-        stake_table: table_1.Table,
-        managers: vec_set_3.VecSet(bcs.Address),
+        versions: vec_set.VecSet(bcs.u16()),
+        stake: balance.Balance,
+        stake_table: table.Table,
+        managers: vec_set.VecSet(bcs.Address),
         stake_cap: bcs.u64(),
-        rewarder_ids: vec_set_4.VecSet(bcs.Address)
+        rewarder_ids: vec_set.VecSet(bcs.Address)
     } });
 export interface PackageVersionOptions {
     package?: string;
@@ -463,7 +453,7 @@ export interface UpdateFlowRateArguments {
     self: RawTransactionArgument<string>;
     flowAmount: RawTransactionArgument<number | bigint>;
     flowInterval: RawTransactionArgument<number | bigint>;
-    request: RawTransactionArgument<string>;
+    request: TransactionArgument;
 }
 export interface UpdateFlowRateOptions {
     package?: string;
@@ -471,7 +461,7 @@ export interface UpdateFlowRateOptions {
         self: RawTransactionArgument<string>,
         flowAmount: RawTransactionArgument<number | bigint>,
         flowInterval: RawTransactionArgument<number | bigint>,
-        request: RawTransactionArgument<string>
+        request: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -501,7 +491,7 @@ export interface DepositToSourceByManagerArguments {
     self: RawTransactionArgument<string>;
     coin: RawTransactionArgument<string>;
     flowInterval: RawTransactionArgument<number | bigint>;
-    managerReq: RawTransactionArgument<string>;
+    managerReq: TransactionArgument;
 }
 export interface DepositToSourceByManagerOptions {
     package?: string;
@@ -509,7 +499,7 @@ export interface DepositToSourceByManagerOptions {
         self: RawTransactionArgument<string>,
         coin: RawTransactionArgument<string>,
         flowInterval: RawTransactionArgument<number | bigint>,
-        managerReq: RawTransactionArgument<string>
+        managerReq: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -629,7 +619,7 @@ export interface DepositArguments {
     self: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
-    accReq: RawTransactionArgument<string>;
+    accReq: TransactionArgument;
     stakeAmount: RawTransactionArgument<number | bigint>;
 }
 export interface DepositOptions {
@@ -638,7 +628,7 @@ export interface DepositOptions {
         self: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
-        accReq: RawTransactionArgument<string>,
+        accReq: TransactionArgument,
         stakeAmount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -672,13 +662,13 @@ export function deposit(options: DepositOptions) {
     });
 }
 export interface SettleRewarderOnDepositArguments {
-    checker: RawTransactionArgument<string>;
+    checker: TransactionArgument;
     self: RawTransactionArgument<string>;
 }
 export interface SettleRewarderOnDepositOptions {
     package?: string;
     arguments: SettleRewarderOnDepositArguments | [
-        checker: RawTransactionArgument<string>,
+        checker: TransactionArgument,
         self: RawTransactionArgument<string>
     ];
     typeArguments: [
@@ -703,12 +693,12 @@ export function settleRewarderOnDeposit(options: SettleRewarderOnDepositOptions)
     });
 }
 export interface DestroyDepositCheckerArguments {
-    checker: RawTransactionArgument<string>;
+    checker: TransactionArgument;
 }
 export interface DestroyDepositCheckerOptions {
     package?: string;
     arguments: DestroyDepositCheckerArguments | [
-        checker: RawTransactionArgument<string>
+        checker: TransactionArgument
     ];
     typeArguments: [
         string
@@ -732,7 +722,7 @@ export interface RedeemArguments {
     self: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
-    accReq: RawTransactionArgument<string>;
+    accReq: TransactionArgument;
     withdrawalAmount: RawTransactionArgument<number | bigint>;
 }
 export interface RedeemOptions {
@@ -741,7 +731,7 @@ export interface RedeemOptions {
         self: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
-        accReq: RawTransactionArgument<string>,
+        accReq: TransactionArgument,
         withdrawalAmount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -774,13 +764,13 @@ export function redeem(options: RedeemOptions) {
     });
 }
 export interface SettleRewarderOnWithdrawArguments {
-    checker: RawTransactionArgument<string>;
+    checker: TransactionArgument;
     self: RawTransactionArgument<string>;
 }
 export interface SettleRewarderOnWithdrawOptions {
     package?: string;
     arguments: SettleRewarderOnWithdrawArguments | [
-        checker: RawTransactionArgument<string>,
+        checker: TransactionArgument,
         self: RawTransactionArgument<string>
     ];
     typeArguments: [
@@ -805,12 +795,12 @@ export function settleRewarderOnWithdraw(options: SettleRewarderOnWithdrawOption
     });
 }
 export interface DestroyWithdrawCheckerArguments {
-    checker: RawTransactionArgument<string>;
+    checker: TransactionArgument;
 }
 export interface DestroyWithdrawCheckerOptions {
     package?: string;
     arguments: DestroyWithdrawCheckerArguments | [
-        checker: RawTransactionArgument<string>
+        checker: TransactionArgument
     ];
     typeArguments: [
         string
@@ -834,7 +824,7 @@ export interface ClaimArguments {
     self: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
-    request: RawTransactionArgument<string>;
+    request: TransactionArgument;
 }
 export interface ClaimOptions {
     package?: string;
@@ -842,7 +832,7 @@ export interface ClaimOptions {
         self: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
-        request: RawTransactionArgument<string>
+        request: TransactionArgument
     ];
     typeArguments: [
         string,

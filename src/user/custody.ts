@@ -73,7 +73,7 @@ export function mintCredit(
       registry: tx.object(credit.credit_registry),
       accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
-      assetCoin: params.assetCoin as unknown as string,
+      assetCoin: params.assetCoin as unknown as TransactionArgument,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
     },
     typeArguments: [params.assetType, params.creditType ?? client.creditType()],
@@ -112,7 +112,7 @@ export function mintCreditFromRequest(
       vault: tx.object(nc.vault),
       registry: tx.object(credit.credit_registry),
       accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      depositRequest: params.depositRequest as unknown as string,
+      depositRequest: params.depositRequest as unknown as TransactionArgument,
     },
     typeArguments: [params.assetType, params.creditType ?? client.creditType()],
   })(tx);
@@ -138,7 +138,7 @@ export function mintCreditToAccount(
     package: client.config.packages.waterx_account.published_at,
     arguments: {
       registry: tx.object(client.config.packages.waterx_account.account_registry),
-      req: req as unknown as string,
+      req: req as unknown as TransactionArgument,
     },
     typeArguments: [params.creditType ?? client.creditType()],
   })(tx);
@@ -176,7 +176,7 @@ export function burnCredit(
       vault: tx.object(nc.vault),
       registry: tx.object(credit.credit_registry),
       accountId: params.accountId,
-      creditCoin: params.creditCoin as unknown as string,
+      creditCoin: params.creditCoin as unknown as TransactionArgument,
     },
     typeArguments: [params.assetType, params.creditType ?? client.creditType()],
   })(tx);
