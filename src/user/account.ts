@@ -18,8 +18,8 @@ import type {
 } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import { createAccountCall } from "../core/waterx-account.ts";
 import { ACCUMULATOR_ROOT } from "../constants.ts";
+import { createAccountCall } from "../core/waterx-account.ts";
 import * as wxa from "../generated/waterx_account/account.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
