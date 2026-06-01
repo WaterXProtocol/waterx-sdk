@@ -20,7 +20,7 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/oracle::oracle';
 export const VersionAllowed = new MoveStruct({ name: `${$moduleName}::VersionAllowed`, fields: {
@@ -303,13 +303,13 @@ export function newCollector(options: NewCollectorOptions) {
 }
 export interface AggregateArguments {
     oracle: RawTransactionArgument<string>;
-    collector: RawTransactionArgument<string>;
+    collector: TransactionArgument;
 }
 export interface AggregateOptions {
     package?: string;
     arguments: AggregateArguments | [
         oracle: RawTransactionArgument<string>,
-        collector: RawTransactionArgument<string>
+        collector: TransactionArgument
     ];
 }
 /**
@@ -333,13 +333,13 @@ export function aggregate(options: AggregateOptions) {
 }
 export interface RegisterPriceAtTimestampArguments {
     oracle: RawTransactionArgument<string>;
-    collector: RawTransactionArgument<string>;
+    collector: TransactionArgument;
 }
 export interface RegisterPriceAtTimestampOptions {
     package?: string;
     arguments: RegisterPriceAtTimestampArguments | [
         oracle: RawTransactionArgument<string>,
-        collector: RawTransactionArgument<string>
+        collector: TransactionArgument
     ];
 }
 /**

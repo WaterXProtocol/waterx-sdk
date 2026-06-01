@@ -40,7 +40,7 @@ export function setReferralCode(
     package: pkg,
     arguments: {
       table: tx.object(table),
-      req: req as unknown as string,
+      req: req as unknown as TransactionArgument,
       code: params.code,
     },
   })(tx);
@@ -63,7 +63,7 @@ export function useReferralCode(
     package: pkg,
     arguments: {
       table: tx.object(table),
-      req: req as unknown as string,
+      req: req as unknown as TransactionArgument,
       code: params.code,
     },
   })(tx);

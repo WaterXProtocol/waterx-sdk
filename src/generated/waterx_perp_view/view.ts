@@ -12,11 +12,6 @@ import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from 
 import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
 import * as type_name from './deps/std/type_name.ts';
-import * as type_name_1 from './deps/std/type_name.ts';
-import * as type_name_2 from './deps/std/type_name.ts';
-import * as type_name_3 from './deps/std/type_name.ts';
-import * as type_name_4 from './deps/std/type_name.ts';
-import * as type_name_5 from './deps/std/type_name.ts';
 const $moduleName = '@waterx/perp-view::view';
 export const AccountData = new MoveStruct({ name: `${$moduleName}::AccountData`, fields: {
         account_id: bcs.Address,
@@ -52,7 +47,7 @@ export const MarketData = new MoveStruct({ name: `${$moduleName}::MarketData`, f
         next_order_id: bcs.u64()
     } });
 export const PoolData = new MoveStruct({ name: `${$moduleName}::PoolData`, fields: {
-        lp_token: type_name_1.TypeName,
+        lp_token: type_name.TypeName,
         is_active: bcs.bool(),
         lp_decimal: bcs.u8(),
         total_lp_supply: bcs.u64(),
@@ -60,7 +55,7 @@ export const PoolData = new MoveStruct({ name: `${$moduleName}::PoolData`, field
         token_count: bcs.u64()
     } });
 export const TokenPoolData = new MoveStruct({ name: `${$moduleName}::TokenPoolData`, fields: {
-        token_type: type_name_2.TypeName,
+        token_type: type_name.TypeName,
         token_decimal: bcs.u8(),
         liquidity_amount: bcs.u64(),
         reserved_amount: bcs.u64(),
@@ -75,7 +70,7 @@ export const RedeemRequestData = new MoveStruct({ name: `${$moduleName}::RedeemR
         request_id: bcs.u64(),
         recipient_account_id: bcs.Address,
         lp_amount: bcs.u64(),
-        token_type: type_name_3.TypeName,
+        token_type: type_name.TypeName,
         request_timestamp: bcs.u64()
     } });
 export const GlobalConfigData = new MoveStruct({ name: `${$moduleName}::GlobalConfigData`, fields: {
@@ -95,7 +90,7 @@ export const PositionData = new MoveStruct({ name: `${$moduleName}::PositionData
         market_id: bcs.Address,
         is_long: bcs.bool(),
         size: bcs.u128(),
-        collateral_type: type_name_4.TypeName,
+        collateral_type: type_name.TypeName,
         collateral_amount: bcs.u64(),
         collateral_decimal: bcs.u8(),
         average_price: bcs.u128(),
@@ -129,7 +124,7 @@ export const OrderData = new MoveStruct({ name: `${$moduleName}::OrderData`, fie
         reduce_only: bcs.bool(),
         is_stop_order: bcs.bool(),
         size: bcs.u128(),
-        collateral_type: type_name_5.TypeName,
+        collateral_type: type_name.TypeName,
         collateral_amount: bcs.u64(),
         collateral_decimal: bcs.u8(),
         trigger_price: bcs.u128(),

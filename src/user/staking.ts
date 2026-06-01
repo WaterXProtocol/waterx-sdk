@@ -69,7 +69,7 @@ export function stake(client: WaterXClient, tx: Transaction, params: StakeParams
       self: tx.object(poolId),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
-      accReq: req as unknown as string,
+      accReq: req as unknown as TransactionArgument,
       stakeAmount: params.stakeAmount,
     },
     typeArguments: [params.stakeType],
@@ -79,7 +79,7 @@ export function stake(client: WaterXClient, tx: Transaction, params: StakeParams
     staking.settleRewarderOnDeposit({
       package: pkg,
       arguments: {
-        checker: checker as unknown as string,
+        checker: checker as unknown as TransactionArgument,
         self: tx.object(poolId),
       },
       typeArguments: [params.stakeType, r],
@@ -88,7 +88,7 @@ export function stake(client: WaterXClient, tx: Transaction, params: StakeParams
 
   staking.destroyDepositChecker({
     package: pkg,
-    arguments: { checker: checker as unknown as string },
+    arguments: { checker: checker as unknown as TransactionArgument },
     typeArguments: [params.stakeType],
   })(tx);
 }
@@ -116,7 +116,7 @@ export function unstake(client: WaterXClient, tx: Transaction, params: UnstakePa
       self: tx.object(poolId),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
-      accReq: req as unknown as string,
+      accReq: req as unknown as TransactionArgument,
       withdrawalAmount: params.withdrawalAmount,
     },
     typeArguments: [params.stakeType],
@@ -126,7 +126,7 @@ export function unstake(client: WaterXClient, tx: Transaction, params: UnstakePa
     staking.settleRewarderOnWithdraw({
       package: pkg,
       arguments: {
-        checker: checker as unknown as string,
+        checker: checker as unknown as TransactionArgument,
         self: tx.object(poolId),
       },
       typeArguments: [params.stakeType, r],
@@ -135,7 +135,7 @@ export function unstake(client: WaterXClient, tx: Transaction, params: UnstakePa
 
   staking.destroyWithdrawChecker({
     package: pkg,
-    arguments: { checker: checker as unknown as string },
+    arguments: { checker: checker as unknown as TransactionArgument },
     typeArguments: [params.stakeType],
   })(tx);
 }
@@ -167,7 +167,7 @@ export function claimReward(
       self: tx.object(poolId),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
-      request: req as unknown as string,
+      request: req as unknown as TransactionArgument,
     },
     typeArguments: [params.stakeType, params.rewardType],
   })(tx);

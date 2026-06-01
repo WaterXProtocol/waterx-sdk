@@ -7,20 +7,10 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
-import * as float_1 from './deps/bucket_v2_framework/float.ts';
-import * as float_2 from './deps/bucket_v2_framework/float.ts';
-import * as float_3 from './deps/bucket_v2_framework/float.ts';
-import * as float_4 from './deps/bucket_v2_framework/float.ts';
-import * as float_5 from './deps/bucket_v2_framework/float.ts';
-import * as float_6 from './deps/bucket_v2_framework/float.ts';
 import * as type_name from './deps/std/type_name.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
-import * as float_7 from './deps/bucket_v2_framework/float.ts';
-import * as float_8 from './deps/bucket_v2_framework/float.ts';
-import * as float_9 from './deps/bucket_v2_framework/float.ts';
-import * as float_10 from './deps/bucket_v2_framework/float.ts';
 import * as double from './deps/bucket_v2_framework/double.ts';
 const $moduleName = '@waterx/perp::market_config';
 export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig`, fields: {
@@ -36,7 +26,7 @@ export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig
         /** Base trading fee as Float rate (e.g. 0.0005 = 5 bps). */
         trading_fee: float.Float,
         /** Maximum additional impact fee as Float rate. */
-        max_impact_fee: float_1.Float,
+        max_impact_fee: float.Float,
         /** Share of LP TVL allocated to net exposure before impact hits max, in bps. */
         allocated_lp_exposure_bps: bcs.u64(),
         /** Curvature exponent for the impact fee curve. */
@@ -44,15 +34,15 @@ export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig
         /** Scale divisor applied to the exposure ratio before curvature. */
         impact_fee_scale: bcs.u64(),
         /** Maintenance margin rate as Float (e.g. 0.015 = 150 bps). */
-        maintenance_margin: float_2.Float,
+        maintenance_margin: float.Float,
         /** Maximum long open interest as Float (in base tokens). */
-        max_long_oi: float_3.Float,
+        max_long_oi: float.Float,
         /** Maximum short open interest as Float (in base tokens). */
-        max_short_oi: float_4.Float,
+        max_short_oi: float.Float,
         /** Cooldown between position updates in ms. */
         cooldown_ms: bcs.u64(),
         /** Bucket size for order book trigger price normalization. */
-        order_price_tick: float_5.Float,
+        order_price_tick: float.Float,
         /**
          * Maximum number of TP / SL pre-orders reservable against a single unfilled main
          * order. Defaults to `DEFAULT_MAX_PRE_ORDERS`; admin may tune via
@@ -60,7 +50,7 @@ export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig
          */
         max_pre_orders: bcs.u64(),
         /** Basic funding rate per interval (Float, typically ~0.01% = 1 bps). */
-        basic_funding_rate: float_6.Float,
+        basic_funding_rate: float.Float,
         /** Funding interval in milliseconds (default 3600000 = 1 hour). */
         funding_interval_ms: bcs.u64(),
         /** Required witness types before execution. */
@@ -68,13 +58,13 @@ export const MarketConfig = new MoveStruct({ name: `${$moduleName}::MarketConfig
         /** Prevents reentrancy: locked during the request→execute lifecycle. */
         position_locker: vec_set.VecSet(bcs.u64()),
         /** Current long open interest as Float. */
-        long_oi: float_7.Float,
+        long_oi: float.Float,
         /** Current short open interest as Float. */
-        short_oi: float_8.Float,
+        short_oi: float.Float,
         /** Aggregate long average entry price. */
-        long_avg_entry_price: float_9.Float,
+        long_avg_entry_price: float.Float,
         /** Aggregate short average entry price. */
-        short_avg_entry_price: float_10.Float,
+        short_avg_entry_price: float.Float,
         /** Next position ID counter. */
         next_position_id: bcs.u64(),
         /** Next order ID counter. */
@@ -92,8 +82,8 @@ export interface NewMarketConfigArguments {
     minCollValue: RawTransactionArgument<number | bigint>;
     tradingFee: RawTransactionArgument<number | bigint>;
     maintenanceMargin: RawTransactionArgument<number | bigint>;
-    maxLongOi: RawTransactionArgument<string>;
-    maxShortOi: RawTransactionArgument<string>;
+    maxLongOi: TransactionArgument;
+    maxShortOi: TransactionArgument;
     cooldownMs: RawTransactionArgument<number | bigint>;
     basicFundingRate: RawTransactionArgument<number | bigint>;
     fundingIntervalMs: RawTransactionArgument<number | bigint>;
@@ -106,8 +96,8 @@ export interface NewMarketConfigOptions {
         minCollValue: RawTransactionArgument<number | bigint>,
         tradingFee: RawTransactionArgument<number | bigint>,
         maintenanceMargin: RawTransactionArgument<number | bigint>,
-        maxLongOi: RawTransactionArgument<string>,
-        maxShortOi: RawTransactionArgument<string>,
+        maxLongOi: TransactionArgument,
+        maxShortOi: TransactionArgument,
         cooldownMs: RawTransactionArgument<number | bigint>,
         basicFundingRate: RawTransactionArgument<number | bigint>,
         fundingIntervalMs: RawTransactionArgument<number | bigint>
@@ -155,7 +145,7 @@ export interface UpdateMarketConfigArguments {
     maxLongOi: RawTransactionArgument<number | bigint | null>;
     maxShortOi: RawTransactionArgument<number | bigint | null>;
     cooldownMs: RawTransactionArgument<number | bigint | null>;
-    orderPriceTick: RawTransactionArgument<string | null>;
+    orderPriceTick: TransactionArgument;
     maxPreOrders: RawTransactionArgument<number | bigint | null>;
     basicFundingRate: RawTransactionArgument<number | bigint | null>;
     fundingIntervalMs: RawTransactionArgument<number | bigint | null>;
@@ -176,7 +166,7 @@ export interface UpdateMarketConfigOptions {
         maxLongOi: RawTransactionArgument<number | bigint | null>,
         maxShortOi: RawTransactionArgument<number | bigint | null>,
         cooldownMs: RawTransactionArgument<number | bigint | null>,
-        orderPriceTick: RawTransactionArgument<string | null>,
+        orderPriceTick: TransactionArgument,
         maxPreOrders: RawTransactionArgument<number | bigint | null>,
         basicFundingRate: RawTransactionArgument<number | bigint | null>,
         fundingIntervalMs: RawTransactionArgument<number | bigint | null>
@@ -202,7 +192,7 @@ export function updateMarketConfig(options: UpdateMarketConfigOptions) {
         '0x1::option::Option<u128>',
         '0x1::option::Option<u128>',
         '0x1::option::Option<u64>',
-        '0x1::option::Option<null>',
+        null,
         '0x1::option::Option<u64>',
         '0x1::option::Option<u128>',
         '0x1::option::Option<u64>'
@@ -1051,16 +1041,16 @@ export function incrementNextOrderId(options: IncrementNextOrderIdOptions) {
 export interface IncreaseOiArguments {
     m: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    amount: RawTransactionArgument<string>;
-    entryPrice: RawTransactionArgument<string>;
+    amount: TransactionArgument;
+    entryPrice: TransactionArgument;
 }
 export interface IncreaseOiOptions {
     package?: string;
     arguments: IncreaseOiArguments | [
         m: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        amount: RawTransactionArgument<string>,
-        entryPrice: RawTransactionArgument<string>
+        amount: TransactionArgument,
+        entryPrice: TransactionArgument
     ];
 }
 export function increaseOi(options: IncreaseOiOptions) {
@@ -1082,14 +1072,16 @@ export function increaseOi(options: IncreaseOiOptions) {
 export interface DecreaseOiArguments {
     m: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    amount: RawTransactionArgument<string>;
+    amount: TransactionArgument;
+    reducedAvgEntryPrice: TransactionArgument;
 }
 export interface DecreaseOiOptions {
     package?: string;
     arguments: DecreaseOiArguments | [
         m: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        amount: RawTransactionArgument<string>
+        amount: TransactionArgument,
+        reducedAvgEntryPrice: TransactionArgument
     ];
 }
 export function decreaseOi(options: DecreaseOiOptions) {
@@ -1097,9 +1089,10 @@ export function decreaseOi(options: DecreaseOiOptions) {
     const argumentsTypes = [
         null,
         'bool',
+        null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["m", "isLong", "amount"];
+    const parameterNames = ["m", "isLong", "amount", "reducedAvgEntryPrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
@@ -1109,13 +1102,13 @@ export function decreaseOi(options: DecreaseOiOptions) {
 }
 export interface UnrealizedTraderPnlArguments {
     m: RawTransactionArgument<string>;
-    currentPrice: RawTransactionArgument<string>;
+    currentPrice: TransactionArgument;
 }
 export interface UnrealizedTraderPnlOptions {
     package?: string;
     arguments: UnrealizedTraderPnlArguments | [
         m: RawTransactionArgument<string>,
-        currentPrice: RawTransactionArgument<string>
+        currentPrice: TransactionArgument
     ];
 }
 export function unrealizedTraderPnl(options: UnrealizedTraderPnlOptions) {
@@ -1134,15 +1127,15 @@ export function unrealizedTraderPnl(options: UnrealizedTraderPnlOptions) {
 }
 export interface LpEquityUsdArguments {
     m: RawTransactionArgument<string>;
-    poolTvlUsd: RawTransactionArgument<string>;
-    currentPrice: RawTransactionArgument<string>;
+    poolTvlUsd: TransactionArgument;
+    currentPrice: TransactionArgument;
 }
 export interface LpEquityUsdOptions {
     package?: string;
     arguments: LpEquityUsdArguments | [
         m: RawTransactionArgument<string>,
-        poolTvlUsd: RawTransactionArgument<string>,
-        currentPrice: RawTransactionArgument<string>
+        poolTvlUsd: TransactionArgument,
+        currentPrice: TransactionArgument
     ];
 }
 export function lpEquityUsd(options: LpEquityUsdOptions) {
@@ -1163,7 +1156,7 @@ export function lpEquityUsd(options: LpEquityUsdOptions) {
 export interface UpdateFundingStateArguments {
     m: RawTransactionArgument<string>;
     sign: RawTransactionArgument<boolean>;
-    index: RawTransactionArgument<string>;
+    index: TransactionArgument;
     timestamp: RawTransactionArgument<number | bigint>;
 }
 export interface UpdateFundingStateOptions {
@@ -1171,7 +1164,7 @@ export interface UpdateFundingStateOptions {
     arguments: UpdateFundingStateArguments | [
         m: RawTransactionArgument<string>,
         sign: RawTransactionArgument<boolean>,
-        index: RawTransactionArgument<string>,
+        index: TransactionArgument,
         timestamp: RawTransactionArgument<number | bigint>
     ];
 }
@@ -1195,8 +1188,8 @@ export interface UpdateFundingRateArguments {
     market: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     nowMs: RawTransactionArgument<number | bigint>;
-    basePrice: RawTransactionArgument<string>;
-    tvlUsd: RawTransactionArgument<string>;
+    basePrice: TransactionArgument;
+    tvlUsd: TransactionArgument;
 }
 export interface UpdateFundingRateOptions {
     package?: string;
@@ -1204,8 +1197,8 @@ export interface UpdateFundingRateOptions {
         market: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         nowMs: RawTransactionArgument<number | bigint>,
-        basePrice: RawTransactionArgument<string>,
-        tvlUsd: RawTransactionArgument<string>
+        basePrice: TransactionArgument,
+        tvlUsd: TransactionArgument
     ];
 }
 /**
@@ -1230,18 +1223,18 @@ export function updateFundingRate(options: UpdateFundingRateOptions) {
     });
 }
 export interface CalculateFundingRateArguments {
-    longOiUsd: RawTransactionArgument<string>;
-    shortOiUsd: RawTransactionArgument<string>;
-    basicRate: RawTransactionArgument<string>;
-    tvlUsd: RawTransactionArgument<string>;
+    longOiUsd: TransactionArgument;
+    shortOiUsd: TransactionArgument;
+    basicRate: TransactionArgument;
+    tvlUsd: TransactionArgument;
 }
 export interface CalculateFundingRateOptions {
     package?: string;
     arguments: CalculateFundingRateArguments | [
-        longOiUsd: RawTransactionArgument<string>,
-        shortOiUsd: RawTransactionArgument<string>,
-        basicRate: RawTransactionArgument<string>,
-        tvlUsd: RawTransactionArgument<string>
+        longOiUsd: TransactionArgument,
+        shortOiUsd: TransactionArgument,
+        basicRate: TransactionArgument,
+        tvlUsd: TransactionArgument
     ];
 }
 /**
@@ -1266,7 +1259,7 @@ export function calculateFundingRate(options: CalculateFundingRateOptions) {
     });
 }
 export interface AssertValidImpactFeeConfigArguments {
-    maxImpactFee: RawTransactionArgument<string>;
+    maxImpactFee: TransactionArgument;
     allocatedLpExposureBps: RawTransactionArgument<number | bigint>;
     impactFeeCurvature: RawTransactionArgument<number | bigint>;
     impactFeeScale: RawTransactionArgument<number | bigint>;
@@ -1274,7 +1267,7 @@ export interface AssertValidImpactFeeConfigArguments {
 export interface AssertValidImpactFeeConfigOptions {
     package?: string;
     arguments: AssertValidImpactFeeConfigArguments | [
-        maxImpactFee: RawTransactionArgument<string>,
+        maxImpactFee: TransactionArgument,
         allocatedLpExposureBps: RawTransactionArgument<number | bigint>,
         impactFeeCurvature: RawTransactionArgument<number | bigint>,
         impactFeeScale: RawTransactionArgument<number | bigint>
@@ -1297,18 +1290,18 @@ export function assertValidImpactFeeConfig(options: AssertValidImpactFeeConfigOp
     });
 }
 export interface WeightedAveragePriceArguments {
-    currentSize: RawTransactionArgument<string>;
-    currentAveragePrice: RawTransactionArgument<string>;
-    addSize: RawTransactionArgument<string>;
-    addPrice: RawTransactionArgument<string>;
+    currentSize: TransactionArgument;
+    currentAveragePrice: TransactionArgument;
+    addSize: TransactionArgument;
+    addPrice: TransactionArgument;
 }
 export interface WeightedAveragePriceOptions {
     package?: string;
     arguments: WeightedAveragePriceArguments | [
-        currentSize: RawTransactionArgument<string>,
-        currentAveragePrice: RawTransactionArgument<string>,
-        addSize: RawTransactionArgument<string>,
-        addPrice: RawTransactionArgument<string>
+        currentSize: TransactionArgument,
+        currentAveragePrice: TransactionArgument,
+        addSize: TransactionArgument,
+        addPrice: TransactionArgument
     ];
 }
 export function weightedAveragePrice(options: WeightedAveragePriceOptions) {
@@ -1324,6 +1317,37 @@ export function weightedAveragePrice(options: WeightedAveragePriceOptions) {
         package: packageAddress,
         module: 'market_config',
         function: 'weighted_average_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AveragePriceAfterDecreaseArguments {
+    currentSize: TransactionArgument;
+    currentAveragePrice: TransactionArgument;
+    reduceSize: TransactionArgument;
+    reducePrice: TransactionArgument;
+}
+export interface AveragePriceAfterDecreaseOptions {
+    package?: string;
+    arguments: AveragePriceAfterDecreaseArguments | [
+        currentSize: TransactionArgument,
+        currentAveragePrice: TransactionArgument,
+        reduceSize: TransactionArgument,
+        reducePrice: TransactionArgument
+    ];
+}
+export function averagePriceAfterDecrease(options: AveragePriceAfterDecreaseOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["currentSize", "currentAveragePrice", "reduceSize", "reducePrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'average_price_after_decrease',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

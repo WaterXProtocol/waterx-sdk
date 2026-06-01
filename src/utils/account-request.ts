@@ -26,6 +26,6 @@ export function makeSenderRequest(
   const accArg = typeof bucketAccount === "string" ? tx.object(bucketAccount) : bucketAccount;
   return accountRequestWithAccount({
     package: pkg,
-    arguments: { account: accArg as unknown as string },
+    arguments: { account: accArg as unknown as TransactionArgument },
   })(tx) as unknown as TransactionArgument;
 }
