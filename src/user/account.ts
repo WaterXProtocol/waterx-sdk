@@ -19,6 +19,7 @@ import type {
 
 import type { WaterXClient } from "../client.ts";
 import { createAccountCall } from "../core/waterx-account.ts";
+import { ACCUMULATOR_ROOT } from "../constants.ts";
 import * as wxa from "../generated/waterx_account/account.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
@@ -230,6 +231,52 @@ export function requestDepositFromReceivings(
       registry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       receivings: receivings as unknown as string[],
+      extraData: Array.from(params.extraData ?? new Uint8Array()),
+    },
+    typeArguments: [params.coinType],
+  })(tx);
+  return req as unknown as TransactionArgument;
+}
+
+export interface RequestDepositFromFundsParams {
+  /** wxa account ID receiving the deposit. */
+  accountId: string;
+  /** Fully-qualified coin type `T`. */
+  coinType: string;
+  /**
+   * Sui native funds-accumulator root shared object. Defaults to the
+   * well-known `ACCUMULATOR_ROOT` (`0xacc`); override only for a custom
+   * deployment.
+   */
+  accumulatorRoot?: string | TransactionArgument;
+  /** Optional opaque extra data forwarded to the policy. */
+  extraData?: Uint8Array;
+}
+
+/**
+ * Build `account::request_deposit_from_funds<T>` — drains every `Balance<T>`
+ * parked at the account's address in Sui's native funds accumulator (the
+ * path taken by `transfer_coin` / `0x2::balance::send_funds<T>`) into a
+ * single `DepositRequest<T>`. Returns the `DepositRequest<T>` argument.
+ *
+ * The drained total reflects the balance as of the last consensus commit,
+ * so the value isn't readable within the same PTB — treat it as a
+ * between-tx drain. Returns a zero-balance request when the address holds
+ * no `T`, so check `settled_funds_value<T>` off-chain first if you want to
+ * skip empty drains.
+ */
+export function requestDepositFromFunds(
+  client: WaterXClient,
+  tx: Transaction,
+  params: RequestDepositFromFundsParams,
+): TransactionArgument {
+  const root = params.accumulatorRoot ?? ACCUMULATOR_ROOT;
+  const [req] = wxa.requestDepositFromFunds({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      accountId: params.accountId,
+      accumulatorRoot: (typeof root === "string" ? tx.object(root) : root) as unknown as string,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
     },
     typeArguments: [params.coinType],

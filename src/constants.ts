@@ -82,3 +82,10 @@ export const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
 // ======== Misc ========
 /** Zero-address placeholder used as the sender in dry-run / simulate calls. */
 export const DRY_RUN_SENDER = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+/**
+ * Well-known address of Sui's native funds-accumulator root shared object
+ * (`@0xacc` in the framework). Pass this to `request_deposit_from_funds<T>`
+ * to drain `Balance<T>` parked at an account's address.
+ */
+export const ACCUMULATOR_ROOT = "0xacc";
