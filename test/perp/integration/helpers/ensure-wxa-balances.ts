@@ -39,7 +39,7 @@ export async function ensureIntegrationMinWlpBalance(args: {
 
   const usdcType = args.client.getPoolTokenType("USDCUSD");
   const { mintPullUsdc } = E2E_PERSISTENT_WLP;
-  let usdcFree = await getAccountBalance(args.client, args.accountId, usdcType);
+  const usdcFree = await getAccountBalance(args.client, args.accountId, usdcType);
   const needFree = mintPullUsdc + 5_000_000n;
   if (usdcFree < needFree) {
     const depTx = await buildDepositUsdcFromWalletTx(
@@ -52,7 +52,6 @@ export async function ensureIntegrationMinWlpBalance(args: {
       gasBudget: integrationGasBudget("default"),
     });
     args.assertSuccess(depResult);
-    usdcFree = await getAccountBalance(args.client, args.accountId, usdcType);
   }
 
   const mintResult = await args.execBuiltTxWithCooldownRetries(

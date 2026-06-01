@@ -119,6 +119,7 @@ export async function getAccountOwnerByAccountId(
     throw new Error(
       `Unable to resolve owner for wxa account ${accountId} (registry ID, not a standalone object). ` +
         `Set WATERX_E2E_WXA_OWNER or run with WATERX_INTEGRATION_PRIVATE_KEY so owner hints can be probed. ${detail}`,
+      { cause: e },
     );
   }
 }
