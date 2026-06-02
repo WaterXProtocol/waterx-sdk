@@ -161,11 +161,23 @@ export class WaterXClient {
     return f;
   }
 
-  /** `wlp.pool_tokens[ticker]` (fully-qualified Move type), throws if unknown. */
-  getPoolTokenType(ticker: string): string {
-    const t = this.config.packages.wlp?.pool_tokens?.[ticker];
-    if (!t) throw new Error(`No pool token registered for ticker: ${ticker}`);
-    return t;
+  /**
+   * Resolve a WLP pool token's fully-qualified Move type.
+   *
+   * `wlp.pool_tokens` is keyed by **oracle ticker** (e.g. `"USDCUSD"`) — the
+   * Rust keeper requires this, since it reuses each key to look up the token's
+   * aggregator + pyth feed. For ergonomics this also accepts the coin symbol
+   * (the trailing `::Struct` segment, e.g. `"USD"` → `…::usd::USD`): an exact
+   * ticker hit wins, otherwise we match by coin name. Throws if neither hits.
+   */
+  getPoolTokenType(tickerOrName: string): string {
+    const poolTokens = this.config.packages.wlp?.pool_tokens ?? {};
+    const exact = poolTokens[tickerOrName];
+    if (exact) return exact;
+    for (const t of Object.values(poolTokens)) {
+      if (typeof t === "string" && t.split("::").pop() === tickerOrName) return t;
+    }
+    throw new Error(`No pool token registered for ticker/name: ${tickerOrName}`);
   }
 
   /** Fully-qualified WLP coin type derived from `wlp.original_id`. */
