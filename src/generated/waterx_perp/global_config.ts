@@ -10,10 +10,16 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
+import * as vec_set_1 from './deps/sui/vec_set.ts';
+import * as vec_set_2 from './deps/sui/vec_set.ts';
+import * as vec_set_3 from './deps/sui/vec_set.ts';
+import * as vec_set_4 from './deps/sui/vec_set.ts';
 import * as sheet from './deps/bucket_v2_framework/sheet.ts';
 import * as balance from './deps/sui/balance.ts';
+import * as balance_1 from './deps/sui/balance.ts';
+import * as balance_2 from './deps/sui/balance.ts';
 const $moduleName = '@waterx/perp::global_config';
 export const GlobalConfig = new MoveStruct({ name: `${$moduleName}::GlobalConfig`, fields: {
         id: bcs.Address,
@@ -25,13 +31,13 @@ export const GlobalConfig = new MoveStruct({ name: `${$moduleName}::GlobalConfig
          */
         is_paused: bcs.bool(),
         /** Authorized addresses that can trigger the global pause (but not unpause). */
-        pausers: vec_set.VecSet(bcs.Address),
+        pausers: vec_set_1.VecSet(bcs.Address),
         /** Authorized keeper addresses. */
-        keepers: vec_set.VecSet(bcs.Address),
+        keepers: vec_set_2.VecSet(bcs.Address),
         /** Authorized WLP redeem operators (can settle/reject redeem requests). */
-        redeem_operators: vec_set.VecSet(bcs.Address),
+        redeem_operators: vec_set_3.VecSet(bcs.Address),
         /** Authorized risk manager addresses (can force-close positions). */
-        risk_managers: vec_set.VecSet(bcs.Address),
+        risk_managers: vec_set_4.VecSet(bcs.Address),
         /**
          * Protocol fee share in bps (of total trading fees). The protocol's cut of every
          * realized trading fee accumulates on `GlobalVault.protocol_fee_balance` and is
@@ -65,13 +71,13 @@ export const GlobalVault = new MoveStruct({ name: `${$moduleName}::GlobalVault<p
          * `mint_wlp` / `settle_redeem` instead of being transferred to a configured
          * `fee_address`. Drained by `claim_protocol_fee` (admin-gated).
          */
-        protocol_fee_balance: balance.Balance,
+        protocol_fee_balance: balance_1.Balance,
         /**
          * Accumulated insurance fee from liquidations. Routed here by `execute_liquidate`
          * instead of being transferred to a configured `insurance_address`. Drained by
          * `claim_insurance_fee` (admin-gated).
          */
-        insurance_fee_balance: balance.Balance
+        insurance_fee_balance: balance_2.Balance
     } });
 export interface InitOptions {
     package?: string;
@@ -948,13 +954,13 @@ export function removePauser(options: RemovePauserOptions) {
 }
 export interface PauseArguments {
     globalConfig: RawTransactionArgument<string>;
-    senderRequest: TransactionArgument;
+    senderRequest: RawTransactionArgument<string>;
 }
 export interface PauseOptions {
     package?: string;
     arguments: PauseArguments | [
         globalConfig: RawTransactionArgument<string>,
-        senderRequest: TransactionArgument
+        senderRequest: RawTransactionArgument<string>
     ];
 }
 /**

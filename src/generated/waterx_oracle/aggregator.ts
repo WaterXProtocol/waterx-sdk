@@ -11,6 +11,7 @@ import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as type_name from './deps/std/type_name.ts';
 import * as float from './deps/bucket_v2_framework/float.ts';
+import * as float_1 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/oracle::aggregator';
 export const NewPriceAggregator = new MoveStruct({ name: `${$moduleName}::NewPriceAggregator`, fields: {
         aggregator_id: bcs.Address,
@@ -65,7 +66,7 @@ export const PriceAggregator = new MoveStruct({ name: `${$moduleName}::PriceAggr
         /** Maximum allowed deviation from the weighted-average price. */
         outlier_tolerance: float.Float,
         /** Latest aggregated price. */
-        latest_price: float.Float,
+        latest_price: float_1.Float,
         /** `clock.timestamp_ms()` at the time `aggregate` ran. */
         last_update_ms: bcs.u64(),
         /** Number of exact timestamp snapshots stored as dynamic fields on this aggregator. */

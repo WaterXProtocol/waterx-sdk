@@ -11,10 +11,16 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
 import * as type_name from './deps/std/type_name.ts';
+import * as float_1 from './deps/bucket_v2_framework/float.ts';
+import * as float_2 from './deps/bucket_v2_framework/float.ts';
 import * as double from './deps/bucket_v2_framework/double.ts';
+import * as type_name_1 from './deps/std/type_name.ts';
+import * as float_3 from './deps/bucket_v2_framework/float.ts';
+import * as float_4 from './deps/bucket_v2_framework/float.ts';
+import * as float_5 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/perp::position';
 export const Position = new MoveStruct({ name: `${$moduleName}::Position`, fields: {
         id: bcs.Address,
@@ -35,9 +41,9 @@ export const Position = new MoveStruct({ name: `${$moduleName}::Position`, field
         /** Collateral amount (tracked; actual balance in GlobalVault). */
         collateral_amount: bcs.u64(),
         /** Average entry price (Float). */
-        average_price: float.Float,
+        average_price: float_1.Float,
         /** Entry cumulative borrow rate index as Float. */
-        entry_borrow_index: float.Float,
+        entry_borrow_index: float_2.Float,
         /** Pool reserve snapshot in collateral token units. */
         pool_reserve_amount: bcs.u64(),
         /** Borrow reserve snapshot in collateral token units. */
@@ -77,7 +83,7 @@ export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
         /** Linked position ID (for reduce-only). */
         linked_position_id: bcs.option(bcs.u64()),
         /** Collateral token type. */
-        collateral_token: type_name.TypeName,
+        collateral_token: type_name_1.TypeName,
         /** Collateral token decimal. */
         collateral_decimal: bcs.u8(),
         /** Collateral amount (tracked; actual balance in GlobalVault). */
@@ -89,13 +95,13 @@ export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
         /** Whether this is a stop order (vs limit). */
         is_stop_order: bcs.bool(),
         /** Order size as Float (fixed 9 decimals). */
-        size: float.Float,
+        size: float_3.Float,
         /**
          * Trigger price (Float). A value of zero marks the order as a market order: it
          * sits at price tick 0 in the limit book and matches at any oracle price (see
          * `check_order_fillable`).
          */
-        trigger_price: float.Float,
+        trigger_price: float_4.Float,
         /**
          * Slippage limit (scaled `Float`) checked at match time. Zero disables the check.
          * Only carries meaning on market orders — limit/stop orders always pass it through
@@ -105,7 +111,7 @@ export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
         /** Leverage in bps. */
         leverage_bps: bcs.u64(),
         /** Oracle price when order was placed. */
-        oracle_price_at_creation: float.Float,
+        oracle_price_at_creation: float_5.Float,
         /** Creation timestamp. */
         create_timestamp: bcs.u64()
     } });
@@ -114,17 +120,17 @@ export interface CreateOrderArguments {
     accountObjectAddress: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     linkedPositionId: RawTransactionArgument<number | bigint | null>;
-    collateral: TransactionArgument;
-    vault: TransactionArgument;
+    collateral: RawTransactionArgument<string>;
+    vault: RawTransactionArgument<string>;
     collateralDecimal: RawTransactionArgument<number>;
     isLong: RawTransactionArgument<boolean>;
     reduceOnly: RawTransactionArgument<boolean>;
     isStopOrder: RawTransactionArgument<boolean>;
-    size: TransactionArgument;
-    triggerPrice: TransactionArgument;
+    size: RawTransactionArgument<string>;
+    triggerPrice: RawTransactionArgument<string>;
     acceptablePrice: RawTransactionArgument<number | bigint>;
     leverageBps: RawTransactionArgument<number | bigint>;
-    oraclePrice: TransactionArgument;
+    oraclePrice: RawTransactionArgument<string>;
 }
 export interface CreateOrderOptions {
     package?: string;
@@ -133,17 +139,17 @@ export interface CreateOrderOptions {
         accountObjectAddress: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         linkedPositionId: RawTransactionArgument<number | bigint | null>,
-        collateral: TransactionArgument,
-        vault: TransactionArgument,
+        collateral: RawTransactionArgument<string>,
+        vault: RawTransactionArgument<string>,
         collateralDecimal: RawTransactionArgument<number>,
         isLong: RawTransactionArgument<boolean>,
         reduceOnly: RawTransactionArgument<boolean>,
         isStopOrder: RawTransactionArgument<boolean>,
-        size: TransactionArgument,
-        triggerPrice: TransactionArgument,
+        size: RawTransactionArgument<string>,
+        triggerPrice: RawTransactionArgument<string>,
         acceptablePrice: RawTransactionArgument<number | bigint>,
         leverageBps: RawTransactionArgument<number | bigint>,
-        oraclePrice: TransactionArgument
+        oraclePrice: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -186,13 +192,13 @@ export function createOrder(options: CreateOrderOptions) {
 }
 export interface RemoveOrderArguments {
     order: RawTransactionArgument<string>;
-    vault: TransactionArgument;
+    vault: RawTransactionArgument<string>;
 }
 export interface RemoveOrderOptions {
     package?: string;
     arguments: RemoveOrderArguments | [
         order: RawTransactionArgument<string>,
-        vault: TransactionArgument
+        vault: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -216,16 +222,16 @@ export function removeOrder(options: RemoveOrderOptions) {
 }
 export interface UpdateOrderArguments {
     order: RawTransactionArgument<string>;
-    size: TransactionArgument;
-    triggerPrice: TransactionArgument;
+    size: RawTransactionArgument<string>;
+    triggerPrice: RawTransactionArgument<string>;
     leverageBps: RawTransactionArgument<number | bigint>;
 }
 export interface UpdateOrderOptions {
     package?: string;
     arguments: UpdateOrderArguments | [
         order: RawTransactionArgument<string>,
-        size: TransactionArgument,
-        triggerPrice: TransactionArgument,
+        size: RawTransactionArgument<string>,
+        triggerPrice: RawTransactionArgument<string>,
         leverageBps: RawTransactionArgument<number | bigint>
     ];
 }
@@ -281,15 +287,15 @@ export interface CreatePositionArguments {
     accountObjectAddress: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    size: TransactionArgument;
-    collateral: TransactionArgument;
-    vault: TransactionArgument;
+    size: RawTransactionArgument<string>;
+    collateral: RawTransactionArgument<string>;
+    vault: RawTransactionArgument<string>;
     collateralDecimal: RawTransactionArgument<number>;
-    averagePrice: TransactionArgument;
-    collateralPrice: TransactionArgument;
-    entryBorrowIndex: TransactionArgument;
+    averagePrice: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
+    entryBorrowIndex: RawTransactionArgument<string>;
     entryFundingSign: RawTransactionArgument<boolean>;
-    entryFundingIndex: TransactionArgument;
+    entryFundingIndex: RawTransactionArgument<string>;
     tradingFee: RawTransactionArgument<number | bigint>;
 }
 export interface CreatePositionOptions {
@@ -299,15 +305,15 @@ export interface CreatePositionOptions {
         accountObjectAddress: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        size: TransactionArgument,
-        collateral: TransactionArgument,
-        vault: TransactionArgument,
+        size: RawTransactionArgument<string>,
+        collateral: RawTransactionArgument<string>,
+        vault: RawTransactionArgument<string>,
         collateralDecimal: RawTransactionArgument<number>,
-        averagePrice: TransactionArgument,
-        collateralPrice: TransactionArgument,
-        entryBorrowIndex: TransactionArgument,
+        averagePrice: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>,
+        entryBorrowIndex: RawTransactionArgument<string>,
         entryFundingSign: RawTransactionArgument<boolean>,
-        entryFundingIndex: TransactionArgument,
+        entryFundingIndex: RawTransactionArgument<string>,
         tradingFee: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -345,15 +351,15 @@ export function createPosition(options: CreatePositionOptions) {
 }
 export interface DepositCollateralArguments {
     position: RawTransactionArgument<string>;
-    vault: TransactionArgument;
-    collateral: TransactionArgument;
+    vault: RawTransactionArgument<string>;
+    collateral: RawTransactionArgument<string>;
 }
 export interface DepositCollateralOptions {
     package?: string;
     arguments: DepositCollateralArguments | [
         position: RawTransactionArgument<string>,
-        vault: TransactionArgument,
-        collateral: TransactionArgument
+        vault: RawTransactionArgument<string>,
+        collateral: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -378,14 +384,14 @@ export function depositCollateral(options: DepositCollateralOptions) {
 }
 export interface WithdrawCollateralArguments {
     position: RawTransactionArgument<string>;
-    vault: TransactionArgument;
+    vault: RawTransactionArgument<string>;
     amount: RawTransactionArgument<number | bigint>;
 }
 export interface WithdrawCollateralOptions {
     package?: string;
     arguments: WithdrawCollateralArguments | [
         position: RawTransactionArgument<string>,
-        vault: TransactionArgument,
+        vault: RawTransactionArgument<string>,
         amount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -411,13 +417,13 @@ export function withdrawCollateral(options: WithdrawCollateralOptions) {
 }
 export interface RemovePositionArguments {
     position: RawTransactionArgument<string>;
-    vault: TransactionArgument;
+    vault: RawTransactionArgument<string>;
 }
 export interface RemovePositionOptions {
     package?: string;
     arguments: RemovePositionArguments | [
         position: RawTransactionArgument<string>,
-        vault: TransactionArgument
+        vault: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -495,18 +501,18 @@ export function assertOrderCollateralType(options: AssertOrderCollateralTypeOpti
     });
 }
 export interface CalculatePoolReserveAmountFromValuesArguments {
-    size: TransactionArgument;
-    price: TransactionArgument;
+    size: RawTransactionArgument<string>;
+    price: RawTransactionArgument<string>;
     collateralDecimal: RawTransactionArgument<number>;
-    collateralPrice: TransactionArgument;
+    collateralPrice: RawTransactionArgument<string>;
 }
 export interface CalculatePoolReserveAmountFromValuesOptions {
     package?: string;
     arguments: CalculatePoolReserveAmountFromValuesArguments | [
-        size: TransactionArgument,
-        price: TransactionArgument,
+        size: RawTransactionArgument<string>,
+        price: RawTransactionArgument<string>,
         collateralDecimal: RawTransactionArgument<number>,
-        collateralPrice: TransactionArgument
+        collateralPrice: RawTransactionArgument<string>
     ];
 }
 export function calculatePoolReserveAmountFromValues(options: CalculatePoolReserveAmountFromValuesOptions) {
@@ -527,15 +533,15 @@ export function calculatePoolReserveAmountFromValues(options: CalculatePoolReser
 }
 export interface CalculateReserveAmountArguments {
     position: RawTransactionArgument<string>;
-    price: TransactionArgument;
-    collateralPrice: TransactionArgument;
+    price: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
 }
 export interface CalculateReserveAmountOptions {
     package?: string;
     arguments: CalculateReserveAmountArguments | [
         position: RawTransactionArgument<string>,
-        price: TransactionArgument,
-        collateralPrice: TransactionArgument
+        price: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>
     ];
 }
 export function calculateReserveAmount(options: CalculateReserveAmountOptions) {
@@ -554,20 +560,20 @@ export function calculateReserveAmount(options: CalculateReserveAmountOptions) {
     });
 }
 export interface CalculateReserveAmountFromValuesArguments {
-    size: TransactionArgument;
-    price: TransactionArgument;
+    size: RawTransactionArgument<string>;
+    price: RawTransactionArgument<string>;
     collateralAmount: RawTransactionArgument<number | bigint>;
     collateralDecimal: RawTransactionArgument<number>;
-    collateralPrice: TransactionArgument;
+    collateralPrice: RawTransactionArgument<string>;
 }
 export interface CalculateReserveAmountFromValuesOptions {
     package?: string;
     arguments: CalculateReserveAmountFromValuesArguments | [
-        size: TransactionArgument,
-        price: TransactionArgument,
+        size: RawTransactionArgument<string>,
+        price: RawTransactionArgument<string>,
         collateralAmount: RawTransactionArgument<number | bigint>,
         collateralDecimal: RawTransactionArgument<number>,
-        collateralPrice: TransactionArgument
+        collateralPrice: RawTransactionArgument<string>
     ];
 }
 export function calculateReserveAmountFromValues(options: CalculateReserveAmountFromValuesOptions) {
@@ -589,15 +595,15 @@ export function calculateReserveAmountFromValues(options: CalculateReserveAmount
 }
 export interface RefreshBorrowReserveArguments {
     position: RawTransactionArgument<string>;
-    price: TransactionArgument;
-    collateralPrice: TransactionArgument;
+    price: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
 }
 export interface RefreshBorrowReserveOptions {
     package?: string;
     arguments: RefreshBorrowReserveArguments | [
         position: RawTransactionArgument<string>,
-        price: TransactionArgument,
-        collateralPrice: TransactionArgument
+        price: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>
     ];
 }
 export function refreshBorrowReserve(options: RefreshBorrowReserveOptions) {
@@ -642,15 +648,15 @@ export function addPoolReserve(options: AddPoolReserveOptions) {
 }
 export interface RealizePoolReserveArguments {
     position: RawTransactionArgument<string>;
-    reduceSize: TransactionArgument;
-    originalSize: TransactionArgument;
+    reduceSize: RawTransactionArgument<string>;
+    originalSize: RawTransactionArgument<string>;
 }
 export interface RealizePoolReserveOptions {
     package?: string;
     arguments: RealizePoolReserveArguments | [
         position: RawTransactionArgument<string>,
-        reduceSize: TransactionArgument,
-        originalSize: TransactionArgument
+        reduceSize: RawTransactionArgument<string>,
+        originalSize: RawTransactionArgument<string>
     ];
 }
 export function realizePoolReserve(options: RealizePoolReserveOptions) {
@@ -670,16 +676,16 @@ export function realizePoolReserve(options: RealizePoolReserveOptions) {
 }
 export interface UpdatePositionSizeArguments {
     position: RawTransactionArgument<string>;
-    newSize: TransactionArgument;
-    newAvgPrice: TransactionArgument;
+    newSize: RawTransactionArgument<string>;
+    newAvgPrice: RawTransactionArgument<string>;
     newSide: RawTransactionArgument<boolean>;
 }
 export interface UpdatePositionSizeOptions {
     package?: string;
     arguments: UpdatePositionSizeArguments | [
         position: RawTransactionArgument<string>,
-        newSize: TransactionArgument,
-        newAvgPrice: TransactionArgument,
+        newSize: RawTransactionArgument<string>,
+        newAvgPrice: RawTransactionArgument<string>,
         newSide: RawTransactionArgument<boolean>
     ];
 }
@@ -703,19 +709,19 @@ export function updatePositionSize(options: UpdatePositionSizeOptions) {
 }
 export interface UpdateFeesArguments {
     position: RawTransactionArgument<string>;
-    collateralPrice: TransactionArgument;
-    cumulativeBorrowRate: TransactionArgument;
+    collateralPrice: RawTransactionArgument<string>;
+    cumulativeBorrowRate: RawTransactionArgument<string>;
     cumulativeFundingSign: RawTransactionArgument<boolean>;
-    cumulativeFundingIndex: TransactionArgument;
+    cumulativeFundingIndex: RawTransactionArgument<string>;
 }
 export interface UpdateFeesOptions {
     package?: string;
     arguments: UpdateFeesArguments | [
         position: RawTransactionArgument<string>,
-        collateralPrice: TransactionArgument,
-        cumulativeBorrowRate: TransactionArgument,
+        collateralPrice: RawTransactionArgument<string>,
+        cumulativeBorrowRate: RawTransactionArgument<string>,
         cumulativeFundingSign: RawTransactionArgument<boolean>,
-        cumulativeFundingIndex: TransactionArgument
+        cumulativeFundingIndex: RawTransactionArgument<string>
     ];
 }
 /** Updates position borrow and funding fee state. */
@@ -764,15 +770,15 @@ export function addTradingFee(options: AddTradingFeeOptions) {
 }
 export interface RealizePartialFeesArguments {
     position: RawTransactionArgument<string>;
-    reduceSize: TransactionArgument;
-    originalSize: TransactionArgument;
+    reduceSize: RawTransactionArgument<string>;
+    originalSize: RawTransactionArgument<string>;
 }
 export interface RealizePartialFeesOptions {
     package?: string;
     arguments: RealizePartialFeesArguments | [
         position: RawTransactionArgument<string>,
-        reduceSize: TransactionArgument,
-        originalSize: TransactionArgument
+        reduceSize: RawTransactionArgument<string>,
+        originalSize: RawTransactionArgument<string>
     ];
 }
 /**
@@ -864,13 +870,13 @@ export function removeLinkedOrder(options: RemoveLinkedOrderOptions) {
 }
 export interface UnrealizedPnlArguments {
     position: RawTransactionArgument<string>;
-    currentPrice: TransactionArgument;
+    currentPrice: RawTransactionArgument<string>;
 }
 export interface UnrealizedPnlOptions {
     package?: string;
     arguments: UnrealizedPnlArguments | [
         position: RawTransactionArgument<string>,
-        currentPrice: TransactionArgument
+        currentPrice: RawTransactionArgument<string>
     ];
 }
 /** Calculates unrealized PnL. Returns (is_profit, pnl as Float in USD). */
@@ -890,13 +896,13 @@ export function unrealizedPnl(options: UnrealizedPnlOptions) {
 }
 export interface CheckOrderFillableArguments {
     order: RawTransactionArgument<string>;
-    oraclePrice: TransactionArgument;
+    oraclePrice: RawTransactionArgument<string>;
 }
 export interface CheckOrderFillableOptions {
     package?: string;
     arguments: CheckOrderFillableArguments | [
         order: RawTransactionArgument<string>,
-        oraclePrice: TransactionArgument
+        oraclePrice: RawTransactionArgument<string>
     ];
 }
 /** Returns true if the order should be filled at the given oracle price. */
@@ -916,25 +922,25 @@ export function checkOrderFillable(options: CheckOrderFillableOptions) {
 }
 export interface IsLiquidatableArguments {
     position: RawTransactionArgument<string>;
-    currentPrice: TransactionArgument;
-    collateralPrice: TransactionArgument;
-    closingFee: TransactionArgument;
-    maintenanceMargin: TransactionArgument;
-    cumulativeBorrowRate: TransactionArgument;
+    currentPrice: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
+    closingFee: RawTransactionArgument<string>;
+    maintenanceMargin: RawTransactionArgument<string>;
+    cumulativeBorrowRate: RawTransactionArgument<string>;
     cumulativeFundingSign: RawTransactionArgument<boolean>;
-    cumulativeFundingIndex: TransactionArgument;
+    cumulativeFundingIndex: RawTransactionArgument<string>;
 }
 export interface IsLiquidatableOptions {
     package?: string;
     arguments: IsLiquidatableArguments | [
         position: RawTransactionArgument<string>,
-        currentPrice: TransactionArgument,
-        collateralPrice: TransactionArgument,
-        closingFee: TransactionArgument,
-        maintenanceMargin: TransactionArgument,
-        cumulativeBorrowRate: TransactionArgument,
+        currentPrice: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>,
+        closingFee: RawTransactionArgument<string>,
+        maintenanceMargin: RawTransactionArgument<string>,
+        cumulativeBorrowRate: RawTransactionArgument<string>,
         cumulativeFundingSign: RawTransactionArgument<boolean>,
-        cumulativeFundingIndex: TransactionArgument
+        cumulativeFundingIndex: RawTransactionArgument<string>
     ];
 }
 /**
@@ -963,13 +969,13 @@ export function isLiquidatable(options: IsLiquidatableOptions) {
 }
 export interface CalculateBorrowFeeArguments {
     position: RawTransactionArgument<string>;
-    cumulativeBorrowRate: TransactionArgument;
+    cumulativeBorrowRate: RawTransactionArgument<string>;
 }
 export interface CalculateBorrowFeeOptions {
     package?: string;
     arguments: CalculateBorrowFeeArguments | [
         position: RawTransactionArgument<string>,
-        cumulativeBorrowRate: TransactionArgument
+        cumulativeBorrowRate: RawTransactionArgument<string>
     ];
 }
 export function calculateBorrowFee(options: CalculateBorrowFeeOptions) {
@@ -988,17 +994,17 @@ export function calculateBorrowFee(options: CalculateBorrowFeeOptions) {
 }
 export interface CalculateFundingFeeArguments {
     position: RawTransactionArgument<string>;
-    collateralPrice: TransactionArgument;
+    collateralPrice: RawTransactionArgument<string>;
     cumulativeFundingSign: RawTransactionArgument<boolean>;
-    cumulativeFundingIndex: TransactionArgument;
+    cumulativeFundingIndex: RawTransactionArgument<string>;
 }
 export interface CalculateFundingFeeOptions {
     package?: string;
     arguments: CalculateFundingFeeArguments | [
         position: RawTransactionArgument<string>,
-        collateralPrice: TransactionArgument,
+        collateralPrice: RawTransactionArgument<string>,
         cumulativeFundingSign: RawTransactionArgument<boolean>,
-        cumulativeFundingIndex: TransactionArgument
+        cumulativeFundingIndex: RawTransactionArgument<string>
     ];
 }
 export function calculateFundingFee(options: CalculateFundingFeeOptions) {

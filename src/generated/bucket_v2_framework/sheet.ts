@@ -7,28 +7,34 @@
 
 import { MoveTuple, MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as type_name from './deps/std/type_name.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as liability from './liability.ts';
+import * as vec_map_1 from './deps/sui/vec_map.ts';
+import * as liability_1 from './liability.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as balance_1 from './deps/sui/balance.ts';
+import * as liability_2 from './liability.ts';
+import * as balance_2 from './deps/sui/balance.ts';
+import * as vec_map_2 from './deps/sui/vec_map.ts';
+import * as liability_3 from './liability.ts';
 const $moduleName = '@bucket/framework::sheet';
 export const Entity = new MoveTuple({ name: `${$moduleName}::Entity`, fields: [type_name.TypeName] });
 export const Sheet = new MoveStruct({ name: `${$moduleName}::Sheet<phantom CoinType, phantom SelfEntity>`, fields: {
         credits: vec_map.VecMap(Entity, liability.Credit),
-        debts: vec_map.VecMap(Entity, liability.Debt),
+        debts: vec_map_1.VecMap(Entity, liability_1.Debt),
         blacklist: vec_set.VecSet(Entity)
     } });
 export const Loan = new MoveStruct({ name: `${$moduleName}::Loan<phantom CoinType, phantom Lender, phantom Receiver>`, fields: {
         balance: balance_1.Balance,
-        debt: liability.Debt
+        debt: liability_2.Debt
     } });
 export const Request = new MoveStruct({ name: `${$moduleName}::Request<phantom CoinType, phantom Collector>`, fields: {
         requirement: bcs.u64(),
-        balance: balance_1.Balance,
+        balance: balance_2.Balance,
         checklist: bcs.option(bcs.vector(Entity)),
-        payer_debts: vec_map.VecMap(Entity, liability.Debt)
+        payer_debts: vec_map_2.VecMap(Entity, liability_3.Debt)
     } });
 export interface NewArguments<E extends BcsType<any>> {
     _: RawTransactionArgument<E>;
@@ -59,15 +65,15 @@ export function _new<E extends BcsType<any>>(options: NewOptions<E>) {
     });
 }
 export interface LendArguments<L extends BcsType<any>> {
-    sheet: TransactionArgument;
-    balance: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    balance: RawTransactionArgument<string>;
     LenderStamp: RawTransactionArgument<L>;
 }
 export interface LendOptions<L extends BcsType<any>> {
     package?: string;
     arguments: LendArguments<L> | [
-        sheet: TransactionArgument,
-        balance: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        balance: RawTransactionArgument<string>,
         LenderStamp: RawTransactionArgument<L>
     ];
     typeArguments: [
@@ -93,15 +99,15 @@ export function lend<L extends BcsType<any>>(options: LendOptions<L>) {
     });
 }
 export interface ReceiveArguments<R extends BcsType<any>> {
-    sheet: TransactionArgument;
-    loan: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    loan: RawTransactionArgument<string>;
     ReceiverStamp: RawTransactionArgument<R>;
 }
 export interface ReceiveOptions<R extends BcsType<any>> {
     package?: string;
     arguments: ReceiveArguments<R> | [
-        sheet: TransactionArgument,
-        loan: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        loan: RawTransactionArgument<string>,
         ReceiverStamp: RawTransactionArgument<R>
     ];
     typeArguments: [
@@ -128,14 +134,14 @@ export function receive<R extends BcsType<any>>(options: ReceiveOptions<R>) {
 }
 export interface RequestArguments<C extends BcsType<any>> {
     requirement: RawTransactionArgument<number | bigint>;
-    checklist: TransactionArgument;
+    checklist: RawTransactionArgument<string[] | null>;
     CollectorStamp: RawTransactionArgument<C>;
 }
 export interface RequestOptions<C extends BcsType<any>> {
     package?: string;
     arguments: RequestArguments<C> | [
         requirement: RawTransactionArgument<number | bigint>,
-        checklist: TransactionArgument,
+        checklist: RawTransactionArgument<string[] | null>,
         CollectorStamp: RawTransactionArgument<C>
     ];
     typeArguments: [
@@ -147,7 +153,7 @@ export function request<C extends BcsType<any>>(options: RequestOptions<C>) {
     const packageAddress = options.package ?? '@bucket/framework';
     const argumentsTypes = [
         'u64',
-        null,
+        '0x1::option::Option<vector<null>>',
         `${options.typeArguments[1]}`
     ] satisfies (string | null)[];
     const parameterNames = ["requirement", "checklist", "CollectorStamp"];
@@ -160,17 +166,17 @@ export function request<C extends BcsType<any>>(options: RequestOptions<C>) {
     });
 }
 export interface PayArguments<P extends BcsType<any>> {
-    sheet: TransactionArgument;
-    req: TransactionArgument;
-    balance: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    req: RawTransactionArgument<string>;
+    balance: RawTransactionArgument<string>;
     PayerStamp: RawTransactionArgument<P>;
 }
 export interface PayOptions<P extends BcsType<any>> {
     package?: string;
     arguments: PayArguments<P> | [
-        sheet: TransactionArgument,
-        req: TransactionArgument,
-        balance: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        req: RawTransactionArgument<string>,
+        balance: RawTransactionArgument<string>,
         PayerStamp: RawTransactionArgument<P>
     ];
     typeArguments: [
@@ -197,15 +203,15 @@ export function pay<P extends BcsType<any>>(options: PayOptions<P>) {
     });
 }
 export interface CollectArguments<C extends BcsType<any>> {
-    sheet: TransactionArgument;
-    req: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    req: RawTransactionArgument<string>;
     Stamp: RawTransactionArgument<C>;
 }
 export interface CollectOptions<C extends BcsType<any>> {
     package?: string;
     arguments: CollectArguments<C> | [
-        sheet: TransactionArgument,
-        req: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        req: RawTransactionArgument<string>,
         Stamp: RawTransactionArgument<C>
     ];
     typeArguments: [
@@ -230,15 +236,15 @@ export function collect<C extends BcsType<any>>(options: CollectOptions<C>) {
     });
 }
 export interface AddDebtorArguments<E extends BcsType<any>> {
-    sheet: TransactionArgument;
-    debtor: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    debtor: RawTransactionArgument<string>;
     Stamp: RawTransactionArgument<E>;
 }
 export interface AddDebtorOptions<E extends BcsType<any>> {
     package?: string;
     arguments: AddDebtorArguments<E> | [
-        sheet: TransactionArgument,
-        debtor: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        debtor: RawTransactionArgument<string>,
         Stamp: RawTransactionArgument<E>
     ];
     typeArguments: [
@@ -263,15 +269,15 @@ export function addDebtor<E extends BcsType<any>>(options: AddDebtorOptions<E>) 
     });
 }
 export interface AddCreditorArguments<E extends BcsType<any>> {
-    sheet: TransactionArgument;
-    creditor: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    creditor: RawTransactionArgument<string>;
     Stamp: RawTransactionArgument<E>;
 }
 export interface AddCreditorOptions<E extends BcsType<any>> {
     package?: string;
     arguments: AddCreditorArguments<E> | [
-        sheet: TransactionArgument,
-        creditor: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        creditor: RawTransactionArgument<string>,
         Stamp: RawTransactionArgument<E>
     ];
     typeArguments: [
@@ -296,15 +302,15 @@ export function addCreditor<E extends BcsType<any>>(options: AddCreditorOptions<
     });
 }
 export interface BanArguments<E extends BcsType<any>> {
-    sheet: TransactionArgument;
-    entity: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    entity: RawTransactionArgument<string>;
     Stamp: RawTransactionArgument<E>;
 }
 export interface BanOptions<E extends BcsType<any>> {
     package?: string;
     arguments: BanArguments<E> | [
-        sheet: TransactionArgument,
-        entity: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        entity: RawTransactionArgument<string>,
         Stamp: RawTransactionArgument<E>
     ];
     typeArguments: [
@@ -329,15 +335,15 @@ export function ban<E extends BcsType<any>>(options: BanOptions<E>) {
     });
 }
 export interface UnbanArguments<E extends BcsType<any>> {
-    sheet: TransactionArgument;
-    entity: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
+    entity: RawTransactionArgument<string>;
     Stamp: RawTransactionArgument<E>;
 }
 export interface UnbanOptions<E extends BcsType<any>> {
     package?: string;
     arguments: UnbanArguments<E> | [
-        sheet: TransactionArgument,
-        entity: TransactionArgument,
+        sheet: RawTransactionArgument<string>,
+        entity: RawTransactionArgument<string>,
         Stamp: RawTransactionArgument<E>
     ];
     typeArguments: [
@@ -380,12 +386,12 @@ export function entity(options: EntityOptions) {
     });
 }
 export interface CreditsArguments {
-    sheet: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
 }
 export interface CreditsOptions {
     package?: string;
     arguments: CreditsArguments | [
-        sheet: TransactionArgument
+        sheet: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -407,12 +413,12 @@ export function credits(options: CreditsOptions) {
     });
 }
 export interface DebtsArguments {
-    sheet: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
 }
 export interface DebtsOptions {
     package?: string;
     arguments: DebtsArguments | [
-        sheet: TransactionArgument
+        sheet: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -434,12 +440,12 @@ export function debts(options: DebtsOptions) {
     });
 }
 export interface BlacklistArguments {
-    sheet: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
 }
 export interface BlacklistOptions {
     package?: string;
     arguments: BlacklistArguments | [
-        sheet: TransactionArgument
+        sheet: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -461,12 +467,12 @@ export function blacklist(options: BlacklistOptions) {
     });
 }
 export interface TotalCreditArguments {
-    sheet: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
 }
 export interface TotalCreditOptions {
     package?: string;
     arguments: TotalCreditArguments | [
-        sheet: TransactionArgument
+        sheet: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -488,12 +494,12 @@ export function totalCredit(options: TotalCreditOptions) {
     });
 }
 export interface TotalDebtArguments {
-    sheet: TransactionArgument;
+    sheet: RawTransactionArgument<string>;
 }
 export interface TotalDebtOptions {
     package?: string;
     arguments: TotalDebtArguments | [
-        sheet: TransactionArgument
+        sheet: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -515,12 +521,12 @@ export function totalDebt(options: TotalDebtOptions) {
     });
 }
 export interface LoanValueArguments {
-    loan: TransactionArgument;
+    loan: RawTransactionArgument<string>;
 }
 export interface LoanValueOptions {
     package?: string;
     arguments: LoanValueArguments | [
-        loan: TransactionArgument
+        loan: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -543,12 +549,12 @@ export function loanValue(options: LoanValueOptions) {
     });
 }
 export interface RequirementArguments {
-    req: TransactionArgument;
+    req: RawTransactionArgument<string>;
 }
 export interface RequirementOptions {
     package?: string;
     arguments: RequirementArguments | [
-        req: TransactionArgument
+        req: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -570,12 +576,12 @@ export function requirement(options: RequirementOptions) {
     });
 }
 export interface BalanceArguments {
-    req: TransactionArgument;
+    req: RawTransactionArgument<string>;
 }
 export interface BalanceOptions {
     package?: string;
     arguments: BalanceArguments | [
-        req: TransactionArgument
+        req: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -597,12 +603,12 @@ export function balance(options: BalanceOptions) {
     });
 }
 export interface ShortageArguments {
-    req: TransactionArgument;
+    req: RawTransactionArgument<string>;
 }
 export interface ShortageOptions {
     package?: string;
     arguments: ShortageArguments | [
-        req: TransactionArgument
+        req: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -624,12 +630,12 @@ export function shortage(options: ShortageOptions) {
     });
 }
 export interface PayerDebtsArguments {
-    req: TransactionArgument;
+    req: RawTransactionArgument<string>;
 }
 export interface PayerDebtsOptions {
     package?: string;
     arguments: PayerDebtsArguments | [
-        req: TransactionArgument
+        req: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,

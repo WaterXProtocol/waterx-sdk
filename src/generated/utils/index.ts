@@ -1,27 +1,33 @@
 
 import {
 	bcs,
-	type BcsType,
-	type TypeTag,
+	BcsType,
+	TypeTag,
 	TypeTagSerializer,
 	BcsStruct,
 	BcsEnum,
 	BcsTuple,
 } from '@mysten/sui/bcs';
 import { normalizeSuiAddress } from '@mysten/sui/utils';
-import { type TransactionArgument, isArgument } from '@mysten/sui/transactions';
-import { type ClientWithCoreApi, type SuiClientTypes } from '@mysten/sui/client';
+import { TransactionArgument, isArgument } from '@mysten/sui/transactions';
+import { ClientWithCoreApi, SuiClientTypes } from '@mysten/sui/client';
 
 const MOVE_STDLIB_ADDRESS = normalizeSuiAddress('0x1');
 const SUI_FRAMEWORK_ADDRESS = normalizeSuiAddress('0x2');
 
 export type RawTransactionArgument<T> = T | TransactionArgument;
 
-export type GetOptions<Include extends Omit<SuiClientTypes.ObjectInclude, 'content'> = {}> =
-	SuiClientTypes.GetObjectOptions<Include> & { client: ClientWithCoreApi };
+export interface GetOptions<
+	Include extends Omit<SuiClientTypes.ObjectInclude, 'content'> = {},
+> extends SuiClientTypes.GetObjectOptions<Include> {
+	client: ClientWithCoreApi;
+}
 
-export type GetManyOptions<Include extends Omit<SuiClientTypes.ObjectInclude, 'content'> = {}> =
-	SuiClientTypes.GetObjectsOptions<Include> & { client: ClientWithCoreApi };
+export interface GetManyOptions<
+	Include extends Omit<SuiClientTypes.ObjectInclude, 'content'> = {},
+> extends SuiClientTypes.GetObjectsOptions<Include> {
+	client: ClientWithCoreApi;
+}
 
 export function getPureBcsSchema(typeTag: string | TypeTag): BcsType<any> | null {
 	const parsedTag = typeof typeTag === 'string' ? TypeTagSerializer.parseFromStr(typeTag) : typeTag;
@@ -58,8 +64,7 @@ export function getPureBcsSchema(typeTag: string | TypeTag): BcsType<any> | null
 			}
 
 			if (structTag.module === 'option' && structTag.name === 'Option') {
-				const inner = structTag.typeParams[0];
-				const type = inner ? getPureBcsSchema(inner) : null;
+				const type = getPureBcsSchema(structTag.typeParams[0]);
 				return type ? bcs.option(type) : null;
 			}
 		}
@@ -91,7 +96,7 @@ export function normalizeMoveArguments(
 	const normalizedArgs: TransactionArgument[] = [];
 
 	let index = 0;
-	for (const argType of argTypes) {
+	for (const [i, argType] of argTypes.entries()) {
 		if (argType === '0x2::clock::Clock') {
 			normalizedArgs.push((tx) => tx.object.clock());
 			continue;
@@ -139,20 +144,19 @@ export function normalizeMoveArguments(
 			continue;
 		}
 
-		const bcsType = argType === null ? null : getPureBcsSchema(argType);
+		const type = argTypes[i];
+		const bcsType = type === null ? null : getPureBcsSchema(type);
 
 		if (bcsType) {
 			const bytes = bcsType.serialize(arg as never);
 			normalizedArgs.push((tx) => tx.pure(bytes));
 			continue;
-		}
-
-		if (typeof arg === 'string') {
+		} else if (typeof arg === 'string') {
 			normalizedArgs.push((tx) => tx.object(arg));
 			continue;
 		}
 
-		throw new Error(`Invalid argument ${stringify(arg)} for type ${argType}`);
+		throw new Error(`Invalid argument ${stringify(arg)} for type ${type}`);
 	}
 
 	return normalizedArgs;
@@ -172,10 +176,6 @@ export class MoveStruct<
 			...options,
 			objectIds: [objectId],
 		});
-
-		if (!res) {
-			throw new Error(`No object found for id ${objectId}`);
-		}
 
 		return res;
 	}

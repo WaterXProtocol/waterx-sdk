@@ -3,8 +3,9 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_map from './deps/sui/vec_map.ts';
+import * as vec_map_1 from './deps/sui/vec_map.ts';
 const $moduleName = '@waterx/pyth-rule::pyth_rule';
 export const PythRule = new MoveStruct({ name: `${$moduleName}::PythRule`, fields: {
         dummy_field: bcs.bool()
@@ -14,10 +15,10 @@ export const Config = new MoveStruct({ name: `${$moduleName}::Config`, fields: {
         /** Ticker (e.g. `b"BTC_USD".to_string()`) → Pyth feed identifier bytes. */
         identifier_map: vec_map.VecMap(bcs.string(), bcs.vector(bcs.u8())),
         /** Per-ticker timestamp tolerance in seconds. Falls back to DEFAULT_TOLERANCE_SEC. */
-        tolerance_sec_map: vec_map.VecMap(bcs.string(), bcs.u64())
+        tolerance_sec_map: vec_map_1.VecMap(bcs.string(), bcs.u64())
     } });
 export interface FeedArguments {
-    collector: TransactionArgument;
+    collector: RawTransactionArgument<string>;
     config: RawTransactionArgument<string>;
     pythState: RawTransactionArgument<string>;
     pythPriceInfo: RawTransactionArgument<string>;
@@ -25,7 +26,7 @@ export interface FeedArguments {
 export interface FeedOptions {
     package?: string;
     arguments: FeedArguments | [
-        collector: TransactionArgument,
+        collector: RawTransactionArgument<string>,
         config: RawTransactionArgument<string>,
         pythState: RawTransactionArgument<string>,
         pythPriceInfo: RawTransactionArgument<string>
@@ -57,7 +58,7 @@ export interface SetIdentifierArguments {
     config: RawTransactionArgument<string>;
     Cap: RawTransactionArgument<string>;
     symbol: RawTransactionArgument<string>;
-    identifier: RawTransactionArgument<Array<number>>;
+    identifier: RawTransactionArgument<number[]>;
 }
 export interface SetIdentifierOptions {
     package?: string;
@@ -65,7 +66,7 @@ export interface SetIdentifierOptions {
         config: RawTransactionArgument<string>,
         Cap: RawTransactionArgument<string>,
         symbol: RawTransactionArgument<string>,
-        identifier: RawTransactionArgument<Array<number>>
+        identifier: RawTransactionArgument<number[]>
     ];
 }
 export function setIdentifier(options: SetIdentifierOptions) {

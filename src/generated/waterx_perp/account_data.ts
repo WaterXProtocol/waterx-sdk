@@ -24,8 +24,9 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_map from './deps/sui/vec_map.ts';
+import * as vec_map_1 from './deps/sui/vec_map.ts';
 const $moduleName = '@waterx/perp::account_data';
 export const WaterXPerp = new MoveStruct({ name: `${$moduleName}::WaterXPerp`, fields: {
         dummy_field: bcs.bool()
@@ -34,7 +35,7 @@ export const WaterXPerpData = new MoveStruct({ name: `${$moduleName}::WaterXPerp
         /** Position IDs keyed by Market ID. */
         positions: vec_map.VecMap(bcs.Address, bcs.vector(bcs.u64())),
         /** Order IDs keyed by Market ID. */
-        orders: vec_map.VecMap(bcs.Address, bcs.vector(bcs.u64()))
+        orders: vec_map_1.VecMap(bcs.Address, bcs.vector(bcs.u64()))
     } });
 export interface PermOpenPositionOptions {
     package?: string;
@@ -180,12 +181,12 @@ export function witness(options: WitnessOptions = {}) {
     });
 }
 export interface AccountPositionsArguments {
-    data: TransactionArgument;
+    data: RawTransactionArgument<string>;
 }
 export interface AccountPositionsOptions {
     package?: string;
     arguments: AccountPositionsArguments | [
-        data: TransactionArgument
+        data: RawTransactionArgument<string>
     ];
 }
 export function accountPositions(options: AccountPositionsOptions) {
@@ -202,12 +203,12 @@ export function accountPositions(options: AccountPositionsOptions) {
     });
 }
 export interface AccountOrdersArguments {
-    data: TransactionArgument;
+    data: RawTransactionArgument<string>;
 }
 export interface AccountOrdersOptions {
     package?: string;
     arguments: AccountOrdersArguments | [
-        data: TransactionArgument
+        data: RawTransactionArgument<string>
     ];
 }
 export function accountOrders(options: AccountOrdersOptions) {

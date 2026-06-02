@@ -3,8 +3,9 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as balance from './deps/sui/balance.ts';
+import * as balance_1 from './deps/sui/balance.ts';
 const $moduleName = '@waterx/pyth-sponsor-rule::pyth_sponsor_rule';
 export const PythSponsorRule = new MoveStruct({ name: `${$moduleName}::PythSponsorRule`, fields: {
         dummy_field: bcs.bool()
@@ -14,7 +15,7 @@ export const PythSponsor = new MoveStruct({ name: `${$moduleName}::PythSponsor`,
         balance: balance.Balance
     } });
 export const Fund = new MoveStruct({ name: `${$moduleName}::Fund`, fields: {
-        balance: balance.Balance
+        balance: balance_1.Balance
     } });
 export interface RequestArguments {
     self: RawTransactionArgument<string>;
@@ -39,12 +40,12 @@ export function request(options: RequestOptions) {
     });
 }
 export interface SplitArguments {
-    fund: TransactionArgument;
+    fund: RawTransactionArgument<string>;
 }
 export interface SplitOptions {
     package?: string;
     arguments: SplitArguments | [
-        fund: TransactionArgument
+        fund: RawTransactionArgument<string>
     ];
 }
 export function split(options: SplitOptions) {
@@ -62,15 +63,15 @@ export function split(options: SplitOptions) {
 }
 export interface ReimburseArguments {
     self: RawTransactionArgument<string>;
-    fund: TransactionArgument;
-    tradingReq: TransactionArgument;
+    fund: RawTransactionArgument<string>;
+    tradingReq: RawTransactionArgument<string>;
 }
 export interface ReimburseOptions {
     package?: string;
     arguments: ReimburseArguments | [
         self: RawTransactionArgument<string>,
-        fund: TransactionArgument,
-        tradingReq: TransactionArgument
+        fund: RawTransactionArgument<string>,
+        tradingReq: RawTransactionArgument<string>
     ];
     typeArguments: [
         string

@@ -34,20 +34,20 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 const $moduleName = '@waterx/account::direct_rule';
 export const DirectRule = new MoveStruct({ name: `${$moduleName}::DirectRule`, fields: {
         dummy_field: bcs.bool()
     } });
 export interface ConsumeDepositDirectArguments {
     registry: RawTransactionArgument<string>;
-    req: TransactionArgument;
+    req: RawTransactionArgument<string>;
 }
 export interface ConsumeDepositDirectOptions {
     package?: string;
     arguments: ConsumeDepositDirectArguments | [
         registry: RawTransactionArgument<string>,
-        req: TransactionArgument
+        req: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -74,13 +74,13 @@ export function consumeDepositDirect(options: ConsumeDepositDirectOptions) {
 }
 export interface ConsumeWithdrawDirectArguments {
     registry: RawTransactionArgument<string>;
-    req: TransactionArgument;
+    req: RawTransactionArgument<string>;
 }
 export interface ConsumeWithdrawDirectOptions {
     package?: string;
     arguments: ConsumeWithdrawDirectArguments | [
         registry: RawTransactionArgument<string>,
-        req: TransactionArgument
+        req: RawTransactionArgument<string>
     ];
     typeArguments: [
         string

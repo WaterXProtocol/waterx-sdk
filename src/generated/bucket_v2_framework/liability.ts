@@ -7,7 +7,7 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 const $moduleName = '@bucket/framework::liability';
 export const Credit = new MoveStruct({ name: `${$moduleName}::Credit<phantom T>`, fields: {
         value: bcs.u64()
@@ -77,12 +77,12 @@ export function zeroDebt(options: ZeroDebtOptions) {
     });
 }
 export interface DestroyZeroCreditArguments {
-    credit: TransactionArgument;
+    credit: RawTransactionArgument<string>;
 }
 export interface DestroyZeroCreditOptions {
     package?: string;
     arguments: DestroyZeroCreditArguments | [
-        credit: TransactionArgument
+        credit: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -103,12 +103,12 @@ export function destroyZeroCredit(options: DestroyZeroCreditOptions) {
     });
 }
 export interface DestroyZeroDebtArguments {
-    debt: TransactionArgument;
+    debt: RawTransactionArgument<string>;
 }
 export interface DestroyZeroDebtOptions {
     package?: string;
     arguments: DestroyZeroDebtArguments | [
-        debt: TransactionArgument
+        debt: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -129,14 +129,14 @@ export function destroyZeroDebt(options: DestroyZeroDebtOptions) {
     });
 }
 export interface AddCreditArguments {
-    self: TransactionArgument;
-    credit: TransactionArgument;
+    self: RawTransactionArgument<string>;
+    credit: RawTransactionArgument<string>;
 }
 export interface AddCreditOptions {
     package?: string;
     arguments: AddCreditArguments | [
-        self: TransactionArgument,
-        credit: TransactionArgument
+        self: RawTransactionArgument<string>,
+        credit: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -158,14 +158,14 @@ export function addCredit(options: AddCreditOptions) {
     });
 }
 export interface AddDebtArguments {
-    self: TransactionArgument;
-    debt: TransactionArgument;
+    self: RawTransactionArgument<string>;
+    debt: RawTransactionArgument<string>;
 }
 export interface AddDebtOptions {
     package?: string;
     arguments: AddDebtArguments | [
-        self: TransactionArgument,
-        debt: TransactionArgument
+        self: RawTransactionArgument<string>,
+        debt: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -187,14 +187,14 @@ export function addDebt(options: AddDebtOptions) {
     });
 }
 export interface AutoSettleArguments {
-    credit: TransactionArgument;
-    debt: TransactionArgument;
+    credit: RawTransactionArgument<string>;
+    debt: RawTransactionArgument<string>;
 }
 export interface AutoSettleOptions {
     package?: string;
     arguments: AutoSettleArguments | [
-        credit: TransactionArgument,
-        debt: TransactionArgument
+        credit: RawTransactionArgument<string>,
+        debt: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -216,14 +216,14 @@ export function autoSettle(options: AutoSettleOptions) {
     });
 }
 export interface SettleDebtArguments {
-    credit: TransactionArgument;
-    debt: TransactionArgument;
+    credit: RawTransactionArgument<string>;
+    debt: RawTransactionArgument<string>;
 }
 export interface SettleDebtOptions {
     package?: string;
     arguments: SettleDebtArguments | [
-        credit: TransactionArgument,
-        debt: TransactionArgument
+        credit: RawTransactionArgument<string>,
+        debt: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -245,14 +245,14 @@ export function settleDebt(options: SettleDebtOptions) {
     });
 }
 export interface SettleCreditArguments {
-    debt: TransactionArgument;
-    credit: TransactionArgument;
+    debt: RawTransactionArgument<string>;
+    credit: RawTransactionArgument<string>;
 }
 export interface SettleCreditOptions {
     package?: string;
     arguments: SettleCreditArguments | [
-        debt: TransactionArgument,
-        credit: TransactionArgument
+        debt: RawTransactionArgument<string>,
+        credit: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -274,12 +274,12 @@ export function settleCredit(options: SettleCreditOptions) {
     });
 }
 export interface CreditValueArguments {
-    credit: TransactionArgument;
+    credit: RawTransactionArgument<string>;
 }
 export interface CreditValueOptions {
     package?: string;
     arguments: CreditValueArguments | [
-        credit: TransactionArgument
+        credit: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -300,12 +300,12 @@ export function creditValue(options: CreditValueOptions) {
     });
 }
 export interface DebtValueArguments {
-    debt: TransactionArgument;
+    debt: RawTransactionArgument<string>;
 }
 export interface DebtValueOptions {
     package?: string;
     arguments: DebtValueArguments | [
-        debt: TransactionArgument
+        debt: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -326,12 +326,12 @@ export function debtValue(options: DebtValueOptions) {
     });
 }
 export interface DestroyCreditForTestingArguments {
-    credit: TransactionArgument;
+    credit: RawTransactionArgument<string>;
 }
 export interface DestroyCreditForTestingOptions {
     package?: string;
     arguments: DestroyCreditForTestingArguments | [
-        credit: TransactionArgument
+        credit: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -352,12 +352,12 @@ export function destroyCreditForTesting(options: DestroyCreditForTestingOptions)
     });
 }
 export interface DestroyDebtForTestingArguments {
-    debt: TransactionArgument;
+    debt: RawTransactionArgument<string>;
 }
 export interface DestroyDebtForTestingOptions {
     package?: string;
     arguments: DestroyDebtForTestingArguments | [
-        debt: TransactionArgument
+        debt: RawTransactionArgument<string>
     ];
     typeArguments: [
         string

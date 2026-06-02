@@ -11,13 +11,24 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as type_name from './deps/std/type_name.ts';
 import * as float from './deps/bucket_v2_framework/float.ts';
+import * as float_1 from './deps/bucket_v2_framework/float.ts';
+import * as float_2 from './deps/bucket_v2_framework/float.ts';
+import * as float_3 from './deps/bucket_v2_framework/float.ts';
+import * as float_4 from './deps/bucket_v2_framework/float.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as coin from './deps/sui/coin.ts';
+import * as type_name_1 from './deps/std/type_name.ts';
+import * as float_5 from './deps/bucket_v2_framework/float.ts';
 import * as keyed_big_vector from './keyed_big_vector.ts';
 import * as balance from './deps/sui/balance.ts';
+import * as type_name_2 from './deps/std/type_name.ts';
+import * as keyed_big_vector_1 from './keyed_big_vector.ts';
+import * as float_6 from './deps/bucket_v2_framework/float.ts';
+import * as float_7 from './deps/bucket_v2_framework/float.ts';
+import * as float_8 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/perp::lp_pool';
 export const TokenPoolInfo = new MoveStruct({ name: `${$moduleName}::TokenPoolInfo`, fields: {
         /** Token type. */
@@ -45,9 +56,9 @@ export const TokenPoolInfo = new MoveStruct({ name: `${$moduleName}::TokenPoolIn
         /** Per-interval borrow rate at utilization 0 (Float, 1e9 scale). */
         basic_borrow_rate_0: float.Float,
         /** Per-interval borrow rate at utilization threshold_0 (Float). */
-        basic_borrow_rate_1: float.Float,
+        basic_borrow_rate_1: float_1.Float,
         /** Per-interval borrow rate at utilization threshold_1 (Float). */
-        basic_borrow_rate_2: float.Float,
+        basic_borrow_rate_2: float_2.Float,
         utilization_threshold_0_bps: bcs.u64(),
         utilization_threshold_1_bps: bcs.u64(),
         borrow_interval_ms: bcs.u64(),
@@ -55,13 +66,13 @@ export const TokenPoolInfo = new MoveStruct({ name: `${$moduleName}::TokenPoolIn
         /** Liquidity amount in token units. */
         liquidity_amount: bcs.u64(),
         /** Value in USD. */
-        value_usd: float.Float,
+        value_usd: float_3.Float,
         /** Reserved amount for open positions. */
         reserved_amount: bcs.u64(),
         /** Last borrow rate update timestamp. */
         last_borrow_timestamp: bcs.u64(),
         /** Cumulative borrow rate as Float (1e9 scale). */
-        cumulative_borrow_rate: float.Float,
+        cumulative_borrow_rate: float_4.Float,
         /** Last timestamp when this token price was refreshed via oracle. */
         last_price_refresh_timestamp: bcs.u64()
     } });
@@ -76,11 +87,11 @@ export const WlpPool = new MoveStruct({ name: `${$moduleName}::WlpPool<phantom L
         /** LP token decimal. */
         lp_decimal: bcs.u8(),
         /** Supported token types. */
-        token_types: bcs.vector(type_name.TypeName),
+        token_types: bcs.vector(type_name_1.TypeName),
         /** Token pool configs and states. */
         token_pools: bcs.vector(TokenPoolInfo),
         /** Total value locked in USD (Float). */
-        tvl_usd: float.Float,
+        tvl_usd: float_5.Float,
         /** Redeem requests. */
         redeem_requests: keyed_big_vector.KeyedBigVector,
         /** Next redeem request ID. */
@@ -92,7 +103,7 @@ export const RedeemRequest = new MoveStruct({ name: `${$moduleName}::RedeemReque
         /** LP balance held pending settlement. */
         lp_balance: balance.Balance,
         /** Requested token type to receive. */
-        token_type: type_name.TypeName,
+        token_type: type_name_2.TypeName,
         /** Request timestamp. */
         request_timestamp: bcs.u64()
     } });
@@ -101,17 +112,17 @@ export const WlpAum = new MoveStruct({ name: `${$moduleName}::WlpAum<phantom LP_
         /** WLP pool this AUM object prices. */
         pool_id: bcs.Address,
         /** Registered market PnL contributions keyed by market ID. */
-        market_contributions: keyed_big_vector.KeyedBigVector,
+        market_contributions: keyed_big_vector_1.KeyedBigVector,
         /** Sum of registered markets where traders are in profit. */
-        total_trader_profit_usd: float.Float,
+        total_trader_profit_usd: float_6.Float,
         /** Sum of registered markets where traders are in loss. */
-        total_trader_loss_usd: float.Float
+        total_trader_loss_usd: float_7.Float
     } });
 export const AumMarketContribution = new MoveStruct({ name: `${$moduleName}::AumMarketContribution`, fields: {
         /** Whether the market's aggregate unrealized PnL is trader profit. */
         is_trader_profit: bcs.bool(),
         /** Absolute aggregate unrealized PnL in USD. */
-        pnl_usd: float.Float,
+        pnl_usd: float_8.Float,
         /** Timestamp of the oracle price used to refresh this contribution. */
         last_refresh_timestamp: bcs.u64()
     } });
@@ -458,7 +469,7 @@ export interface MintWlpArguments {
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     aum: RawTransactionArgument<string>;
-    senderRequest: TransactionArgument;
+    senderRequest: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     depositAmount: RawTransactionArgument<number | bigint>;
     minLpAmount: RawTransactionArgument<number | bigint>;
@@ -471,7 +482,7 @@ export interface MintWlpOptions {
         globalConfig: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         aum: RawTransactionArgument<string>,
-        senderRequest: TransactionArgument,
+        senderRequest: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         depositAmount: RawTransactionArgument<number | bigint>,
         minLpAmount: RawTransactionArgument<number | bigint>,
@@ -515,7 +526,7 @@ export interface RequestRedeemArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: TransactionArgument;
+    senderRequest: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     lpAmount: RawTransactionArgument<number | bigint>;
 }
@@ -525,7 +536,7 @@ export interface RequestRedeemOptions {
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: TransactionArgument,
+        senderRequest: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         lpAmount: RawTransactionArgument<number | bigint>
     ];
@@ -563,10 +574,10 @@ export function requestRedeem(options: RequestRedeemOptions) {
 export interface MintWlpWithPricingTvlArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
-    deposit: TransactionArgument;
+    deposit: RawTransactionArgument<string>;
     oracle: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    pricingTvlUsd: TransactionArgument;
+    pricingTvlUsd: RawTransactionArgument<string>;
     minLpAmount: RawTransactionArgument<number | bigint>;
     accountId: RawTransactionArgument<string>;
 }
@@ -575,10 +586,10 @@ export interface MintWlpWithPricingTvlOptions {
     arguments: MintWlpWithPricingTvlArguments | [
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
-        deposit: TransactionArgument,
+        deposit: RawTransactionArgument<string>,
         oracle: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        pricingTvlUsd: TransactionArgument,
+        pricingTvlUsd: RawTransactionArgument<string>,
         minLpAmount: RawTransactionArgument<number | bigint>,
         accountId: RawTransactionArgument<string>
     ];
@@ -613,7 +624,7 @@ export interface DoRequestRedeemArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
     recipientAccountId: RawTransactionArgument<string>;
-    lpBalance: TransactionArgument;
+    lpBalance: RawTransactionArgument<string>;
     expectedLpAmount: RawTransactionArgument<number | bigint>;
 }
 export interface DoRequestRedeemOptions {
@@ -622,7 +633,7 @@ export interface DoRequestRedeemOptions {
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
         recipientAccountId: RawTransactionArgument<string>,
-        lpBalance: TransactionArgument,
+        lpBalance: RawTransactionArgument<string>,
         expectedLpAmount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -653,7 +664,7 @@ export interface CancelRedeemArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: TransactionArgument;
+    senderRequest: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
 }
 export interface CancelRedeemOptions {
@@ -662,7 +673,7 @@ export interface CancelRedeemOptions {
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: TransactionArgument,
+        senderRequest: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -736,7 +747,7 @@ export interface RejectRedeemByRedeemOperatorArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    operatorRequest: TransactionArgument;
+    operatorRequest: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
 }
 export interface RejectRedeemByRedeemOperatorOptions {
@@ -745,7 +756,7 @@ export interface RejectRedeemByRedeemOperatorOptions {
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        operatorRequest: TransactionArgument,
+        operatorRequest: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -778,7 +789,7 @@ export interface SettleRedeemArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    operatorRequest: TransactionArgument;
+    operatorRequest: RawTransactionArgument<string>;
     aum: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
     oracle: RawTransactionArgument<string>;
@@ -789,7 +800,7 @@ export interface SettleRedeemOptions {
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        operatorRequest: TransactionArgument,
+        operatorRequest: RawTransactionArgument<string>,
         aum: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>,
         oracle: RawTransactionArgument<string>
@@ -831,7 +842,7 @@ export interface SettleRedeemWithPricingTvlArguments {
     requestId: RawTransactionArgument<number | bigint>;
     oracle: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    pricingTvlUsd: TransactionArgument;
+    pricingTvlUsd: RawTransactionArgument<string>;
 }
 export interface SettleRedeemWithPricingTvlOptions {
     package?: string;
@@ -841,7 +852,7 @@ export interface SettleRedeemWithPricingTvlOptions {
         requestId: RawTransactionArgument<number | bigint>,
         oracle: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        pricingTvlUsd: TransactionArgument
+        pricingTvlUsd: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -1090,12 +1101,12 @@ export function aumMarketContributionByIndex(options: AumMarketContributionByInd
     });
 }
 export interface AumContributionIsTraderProfitArguments {
-    c: TransactionArgument;
+    c: RawTransactionArgument<string>;
 }
 export interface AumContributionIsTraderProfitOptions {
     package?: string;
     arguments: AumContributionIsTraderProfitArguments | [
-        c: TransactionArgument
+        c: RawTransactionArgument<string>
     ];
 }
 export function aumContributionIsTraderProfit(options: AumContributionIsTraderProfitOptions) {
@@ -1112,12 +1123,12 @@ export function aumContributionIsTraderProfit(options: AumContributionIsTraderPr
     });
 }
 export interface AumContributionPnlUsdArguments {
-    c: TransactionArgument;
+    c: RawTransactionArgument<string>;
 }
 export interface AumContributionPnlUsdOptions {
     package?: string;
     arguments: AumContributionPnlUsdArguments | [
-        c: TransactionArgument
+        c: RawTransactionArgument<string>
     ];
 }
 export function aumContributionPnlUsd(options: AumContributionPnlUsdOptions) {
@@ -1134,12 +1145,12 @@ export function aumContributionPnlUsd(options: AumContributionPnlUsdOptions) {
     });
 }
 export interface AumContributionLastRefreshTimestampArguments {
-    c: TransactionArgument;
+    c: RawTransactionArgument<string>;
 }
 export interface AumContributionLastRefreshTimestampOptions {
     package?: string;
     arguments: AumContributionLastRefreshTimestampArguments | [
-        c: TransactionArgument
+        c: RawTransactionArgument<string>
     ];
 }
 export function aumContributionLastRefreshTimestamp(options: AumContributionLastRefreshTimestampOptions) {
@@ -1160,7 +1171,7 @@ export interface RegisterMarketAumArguments {
     Cap: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     isTraderProfit: RawTransactionArgument<boolean>;
-    pnlUsd: TransactionArgument;
+    pnlUsd: RawTransactionArgument<string>;
 }
 export interface RegisterMarketAumOptions {
     package?: string;
@@ -1169,7 +1180,7 @@ export interface RegisterMarketAumOptions {
         Cap: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         isTraderProfit: RawTransactionArgument<boolean>,
-        pnlUsd: TransactionArgument
+        pnlUsd: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1199,7 +1210,7 @@ export interface RefreshMarketAumArguments {
     aum: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     isTraderProfit: RawTransactionArgument<boolean>;
-    pnlUsd: TransactionArgument;
+    pnlUsd: RawTransactionArgument<string>;
 }
 export interface RefreshMarketAumOptions {
     package?: string;
@@ -1207,7 +1218,7 @@ export interface RefreshMarketAumOptions {
         aum: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         isTraderProfit: RawTransactionArgument<boolean>,
-        pnlUsd: TransactionArgument
+        pnlUsd: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1268,13 +1279,13 @@ export function aumEquityUsd(options: AumEquityUsdOptions) {
 }
 export interface CumulativeBorrowRateArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface CumulativeBorrowRateOptions {
     package?: string;
     arguments: CumulativeBorrowRateArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1326,14 +1337,14 @@ export function tvlUsd(options: TvlUsdOptions) {
 export interface CheckOiCapArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
-    totalOiUsd: TransactionArgument;
+    totalOiUsd: RawTransactionArgument<string>;
 }
 export interface CheckOiCapOptions {
     package?: string;
     arguments: CheckOiCapArguments | [
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
-        totalOiUsd: TransactionArgument
+        totalOiUsd: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1358,14 +1369,14 @@ export function checkOiCap(options: CheckOiCapOptions) {
 }
 export interface CheckReserveValidArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
     additionalReserve: RawTransactionArgument<number | bigint>;
 }
 export interface CheckReserveValidOptions {
     package?: string;
     arguments: CheckReserveValidArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument,
+        tokenType: RawTransactionArgument<string>,
         additionalReserve: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -1391,14 +1402,14 @@ export function checkReserveValid(options: CheckReserveValidOptions) {
 }
 export interface IncreaseReserveArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
     amount: RawTransactionArgument<number | bigint>;
 }
 export interface IncreaseReserveOptions {
     package?: string;
     arguments: IncreaseReserveArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument,
+        tokenType: RawTransactionArgument<string>,
         amount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -1424,14 +1435,14 @@ export function increaseReserve(options: IncreaseReserveOptions) {
 }
 export interface DecreaseReserveArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
     amount: RawTransactionArgument<number | bigint>;
 }
 export interface DecreaseReserveOptions {
     package?: string;
     arguments: DecreaseReserveArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument,
+        tokenType: RawTransactionArgument<string>,
         amount: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -1458,16 +1469,16 @@ export function decreaseReserve(options: DecreaseReserveOptions) {
 export interface PutCollateralArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
-    collateral: TransactionArgument;
-    price: TransactionArgument;
+    collateral: RawTransactionArgument<string>;
+    price: RawTransactionArgument<string>;
 }
 export interface PutCollateralOptions {
     package?: string;
     arguments: PutCollateralArguments | [
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
-        collateral: TransactionArgument,
-        price: TransactionArgument
+        collateral: RawTransactionArgument<string>,
+        price: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -1496,7 +1507,7 @@ export interface RequestCollateralArguments {
     pool: RawTransactionArgument<string>;
     globalConfig: RawTransactionArgument<string>;
     amount: RawTransactionArgument<number | bigint>;
-    price: TransactionArgument;
+    price: RawTransactionArgument<string>;
 }
 export interface RequestCollateralOptions {
     package?: string;
@@ -1504,7 +1515,7 @@ export interface RequestCollateralOptions {
         pool: RawTransactionArgument<string>,
         globalConfig: RawTransactionArgument<string>,
         amount: RawTransactionArgument<number | bigint>,
-        price: TransactionArgument
+        price: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -1531,13 +1542,13 @@ export function requestCollateral(options: RequestCollateralOptions) {
 }
 export interface TokenPoolInfoArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface TokenPoolInfoOptions {
     package?: string;
     arguments: TokenPoolInfoArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1561,13 +1572,13 @@ export function tokenPoolInfo(options: TokenPoolInfoOptions) {
 }
 export interface TokenDecimalArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface TokenDecimalOptions {
     package?: string;
     arguments: TokenDecimalArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -1873,12 +1884,12 @@ export function borrowTokenPoolByIndex(options: BorrowTokenPoolByIndexOptions) {
     });
 }
 export interface TpiTokenTypeArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiTokenTypeOptions {
     package?: string;
     arguments: TpiTokenTypeArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 /** TokenPoolInfo field accessors. */
@@ -1896,12 +1907,12 @@ export function tpiTokenType(options: TpiTokenTypeOptions) {
     });
 }
 export interface TpiTickerArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiTickerOptions {
     package?: string;
     arguments: TpiTickerArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiTicker(options: TpiTickerOptions) {
@@ -1918,12 +1929,12 @@ export function tpiTicker(options: TpiTickerOptions) {
     });
 }
 export interface TpiTokenDecimalArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiTokenDecimalOptions {
     package?: string;
     arguments: TpiTokenDecimalArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiTokenDecimal(options: TpiTokenDecimalOptions) {
@@ -1940,12 +1951,12 @@ export function tpiTokenDecimal(options: TpiTokenDecimalOptions) {
     });
 }
 export interface TpiLiquidityAmountArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiLiquidityAmountOptions {
     package?: string;
     arguments: TpiLiquidityAmountArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiLiquidityAmount(options: TpiLiquidityAmountOptions) {
@@ -1962,12 +1973,12 @@ export function tpiLiquidityAmount(options: TpiLiquidityAmountOptions) {
     });
 }
 export interface TpiReservedAmountArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiReservedAmountOptions {
     package?: string;
     arguments: TpiReservedAmountArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiReservedAmount(options: TpiReservedAmountOptions) {
@@ -1984,12 +1995,12 @@ export function tpiReservedAmount(options: TpiReservedAmountOptions) {
     });
 }
 export interface TpiValueUsdArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiValueUsdOptions {
     package?: string;
     arguments: TpiValueUsdArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiValueUsd(options: TpiValueUsdOptions) {
@@ -2006,12 +2017,12 @@ export function tpiValueUsd(options: TpiValueUsdOptions) {
     });
 }
 export interface TpiTargetWeightBpsArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiTargetWeightBpsOptions {
     package?: string;
     arguments: TpiTargetWeightBpsArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiTargetWeightBps(options: TpiTargetWeightBpsOptions) {
@@ -2028,12 +2039,12 @@ export function tpiTargetWeightBps(options: TpiTargetWeightBpsOptions) {
     });
 }
 export interface TpiMintFeeBpsArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiMintFeeBpsOptions {
     package?: string;
     arguments: TpiMintFeeBpsArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiMintFeeBps(options: TpiMintFeeBpsOptions) {
@@ -2050,12 +2061,12 @@ export function tpiMintFeeBps(options: TpiMintFeeBpsOptions) {
     });
 }
 export interface TpiBurnFeeBpsArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiBurnFeeBpsOptions {
     package?: string;
     arguments: TpiBurnFeeBpsArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiBurnFeeBps(options: TpiBurnFeeBpsOptions) {
@@ -2072,12 +2083,12 @@ export function tpiBurnFeeBps(options: TpiBurnFeeBpsOptions) {
     });
 }
 export interface TpiCumulativeBorrowRateArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiCumulativeBorrowRateOptions {
     package?: string;
     arguments: TpiCumulativeBorrowRateArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiCumulativeBorrowRate(options: TpiCumulativeBorrowRateOptions) {
@@ -2094,12 +2105,12 @@ export function tpiCumulativeBorrowRate(options: TpiCumulativeBorrowRateOptions)
     });
 }
 export interface TpiLastPriceRefreshTimestampArguments {
-    tp: TransactionArgument;
+    tp: RawTransactionArgument<string>;
 }
 export interface TpiLastPriceRefreshTimestampOptions {
     package?: string;
     arguments: TpiLastPriceRefreshTimestampArguments | [
-        tp: TransactionArgument
+        tp: RawTransactionArgument<string>
     ];
 }
 export function tpiLastPriceRefreshTimestamp(options: TpiLastPriceRefreshTimestampOptions) {
@@ -2116,12 +2127,12 @@ export function tpiLastPriceRefreshTimestamp(options: TpiLastPriceRefreshTimesta
     });
 }
 export interface RedeemRecipientAccountIdArguments {
-    r: TransactionArgument;
+    r: RawTransactionArgument<string>;
 }
 export interface RedeemRecipientAccountIdOptions {
     package?: string;
     arguments: RedeemRecipientAccountIdArguments | [
-        r: TransactionArgument
+        r: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2142,12 +2153,12 @@ export function redeemRecipientAccountId(options: RedeemRecipientAccountIdOption
     });
 }
 export interface RedeemLpAmountArguments {
-    r: TransactionArgument;
+    r: RawTransactionArgument<string>;
 }
 export interface RedeemLpAmountOptions {
     package?: string;
     arguments: RedeemLpAmountArguments | [
-        r: TransactionArgument
+        r: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2168,12 +2179,12 @@ export function redeemLpAmount(options: RedeemLpAmountOptions) {
     });
 }
 export interface RedeemTokenTypeArguments {
-    r: TransactionArgument;
+    r: RawTransactionArgument<string>;
 }
 export interface RedeemTokenTypeOptions {
     package?: string;
     arguments: RedeemTokenTypeArguments | [
-        r: TransactionArgument
+        r: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2194,12 +2205,12 @@ export function redeemTokenType(options: RedeemTokenTypeOptions) {
     });
 }
 export interface RedeemRequestTimestampArguments {
-    r: TransactionArgument;
+    r: RawTransactionArgument<string>;
 }
 export interface RedeemRequestTimestampOptions {
     package?: string;
     arguments: RedeemRequestTimestampArguments | [
-        r: TransactionArgument
+        r: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2221,13 +2232,13 @@ export function redeemRequestTimestamp(options: RedeemRequestTimestampOptions) {
 }
 export interface FindTokenPoolIndexArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface FindTokenPoolIndexOptions {
     package?: string;
     arguments: FindTokenPoolIndexArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2250,13 +2261,13 @@ export function findTokenPoolIndex(options: FindTokenPoolIndexOptions) {
 }
 export interface BorrowTokenPoolArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface BorrowTokenPoolOptions {
     package?: string;
     arguments: BorrowTokenPoolArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2279,13 +2290,13 @@ export function borrowTokenPool(options: BorrowTokenPoolOptions) {
 }
 export interface BorrowMutTokenPoolArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface BorrowMutTokenPoolOptions {
     package?: string;
     arguments: BorrowMutTokenPoolArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2308,14 +2319,14 @@ export function borrowMutTokenPool(options: BorrowMutTokenPoolOptions) {
 }
 export interface RefreshTokenValueWithPriceArguments {
     pool: RawTransactionArgument<string>;
-    price: TransactionArgument;
+    price: RawTransactionArgument<string>;
     refreshTimestamp: RawTransactionArgument<number | bigint>;
 }
 export interface RefreshTokenValueWithPriceOptions {
     package?: string;
     arguments: RefreshTokenValueWithPriceArguments | [
         pool: RawTransactionArgument<string>,
-        price: TransactionArgument,
+        price: RawTransactionArgument<string>,
         refreshTimestamp: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -2341,13 +2352,13 @@ export function refreshTokenValueWithPrice(options: RefreshTokenValueWithPriceOp
 }
 export interface AddAumContributionArguments {
     aum: RawTransactionArgument<string>;
-    contribution: TransactionArgument;
+    contribution: RawTransactionArgument<string>;
 }
 export interface AddAumContributionOptions {
     package?: string;
     arguments: AddAumContributionArguments | [
         aum: RawTransactionArgument<string>,
-        contribution: TransactionArgument
+        contribution: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2370,13 +2381,13 @@ export function addAumContribution(options: AddAumContributionOptions) {
 }
 export interface RemoveAumContributionArguments {
     aum: RawTransactionArgument<string>;
-    contribution: TransactionArgument;
+    contribution: RawTransactionArgument<string>;
 }
 export interface RemoveAumContributionOptions {
     package?: string;
     arguments: RemoveAumContributionArguments | [
         aum: RawTransactionArgument<string>,
-        contribution: TransactionArgument
+        contribution: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2485,13 +2496,13 @@ export function assertRedeemAllowed(options: AssertRedeemAllowedOptions) {
 }
 export interface AssertTokenRedeemAllowedArguments {
     pool: RawTransactionArgument<string>;
-    tokenType: TransactionArgument;
+    tokenType: RawTransactionArgument<string>;
 }
 export interface AssertTokenRedeemAllowedOptions {
     package?: string;
     arguments: AssertTokenRedeemAllowedArguments | [
         pool: RawTransactionArgument<string>,
-        tokenType: TransactionArgument
+        tokenType: RawTransactionArgument<string>
     ];
     typeArguments: [
         string
@@ -2569,7 +2580,7 @@ export function takeRedeemRequest(options: TakeRedeemRequestOptions) {
 }
 export interface ReturnRejectedRedeemRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
-    request: TransactionArgument;
+    request: RawTransactionArgument<string>;
     operator: RawTransactionArgument<string>;
     requestId: RawTransactionArgument<number | bigint>;
 }
@@ -2577,7 +2588,7 @@ export interface ReturnRejectedRedeemRequestOptions {
     package?: string;
     arguments: ReturnRejectedRedeemRequestArguments | [
         wxaRegistry: RawTransactionArgument<string>,
-        request: TransactionArgument,
+        request: RawTransactionArgument<string>,
         operator: RawTransactionArgument<string>,
         requestId: RawTransactionArgument<number | bigint>
     ];
@@ -2603,9 +2614,9 @@ export function returnRejectedRedeemRequest(options: ReturnRejectedRedeemRequest
     });
 }
 export interface CalculateDynamicFeeArguments {
-    tokenValueUsd: TransactionArgument;
-    tvlUsd: TransactionArgument;
-    operationValueUsd: TransactionArgument;
+    tokenValueUsd: RawTransactionArgument<string>;
+    tvlUsd: RawTransactionArgument<string>;
+    operationValueUsd: RawTransactionArgument<string>;
     targetWeightBps: RawTransactionArgument<number | bigint>;
     baseFeeBps: RawTransactionArgument<number | bigint>;
     isDeposit: RawTransactionArgument<boolean>;
@@ -2613,9 +2624,9 @@ export interface CalculateDynamicFeeArguments {
 export interface CalculateDynamicFeeOptions {
     package?: string;
     arguments: CalculateDynamicFeeArguments | [
-        tokenValueUsd: TransactionArgument,
-        tvlUsd: TransactionArgument,
-        operationValueUsd: TransactionArgument,
+        tokenValueUsd: RawTransactionArgument<string>,
+        tvlUsd: RawTransactionArgument<string>,
+        operationValueUsd: RawTransactionArgument<string>,
         targetWeightBps: RawTransactionArgument<number | bigint>,
         baseFeeBps: RawTransactionArgument<number | bigint>,
         isDeposit: RawTransactionArgument<boolean>
@@ -2641,17 +2652,17 @@ export function calculateDynamicFee(options: CalculateDynamicFeeOptions) {
     });
 }
 export interface AssertValidBorrowConfigArguments {
-    rate_0: TransactionArgument;
-    rate_1: TransactionArgument;
-    rate_2: TransactionArgument;
+    rate_0: RawTransactionArgument<string>;
+    rate_1: RawTransactionArgument<string>;
+    rate_2: RawTransactionArgument<string>;
     intervalMs: RawTransactionArgument<number | bigint>;
 }
 export interface AssertValidBorrowConfigOptions {
     package?: string;
     arguments: AssertValidBorrowConfigArguments | [
-        rate_0: TransactionArgument,
-        rate_1: TransactionArgument,
-        rate_2: TransactionArgument,
+        rate_0: RawTransactionArgument<string>,
+        rate_1: RawTransactionArgument<string>,
+        rate_2: RawTransactionArgument<string>,
         intervalMs: RawTransactionArgument<number | bigint>
     ];
 }
@@ -2695,9 +2706,9 @@ export function assertValidMaxReserveRatio(options: AssertValidMaxReserveRatioOp
 }
 export interface CalculateBorrowRateArguments {
     utilizationBps: RawTransactionArgument<number | bigint>;
-    rate_0: TransactionArgument;
-    rate_1: TransactionArgument;
-    rate_2: TransactionArgument;
+    rate_0: RawTransactionArgument<string>;
+    rate_1: RawTransactionArgument<string>;
+    rate_2: RawTransactionArgument<string>;
     threshold_0: RawTransactionArgument<number | bigint>;
     threshold_1: RawTransactionArgument<number | bigint>;
 }
@@ -2705,9 +2716,9 @@ export interface CalculateBorrowRateOptions {
     package?: string;
     arguments: CalculateBorrowRateArguments | [
         utilizationBps: RawTransactionArgument<number | bigint>,
-        rate_0: TransactionArgument,
-        rate_1: TransactionArgument,
-        rate_2: TransactionArgument,
+        rate_0: RawTransactionArgument<string>,
+        rate_1: RawTransactionArgument<string>,
+        rate_2: RawTransactionArgument<string>,
         threshold_0: RawTransactionArgument<number | bigint>,
         threshold_1: RawTransactionArgument<number | bigint>
     ];
@@ -2732,14 +2743,14 @@ export function calculateBorrowRate(options: CalculateBorrowRateOptions) {
     });
 }
 export interface CalculateBorrowRateAccrualArguments {
-    borrowRate: TransactionArgument;
+    borrowRate: RawTransactionArgument<string>;
     elapsedMs: RawTransactionArgument<number | bigint>;
     intervalMs: RawTransactionArgument<number | bigint>;
 }
 export interface CalculateBorrowRateAccrualOptions {
     package?: string;
     arguments: CalculateBorrowRateAccrualArguments | [
-        borrowRate: TransactionArgument,
+        borrowRate: RawTransactionArgument<string>,
         elapsedMs: RawTransactionArgument<number | bigint>,
         intervalMs: RawTransactionArgument<number | bigint>
     ];

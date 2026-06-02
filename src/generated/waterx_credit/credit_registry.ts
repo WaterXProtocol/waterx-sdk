@@ -3,12 +3,13 @@
  **************************************************************/
 import { MoveTuple, MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as limited_supply from './limited_supply.ts';
 import * as table from './deps/sui/table.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as type_name from './deps/std/type_name.ts';
+import * as vec_set_1 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/credit::credit_registry';
 export const CapKey = new MoveTuple({ name: `${$moduleName}::CapKey`, fields: [bcs.bool()] });
 export const Mint = new MoveStruct({ name: `${$moduleName}::Mint<phantom CREDIT, phantom M>`, fields: {
@@ -68,7 +69,7 @@ export const CreditRegistry = new MoveStruct({ name: `${$moduleName}::CreditRegi
          * `PACKAGE_VERSION ∈ allowed_versions`; admin uses `add_package_version` /
          * `remove_package_version` to kill-switch a deprecated package after upgrade.
          */
-        allowed_versions: vec_set.VecSet(bcs.u16())
+        allowed_versions: vec_set_1.VecSet(bcs.u16())
     } });
 export interface PackageVersionOptions {
     package?: string;
@@ -607,7 +608,7 @@ export interface CollectArguments<M extends BcsType<any>> {
     Witness: RawTransactionArgument<M>;
     version: RawTransactionArgument<number>;
     memo: RawTransactionArgument<string>;
-    balance: TransactionArgument;
+    balance: RawTransactionArgument<string>;
 }
 export interface CollectOptions<M extends BcsType<any>> {
     package?: string;
@@ -616,7 +617,7 @@ export interface CollectOptions<M extends BcsType<any>> {
         Witness: RawTransactionArgument<M>,
         version: RawTransactionArgument<number>,
         memo: RawTransactionArgument<string>,
-        balance: TransactionArgument
+        balance: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -645,13 +646,13 @@ export function collect<M extends BcsType<any>>(options: CollectOptions<M>) {
 }
 export interface ClaimArguments {
     registry: RawTransactionArgument<string>;
-    request: TransactionArgument;
+    request: RawTransactionArgument<string>;
 }
 export interface ClaimOptions {
     package?: string;
     arguments: ClaimArguments | [
         registry: RawTransactionArgument<string>,
-        request: TransactionArgument
+        request: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -734,12 +735,12 @@ export function moduleConfigMap(options: ModuleConfigMapOptions) {
     });
 }
 export interface LimitedSupplyArguments {
-    config: TransactionArgument;
+    config: RawTransactionArgument<string>;
 }
 export interface LimitedSupplyOptions {
     package?: string;
     arguments: LimitedSupplyArguments | [
-        config: TransactionArgument
+        config: RawTransactionArgument<string>
     ];
 }
 export function limitedSupply(options: LimitedSupplyOptions) {
@@ -756,12 +757,12 @@ export function limitedSupply(options: LimitedSupplyOptions) {
     });
 }
 export interface ValidVersionsArguments {
-    config: TransactionArgument;
+    config: RawTransactionArgument<string>;
 }
 export interface ValidVersionsOptions {
     package?: string;
     arguments: ValidVersionsArguments | [
-        config: TransactionArgument
+        config: RawTransactionArgument<string>
     ];
 }
 export function validVersions(options: ValidVersionsOptions) {

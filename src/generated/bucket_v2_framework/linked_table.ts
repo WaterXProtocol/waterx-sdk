@@ -3,7 +3,7 @@
  **************************************************************/
 import { type BcsType, bcs } from '@mysten/sui/bcs';
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
-import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import { type Transaction } from '@mysten/sui/transactions';
 const $moduleName = '@bucket/framework::linked_table';
 export function LinkedTable<K extends BcsType<any>>(...typeParameters: [
     K
@@ -583,7 +583,7 @@ export function drop(options: DropOptions) {
 }
 export interface InsertFrontArguments<K extends BcsType<any>, V extends BcsType<any>> {
     table: RawTransactionArgument<string>;
-    nextK: TransactionArgument;
+    nextK: RawTransactionArgument<K | null>;
     k: RawTransactionArgument<K>;
     value: RawTransactionArgument<V>;
 }
@@ -591,7 +591,7 @@ export interface InsertFrontOptions<K extends BcsType<any>, V extends BcsType<an
     package?: string;
     arguments: InsertFrontArguments<K, V> | [
         table: RawTransactionArgument<string>,
-        nextK: TransactionArgument,
+        nextK: RawTransactionArgument<K | null>,
         k: RawTransactionArgument<K>,
         value: RawTransactionArgument<V>
     ];
@@ -608,7 +608,7 @@ export function insertFront<K extends BcsType<any>, V extends BcsType<any>>(opti
     const packageAddress = options.package ?? '@bucket/framework';
     const argumentsTypes = [
         null,
-        null,
+        `0x1::option::Option<${options.typeArguments[0]}>`,
         `${options.typeArguments[0]}`,
         `${options.typeArguments[1]}`
     ] satisfies (string | null)[];
@@ -623,7 +623,7 @@ export function insertFront<K extends BcsType<any>, V extends BcsType<any>>(opti
 }
 export interface InsertBackArguments<K extends BcsType<any>, V extends BcsType<any>> {
     table: RawTransactionArgument<string>;
-    prevK: TransactionArgument;
+    prevK: RawTransactionArgument<K | null>;
     k: RawTransactionArgument<K>;
     value: RawTransactionArgument<V>;
 }
@@ -631,7 +631,7 @@ export interface InsertBackOptions<K extends BcsType<any>, V extends BcsType<any
     package?: string;
     arguments: InsertBackArguments<K, V> | [
         table: RawTransactionArgument<string>,
-        prevK: TransactionArgument,
+        prevK: RawTransactionArgument<K | null>,
         k: RawTransactionArgument<K>,
         value: RawTransactionArgument<V>
     ];
@@ -648,7 +648,7 @@ export function insertBack<K extends BcsType<any>, V extends BcsType<any>>(optio
     const packageAddress = options.package ?? '@bucket/framework';
     const argumentsTypes = [
         null,
-        null,
+        `0x1::option::Option<${options.typeArguments[0]}>`,
         `${options.typeArguments[0]}`,
         `${options.typeArguments[1]}`
     ] satisfies (string | null)[];
