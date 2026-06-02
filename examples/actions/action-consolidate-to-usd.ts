@@ -41,7 +41,7 @@ run(async () => {
   const { keypair } = loadActiveKeypair();
   const accountId = requireEnv("WATERX_ACCOUNT_ID");
 
-  const tx = await buildConsolidateToUsdTx(client, { accountId });
+  const tx = await buildConsolidateToUsdTx(client, accountId);
 
   const legs = tx.getData().commands?.length ?? 0;
   if (legs === 0) {

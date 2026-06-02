@@ -208,18 +208,6 @@ async function wrapRequestAndExecute(
 // Consolidate parked backing assets → USD credit (pre-action sweep)
 // ============================================================================
 
-export interface AppendConsolidateToUsdParams {
-  /** wxa account receiving the USD credit. */
-  accountId: string;
-  /**
-   * Address scanned for parked funds / TTO'd coins. Defaults to `accountId`
-   * (a wxa account ID doubles as its fundable address).
-   */
-  accountAddress?: string;
-  /** CREDIT coin Move type. Defaults to `client.creditType()`. */
-  creditType?: string;
-}
-
 /**
  * For every backing asset registered on `native_custody`, append two drain
  * legs to `tx`:
@@ -236,33 +224,30 @@ export interface AppendConsolidateToUsdParams {
 export async function appendConsolidateToUsd(
   client: WaterXClient,
   tx: Transaction,
-  params: AppendConsolidateToUsdParams,
+  accountId: string,
 ): Promise<number> {
   if (!client.config.packages.native_custody?.vault) return 0;
   if (!client.config.packages.waterx_credit?.credit_type) return 0;
-
-  const usdType = params.creditType ?? client.creditType();
-  const accountAddress = params.accountAddress ?? params.accountId;
 
   let legs = 0;
   for (const asset of client.getNativeAssets()) {
     // Funds-accumulator leg (transfer_coin / send_funds path).
     const bal = (await client.getBalance({
-      owner: accountAddress,
+      owner: accountId,
       coinType: asset.type,
     })) as { balance?: { addressBalance?: string } };
     if (BigInt(bal.balance?.addressBalance ?? "0") > 0n) {
       const fromFunds = requestDepositFromFunds(client, tx, {
-        accountId: params.accountId,
+        accountId,
         coinType: asset.type,
       });
-      foldDepositRequestToUsd(client, tx, fromFunds, asset.type, usdType);
+      foldDepositRequestToUsd(client, tx, fromFunds, asset.type);
       legs += 1;
     }
 
     // Receivings leg (TTO'd Coin<T> path).
     const coins = (await client.listCoins({
-      owner: accountAddress,
+      owner: accountId,
       coinType: asset.type,
     })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
     const refs = (coins.objects ?? []).filter(
@@ -274,11 +259,11 @@ export async function appendConsolidateToUsd(
         tx.receivingRef({ objectId: c.objectId, version: c.version, digest: c.digest }),
       ) as unknown as TransactionArgument[];
       const fromReceivings = requestDepositFromReceivings(client, tx, {
-        accountId: params.accountId,
+        accountId,
         coinType: asset.type,
         receivings,
       });
-      foldDepositRequestToUsd(client, tx, fromReceivings, asset.type, usdType);
+      foldDepositRequestToUsd(client, tx, fromReceivings, asset.type);
       legs += 1;
     }
   }
@@ -290,12 +275,10 @@ function foldDepositRequestToUsd(
   tx: Transaction,
   depositRequest: TransactionArgument,
   assetType: string,
-  usdType: string,
 ): void {
   const usdReq = mintCreditFromRequest(client, tx, {
     depositRequest,
     assetType,
-    creditType: usdType,
   });
   consumeDepositDirect({
     package: client.config.packages.waterx_account.published_at,
@@ -303,7 +286,7 @@ function foldDepositRequestToUsd(
       registry: tx.object(client.config.packages.waterx_account.account_registry),
       req: usdReq as unknown as string,
     },
-    typeArguments: [usdType],
+    typeArguments: [client.creditType()],
   })(tx);
 }
 
@@ -315,11 +298,8 @@ async function maybeConsolidate(
   opts: CommonBuildOpts | undefined,
 ): Promise<void> {
   if (opts?.consolidateToUsd === false) return;
-  await appendConsolidateToUsd(client, tx, { accountId });
+  await appendConsolidateToUsd(client, tx, accountId);
 }
-
-export interface BuildConsolidateToUsdParams
-  extends AppendConsolidateToUsdParams, Pick<CommonBuildOpts, "tx"> {}
 
 /**
  * Standalone PTB that drains every backing asset parked at the account's
@@ -330,11 +310,12 @@ export interface BuildConsolidateToUsdParams
  */
 export async function buildConsolidateToUsdTx(
   client: WaterXClient,
-  params: BuildConsolidateToUsdParams,
+  accountId: string,
+  tx?: Transaction,
 ): Promise<Transaction> {
-  const tx = params.tx ?? new Transaction();
-  await appendConsolidateToUsd(client, tx, params);
-  return tx;
+  const txOut = tx ?? new Transaction();
+  await appendConsolidateToUsd(client, txOut, accountId);
+  return txOut;
 }
 
 // ============================================================================
