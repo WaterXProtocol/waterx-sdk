@@ -7,7 +7,7 @@
  *
  * Examples:
  *   pnpm test:integration --testnet
- *   pnpm test:integration --mainnet test/integration/user/trader-open-smoke.test.ts
+ *   pnpm test:integration --mainnet test/perp/integration/user/trader-open-smoke.test.ts
  */
 import { spawn } from "node:child_process";
 import path from "node:path";

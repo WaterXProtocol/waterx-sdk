@@ -2,4 +2,5 @@ dist
 coverage
 node_modules
 src/generated/**
+src/prediction/generated/**
 pnpm-lock.yaml

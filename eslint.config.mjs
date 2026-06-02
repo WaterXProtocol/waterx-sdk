@@ -13,6 +13,7 @@ export default tseslint.config(
       "dist/**",
       "node_modules/**",
       "src/generated/**",
+      "src/prediction/generated/**",
       "eslint.config.mjs",
       "contracts/**",
       "coverage/**",

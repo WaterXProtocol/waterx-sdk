@@ -19,6 +19,7 @@ import type {
 
 import type { WaterXClient } from "../client.ts";
 import { ACCUMULATOR_ROOT } from "../constants.ts";
+import { createAccountCall } from "../core/waterx-account.ts";
 import * as wxa from "../generated/waterx_account/account.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
@@ -40,14 +41,14 @@ export function createAccount(
   params: CreateAccountParams,
 ): void {
   const req = makeSenderRequest(client, tx, params.bucketAccount);
-  wxa.createAccount({
-    package: client.config.packages.waterx_account.published_at,
-    arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
-      senderRequest: req as unknown as string,
-      alias: params.alias,
+  createAccountCall(
+    tx,
+    {
+      packageId: client.config.packages.waterx_account.published_at,
+      registry: client.config.packages.waterx_account.account_registry,
     },
-  })(tx);
+    { senderRequest: req as unknown as TransactionArgument, alias: params.alias },
+  );
 }
 
 // ============================================================================
