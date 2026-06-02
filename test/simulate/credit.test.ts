@@ -45,7 +45,7 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
   }, 90_000);
 
   it("buildRequestCreditWithdrawTx wormhole route PTB shape", async () => {
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 1_000n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
@@ -62,7 +62,7 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
 
   it("buildRequestCreditWithdrawTx native route PTB shape", async () => {
     if (!assetType) return;
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 500n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
@@ -103,7 +103,7 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
 
   it("native withdraw zero amount fails simulate without wxa env", async (ctx) => {
     if (!assetType) return;
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 0n,
       recipient: DUMMY_SENDER,
@@ -149,7 +149,7 @@ describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () =>
       return;
     }
 
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: row.accountId,
       amount: 1n,
       recipient: row.owner,
@@ -208,7 +208,7 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
       return;
     }
 
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: row.accountId,
       amount: bal + 1n,
       recipient: row.owner,
@@ -233,7 +233,7 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
       return;
     }
 
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: row.accountId,
       amount: 0n,
       recipient: row.owner,
@@ -266,7 +266,7 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
       return;
     }
 
-    const tx = await buildRequestCreditWithdrawTx(client, {
+    const tx = buildRequestCreditWithdrawTx(client, {
       accountId: row.accountId,
       amount: 1n,
       recipient: row.owner,

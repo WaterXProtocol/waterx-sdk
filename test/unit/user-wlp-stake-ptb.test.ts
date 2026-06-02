@@ -57,8 +57,8 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("buildCancelRedeemAndStakeWlpTx chains cancel_redeem -> stake with rewarder settlement", async () => {
-    const tx = await buildCancelRedeemAndStakeWlpTx(client, {
+  it("buildCancelRedeemAndStakeWlpTx chains cancel_redeem -> stake with rewarder settlement", () => {
+    const tx = buildCancelRedeemAndStakeWlpTx(client, {
       accountId,
       requestId: 1n,
       stakeAmount: 1_000_000n,

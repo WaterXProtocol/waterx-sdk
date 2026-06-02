@@ -243,8 +243,8 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBe(2);
   });
 
-  it("buildRequestCreditWithdrawTx — wormhole and native routes", async () => {
-    const wormhole = await buildRequestCreditWithdrawTx(client, {
+  it("buildRequestCreditWithdrawTx — wormhole and native routes", () => {
+    const wormhole = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 1_000n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
@@ -258,7 +258,7 @@ describe("tx-builders (v3)", () => {
     });
     expect(wormhole.getData().commands?.length).toBe(4);
 
-    const native = await buildRequestCreditWithdrawTx(client, {
+    const native = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 500n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
@@ -282,8 +282,8 @@ describe("tx-builders (v3)", () => {
     expect(native.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("buildRequestCreditWithdrawTx rejects invalid wormhole chain id", async () => {
-    await expect(
+  it("buildRequestCreditWithdrawTx rejects invalid wormhole chain id", () => {
+    expect(() =>
       buildRequestCreditWithdrawTx(client, {
         accountId: PTB_DUMMY_ACCOUNT_ID,
         amount: 1n,
@@ -296,16 +296,16 @@ describe("tx-builders (v3)", () => {
         },
         consolidateToUsd: false,
       }),
-    ).rejects.toThrow(/u16 \(0\.\.65535\)/);
+    ).toThrow(/u16 \(0\.\.65535\)/);
   });
 
-  it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", async () => {
+  it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     delete cfg.packages.withdrawal_queue;
     const noQueue = new WaterXClient("TESTNET", cfg, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
-    await expect(
+    expect(() =>
       buildRequestCreditWithdrawTx(noQueue, {
         accountId: PTB_DUMMY_ACCOUNT_ID,
         amount: 1n,
@@ -313,6 +313,6 @@ describe("tx-builders (v3)", () => {
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
         consolidateToUsd: false,
       }),
-    ).rejects.toThrow(/withdrawal_queue not configured/);
+    ).toThrow(/withdrawal_queue not configured/);
   });
 });
