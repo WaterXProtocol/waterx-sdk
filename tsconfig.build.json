@@ -1,18 +1,13 @@
 {
   "compilerOptions": {
-    // TS 6 deprecates `baseUrl` and `downlevelIteration` (both used below);
-    // silence the warnings for now — track removal before TS 7.
-    "ignoreDeprecations": "6.0",
     "target": "ES2023",
     "module": "nodenext",
     "lib": ["dom", "esnext"],
     "declaration": true,
     "outDir": "./dist",
-    "downlevelIteration": true,
     "rootDir": ".",
     "moduleResolution": "nodenext",
     "rewriteRelativeImportExtensions": true,
-    "baseUrl": "./",
     "paths": {},
     "rootDirs": ["src"],
     "resolveJsonModule": true,
