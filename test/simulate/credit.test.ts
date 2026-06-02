@@ -44,7 +44,7 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
     assertSimulateReached(sim);
   }, 90_000);
 
-  it("buildRequestCreditWithdrawTx wormhole route PTB shape", async () => {
+  it("buildRequestCreditWithdrawTx wormhole route PTB shape", () => {
     const tx = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 1_000n,
@@ -55,19 +55,17 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
         evmRecipient: EVM_ADDR,
         evmToken: EVM_TOKEN,
       },
-      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBe(4);
   });
 
-  it("buildRequestCreditWithdrawTx native route PTB shape", async () => {
+  it("buildRequestCreditWithdrawTx native route PTB shape", () => {
     if (!assetType) return;
     const tx = buildRequestCreditWithdrawTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       amount: 500n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
       route: { kind: "native", assetType },
-      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBe(4);
   });
@@ -108,7 +106,6 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
       amount: 0n,
       recipient: DUMMY_SENDER,
       route: { kind: "native", assetType },
-      consolidateToUsd: false,
     });
     tx.setSender(DUMMY_SENDER);
     tx.setGasBudget(e2eSimulateGasBudget());

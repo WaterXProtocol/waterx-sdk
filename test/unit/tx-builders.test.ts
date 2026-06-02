@@ -46,8 +46,6 @@ const common = {
   collateralType: MOCK_USDC_TYPE,
   skipOraclePriceRefresh: true,
   useSponsor: false,
-  // Unit-test client has a fake grpcUrl; the consolidate sweep would hit the network.
-  consolidateToUsd: false,
 } as const;
 
 describe("tx-builders (v3)", () => {
@@ -72,7 +70,6 @@ describe("tx-builders (v3)", () => {
       main: baseOrder,
       skipOraclePriceRefresh: true,
       useSponsor: false,
-      consolidateToUsd: false,
     });
     const defaultSponsor = await buildPlaceOrderTx(client, {
       ticker: common.ticker,
@@ -80,7 +77,6 @@ describe("tx-builders (v3)", () => {
       collateralType: common.collateralType,
       main: baseOrder,
       skipOraclePriceRefresh: true,
-      consolidateToUsd: false,
     });
     expect(defaultSponsor.getData().commands!.length).toBeGreaterThan(
       withoutSponsor.getData().commands!.length,
@@ -176,7 +172,6 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       skipOraclePriceRefresh: true,
-      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
@@ -218,7 +213,6 @@ describe("tx-builders (v3)", () => {
       depositTicker: "USDCUSD",
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
-      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
@@ -254,7 +248,6 @@ describe("tx-builders (v3)", () => {
         evmRecipient: "0x1111111111111111111111111111111111111111",
         evmToken: "0x2222222222222222222222222222222222222222",
       },
-      consolidateToUsd: false,
     });
     expect(wormhole.getData().commands?.length).toBe(4);
 
@@ -263,7 +256,6 @@ describe("tx-builders (v3)", () => {
       amount: 500n,
       recipient: PTB_DUMMY_ACCOUNT_ID,
       route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
-      consolidateToUsd: false,
     });
     expect(native.getData().commands?.length).toBe(4);
   });
@@ -294,7 +286,6 @@ describe("tx-builders (v3)", () => {
           evmRecipient: "0x1111111111111111111111111111111111111111",
           evmToken: "0x2222222222222222222222222222222222222222",
         },
-        consolidateToUsd: false,
       }),
     ).toThrow(/u16 \(0\.\.65535\)/);
   });
@@ -311,7 +302,6 @@ describe("tx-builders (v3)", () => {
         amount: 1n,
         recipient: PTB_DUMMY_ACCOUNT_ID,
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
-        consolidateToUsd: false,
       }),
     ).toThrow(/withdrawal_queue not configured/);
   });

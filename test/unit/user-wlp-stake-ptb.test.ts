@@ -24,7 +24,6 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       minLpAmount: 0n,
       rewarderTypes: [rewardType],
       skipOraclePriceRefresh: true,
-      consolidateToUsd: false,
     });
     // mint_wlp + staking::deposit + 1 rewarder settle + destroy_deposit_checker
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
@@ -38,7 +37,6 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       skipOraclePriceRefresh: true,
-      consolidateToUsd: false,
     });
     // mint_wlp + staking::deposit + destroy_deposit_checker (no rewarder loop on empty rewarders)
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(3);
@@ -51,7 +49,6 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       withdrawalAmount: 500_000n,
       rewarderTypes: [rewardType],
       skipOraclePriceRefresh: true,
-      consolidateToUsd: false,
     });
     // staking::redeem + 1 rewarder settle + destroy_withdraw_checker + request_redeem
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
@@ -63,7 +60,6 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       requestId: 1n,
       stakeAmount: 1_000_000n,
       rewarderTypes: [rewardType],
-      consolidateToUsd: false,
     });
     // cancel_redeem + staking::deposit + 1 rewarder settle + destroy_deposit_checker
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
@@ -79,7 +75,6 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       stakeAlias: "WLP",
       rewarderTypes: [rewardType],
       skipOraclePriceRefresh: true,
-      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
   });
