@@ -99,22 +99,22 @@ export interface CommonBuildOpts {
    */
   useSponsor?: boolean;
   /**
-   * Pre-sweep funds-accumulator balances of every registered backing asset
-   * (USDC, USDsui, …) at the wxa account's address into the protocol's USD
-   * credit before the main action — `requestDepositFromFunds<T>` →
-   * `mintCreditFromRequest<T, USD>` → `consumeDepositDirect<USD>` per
-   * asset, all in the same PTB.
+   * Opt-in pre-sweep of funds-accumulator balances at the wxa account's
+   * address into the protocol's USD credit before the main action —
+   * `requestDepositFromFunds<T>` → `mintCreditFromRequest<T, USD>` →
+   * `consumeDepositDirect<USD>` per registered backing asset, all in
+   * the same PTB.
    *
-   * Force-append: no off-chain probe runs, so every configured native asset
-   * adds three commands to the PTB even when the bucket is empty. The
-   * on-chain `mint` is the source of truth for the zero-amount case.
+   * **Default: `false`.** The auto-prepend is force-append (no off-chain
+   * probe), and the currently-deployed `custody_vault::mint_internal`
+   * aborts with `EInvalidAmount` on a zero-balance bucket, so blanket
+   * default-on would break any flow whose account has at least one
+   * unfunded asset. Only set `true` when you know every configured
+   * native asset has a non-zero parked balance.
    *
-   * Default: true. Set to `false` to skip (caller already swept, deployment
-   * lacks `native_custody`, or the caller is composing into a custom PTB).
-   *
-   * TTO'd `Coin<T>` objects parked at the address are **not** covered here
-   * — they need per-object `Receiving` refs which require gRPC reads. Use
-   * {@link buildConsolidateToUsdTx} for a full sweep that includes them.
+   * For a smart, per-asset-probing sweep that skips empty buckets and
+   * also handles TTO'd `Coin<T>` objects, call {@link buildConsolidateToUsdTx}
+   * (async, runs gRPC) before / alongside the trading PTB.
    *
    * Silently no-ops when `native_custody` / `waterx_credit` aren't
    * configured for the loaded deployment.
@@ -344,14 +344,14 @@ export function appendConsolidateFundsToUsd(
   }
 }
 
-/** Internal: run the sync funds-only sweep iff `consolidateToUsd !== false`. */
+/** Internal: run the sync funds-only sweep iff `consolidateToUsd === true`. */
 function maybeConsolidate(
   client: WaterXClient,
   tx: Transaction,
   accountId: string,
   opts: CommonBuildOpts | undefined,
 ): void {
-  if (opts?.consolidateToUsd === false) return;
+  if (opts?.consolidateToUsd !== true) return;
   appendConsolidateFundsToUsd(client, tx, { accountId });
 }
 
