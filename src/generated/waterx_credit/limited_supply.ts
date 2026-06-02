@@ -3,7 +3,7 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 const $moduleName = '@waterx/credit::limited_supply';
 export const LimitedSupply = new MoveStruct({ name: `${$moduleName}::LimitedSupply`, fields: {
         limit: bcs.u64(),
@@ -32,12 +32,12 @@ export function _new(options: NewOptions) {
     });
 }
 export interface DestroyArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface DestroyOptions {
     package?: string;
     arguments: DestroyArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function destroy(options: DestroyOptions) {
@@ -54,13 +54,13 @@ export function destroy(options: DestroyOptions) {
     });
 }
 export interface IncreaseArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
     amount: RawTransactionArgument<number | bigint>;
 }
 export interface IncreaseOptions {
     package?: string;
     arguments: IncreaseArguments | [
-        self: RawTransactionArgument<string>,
+        self: TransactionArgument,
         amount: RawTransactionArgument<number | bigint>
     ];
 }
@@ -79,13 +79,13 @@ export function increase(options: IncreaseOptions) {
     });
 }
 export interface DecreaseArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
     amount: RawTransactionArgument<number | bigint>;
 }
 export interface DecreaseOptions {
     package?: string;
     arguments: DecreaseArguments | [
-        self: RawTransactionArgument<string>,
+        self: TransactionArgument,
         amount: RawTransactionArgument<number | bigint>
     ];
 }
@@ -104,13 +104,13 @@ export function decrease(options: DecreaseOptions) {
     });
 }
 export interface SetLimitArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
     limit: RawTransactionArgument<number | bigint>;
 }
 export interface SetLimitOptions {
     package?: string;
     arguments: SetLimitArguments | [
-        self: RawTransactionArgument<string>,
+        self: TransactionArgument,
         limit: RawTransactionArgument<number | bigint>
     ];
 }
@@ -129,12 +129,12 @@ export function setLimit(options: SetLimitOptions) {
     });
 }
 export interface LimitArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface LimitOptions {
     package?: string;
     arguments: LimitArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function limit(options: LimitOptions) {
@@ -151,12 +151,12 @@ export function limit(options: LimitOptions) {
     });
 }
 export interface SupplyArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface SupplyOptions {
     package?: string;
     arguments: SupplyArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function supply(options: SupplyOptions) {
@@ -173,12 +173,12 @@ export function supply(options: SupplyOptions) {
     });
 }
 export interface IncreasableAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface IncreasableAmountOptions {
     package?: string;
     arguments: IncreasableAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function increasableAmount(options: IncreasableAmountOptions) {
@@ -195,13 +195,13 @@ export function increasableAmount(options: IncreasableAmountOptions) {
     });
 }
 export interface IsIncreasableArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
     amount: RawTransactionArgument<number | bigint>;
 }
 export interface IsIncreasableOptions {
     package?: string;
     arguments: IsIncreasableArguments | [
-        self: RawTransactionArgument<string>,
+        self: TransactionArgument,
         amount: RawTransactionArgument<number | bigint>
     ];
 }

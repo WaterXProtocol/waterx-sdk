@@ -8,19 +8,19 @@
  * calculations use Float (1e9) or Double (1e18).
  */
 
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import { normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 export interface AmountToUsdArguments {
     amount: RawTransactionArgument<number | bigint>;
     tokenDecimal: RawTransactionArgument<number>;
-    price: RawTransactionArgument<string>;
+    price: TransactionArgument;
 }
 export interface AmountToUsdOptions {
     package?: string;
     arguments: AmountToUsdArguments | [
         amount: RawTransactionArgument<number | bigint>,
         tokenDecimal: RawTransactionArgument<number>,
-        price: RawTransactionArgument<string>
+        price: TransactionArgument
     ];
 }
 /**
@@ -44,16 +44,16 @@ export function amountToUsd(options: AmountToUsdOptions) {
     });
 }
 export interface UsdToAmountArguments {
-    usd: RawTransactionArgument<string>;
+    usd: TransactionArgument;
     tokenDecimal: RawTransactionArgument<number>;
-    price: RawTransactionArgument<string>;
+    price: TransactionArgument;
 }
 export interface UsdToAmountOptions {
     package?: string;
     arguments: UsdToAmountArguments | [
-        usd: RawTransactionArgument<string>,
+        usd: TransactionArgument,
         tokenDecimal: RawTransactionArgument<number>,
-        price: RawTransactionArgument<string>
+        price: TransactionArgument
     ];
 }
 /** Converts a USD value (Float) to a token amount. Returns u64 raw amount. */

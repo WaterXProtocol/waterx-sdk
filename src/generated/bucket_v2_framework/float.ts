@@ -7,7 +7,7 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 const $moduleName = '@bucket/framework::float';
 export const Float = new MoveStruct({ name: `${$moduleName}::Float`, fields: {
         value: bcs.u128()
@@ -188,12 +188,12 @@ export function fromScaledVal(options: FromScaledValOptions) {
     });
 }
 export interface ToScaledValArguments {
-    v: RawTransactionArgument<string>;
+    v: TransactionArgument;
 }
 export interface ToScaledValOptions {
     package?: string;
     arguments: ToScaledValArguments | [
-        v: RawTransactionArgument<string>
+        v: TransactionArgument
     ];
 }
 export function toScaledVal(options: ToScaledValOptions) {
@@ -210,14 +210,14 @@ export function toScaledVal(options: ToScaledValOptions) {
     });
 }
 export interface AddArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface AddOptions {
     package?: string;
     arguments: AddArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function add(options: AddOptions) {
@@ -235,14 +235,14 @@ export function add(options: AddOptions) {
     });
 }
 export interface SubArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface SubOptions {
     package?: string;
     arguments: SubArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function sub(options: SubOptions) {
@@ -260,14 +260,14 @@ export function sub(options: SubOptions) {
     });
 }
 export interface SaturatingSubArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface SaturatingSubOptions {
     package?: string;
     arguments: SaturatingSubArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function saturatingSub(options: SaturatingSubOptions) {
@@ -285,14 +285,14 @@ export function saturatingSub(options: SaturatingSubOptions) {
     });
 }
 export interface MulArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface MulOptions {
     package?: string;
     arguments: MulArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function mul(options: MulOptions) {
@@ -310,14 +310,14 @@ export function mul(options: MulOptions) {
     });
 }
 export interface DivArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface DivOptions {
     package?: string;
     arguments: DivArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function div(options: DivOptions) {
@@ -335,13 +335,13 @@ export function div(options: DivOptions) {
     });
 }
 export interface AddU64Arguments {
-    a: RawTransactionArgument<string>;
+    a: TransactionArgument;
     b: RawTransactionArgument<number | bigint>;
 }
 export interface AddU64Options {
     package?: string;
     arguments: AddU64Arguments | [
-        a: RawTransactionArgument<string>,
+        a: TransactionArgument,
         b: RawTransactionArgument<number | bigint>
     ];
 }
@@ -360,13 +360,13 @@ export function addU64(options: AddU64Options) {
     });
 }
 export interface SubU64Arguments {
-    a: RawTransactionArgument<string>;
+    a: TransactionArgument;
     b: RawTransactionArgument<number | bigint>;
 }
 export interface SubU64Options {
     package?: string;
     arguments: SubU64Arguments | [
-        a: RawTransactionArgument<string>,
+        a: TransactionArgument,
         b: RawTransactionArgument<number | bigint>
     ];
 }
@@ -385,13 +385,13 @@ export function subU64(options: SubU64Options) {
     });
 }
 export interface SaturatingSubU64Arguments {
-    a: RawTransactionArgument<string>;
+    a: TransactionArgument;
     b: RawTransactionArgument<number | bigint>;
 }
 export interface SaturatingSubU64Options {
     package?: string;
     arguments: SaturatingSubU64Arguments | [
-        a: RawTransactionArgument<string>,
+        a: TransactionArgument,
         b: RawTransactionArgument<number | bigint>
     ];
 }
@@ -410,13 +410,13 @@ export function saturatingSubU64(options: SaturatingSubU64Options) {
     });
 }
 export interface MulU64Arguments {
-    a: RawTransactionArgument<string>;
+    a: TransactionArgument;
     b: RawTransactionArgument<number | bigint>;
 }
 export interface MulU64Options {
     package?: string;
     arguments: MulU64Arguments | [
-        a: RawTransactionArgument<string>,
+        a: TransactionArgument,
         b: RawTransactionArgument<number | bigint>
     ];
 }
@@ -435,13 +435,13 @@ export function mulU64(options: MulU64Options) {
     });
 }
 export interface DivU64Arguments {
-    a: RawTransactionArgument<string>;
+    a: TransactionArgument;
     b: RawTransactionArgument<number | bigint>;
 }
 export interface DivU64Options {
     package?: string;
     arguments: DivU64Arguments | [
-        a: RawTransactionArgument<string>,
+        a: TransactionArgument,
         b: RawTransactionArgument<number | bigint>
     ];
 }
@@ -460,13 +460,13 @@ export function divU64(options: DivU64Options) {
     });
 }
 export interface PowArguments {
-    b: RawTransactionArgument<string>;
+    b: TransactionArgument;
     e: RawTransactionArgument<number | bigint>;
 }
 export interface PowOptions {
     package?: string;
     arguments: PowArguments | [
-        b: RawTransactionArgument<string>,
+        b: TransactionArgument,
         e: RawTransactionArgument<number | bigint>
     ];
 }
@@ -485,12 +485,12 @@ export function pow(options: PowOptions) {
     });
 }
 export interface FloorArguments {
-    v: RawTransactionArgument<string>;
+    v: TransactionArgument;
 }
 export interface FloorOptions {
     package?: string;
     arguments: FloorArguments | [
-        v: RawTransactionArgument<string>
+        v: TransactionArgument
     ];
 }
 export function floor(options: FloorOptions) {
@@ -507,12 +507,12 @@ export function floor(options: FloorOptions) {
     });
 }
 export interface CeilArguments {
-    v: RawTransactionArgument<string>;
+    v: TransactionArgument;
 }
 export interface CeilOptions {
     package?: string;
     arguments: CeilArguments | [
-        v: RawTransactionArgument<string>
+        v: TransactionArgument
     ];
 }
 export function ceil(options: CeilOptions) {
@@ -529,12 +529,12 @@ export function ceil(options: CeilOptions) {
     });
 }
 export interface RoundArguments {
-    v: RawTransactionArgument<string>;
+    v: TransactionArgument;
 }
 export interface RoundOptions {
     package?: string;
     arguments: RoundArguments | [
-        v: RawTransactionArgument<string>
+        v: TransactionArgument
     ];
 }
 export function round(options: RoundOptions) {
@@ -551,14 +551,14 @@ export function round(options: RoundOptions) {
     });
 }
 export interface EqArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface EqOptions {
     package?: string;
     arguments: EqArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function eq(options: EqOptions) {
@@ -576,14 +576,14 @@ export function eq(options: EqOptions) {
     });
 }
 export interface GtArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface GtOptions {
     package?: string;
     arguments: GtArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function gt(options: GtOptions) {
@@ -601,14 +601,14 @@ export function gt(options: GtOptions) {
     });
 }
 export interface GteArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface GteOptions {
     package?: string;
     arguments: GteArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function gte(options: GteOptions) {
@@ -626,14 +626,14 @@ export function gte(options: GteOptions) {
     });
 }
 export interface LtArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface LtOptions {
     package?: string;
     arguments: LtArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function lt(options: LtOptions) {
@@ -651,14 +651,14 @@ export function lt(options: LtOptions) {
     });
 }
 export interface LteArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface LteOptions {
     package?: string;
     arguments: LteArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function lte(options: LteOptions) {
@@ -676,14 +676,14 @@ export function lte(options: LteOptions) {
     });
 }
 export interface MinArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface MinOptions {
     package?: string;
     arguments: MinArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function min(options: MinOptions) {
@@ -701,14 +701,14 @@ export function min(options: MinOptions) {
     });
 }
 export interface MaxArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface MaxOptions {
     package?: string;
     arguments: MaxArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function max(options: MaxOptions) {
@@ -726,14 +726,14 @@ export function max(options: MaxOptions) {
     });
 }
 export interface DiffArguments {
-    a: RawTransactionArgument<string>;
-    b: RawTransactionArgument<string>;
+    a: TransactionArgument;
+    b: TransactionArgument;
 }
 export interface DiffOptions {
     package?: string;
     arguments: DiffArguments | [
-        a: RawTransactionArgument<string>,
-        b: RawTransactionArgument<string>
+        a: TransactionArgument,
+        b: TransactionArgument
     ];
 }
 export function diff(options: DiffOptions) {

@@ -10,10 +10,9 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
 import * as balance from './deps/sui/balance.ts';
-import * as float_1 from './deps/bucket_v2_framework/float.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as type_name from './deps/std/type_name.ts';
 const $moduleName = '@waterx/perp::request';
@@ -42,7 +41,7 @@ export const TradingRequest = new MoveStruct({ name: `${$moduleName}::TradingReq
         collateral: balance.Balance,
         order_id: bcs.option(bcs.u64()),
         position_id: bcs.option(bcs.u64()),
-        trigger_price: bcs.option(float_1.Float),
+        trigger_price: bcs.option(float.Float),
         reduce_only: bcs.bool(),
         is_stop_order: bcs.bool(),
         linked_position_id: bcs.option(bcs.u64()),
@@ -105,12 +104,12 @@ export function newPlaceOrderArgument(options: NewPlaceOrderArgumentOptions) {
     });
 }
 export interface ArgIsLongArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgIsLongOptions {
     package?: string;
     arguments: ArgIsLongArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argIsLong(options: ArgIsLongOptions) {
@@ -127,12 +126,12 @@ export function argIsLong(options: ArgIsLongOptions) {
     });
 }
 export interface ArgIsStopOrderArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgIsStopOrderOptions {
     package?: string;
     arguments: ArgIsStopOrderArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argIsStopOrder(options: ArgIsStopOrderOptions) {
@@ -149,12 +148,12 @@ export function argIsStopOrder(options: ArgIsStopOrderOptions) {
     });
 }
 export interface ArgReduceOnlyArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgReduceOnlyOptions {
     package?: string;
     arguments: ArgReduceOnlyArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argReduceOnly(options: ArgReduceOnlyOptions) {
@@ -171,12 +170,12 @@ export function argReduceOnly(options: ArgReduceOnlyOptions) {
     });
 }
 export interface ArgSizeArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgSizeOptions {
     package?: string;
     arguments: ArgSizeArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argSize(options: ArgSizeOptions) {
@@ -193,12 +192,12 @@ export function argSize(options: ArgSizeOptions) {
     });
 }
 export interface ArgTriggerPriceArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgTriggerPriceOptions {
     package?: string;
     arguments: ArgTriggerPriceArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argTriggerPrice(options: ArgTriggerPriceOptions) {
@@ -215,12 +214,12 @@ export function argTriggerPrice(options: ArgTriggerPriceOptions) {
     });
 }
 export interface ArgLinkedPositionIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgLinkedPositionIdOptions {
     package?: string;
     arguments: ArgLinkedPositionIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argLinkedPositionId(options: ArgLinkedPositionIdOptions) {
@@ -237,12 +236,12 @@ export function argLinkedPositionId(options: ArgLinkedPositionIdOptions) {
     });
 }
 export interface ArgAcceptablePriceArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgAcceptablePriceOptions {
     package?: string;
     arguments: ArgAcceptablePriceArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argAcceptablePrice(options: ArgAcceptablePriceOptions) {
@@ -259,12 +258,12 @@ export function argAcceptablePrice(options: ArgAcceptablePriceOptions) {
     });
 }
 export interface ArgCollateralAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ArgCollateralAmountOptions {
     package?: string;
     arguments: ArgCollateralAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
 }
 export function argCollateralAmount(options: ArgCollateralAmountOptions) {
@@ -281,13 +280,13 @@ export function argCollateralAmount(options: ArgCollateralAmountOptions) {
     });
 }
 export interface AddWitnessArguments<W extends BcsType<any>> {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
     Witness: RawTransactionArgument<W>;
 }
 export interface AddWitnessOptions<W extends BcsType<any>> {
     package?: string;
     arguments: AddWitnessArguments<W> | [
-        self: RawTransactionArgument<string>,
+        self: TransactionArgument,
         Witness: RawTransactionArgument<W>
     ];
     typeArguments: [
@@ -312,12 +311,12 @@ export function addWitness<W extends BcsType<any>>(options: AddWitnessOptions<W>
     });
 }
 export interface MarketIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface MarketIdOptions {
     package?: string;
     arguments: MarketIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -338,12 +337,12 @@ export function marketId(options: MarketIdOptions) {
     });
 }
 export interface AccountIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface AccountIdOptions {
     package?: string;
     arguments: AccountIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -364,12 +363,12 @@ export function accountId(options: AccountIdOptions) {
     });
 }
 export interface AccountObjectAddressArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface AccountObjectAddressOptions {
     package?: string;
     arguments: AccountObjectAddressArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -390,12 +389,12 @@ export function accountObjectAddress(options: AccountObjectAddressOptions) {
     });
 }
 export interface ActionArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ActionOptions {
     package?: string;
     arguments: ActionArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -416,12 +415,12 @@ export function action(options: ActionOptions) {
     });
 }
 export interface SenderArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface SenderOptions {
     package?: string;
     arguments: SenderArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -442,12 +441,12 @@ export function sender(options: SenderOptions) {
     });
 }
 export interface IsLongArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface IsLongOptions {
     package?: string;
     arguments: IsLongArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -468,12 +467,12 @@ export function isLong(options: IsLongOptions) {
     });
 }
 export interface SizeArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface SizeOptions {
     package?: string;
     arguments: SizeArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -494,12 +493,12 @@ export function size(options: SizeOptions) {
     });
 }
 export interface DepositAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface DepositAmountOptions {
     package?: string;
     arguments: DepositAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -520,12 +519,12 @@ export function depositAmount(options: DepositAmountOptions) {
     });
 }
 export interface OrderIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface OrderIdOptions {
     package?: string;
     arguments: OrderIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -546,12 +545,12 @@ export function orderId(options: OrderIdOptions) {
     });
 }
 export interface PositionIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface PositionIdOptions {
     package?: string;
     arguments: PositionIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -572,12 +571,12 @@ export function positionId(options: PositionIdOptions) {
     });
 }
 export interface TriggerPriceArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface TriggerPriceOptions {
     package?: string;
     arguments: TriggerPriceArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -598,12 +597,12 @@ export function triggerPrice(options: TriggerPriceOptions) {
     });
 }
 export interface ReduceOnlyArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface ReduceOnlyOptions {
     package?: string;
     arguments: ReduceOnlyArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -624,12 +623,12 @@ export function reduceOnly(options: ReduceOnlyOptions) {
     });
 }
 export interface IsStopOrderArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface IsStopOrderOptions {
     package?: string;
     arguments: IsStopOrderArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -650,12 +649,12 @@ export function isStopOrder(options: IsStopOrderOptions) {
     });
 }
 export interface LinkedPositionIdArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface LinkedPositionIdOptions {
     package?: string;
     arguments: LinkedPositionIdArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -676,12 +675,12 @@ export function linkedPositionId(options: LinkedPositionIdOptions) {
     });
 }
 export interface TriggerPriceKeyArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface TriggerPriceKeyOptions {
     package?: string;
     arguments: TriggerPriceKeyArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -702,12 +701,12 @@ export function triggerPriceKey(options: TriggerPriceKeyOptions) {
     });
 }
 export interface WithdrawAmountArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface WithdrawAmountOptions {
     package?: string;
     arguments: WithdrawAmountArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -728,12 +727,12 @@ export function withdrawAmount(options: WithdrawAmountOptions) {
     });
 }
 export interface AcceptablePriceArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface AcceptablePriceOptions {
     package?: string;
     arguments: AcceptablePriceArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -754,12 +753,12 @@ export function acceptablePrice(options: AcceptablePriceOptions) {
     });
 }
 export interface PreOrdersArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface PreOrdersOptions {
     package?: string;
     arguments: PreOrdersArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -780,12 +779,12 @@ export function preOrders(options: PreOrdersOptions) {
     });
 }
 export interface WitnessesArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface WitnessesOptions {
     package?: string;
     arguments: WitnessesArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string
@@ -824,18 +823,18 @@ export interface NewArguments {
     action: RawTransactionArgument<number>;
     sender: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    size: RawTransactionArgument<string>;
-    collateral: RawTransactionArgument<string>;
+    size: TransactionArgument;
+    collateral: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint | null>;
     positionId: RawTransactionArgument<number | bigint | null>;
-    triggerPrice: RawTransactionArgument<string | null>;
+    triggerPrice: TransactionArgument;
     reduceOnly: RawTransactionArgument<boolean>;
     isStopOrder: RawTransactionArgument<boolean>;
     linkedPositionId: RawTransactionArgument<number | bigint | null>;
     triggerPriceKey: RawTransactionArgument<number | bigint | null>;
     withdrawAmount: RawTransactionArgument<number | bigint>;
     acceptablePrice: RawTransactionArgument<number | bigint>;
-    preOrders: RawTransactionArgument<string[]>;
+    preOrders: TransactionArgument;
 }
 export interface NewOptions {
     package?: string;
@@ -845,18 +844,18 @@ export interface NewOptions {
         action: RawTransactionArgument<number>,
         sender: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        size: RawTransactionArgument<string>,
-        collateral: RawTransactionArgument<string>,
+        size: TransactionArgument,
+        collateral: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint | null>,
         positionId: RawTransactionArgument<number | bigint | null>,
-        triggerPrice: RawTransactionArgument<string | null>,
+        triggerPrice: TransactionArgument,
         reduceOnly: RawTransactionArgument<boolean>,
         isStopOrder: RawTransactionArgument<boolean>,
         linkedPositionId: RawTransactionArgument<number | bigint | null>,
         triggerPriceKey: RawTransactionArgument<number | bigint | null>,
         withdrawAmount: RawTransactionArgument<number | bigint>,
         acceptablePrice: RawTransactionArgument<number | bigint>,
-        preOrders: RawTransactionArgument<string[]>
+        preOrders: TransactionArgument
     ];
     typeArguments: [
         string
@@ -875,7 +874,7 @@ export function _new(options: NewOptions) {
         null,
         '0x1::option::Option<u64>',
         '0x1::option::Option<u64>',
-        '0x1::option::Option<null>',
+        null,
         'bool',
         'bool',
         '0x1::option::Option<u64>',
@@ -894,12 +893,12 @@ export function _new(options: NewOptions) {
     });
 }
 export interface DestroyArguments {
-    self: RawTransactionArgument<string>;
+    self: TransactionArgument;
 }
 export interface DestroyOptions {
     package?: string;
     arguments: DestroyArguments | [
-        self: RawTransactionArgument<string>
+        self: TransactionArgument
     ];
     typeArguments: [
         string

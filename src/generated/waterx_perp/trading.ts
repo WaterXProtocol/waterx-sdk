@@ -21,15 +21,10 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as market_config from './market_config.ts';
 import * as keyed_big_vector from './keyed_big_vector.ts';
 import * as order_book from './order_book.ts';
-import * as order_book_1 from './order_book.ts';
-import * as order_book_2 from './order_book.ts';
-import * as order_book_3 from './order_book.ts';
-import * as keyed_big_vector_1 from './keyed_big_vector.ts';
-import * as keyed_big_vector_2 from './keyed_big_vector.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/perp::trading';
 export const Market = new MoveStruct({ name: `${$moduleName}::Market<phantom LP_TOKEN>`, fields: {
@@ -41,24 +36,24 @@ export const Market = new MoveStruct({ name: `${$moduleName}::Market<phantom LP_
         /** Limit buy orders: price_key → vector<Order> */
         limit_buys: order_book.OrderBook,
         /** Limit sell orders: price_key → vector<Order> */
-        limit_sells: order_book_1.OrderBook,
+        limit_sells: order_book.OrderBook,
         /** Stop buy orders: price_key → vector<Order> */
-        stop_buys: order_book_2.OrderBook,
+        stop_buys: order_book.OrderBook,
         /** Stop sell orders: price_key → vector<Order> */
-        stop_sells: order_book_3.OrderBook,
+        stop_sells: order_book.OrderBook,
         /**
          * Reserved TP / SL pre-orders, keyed by the **pre-order's own `order_id`** (not
          * the main order's id). Each entry is a single fully-formed reduce-only `Order`
          * with `linked_position_id =  None`; on main fill `activate_pending_pre_orders`
          * stamps in the new position id and moves the order onto the live book.
          */
-        pending_pre_orders: keyed_big_vector_1.KeyedBigVector,
+        pending_pre_orders: keyed_big_vector.KeyedBigVector,
         /**
          * Secondary index: `main_order_id → vector<pre_order_id>` listing the pre-orders
          * reserved against each unfilled main. Used by activation / cancellation to
          * enumerate the pre-orders that belong to a given main.
          */
-        pending_pre_order_index: keyed_big_vector_2.KeyedBigVector
+        pending_pre_order_index: keyed_big_vector.KeyedBigVector
     } });
 export const MarketRegistry = new MoveStruct({ name: `${$moduleName}::MarketRegistry<phantom LP_TOKEN>`, fields: {
         id: bcs.Address,
@@ -680,7 +675,7 @@ export interface ClosePositionRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
     acceptablePrice: RawTransactionArgument<number | bigint>;
@@ -692,7 +687,7 @@ export interface ClosePositionRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>,
         acceptablePrice: RawTransactionArgument<number | bigint>
@@ -730,7 +725,7 @@ export interface IncreasePositionRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint | null>;
     positionId: RawTransactionArgument<number | bigint>;
@@ -745,7 +740,7 @@ export interface IncreasePositionRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint | null>,
         positionId: RawTransactionArgument<number | bigint>,
@@ -789,7 +784,7 @@ export interface DecreasePositionRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
     size: RawTransactionArgument<number | bigint>;
@@ -802,7 +797,7 @@ export interface DecreasePositionRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>,
         size: RawTransactionArgument<number | bigint>,
@@ -842,10 +837,10 @@ export interface PlaceOrderRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
-    main: RawTransactionArgument<string>;
-    preOrder: RawTransactionArgument<string[]>;
+    main: TransactionArgument;
+    preOrder: TransactionArgument;
 }
 export interface PlaceOrderRequestOptions {
     package?: string;
@@ -854,10 +849,10 @@ export interface PlaceOrderRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
-        main: RawTransactionArgument<string>,
-        preOrder: RawTransactionArgument<string[]>
+        main: TransactionArgument,
+        preOrder: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -905,15 +900,15 @@ export function placeOrderRequest(options: PlaceOrderRequestOptions) {
     });
 }
 export interface ValidatePreOrdersArguments {
-    main: RawTransactionArgument<string>;
-    preOrder: RawTransactionArgument<string[]>;
+    main: TransactionArgument;
+    preOrder: TransactionArgument;
     maxPreOrders: RawTransactionArgument<number | bigint>;
 }
 export interface ValidatePreOrdersOptions {
     package?: string;
     arguments: ValidatePreOrdersArguments | [
-        main: RawTransactionArgument<string>,
-        preOrder: RawTransactionArgument<string[]>,
+        main: TransactionArgument,
+        preOrder: TransactionArgument,
         maxPreOrders: RawTransactionArgument<number | bigint>
     ];
 }
@@ -939,13 +934,13 @@ export function validatePreOrders(options: ValidatePreOrdersOptions) {
 }
 export interface ValidatePreOrderEntriesArguments {
     mainIsLong: RawTransactionArgument<boolean>;
-    preOrder: RawTransactionArgument<string[]>;
+    preOrder: TransactionArgument;
 }
 export interface ValidatePreOrderEntriesOptions {
     package?: string;
     arguments: ValidatePreOrderEntriesArguments | [
         mainIsLong: RawTransactionArgument<boolean>,
-        preOrder: RawTransactionArgument<string[]>
+        preOrder: TransactionArgument
     ];
 }
 /**
@@ -1002,7 +997,7 @@ export interface CancelOrderRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
     triggerPrice: RawTransactionArgument<number | bigint>;
@@ -1015,7 +1010,7 @@ export interface CancelOrderRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
         triggerPrice: RawTransactionArgument<number | bigint>,
@@ -1059,7 +1054,7 @@ export interface UpdateOrderRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
     currentTriggerPrice: RawTransactionArgument<number | bigint>;
@@ -1074,7 +1069,7 @@ export interface UpdateOrderRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
         currentTriggerPrice: RawTransactionArgument<number | bigint>,
@@ -1123,7 +1118,7 @@ export interface CancelPreOrderRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     mainOrderId: RawTransactionArgument<number | bigint>;
     preOrderId: RawTransactionArgument<number | bigint>;
@@ -1135,7 +1130,7 @@ export interface CancelPreOrderRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         mainOrderId: RawTransactionArgument<number | bigint>,
         preOrderId: RawTransactionArgument<number | bigint>
@@ -1181,10 +1176,10 @@ export interface AddPreOrderRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     mainOrderId: RawTransactionArgument<number | bigint>;
-    preOrder: RawTransactionArgument<string>;
+    preOrder: TransactionArgument;
 }
 export interface AddPreOrderRequestOptions {
     package?: string;
@@ -1193,10 +1188,10 @@ export interface AddPreOrderRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         mainOrderId: RawTransactionArgument<number | bigint>,
-        preOrder: RawTransactionArgument<string>
+        preOrder: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -1238,7 +1233,7 @@ export interface DepositCollateralRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
     collateralAmount: RawTransactionArgument<number | bigint>;
@@ -1250,7 +1245,7 @@ export interface DepositCollateralRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>,
         collateralAmount: RawTransactionArgument<number | bigint>
@@ -1288,7 +1283,7 @@ export interface WithdrawCollateralRequestArguments {
     wxaRegistry: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
     amount: RawTransactionArgument<number | bigint>;
@@ -1300,7 +1295,7 @@ export interface WithdrawCollateralRequestOptions {
         wxaRegistry: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>,
         amount: RawTransactionArgument<number | bigint>
@@ -1339,7 +1334,7 @@ export interface LiquidateArguments {
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
     oracle: RawTransactionArgument<string>;
 }
@@ -1351,7 +1346,7 @@ export interface LiquidateOptions {
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>,
         oracle: RawTransactionArgument<string>
     ];
@@ -1394,7 +1389,7 @@ export interface BatchLiquidateArguments {
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     oracle: RawTransactionArgument<string>;
     pageSize: RawTransactionArgument<number | bigint>;
     pageIndex: RawTransactionArgument<number | bigint>;
@@ -1407,7 +1402,7 @@ export interface BatchLiquidateOptions {
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         oracle: RawTransactionArgument<string>,
         pageSize: RawTransactionArgument<number | bigint>,
         pageIndex: RawTransactionArgument<number | bigint>
@@ -1452,7 +1447,7 @@ export interface ExecuteArguments {
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
     oracle: RawTransactionArgument<string>;
 }
 export interface ExecuteOptions {
@@ -1463,7 +1458,7 @@ export interface ExecuteOptions {
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        req: RawTransactionArgument<string>,
+        req: TransactionArgument,
         oracle: RawTransactionArgument<string>
     ];
     typeArguments: [
@@ -1509,9 +1504,9 @@ export interface ExecuteOpenPositionArguments {
     orderId: RawTransactionArgument<number | bigint>;
     accountObjectAddress: RawTransactionArgument<string>;
     sender: RawTransactionArgument<string>;
-    collateral: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
     isLong: RawTransactionArgument<boolean>;
-    size: RawTransactionArgument<string>;
+    size: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
 }
 export interface ExecuteOpenPositionOptions {
@@ -1527,9 +1522,9 @@ export interface ExecuteOpenPositionOptions {
         orderId: RawTransactionArgument<number | bigint>,
         accountObjectAddress: RawTransactionArgument<string>,
         sender: RawTransactionArgument<string>,
-        collateral: RawTransactionArgument<string>,
+        collateral: TransactionArgument,
         isLong: RawTransactionArgument<boolean>,
-        size: RawTransactionArgument<string>,
+        size: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -1574,8 +1569,8 @@ export interface ExecuteIncreasePositionArguments {
     accountObjectAddress: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
     positionId: RawTransactionArgument<number | bigint>;
-    collateral: RawTransactionArgument<string>;
-    size: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
+    size: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
 }
 export interface ExecuteIncreasePositionOptions {
@@ -1589,8 +1584,8 @@ export interface ExecuteIncreasePositionOptions {
         accountObjectAddress: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
         positionId: RawTransactionArgument<number | bigint>,
-        collateral: RawTransactionArgument<string>,
-        size: RawTransactionArgument<string>,
+        collateral: TransactionArgument,
+        size: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -1692,7 +1687,7 @@ export interface ExecuteDecreasePositionArguments {
     accountObjId: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
     positionId: RawTransactionArgument<number | bigint>;
-    requestedSize: RawTransactionArgument<string>;
+    requestedSize: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
 }
 export interface ExecuteDecreasePositionOptions {
@@ -1708,7 +1703,7 @@ export interface ExecuteDecreasePositionOptions {
         accountObjId: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
         positionId: RawTransactionArgument<number | bigint>,
-        requestedSize: RawTransactionArgument<string>,
+        requestedSize: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -1751,15 +1746,15 @@ export interface ExecutePlaceOrderArguments {
     marketId: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     accountObjectAddress: RawTransactionArgument<string>;
-    collateral: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
     isLong: RawTransactionArgument<boolean>;
     isStopOrder: RawTransactionArgument<boolean>;
     reduceOnly: RawTransactionArgument<boolean>;
-    size: RawTransactionArgument<string>;
-    triggerPrice: RawTransactionArgument<string>;
+    size: TransactionArgument;
+    triggerPrice: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
     linkedPositionId: RawTransactionArgument<number | bigint | null>;
-    preOrders: RawTransactionArgument<string[]>;
+    preOrders: TransactionArgument;
 }
 export interface ExecutePlaceOrderOptions {
     package?: string;
@@ -1772,15 +1767,15 @@ export interface ExecutePlaceOrderOptions {
         marketId: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         accountObjectAddress: RawTransactionArgument<string>,
-        collateral: RawTransactionArgument<string>,
+        collateral: TransactionArgument,
         isLong: RawTransactionArgument<boolean>,
         isStopOrder: RawTransactionArgument<boolean>,
         reduceOnly: RawTransactionArgument<boolean>,
-        size: RawTransactionArgument<string>,
-        triggerPrice: RawTransactionArgument<string>,
+        size: TransactionArgument,
+        triggerPrice: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>,
         linkedPositionId: RawTransactionArgument<number | bigint | null>,
-        preOrders: RawTransactionArgument<string[]>
+        preOrders: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -1879,8 +1874,8 @@ export interface ExecuteUpdateOrderArguments {
     orderId: RawTransactionArgument<number | bigint>;
     triggerPriceKey: RawTransactionArgument<number | bigint>;
     orderTypeTag: RawTransactionArgument<number>;
-    newSize: RawTransactionArgument<string>;
-    newTriggerPrice: RawTransactionArgument<string>;
+    newSize: TransactionArgument;
+    newTriggerPrice: TransactionArgument;
 }
 export interface ExecuteUpdateOrderOptions {
     package?: string;
@@ -1894,8 +1889,8 @@ export interface ExecuteUpdateOrderOptions {
         orderId: RawTransactionArgument<number | bigint>,
         triggerPriceKey: RawTransactionArgument<number | bigint>,
         orderTypeTag: RawTransactionArgument<number>,
-        newSize: RawTransactionArgument<string>,
-        newTriggerPrice: RawTransactionArgument<string>
+        newSize: TransactionArgument,
+        newTriggerPrice: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -1982,7 +1977,7 @@ export interface ExecuteAddPreOrderArguments {
     marketId: RawTransactionArgument<string>;
     accountObjectAddress: RawTransactionArgument<string>;
     mainOrderId: RawTransactionArgument<number | bigint>;
-    newPreOrder: RawTransactionArgument<string[]>;
+    newPreOrder: TransactionArgument;
 }
 export interface ExecuteAddPreOrderOptions {
     package?: string;
@@ -1992,7 +1987,7 @@ export interface ExecuteAddPreOrderOptions {
         marketId: RawTransactionArgument<string>,
         accountObjectAddress: RawTransactionArgument<string>,
         mainOrderId: RawTransactionArgument<number | bigint>,
-        newPreOrder: RawTransactionArgument<string[]>
+        newPreOrder: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -2033,7 +2028,7 @@ export interface ExecuteDepositCollateralArguments {
     marketId: RawTransactionArgument<string>;
     accountObjectAddress: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
-    collateral: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
 }
 export interface ExecuteDepositCollateralOptions {
     package?: string;
@@ -2045,7 +2040,7 @@ export interface ExecuteDepositCollateralOptions {
         marketId: RawTransactionArgument<string>,
         accountObjectAddress: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>,
-        collateral: RawTransactionArgument<string>
+        collateral: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -2194,7 +2189,7 @@ export interface MatchOrdersArguments {
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     oracle: RawTransactionArgument<string>;
     orderTypeTag: RawTransactionArgument<number>;
     triggerPrice: RawTransactionArgument<number | bigint>;
@@ -2208,7 +2203,7 @@ export interface MatchOrdersOptions {
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         oracle: RawTransactionArgument<string>,
         orderTypeTag: RawTransactionArgument<number>,
         triggerPrice: RawTransactionArgument<number | bigint>,
@@ -2249,7 +2244,7 @@ export interface UpdateFundingRateArguments {
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
     oracle: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
 }
 export interface UpdateFundingRateOptions {
     package?: string;
@@ -2259,7 +2254,7 @@ export interface UpdateFundingRateOptions {
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
         oracle: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>
+        senderRequest: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2328,7 +2323,7 @@ export interface OpenPositionByKeeperArguments {
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     accountObjectAddress: RawTransactionArgument<string>;
     collateralCoin: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
@@ -2344,7 +2339,7 @@ export interface OpenPositionByKeeperOptions {
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         accountObjectAddress: RawTransactionArgument<string>,
         collateralCoin: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
@@ -2397,7 +2392,7 @@ export interface ClosePositionByKeeperArguments {
     marketRegistry: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
     acceptablePrice: RawTransactionArgument<number | bigint>;
     oracle: RawTransactionArgument<string>;
@@ -2410,7 +2405,7 @@ export interface ClosePositionByKeeperOptions {
         marketRegistry: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>,
         acceptablePrice: RawTransactionArgument<number | bigint>,
         oracle: RawTransactionArgument<string>
@@ -2542,14 +2537,14 @@ export function resolveOrderSize(options: ResolveOrderSizeOptions) {
 }
 export interface CheckOpenSlippageArguments {
     isLong: RawTransactionArgument<boolean>;
-    price: RawTransactionArgument<string>;
+    price: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
 }
 export interface CheckOpenSlippageOptions {
     package?: string;
     arguments: CheckOpenSlippageArguments | [
         isLong: RawTransactionArgument<boolean>,
-        price: RawTransactionArgument<string>,
+        price: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>
     ];
 }
@@ -2570,14 +2565,14 @@ export function checkOpenSlippage(options: CheckOpenSlippageOptions) {
 }
 export interface AssertOpenSlippageArguments {
     isLong: RawTransactionArgument<boolean>;
-    price: RawTransactionArgument<string>;
+    price: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
 }
 export interface AssertOpenSlippageOptions {
     package?: string;
     arguments: AssertOpenSlippageArguments | [
         isLong: RawTransactionArgument<boolean>,
-        price: RawTransactionArgument<string>,
+        price: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>
     ];
 }
@@ -2598,14 +2593,14 @@ export function assertOpenSlippage(options: AssertOpenSlippageOptions) {
 }
 export interface AssertCloseSlippageArguments {
     isLong: RawTransactionArgument<boolean>;
-    price: RawTransactionArgument<string>;
+    price: TransactionArgument;
     acceptablePrice: RawTransactionArgument<number | bigint>;
 }
 export interface AssertCloseSlippageOptions {
     package?: string;
     arguments: AssertCloseSlippageArguments | [
         isLong: RawTransactionArgument<boolean>,
-        price: RawTransactionArgument<string>,
+        price: TransactionArgument,
         acceptablePrice: RawTransactionArgument<number | bigint>
     ];
 }
@@ -2627,18 +2622,18 @@ export function assertCloseSlippage(options: AssertCloseSlippageOptions) {
 export interface CalculateTotalTradingFeeArguments {
     marketConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    executionPrice: RawTransactionArgument<string>;
+    executionPrice: TransactionArgument;
     orderIsLong: RawTransactionArgument<boolean>;
-    orderSize: RawTransactionArgument<string>;
+    orderSize: TransactionArgument;
 }
 export interface CalculateTotalTradingFeeOptions {
     package?: string;
     arguments: CalculateTotalTradingFeeArguments | [
         marketConfig: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        executionPrice: RawTransactionArgument<string>,
+        executionPrice: TransactionArgument,
         orderIsLong: RawTransactionArgument<boolean>,
-        orderSize: RawTransactionArgument<string>
+        orderSize: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2664,7 +2659,7 @@ export function calculateTotalTradingFee(options: CalculateTotalTradingFeeOption
 }
 export interface EmitLpEquityArguments {
     market: RawTransactionArgument<string>;
-    collateralToken: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
     amount: RawTransactionArgument<number | bigint>;
     isProfit: RawTransactionArgument<boolean>;
     memo: RawTransactionArgument<string>;
@@ -2673,7 +2668,7 @@ export interface EmitLpEquityOptions {
     package?: string;
     arguments: EmitLpEquityArguments | [
         market: RawTransactionArgument<string>,
-        collateralToken: RawTransactionArgument<string>,
+        collateralToken: TransactionArgument,
         amount: RawTransactionArgument<number | bigint>,
         isProfit: RawTransactionArgument<boolean>,
         memo: RawTransactionArgument<string>
@@ -2710,11 +2705,11 @@ export interface DistributeTradingFeeArguments {
     globalConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
     market: RawTransactionArgument<string>;
-    feeBalance: RawTransactionArgument<string>;
+    feeBalance: TransactionArgument;
     protocolShareBps: RawTransactionArgument<number | bigint>;
     marketId: RawTransactionArgument<string>;
-    collateralToken: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
+    collateralPrice: TransactionArgument;
 }
 export interface DistributeTradingFeeOptions {
     package?: string;
@@ -2722,11 +2717,11 @@ export interface DistributeTradingFeeOptions {
         globalConfig: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
         market: RawTransactionArgument<string>,
-        feeBalance: RawTransactionArgument<string>,
+        feeBalance: TransactionArgument,
         protocolShareBps: RawTransactionArgument<number | bigint>,
         marketId: RawTransactionArgument<string>,
-        collateralToken: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>
+        collateralToken: TransactionArgument,
+        collateralPrice: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -2799,8 +2794,8 @@ export function calculateEffectiveCollateralAmount(options: CalculateEffectiveCo
 }
 export interface CalculateLossAdjustedEffectiveCollateralAmountArguments {
     position: RawTransactionArgument<string>;
-    currentPrice: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
+    currentPrice: TransactionArgument;
+    collateralPrice: TransactionArgument;
     grossCollateralAmount: RawTransactionArgument<number | bigint>;
     borrowFee: RawTransactionArgument<number | bigint>;
     fundingSign: RawTransactionArgument<boolean>;
@@ -2812,8 +2807,8 @@ export interface CalculateLossAdjustedEffectiveCollateralAmountOptions {
     package?: string;
     arguments: CalculateLossAdjustedEffectiveCollateralAmountArguments | [
         position: RawTransactionArgument<string>,
-        currentPrice: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>,
+        currentPrice: TransactionArgument,
+        collateralPrice: TransactionArgument,
         grossCollateralAmount: RawTransactionArgument<number | bigint>,
         borrowFee: RawTransactionArgument<number | bigint>,
         fundingSign: RawTransactionArgument<boolean>,
@@ -2843,25 +2838,231 @@ export function calculateLossAdjustedEffectiveCollateralAmount(options: Calculat
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface SettleLossToBalanceArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
+    collateralToken: TransactionArgument;
+    lossAmount: RawTransactionArgument<number | bigint>;
+    collateralPrice: TransactionArgument;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleLossToBalanceOptions {
+    package?: string;
+    arguments: SettleLossToBalanceArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        collateral: TransactionArgument,
+        collateralToken: TransactionArgument,
+        lossAmount: RawTransactionArgument<number | bigint>,
+        collateralPrice: TransactionArgument,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleLossToBalance(options: SettleLossToBalanceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        null,
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "collateral", "collateralToken", "lossAmount", "collateralPrice", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_loss_to_balance',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleLossToPositionArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    position: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
+    lossAmount: RawTransactionArgument<number | bigint>;
+    collateralPrice: TransactionArgument;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleLossToPositionOptions {
+    package?: string;
+    arguments: SettleLossToPositionArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        position: RawTransactionArgument<string>,
+        collateralToken: TransactionArgument,
+        lossAmount: RawTransactionArgument<number | bigint>,
+        collateralPrice: TransactionArgument,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleLossToPosition(options: SettleLossToPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        null,
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "position", "collateralToken", "lossAmount", "collateralPrice", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_loss_to_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleFeesToBalanceArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
+    protocolShareBps: RawTransactionArgument<number | bigint>;
+    marketId: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
+    collateralPrice: TransactionArgument;
+    feeAmount: RawTransactionArgument<number | bigint>;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleFeesToBalanceOptions {
+    package?: string;
+    arguments: SettleFeesToBalanceArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        collateral: TransactionArgument,
+        protocolShareBps: RawTransactionArgument<number | bigint>,
+        marketId: RawTransactionArgument<string>,
+        collateralToken: TransactionArgument,
+        collateralPrice: TransactionArgument,
+        feeAmount: RawTransactionArgument<number | bigint>,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleFeesToBalance(options: SettleFeesToBalanceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        '0x2::object::ID',
+        null,
+        null,
+        'u64',
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "collateral", "protocolShareBps", "marketId", "collateralToken", "collateralPrice", "feeAmount", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_fees_to_balance',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleFeesToPositionArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    position: RawTransactionArgument<string>;
+    protocolShareBps: RawTransactionArgument<number | bigint>;
+    marketId: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
+    collateralPrice: TransactionArgument;
+    feeAmount: RawTransactionArgument<number | bigint>;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleFeesToPositionOptions {
+    package?: string;
+    arguments: SettleFeesToPositionArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        position: RawTransactionArgument<string>,
+        protocolShareBps: RawTransactionArgument<number | bigint>,
+        marketId: RawTransactionArgument<string>,
+        collateralToken: TransactionArgument,
+        collateralPrice: TransactionArgument,
+        feeAmount: RawTransactionArgument<number | bigint>,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleFeesToPosition(options: SettleFeesToPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        '0x2::object::ID',
+        null,
+        null,
+        'u64',
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "position", "protocolShareBps", "marketId", "collateralToken", "collateralPrice", "feeAmount", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_fees_to_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface SettleFundingToBalanceArguments {
     globalConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    collateral: RawTransactionArgument<string>;
+    collateral: TransactionArgument;
     fundingSign: RawTransactionArgument<boolean>;
     fundingFee: RawTransactionArgument<number | bigint>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralPrice: TransactionArgument;
     marketTicker: RawTransactionArgument<string>;
+    deficit: RawTransactionArgument<number | bigint>;
 }
 export interface SettleFundingToBalanceOptions {
     package?: string;
     arguments: SettleFundingToBalanceArguments | [
         globalConfig: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        collateral: RawTransactionArgument<string>,
+        collateral: TransactionArgument,
         fundingSign: RawTransactionArgument<boolean>,
         fundingFee: RawTransactionArgument<number | bigint>,
-        collateralPrice: RawTransactionArgument<string>,
-        marketTicker: RawTransactionArgument<string>
+        collateralPrice: TransactionArgument,
+        marketTicker: RawTransactionArgument<string>,
+        deficit: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string,
@@ -2877,9 +3078,10 @@ export function settleFundingToBalance(options: SettleFundingToBalanceOptions) {
         'bool',
         'u64',
         null,
-        '0x1::string::String'
+        '0x1::string::String',
+        'u128'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "pool", "collateral", "fundingSign", "fundingFee", "collateralPrice", "marketTicker"];
+    const parameterNames = ["globalConfig", "pool", "collateral", "fundingSign", "fundingFee", "collateralPrice", "marketTicker", "deficit"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',
@@ -2894,8 +3096,9 @@ export interface SettleFundingToPositionArguments {
     position: RawTransactionArgument<string>;
     fundingSign: RawTransactionArgument<boolean>;
     fundingFee: RawTransactionArgument<number | bigint>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralPrice: TransactionArgument;
     marketTicker: RawTransactionArgument<string>;
+    deficit: RawTransactionArgument<number | bigint>;
 }
 export interface SettleFundingToPositionOptions {
     package?: string;
@@ -2905,8 +3108,9 @@ export interface SettleFundingToPositionOptions {
         position: RawTransactionArgument<string>,
         fundingSign: RawTransactionArgument<boolean>,
         fundingFee: RawTransactionArgument<number | bigint>,
-        collateralPrice: RawTransactionArgument<string>,
-        marketTicker: RawTransactionArgument<string>
+        collateralPrice: TransactionArgument,
+        marketTicker: RawTransactionArgument<string>,
+        deficit: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string,
@@ -2922,9 +3126,10 @@ export function settleFundingToPosition(options: SettleFundingToPositionOptions)
         'bool',
         'u64',
         null,
-        '0x1::string::String'
+        '0x1::string::String',
+        'u128'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "pool", "position", "fundingSign", "fundingFee", "collateralPrice", "marketTicker"];
+    const parameterNames = ["globalConfig", "pool", "position", "fundingSign", "fundingFee", "collateralPrice", "marketTicker", "deficit"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',
@@ -2936,18 +3141,18 @@ export function settleFundingToPosition(options: SettleFundingToPositionOptions)
 export interface CalculateImpactFeeArguments {
     marketConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    executionPrice: RawTransactionArgument<string>;
+    executionPrice: TransactionArgument;
     orderIsLong: RawTransactionArgument<boolean>;
-    orderSize: RawTransactionArgument<string>;
+    orderSize: TransactionArgument;
 }
 export interface CalculateImpactFeeOptions {
     package?: string;
     arguments: CalculateImpactFeeArguments | [
         marketConfig: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        executionPrice: RawTransactionArgument<string>,
+        executionPrice: TransactionArgument,
         orderIsLong: RawTransactionArgument<boolean>,
-        orderSize: RawTransactionArgument<string>
+        orderSize: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2972,18 +3177,18 @@ export function calculateImpactFee(options: CalculateImpactFeeOptions) {
     });
 }
 export interface ImpactFeeCostUsdArguments {
-    maxImpactFee: RawTransactionArgument<string>;
-    allocatedExposureUsd: RawTransactionArgument<string>;
-    exposureUsd: RawTransactionArgument<string>;
+    maxImpactFee: TransactionArgument;
+    allocatedExposureUsd: TransactionArgument;
+    exposureUsd: TransactionArgument;
     impactFeeCurvature: RawTransactionArgument<number | bigint>;
     impactFeeScale: RawTransactionArgument<number | bigint>;
 }
 export interface ImpactFeeCostUsdOptions {
     package?: string;
     arguments: ImpactFeeCostUsdArguments | [
-        maxImpactFee: RawTransactionArgument<string>,
-        allocatedExposureUsd: RawTransactionArgument<string>,
-        exposureUsd: RawTransactionArgument<string>,
+        maxImpactFee: TransactionArgument,
+        allocatedExposureUsd: TransactionArgument,
+        exposureUsd: TransactionArgument,
         impactFeeCurvature: RawTransactionArgument<number | bigint>,
         impactFeeScale: RawTransactionArgument<number | bigint>
     ];
@@ -3006,20 +3211,20 @@ export function impactFeeCostUsd(options: ImpactFeeCostUsdOptions) {
     });
 }
 export interface CalculatePositionLeverageBpsArguments {
-    totalSize: RawTransactionArgument<string>;
+    totalSize: TransactionArgument;
     totalCollateralAmount: RawTransactionArgument<number | bigint>;
     collateralDecimal: RawTransactionArgument<number>;
-    executionPrice: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
+    executionPrice: TransactionArgument;
+    collateralPrice: TransactionArgument;
 }
 export interface CalculatePositionLeverageBpsOptions {
     package?: string;
     arguments: CalculatePositionLeverageBpsArguments | [
-        totalSize: RawTransactionArgument<string>,
+        totalSize: TransactionArgument,
         totalCollateralAmount: RawTransactionArgument<number | bigint>,
         collateralDecimal: RawTransactionArgument<number>,
-        executionPrice: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>
+        executionPrice: TransactionArgument,
+        collateralPrice: TransactionArgument
     ];
 }
 export function calculatePositionLeverageBps(options: CalculatePositionLeverageBpsOptions) {
@@ -3043,7 +3248,7 @@ export interface HasMinPositionCollateralValueArguments {
     minCollateralValue: RawTransactionArgument<number | bigint>;
     collateralAmount: RawTransactionArgument<number | bigint>;
     collateralDecimal: RawTransactionArgument<number>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralPrice: TransactionArgument;
 }
 export interface HasMinPositionCollateralValueOptions {
     package?: string;
@@ -3051,7 +3256,7 @@ export interface HasMinPositionCollateralValueOptions {
         minCollateralValue: RawTransactionArgument<number | bigint>,
         collateralAmount: RawTransactionArgument<number | bigint>,
         collateralDecimal: RawTransactionArgument<number>,
-        collateralPrice: RawTransactionArgument<string>
+        collateralPrice: TransactionArgument
     ];
 }
 export function hasMinPositionCollateralValue(options: HasMinPositionCollateralValueOptions) {
@@ -3074,7 +3279,7 @@ export interface AssertMinPositionCollateralValueArguments {
     minCollateralValue: RawTransactionArgument<number | bigint>;
     collateralAmount: RawTransactionArgument<number | bigint>;
     collateralDecimal: RawTransactionArgument<number>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralPrice: TransactionArgument;
 }
 export interface AssertMinPositionCollateralValueOptions {
     package?: string;
@@ -3082,7 +3287,7 @@ export interface AssertMinPositionCollateralValueOptions {
         minCollateralValue: RawTransactionArgument<number | bigint>,
         collateralAmount: RawTransactionArgument<number | bigint>,
         collateralDecimal: RawTransactionArgument<number>,
-        collateralPrice: RawTransactionArgument<string>
+        collateralPrice: TransactionArgument
     ];
 }
 export function assertMinPositionCollateralValue(options: AssertMinPositionCollateralValueOptions) {
@@ -3103,15 +3308,15 @@ export function assertMinPositionCollateralValue(options: AssertMinPositionColla
 }
 export interface ProportionalAmountArguments {
     total: RawTransactionArgument<number | bigint>;
-    partial: RawTransactionArgument<string>;
-    base: RawTransactionArgument<string>;
+    partial: TransactionArgument;
+    base: TransactionArgument;
 }
 export interface ProportionalAmountOptions {
     package?: string;
     arguments: ProportionalAmountArguments | [
         total: RawTransactionArgument<number | bigint>,
-        partial: RawTransactionArgument<string>,
-        base: RawTransactionArgument<string>
+        partial: TransactionArgument,
+        base: TransactionArgument
     ];
 }
 export function proportionalAmount(options: ProportionalAmountOptions) {
@@ -3187,20 +3392,20 @@ export function creditCollateralAmount(options: CreditCollateralAmountOptions) {
 }
 export interface CalculateRemainingCollateralAfterPartialReduceArguments {
     position: RawTransactionArgument<string>;
-    reduceSize: RawTransactionArgument<string>;
+    reduceSize: TransactionArgument;
     closeFee: RawTransactionArgument<number | bigint>;
-    currentPrice: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
+    currentPrice: TransactionArgument;
+    collateralPrice: TransactionArgument;
     addedCollateralAmount: RawTransactionArgument<number | bigint>;
 }
 export interface CalculateRemainingCollateralAfterPartialReduceOptions {
     package?: string;
     arguments: CalculateRemainingCollateralAfterPartialReduceArguments | [
         position: RawTransactionArgument<string>,
-        reduceSize: RawTransactionArgument<string>,
+        reduceSize: TransactionArgument,
         closeFee: RawTransactionArgument<number | bigint>,
-        currentPrice: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>,
+        currentPrice: TransactionArgument,
+        collateralPrice: TransactionArgument,
         addedCollateralAmount: RawTransactionArgument<number | bigint>
     ];
 }
@@ -3227,13 +3432,13 @@ export interface CanPositionGrowArguments {
     marketConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    currentSize: RawTransactionArgument<string>;
-    addedSize: RawTransactionArgument<string>;
+    currentSize: TransactionArgument;
+    addedSize: TransactionArgument;
     effectiveCollateralAmount: RawTransactionArgument<number | bigint>;
     collateralDecimal: RawTransactionArgument<number>;
-    collateralToken: RawTransactionArgument<string>;
-    executionPrice: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
+    executionPrice: TransactionArgument;
+    collateralPrice: TransactionArgument;
 }
 export interface CanPositionGrowOptions {
     package?: string;
@@ -3242,13 +3447,13 @@ export interface CanPositionGrowOptions {
         marketConfig: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        currentSize: RawTransactionArgument<string>,
-        addedSize: RawTransactionArgument<string>,
+        currentSize: TransactionArgument,
+        addedSize: TransactionArgument,
         effectiveCollateralAmount: RawTransactionArgument<number | bigint>,
         collateralDecimal: RawTransactionArgument<number>,
-        collateralToken: RawTransactionArgument<string>,
-        executionPrice: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>
+        collateralToken: TransactionArgument,
+        executionPrice: TransactionArgument,
+        collateralPrice: TransactionArgument
     ];
     typeArguments: [
         string
@@ -3287,13 +3492,13 @@ export interface ValidatePositionGrowthArguments {
     marketConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
-    currentSize: RawTransactionArgument<string>;
-    addedSize: RawTransactionArgument<string>;
+    currentSize: TransactionArgument;
+    addedSize: TransactionArgument;
     effectiveCollateralAmount: RawTransactionArgument<number | bigint>;
     collateralDecimal: RawTransactionArgument<number>;
-    collateralToken: RawTransactionArgument<string>;
-    executionPrice: RawTransactionArgument<string>;
-    collateralPrice: RawTransactionArgument<string>;
+    collateralToken: TransactionArgument;
+    executionPrice: TransactionArgument;
+    collateralPrice: TransactionArgument;
 }
 export interface ValidatePositionGrowthOptions {
     package?: string;
@@ -3302,13 +3507,13 @@ export interface ValidatePositionGrowthOptions {
         marketConfig: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        currentSize: RawTransactionArgument<string>,
-        addedSize: RawTransactionArgument<string>,
+        currentSize: TransactionArgument,
+        addedSize: TransactionArgument,
         effectiveCollateralAmount: RawTransactionArgument<number | bigint>,
         collateralDecimal: RawTransactionArgument<number>,
-        collateralToken: RawTransactionArgument<string>,
-        executionPrice: RawTransactionArgument<string>,
-        collateralPrice: RawTransactionArgument<string>
+        collateralToken: TransactionArgument,
+        executionPrice: TransactionArgument,
+        collateralPrice: TransactionArgument
     ];
     typeArguments: [
         string
@@ -3339,18 +3544,18 @@ export function validatePositionGrowth(options: ValidatePositionGrowthOptions) {
     });
 }
 export interface WeightedAveragePriceArguments {
-    currentSize: RawTransactionArgument<string>;
-    currentAveragePrice: RawTransactionArgument<string>;
-    addSize: RawTransactionArgument<string>;
-    fillPrice: RawTransactionArgument<string>;
+    currentSize: TransactionArgument;
+    currentAveragePrice: TransactionArgument;
+    addSize: TransactionArgument;
+    fillPrice: TransactionArgument;
 }
 export interface WeightedAveragePriceOptions {
     package?: string;
     arguments: WeightedAveragePriceArguments | [
-        currentSize: RawTransactionArgument<string>,
-        currentAveragePrice: RawTransactionArgument<string>,
-        addSize: RawTransactionArgument<string>,
-        fillPrice: RawTransactionArgument<string>
+        currentSize: TransactionArgument,
+        currentAveragePrice: TransactionArgument,
+        addSize: TransactionArgument,
+        fillPrice: TransactionArgument
     ];
 }
 export function weightedAveragePrice(options: WeightedAveragePriceOptions) {
@@ -3370,14 +3575,14 @@ export function weightedAveragePrice(options: WeightedAveragePriceOptions) {
     });
 }
 export interface NormalizeTriggerPriceArguments {
-    triggerPrice: RawTransactionArgument<string>;
-    orderPriceTick: RawTransactionArgument<string>;
+    triggerPrice: TransactionArgument;
+    orderPriceTick: TransactionArgument;
 }
 export interface NormalizeTriggerPriceOptions {
     package?: string;
     arguments: NormalizeTriggerPriceArguments | [
-        triggerPrice: RawTransactionArgument<string>,
-        orderPriceTick: RawTransactionArgument<string>
+        triggerPrice: TransactionArgument,
+        orderPriceTick: TransactionArgument
     ];
 }
 export function normalizeTriggerPrice(options: NormalizeTriggerPriceOptions) {
@@ -3464,7 +3669,7 @@ export interface ReservePreOrdersArguments {
     accountObjectAddress: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     collateralDecimal: RawTransactionArgument<number>;
-    preOrders: RawTransactionArgument<string[]>;
+    preOrders: TransactionArgument;
 }
 export interface ReservePreOrdersOptions {
     package?: string;
@@ -3475,7 +3680,7 @@ export interface ReservePreOrdersOptions {
         accountObjectAddress: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         collateralDecimal: RawTransactionArgument<number>,
-        preOrders: RawTransactionArgument<string[]>
+        preOrders: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -3865,13 +4070,13 @@ export function findOrderLocationById(options: FindOrderLocationByIdOptions) {
     });
 }
 export interface FindOrderPriceKeyInBookArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface FindOrderPriceKeyInBookOptions {
     package?: string;
     arguments: FindOrderPriceKeyInBookArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -3890,13 +4095,13 @@ export function findOrderPriceKeyInBook(options: FindOrderPriceKeyInBookOptions)
     });
 }
 export interface LevelContainsOrderArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface LevelContainsOrderOptions {
     package?: string;
     arguments: LevelContainsOrderArguments | [
-        level: RawTransactionArgument<string>,
+        level: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -3915,14 +4120,14 @@ export function levelContainsOrder(options: LevelContainsOrderOptions) {
     });
 }
 export interface HasOrderInBookArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface HasOrderInBookOptions {
     package?: string;
     arguments: HasOrderInBookArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
         orderId: RawTransactionArgument<number | bigint>
     ];
@@ -3979,8 +4184,8 @@ export interface CancelLinkedOrdersToBalanceArguments {
     wxaRegistry: RawTransactionArgument<string>;
     market: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
-    linkedOrderIds: RawTransactionArgument<number | bigint[]>;
-    linkedOrderPriceKeys: RawTransactionArgument<number | bigint[]>;
+    linkedOrderIds: RawTransactionArgument<Array<number | bigint>>;
+    linkedOrderPriceKeys: RawTransactionArgument<Array<number | bigint>>;
     memoCode: RawTransactionArgument<number>;
 }
 export interface CancelLinkedOrdersToBalanceOptions {
@@ -3990,8 +4195,8 @@ export interface CancelLinkedOrdersToBalanceOptions {
         wxaRegistry: RawTransactionArgument<string>,
         market: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
-        linkedOrderIds: RawTransactionArgument<number | bigint[]>,
-        linkedOrderPriceKeys: RawTransactionArgument<number | bigint[]>,
+        linkedOrderIds: RawTransactionArgument<Array<number | bigint>>,
+        linkedOrderPriceKeys: RawTransactionArgument<Array<number | bigint>>,
         memoCode: RawTransactionArgument<number>
     ];
     typeArguments: [
@@ -4088,14 +4293,14 @@ export function takeOrderDirect(options: TakeOrderDirectOptions) {
 }
 export interface ReturnToUserArguments {
     wxaRegistry: RawTransactionArgument<string>;
-    balance: RawTransactionArgument<string>;
+    balance: TransactionArgument;
     accountObjAddr: RawTransactionArgument<string>;
 }
 export interface ReturnToUserOptions {
     package?: string;
     arguments: ReturnToUserArguments | [
         wxaRegistry: RawTransactionArgument<string>,
-        balance: RawTransactionArgument<string>,
+        balance: TransactionArgument,
         accountObjAddr: RawTransactionArgument<string>
     ];
     typeArguments: [

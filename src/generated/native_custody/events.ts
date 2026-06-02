@@ -8,7 +8,6 @@
 import { MoveStruct } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 import * as float from './deps/bucket_v2_framework/float.ts';
-import * as float_1 from './deps/bucket_v2_framework/float.ts';
 const $moduleName = '@waterx/native-custody::events';
 export const NewCustodyVault = new MoveStruct({ name: `${$moduleName}::NewCustodyVault<phantom CREDIT>`, fields: {
         vault_id: bcs.Address
@@ -18,7 +17,7 @@ export const AssetAdded = new MoveStruct({ name: `${$moduleName}::AssetAdded<pha
         single_vault_id: bcs.Address,
         decimal: bcs.u8(),
         mint_fee_rate: float.Float,
-        burn_fee_rate: float_1.Float,
+        burn_fee_rate: float.Float,
         min_burn_amount: bcs.u64()
     } });
 export const Mint = new MoveStruct({ name: `${$moduleName}::Mint<phantom CREDIT, phantom T>`, fields: {
