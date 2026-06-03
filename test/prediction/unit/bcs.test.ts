@@ -115,6 +115,8 @@ describe("map enum errors", () => {
 
   it("enumKind accepts object keys without $kind", () => {
     expect(mapSelection({ No: true })).toBe("NO");
+    expect(mapSelection({ "@variant": "Yes" })).toBe("YES");
+    expect(mapOutcome({ "@variant": "Yes" })).toBe("YES");
   });
 
   it("enumKind throws when variant cannot be resolved", () => {

@@ -1,4 +1,3 @@
-import { Transaction } from "@mysten/sui/transactions";
 import { E2E_OPEN_MARKET_LABEL } from "~predict-scripts/seed/stages.ts";
 import {
   addKeeper,
@@ -64,17 +63,17 @@ describe.skipIf(!hasWriteCredentials())("admin integration (sign + execute)", ()
     const original = reg.minReserve;
     const bumped = original + 1n;
 
-    const upTx = new Transaction();
-    setMinReserve(ctx.client, upTx, { adminCap: cap, newReserve: bumped });
-    const upRes = await executeAndFetch(ctx.client, ctx.signer, upTx);
+    const upRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      setMinReserve(ctx.client, tx, { adminCap: cap, newReserve: bumped });
+    });
     expectEvent(upRes, "::events::MinReserveUpdated", {
       old_reserve: String(original),
       new_reserve: String(bumped),
     });
 
-    const downTx = new Transaction();
-    setMinReserve(ctx.client, downTx, { adminCap: cap, newReserve: original });
-    const downRes = await executeAndFetch(ctx.client, ctx.signer, downTx);
+    const downRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      setMinReserve(ctx.client, tx, { adminCap: cap, newReserve: original });
+    });
     expectEvent(downRes, "::events::MinReserveUpdated", {
       old_reserve: String(bumped),
       new_reserve: String(original),
@@ -90,17 +89,17 @@ describe.skipIf(!hasWriteCredentials())("admin integration (sign + execute)", ()
     const original = reg.orderCancelCooldownMs;
     const bumped = original + 1n;
 
-    const upTx = new Transaction();
-    setOrderCancelCooldownMs(ctx.client, upTx, { adminCap: cap, cooldownMs: bumped });
-    const upRes = await executeAndFetch(ctx.client, ctx.signer, upTx);
+    const upRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      setOrderCancelCooldownMs(ctx.client, tx, { adminCap: cap, cooldownMs: bumped });
+    });
     expectEvent(upRes, "::events::OrderCancelCooldownUpdated", {
       old_cooldown_ms: String(original),
       new_cooldown_ms: String(bumped),
     });
 
-    const downTx = new Transaction();
-    setOrderCancelCooldownMs(ctx.client, downTx, { adminCap: cap, cooldownMs: original });
-    await executeAndFetch(ctx.client, ctx.signer, downTx);
+    await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      setOrderCancelCooldownMs(ctx.client, tx, { adminCap: cap, cooldownMs: original });
+    });
   }, 240_000);
 
   it("pauseMarket + unpauseMarket emit MarketPaused and MarketUnpaused", async (testCtx) => {
@@ -108,17 +107,17 @@ describe.skipIf(!hasWriteCredentials())("admin integration (sign + execute)", ()
       testCtx.skip(true, "owner is not the AdminCap holder");
       return;
     }
-    const pauseTx = new Transaction();
-    pauseMarket(ctx.client, pauseTx, { adminCap: cap, marketId: OPEN_MARKET_BYTES });
-    const pauseRes = await executeAndFetch(ctx.client, ctx.signer, pauseTx);
+    const pauseRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      pauseMarket(ctx.client, tx, { adminCap: cap, marketId: OPEN_MARKET_BYTES });
+    });
     expectEvent(pauseRes, "::events::MarketPaused");
 
     const market = await getMarketById(ctx.client, { marketId: OPEN_MARKET_BYTES });
     expect(market.paused).toBe(true);
 
-    const unpauseTx = new Transaction();
-    unpauseMarket(ctx.client, unpauseTx, { adminCap: cap, marketId: OPEN_MARKET_BYTES });
-    const unpauseRes = await executeAndFetch(ctx.client, ctx.signer, unpauseTx);
+    const unpauseRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      unpauseMarket(ctx.client, tx, { adminCap: cap, marketId: OPEN_MARKET_BYTES });
+    });
     expectEvent(unpauseRes, "::events::MarketUnpaused");
   }, 240_000);
 
@@ -127,14 +126,14 @@ describe.skipIf(!hasWriteCredentials())("admin integration (sign + execute)", ()
       testCtx.skip(true, "owner is not the AdminCap holder");
       return;
     }
-    const addTx = new Transaction();
-    addKeeper(ctx.client, addTx, { adminCap: cap, keeper: PTB_DUMMY.delegate });
-    const addRes = await executeAndFetch(ctx.client, ctx.signer, addTx);
+    const addRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      addKeeper(ctx.client, tx, { adminCap: cap, keeper: PTB_DUMMY.delegate });
+    });
     expectEvent(addRes, "::events::KeeperAdded", { keeper: PTB_DUMMY.delegate });
 
-    const rmTx = new Transaction();
-    removeKeeper(ctx.client, rmTx, { adminCap: cap, keeper: PTB_DUMMY.delegate });
-    const rmRes = await executeAndFetch(ctx.client, ctx.signer, rmTx);
+    const rmRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      removeKeeper(ctx.client, tx, { adminCap: cap, keeper: PTB_DUMMY.delegate });
+    });
     expectEvent(rmRes, "::events::KeeperRemoved", { keeper: PTB_DUMMY.delegate });
   }, 240_000);
 
@@ -152,18 +151,19 @@ describe.skipIf(!hasWriteCredentials())("admin integration (sign + execute)", ()
       testCtx.skip(true, "no settlement coin in admin wallet");
       return;
     }
-    const depTx = new Transaction();
-    const [pay] = depTx.splitCoins(depTx.object(first.objectId), [1n]);
-    depositSettlement(ctx.client, depTx, { adminCap: cap, payment: pay });
-    await executeAndFetch(ctx.client, ctx.signer, depTx);
-
-    const wdTx = new Transaction();
-    adminWithdraw(ctx.client, wdTx, {
-      adminCap: cap,
-      amount: 1n,
-      recipient: ctx.ownerAddress,
+    const coinObjectId = first.objectId;
+    await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      const [pay] = tx.splitCoins(tx.object(coinObjectId), [1n]);
+      depositSettlement(ctx.client, tx, { adminCap: cap, payment: pay });
     });
-    const wdRes = await executeAndFetch(ctx.client, ctx.signer, wdTx);
+
+    const wdRes = await executeAndFetch(ctx.client, ctx.signer, (tx) => {
+      adminWithdraw(ctx.client, tx, {
+        adminCap: cap,
+        amount: 1n,
+        recipient: ctx.ownerAddress,
+      });
+    });
     expectEvent(wdRes, "::events::MarketRegistryWithdrawn", {
       amount: "1",
       recipient: ctx.ownerAddress,

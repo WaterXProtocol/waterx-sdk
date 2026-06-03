@@ -6,8 +6,6 @@ import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
 import * as order_1 from './order.ts';
 import * as position_1 from './position.ts';
-import * as position_2 from './position.ts';
-import * as position_3 from './position.ts';
 import * as outcome from './outcome.ts';
 const $moduleName = '@waterx/prediction::view';
 export const RegistryView: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::RegistryView`, fields: {
@@ -15,6 +13,7 @@ export const RegistryView: MoveStruct<any, any> = new MoveStruct({ name: `${$mod
         min_reserve: bcs.u64(),
         order_cancel_cooldown_ms: bcs.u64(),
         next_order_id: bcs.u64(),
+        next_position_id: bcs.u64(),
         order_count: bcs.u64(),
         position_count: bcs.u64(),
         unresolved_market_count: bcs.u64(),
@@ -24,6 +23,7 @@ export const OrderView: MoveStruct<any, any> = new MoveStruct({ name: `${$module
         order_id: bcs.u64(),
         kind: order_1.OrderKind,
         account_id: bcs.Address,
+        receiver_account_id: bcs.Address,
         market_id: bcs.vector(bcs.u8()),
         selection: position_1.Selection,
         position_id: bcs.option(bcs.u64()),
@@ -40,8 +40,8 @@ export const PositionView: MoveStruct<any, any> = new MoveStruct({ name: `${$mod
         position_id: bcs.u64(),
         account_id: bcs.Address,
         market_id: bcs.vector(bcs.u8()),
-        selection: position_2.Selection,
-        status: position_3.Status,
+        selection: position_1.Selection,
+        status: position_1.Status,
         filled_shares: bcs.u64(),
         filled_cost: bcs.u64(),
         opened_ts: bcs.u64(),

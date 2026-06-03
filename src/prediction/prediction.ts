@@ -66,6 +66,11 @@ export function outcomeArg(
 
 export interface PlaceOrderParams extends BasePredictionParams, AccountIdentityParams {
   accountId: IdArgument;
+  /**
+   * Registry account that owns the filled position (defaults to `accountId`).
+   * Required by on-chain `place_order` since bet-sharing: payer and receiver may differ.
+   */
+  receiverAccountId?: IdArgument;
   maxSpend: bigint | number | string;
   marketId: MarketIdInput;
   selection: Selection | TransactionArgument;
@@ -81,6 +86,7 @@ export function placeOrder(
 ): Transaction {
   const pkg = resolvePackageId(client, params.packageId);
   const senderRequest = createAccountRequest(client, tx, params);
+  const receiverAccountId = params.receiverAccountId ?? params.accountId;
   tx.moveCall({
     target: `${pkg}::waterx_prediction::place_order`,
     typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
@@ -90,6 +96,7 @@ export function placeOrder(
       tx.object(resolveAccountRegistry(client, params.accountRegistry)),
       senderRequest,
       idArg(tx, params.accountId),
+      idArg(tx, receiverAccountId),
       tx.pure.u64(toBigInt(params.maxSpend)),
       marketIdArg(tx, params.marketId),
       selectionArg(client, tx, params.selection, params.packageId),

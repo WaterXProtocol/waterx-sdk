@@ -30,6 +30,7 @@ export const EVENT_CONTRACT = {
       "market_registry_id",
       "order_id",
       "account_id",
+      "receiver_account_id",
       "market_id",
       "selection",
       "max_spend",
@@ -43,6 +44,7 @@ export const EVENT_CONTRACT = {
       market_registry_id: "address",
       order_id: "u64",
       account_id: "address",
+      receiver_account_id: "address",
       max_spend: "u64",
       min_shares: "u64",
       price_cap: "u64",
@@ -51,6 +53,7 @@ export const EVENT_CONTRACT = {
     },
     notes: [
       "account_id is the registry account object id (not the wallet owner address).",
+      "receiver_account_id is the account that receives the position after fill (defaults to account_id for self-bets).",
       "Indexer CH column price_cap_bps maps from Move price_cap.",
     ],
   },
@@ -64,7 +67,7 @@ export const EVENT_CONTRACT = {
       filled_cost: "u64",
     },
     notes: [
-      "position_id equals the originating open order_id (ChBetSource joins close/claim via this).",
+      "position_id is the registry position cursor id (may differ from order_id on testnet bypass fills).",
     ],
   },
   OrderCancelled: {

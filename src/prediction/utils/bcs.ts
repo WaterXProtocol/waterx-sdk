@@ -8,6 +8,7 @@ export {
   RegistryViewBcs,
   SelectionBcs,
   StatusBcs,
+  decodeEnumVariant,
   mapAccountDataView,
   mapCursorView,
   mapMarketView,

@@ -7,7 +7,7 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 const $moduleName = '@bucket/framework::account';
 export const ACCOUNT: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::ACCOUNT`, fields: {
         dummy_field: bcs.bool()
@@ -79,13 +79,13 @@ export function requestWithAccount(options: RequestWithAccountOptions) {
 }
 export interface ReceiveArguments {
     account: RawTransactionArgument<string>;
-    receiving: RawTransactionArgument<string>;
+    receiving: TransactionArgument;
 }
 export interface ReceiveOptions {
     package?: string;
     arguments: ReceiveArguments | [
         account: RawTransactionArgument<string>,
-        receiving: RawTransactionArgument<string>
+        receiving: TransactionArgument
     ];
     typeArguments: [
         string
@@ -177,12 +177,12 @@ export function accountAddress(options: AccountAddressOptions) {
     });
 }
 export interface RequestAddressArguments {
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
 }
 export interface RequestAddressOptions {
     package?: string;
     arguments: RequestAddressArguments | [
-        req: RawTransactionArgument<string>
+        req: TransactionArgument
     ];
 }
 export function requestAddress(options: RequestAddressOptions) {

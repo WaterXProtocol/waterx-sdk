@@ -15,11 +15,9 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
-import * as linked_table_1 from './deps/bucket_v2_framework/linked_table.ts';
 import * as table from './deps/sui/table.ts';
-import * as table_1 from './deps/sui/table.ts';
 const $moduleName = '@waterx/prediction::account_data';
 export const WaterXPrediction: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::WaterXPrediction`, fields: {
         dummy_field: bcs.bool()
@@ -28,11 +26,11 @@ export const WaterXPredictionData: MoveStruct<any, any> = new MoveStruct({ name:
         /** Pending open/close order IDs for this account. Value = market key. */
         orders: linked_table.LinkedTable(bcs.u64()),
         /** Active position IDs for this account. Value = market key. */
-        positions: linked_table_1.LinkedTable(bcs.u64()),
+        positions: linked_table.LinkedTable(bcs.u64()),
         /** Per-market pending order ID sets. Key = market key. */
         orders_by_market: table.Table,
         /** Per-market active position ID sets. Key = market key. */
-        positions_by_market: table_1.Table
+        positions_by_market: table.Table
     } });
 export interface PermPlaceOrderOptions {
     package?: string;
@@ -86,13 +84,26 @@ export function permRequestClose(options: PermRequestCloseOptions = {}) {
         function: 'perm_request_close',
     });
 }
+export interface PermTransferPositionOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function permTransferPosition(options: PermTransferPositionOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account_data',
+        function: 'perm_transfer_position',
+    });
+}
 export interface AccountOrdersArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface AccountOrdersOptions {
     package?: string;
     arguments: AccountOrdersArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function accountOrders(options: AccountOrdersOptions) {
@@ -109,12 +120,12 @@ export function accountOrders(options: AccountOrdersOptions) {
     });
 }
 export interface AccountPositionsArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface AccountPositionsOptions {
     package?: string;
     arguments: AccountPositionsArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function accountPositions(options: AccountPositionsOptions) {
@@ -131,12 +142,12 @@ export function accountPositions(options: AccountPositionsOptions) {
     });
 }
 export interface OrderCountArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface OrderCountOptions {
     package?: string;
     arguments: OrderCountArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function orderCount(options: OrderCountOptions) {
@@ -153,12 +164,12 @@ export function orderCount(options: OrderCountOptions) {
     });
 }
 export interface PositionCountArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface PositionCountOptions {
     package?: string;
     arguments: PositionCountArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function positionCount(options: PositionCountOptions) {
@@ -175,12 +186,12 @@ export function positionCount(options: PositionCountOptions) {
     });
 }
 export interface OrderFrontArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface OrderFrontOptions {
     package?: string;
     arguments: OrderFrontArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function orderFront(options: OrderFrontOptions) {
@@ -197,12 +208,12 @@ export function orderFront(options: OrderFrontOptions) {
     });
 }
 export interface OrderBackArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface OrderBackOptions {
     package?: string;
     arguments: OrderBackArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function orderBack(options: OrderBackOptions) {
@@ -219,13 +230,13 @@ export function orderBack(options: OrderBackOptions) {
     });
 }
 export interface OrderNextArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface OrderNextOptions {
     package?: string;
     arguments: OrderNextArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -244,12 +255,12 @@ export function orderNext(options: OrderNextOptions) {
     });
 }
 export interface PositionFrontArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface PositionFrontOptions {
     package?: string;
     arguments: PositionFrontArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function positionFront(options: PositionFrontOptions) {
@@ -266,12 +277,12 @@ export function positionFront(options: PositionFrontOptions) {
     });
 }
 export interface PositionBackArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
 }
 export interface PositionBackOptions {
     package?: string;
     arguments: PositionBackArguments | [
-        data: RawTransactionArgument<string>
+        data: TransactionArgument
     ];
 }
 export function positionBack(options: PositionBackOptions) {
@@ -288,13 +299,13 @@ export function positionBack(options: PositionBackOptions) {
     });
 }
 export interface PositionNextArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
 }
 export interface PositionNextOptions {
     package?: string;
     arguments: PositionNextArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -313,13 +324,13 @@ export function positionNext(options: PositionNextOptions) {
     });
 }
 export interface OrderMarketKeyArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface OrderMarketKeyOptions {
     package?: string;
     arguments: OrderMarketKeyArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -338,13 +349,13 @@ export function orderMarketKey(options: OrderMarketKeyOptions) {
     });
 }
 export interface PositionMarketKeyArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
 }
 export interface PositionMarketKeyOptions {
     package?: string;
     arguments: PositionMarketKeyArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -363,13 +374,13 @@ export function positionMarketKey(options: PositionMarketKeyOptions) {
     });
 }
 export interface MarketOrderCountArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface MarketOrderCountOptions {
     package?: string;
     arguments: MarketOrderCountArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -388,13 +399,13 @@ export function marketOrderCount(options: MarketOrderCountOptions) {
     });
 }
 export interface MarketPositionCountArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface MarketPositionCountOptions {
     package?: string;
     arguments: MarketPositionCountArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -413,13 +424,13 @@ export function marketPositionCount(options: MarketPositionCountOptions) {
     });
 }
 export interface MarketOrderFrontArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface MarketOrderFrontOptions {
     package?: string;
     arguments: MarketOrderFrontArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -438,13 +449,13 @@ export function marketOrderFront(options: MarketOrderFrontOptions) {
     });
 }
 export interface MarketOrderBackArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface MarketOrderBackOptions {
     package?: string;
     arguments: MarketOrderBackArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -463,14 +474,14 @@ export function marketOrderBack(options: MarketOrderBackOptions) {
     });
 }
 export interface MarketOrderNextArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface MarketOrderNextOptions {
     package?: string;
     arguments: MarketOrderNextArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>,
         orderId: RawTransactionArgument<number | bigint>
     ];
@@ -491,13 +502,13 @@ export function marketOrderNext(options: MarketOrderNextOptions) {
     });
 }
 export interface MarketPositionFrontArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface MarketPositionFrontOptions {
     package?: string;
     arguments: MarketPositionFrontArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -516,13 +527,13 @@ export function marketPositionFront(options: MarketPositionFrontOptions) {
     });
 }
 export interface MarketPositionBackArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface MarketPositionBackOptions {
     package?: string;
     arguments: MarketPositionBackArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -541,14 +552,14 @@ export function marketPositionBack(options: MarketPositionBackOptions) {
     });
 }
 export interface MarketPositionNextArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
     positionId: RawTransactionArgument<number | bigint>;
 }
 export interface MarketPositionNextOptions {
     package?: string;
     arguments: MarketPositionNextArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>,
         positionId: RawTransactionArgument<number | bigint>
     ];
@@ -569,13 +580,13 @@ export function marketPositionNext(options: MarketPositionNextOptions) {
     });
 }
 export interface OrderIdsByMarketArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface OrderIdsByMarketOptions {
     package?: string;
     arguments: OrderIdsByMarketArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -594,13 +605,13 @@ export function orderIdsByMarket(options: OrderIdsByMarketOptions) {
     });
 }
 export interface PositionIdsByMarketArguments {
-    data: RawTransactionArgument<string>;
+    data: TransactionArgument;
     marketKey: RawTransactionArgument<number | bigint>;
 }
 export interface PositionIdsByMarketOptions {
     package?: string;
     arguments: PositionIdsByMarketArguments | [
-        data: RawTransactionArgument<string>,
+        data: TransactionArgument,
         marketKey: RawTransactionArgument<number | bigint>
     ];
 }

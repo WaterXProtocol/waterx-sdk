@@ -3,14 +3,10 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as balance from './deps/sui/balance.ts';
 import * as table from './deps/sui/table.ts';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
-import * as linked_table_1 from './deps/bucket_v2_framework/linked_table.ts';
-import * as table_1 from './deps/sui/table.ts';
-import * as linked_table_2 from './deps/bucket_v2_framework/linked_table.ts';
-import * as linked_table_3 from './deps/bucket_v2_framework/linked_table.ts';
 import * as outcome from './outcome.ts';
 const $moduleName = '@waterx/prediction::waterx_prediction';
 export const MarketRegistry: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::MarketRegistry<phantom T>`, fields: {
@@ -20,14 +16,25 @@ export const MarketRegistry: MoveStruct<any, any> = new MoveStruct({ name: `${$m
         /** Exact market lookup: external market id bytes -> linked-table key. */
         market_id_map: table.Table,
         unresolved_markets: linked_table.LinkedTable(bcs.u64()),
-        resolved_markets: linked_table_1.LinkedTable(bcs.u64()),
+        resolved_markets: linked_table.LinkedTable(bcs.u64()),
         /** Set of market keys where new opens are blocked. Presence = paused. */
-        paused_markets: table_1.Table,
+        paused_markets: table.Table,
         /** Pending open and close orders waiting for broker/keeper execution. */
-        orders: linked_table_2.LinkedTable(bcs.u64()),
+        orders: linked_table.LinkedTable(bcs.u64()),
         /** Filled positions with active Polymarket exposure. */
-        positions: linked_table_3.LinkedTable(bcs.u64()),
+        positions: linked_table.LinkedTable(bcs.u64()),
+        /**
+         * Filled order id -> filled position id. Split positions are independent positions
+         * and are not indexed here.
+         */
+        position_id_by_order: table.Table,
+        /**
+         * Reverse index for cleaning `position_id_by_order` when the filled position is
+         * claimed or closed.
+         */
+        order_id_by_position: table.Table,
         next_order_id: bcs.u64(),
+        next_position_id: bcs.u64(),
         next_market_key: bcs.u64(),
         /** Minimum time after order placement before user self-cancel is allowed. */
         order_cancel_cooldown_ms: bcs.u64(),
@@ -88,11 +95,12 @@ export interface PlaceOrderArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
+    receiverAccountId: RawTransactionArgument<string>;
     maxSpend: RawTransactionArgument<number | bigint>;
     marketId: RawTransactionArgument<Array<number>>;
-    selection: RawTransactionArgument<string>;
+    selection: TransactionArgument;
     minShares: RawTransactionArgument<number | bigint>;
     priceCap: RawTransactionArgument<number | bigint>;
     expiryTs: RawTransactionArgument<number | bigint>;
@@ -103,11 +111,12 @@ export interface PlaceOrderOptions {
         globalConfig: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
+        receiverAccountId: RawTransactionArgument<string>,
         maxSpend: RawTransactionArgument<number | bigint>,
         marketId: RawTransactionArgument<Array<number>>,
-        selection: RawTransactionArgument<string>,
+        selection: TransactionArgument,
         minShares: RawTransactionArgument<number | bigint>,
         priceCap: RawTransactionArgument<number | bigint>,
         expiryTs: RawTransactionArgument<number | bigint>
@@ -118,8 +127,8 @@ export interface PlaceOrderOptions {
 }
 /**
  * Account-backed variant: debits `max_spend` from `account_id` in
- * `waterx_account`, opens the position, and records the account as the
- * payout/refund target.
+ * `waterx_account`, records pending-order/refunds against that payer, and gives
+ * the filled position to `receiver_account_id`.
  */
 export function placeOrder(options: PlaceOrderOptions) {
     const packageAddress = options.package ?? '@waterx/prediction';
@@ -129,6 +138,7 @@ export function placeOrder(options: PlaceOrderOptions) {
         null,
         null,
         '0x2::object::ID',
+        '0x2::object::ID',
         'u64',
         'vector<u8>',
         null,
@@ -137,7 +147,7 @@ export function placeOrder(options: PlaceOrderOptions) {
         'u64',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "accountId", "maxSpend", "marketId", "selection", "minShares", "priceCap", "expiryTs"];
+    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "accountId", "receiverAccountId", "maxSpend", "marketId", "selection", "minShares", "priceCap", "expiryTs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'waterx_prediction',
@@ -150,7 +160,7 @@ export interface SelfCancelOrderArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface SelfCancelOrderOptions {
@@ -159,7 +169,7 @@ export interface SelfCancelOrderOptions {
         globalConfig: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -193,7 +203,7 @@ export interface ClaimArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
 }
 export interface ClaimOptions {
@@ -202,7 +212,7 @@ export interface ClaimOptions {
         globalConfig: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -233,7 +243,7 @@ export interface RequestCloseArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
     minProceeds: RawTransactionArgument<number | bigint>;
     expiryTs: RawTransactionArgument<number | bigint>;
@@ -244,7 +254,7 @@ export interface RequestCloseOptions {
         globalConfig: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>,
         minProceeds: RawTransactionArgument<number | bigint>,
         expiryTs: RawTransactionArgument<number | bigint>
@@ -284,7 +294,7 @@ export interface SelfCancelCloseArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     positionId: RawTransactionArgument<number | bigint>;
 }
 export interface SelfCancelCloseOptions {
@@ -293,7 +303,7 @@ export interface SelfCancelCloseOptions {
         globalConfig: RawTransactionArgument<string>,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         positionId: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -320,6 +330,103 @@ export function selfCancelClose(options: SelfCancelCloseOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface TransferPositionArguments {
+    globalConfig: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
+    positionId: RawTransactionArgument<number | bigint>;
+    recipientAccountId: RawTransactionArgument<string>;
+}
+export interface TransferPositionOptions {
+    package?: string;
+    arguments: TransferPositionArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
+        positionId: RawTransactionArgument<number | bigint>,
+        recipientAccountId: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Account-backed position transfer. The source account owner moves an open
+ * prediction position to another WXA account; future close/claim proceeds go to
+ * the recipient account.
+ */
+export function transferPosition(options: TransferPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        '0x2::object::ID',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "positionId", "recipientAccountId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'transfer_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SplitPositionArguments {
+    globalConfig: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
+    positionId: RawTransactionArgument<number | bigint>;
+    recipientAccountId: RawTransactionArgument<string>;
+    splitShares: RawTransactionArgument<number | bigint>;
+}
+export interface SplitPositionOptions {
+    package?: string;
+    arguments: SplitPositionArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
+        positionId: RawTransactionArgument<number | bigint>,
+        recipientAccountId: RawTransactionArgument<string>,
+        splitShares: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Account-backed partial transfer. Splits an open position into two normal
+ * positions: the source keeps the remainder and the recipient receives a new
+ * independent position with proportional cost basis.
+ */
+export function splitPosition(options: SplitPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        '0x2::object::ID',
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "positionId", "recipientAccountId", "splitShares"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'split_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface AdminPlaceOrderForArguments {
     _: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
@@ -327,7 +434,7 @@ export interface AdminPlaceOrderForArguments {
     payment: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<Array<number>>;
-    selection: RawTransactionArgument<string>;
+    selection: TransactionArgument;
     minShares: RawTransactionArgument<number | bigint>;
     priceCap: RawTransactionArgument<number | bigint>;
     expiryTs: RawTransactionArgument<number | bigint>;
@@ -341,7 +448,7 @@ export interface AdminPlaceOrderForOptions {
         payment: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<Array<number>>,
-        selection: RawTransactionArgument<string>,
+        selection: TransactionArgument,
         minShares: RawTransactionArgument<number | bigint>,
         priceCap: RawTransactionArgument<number | bigint>,
         expiryTs: RawTransactionArgument<number | bigint>
@@ -381,7 +488,7 @@ export function adminPlaceOrderFor(options: AdminPlaceOrderForOptions) {
 }
 export interface FillOrderArguments {
     globalConfig: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
@@ -392,7 +499,7 @@ export interface FillOrderOptions {
     package?: string;
     arguments: FillOrderArguments | [
         globalConfig: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
@@ -405,8 +512,8 @@ export interface FillOrderOptions {
 }
 /**
  * Keeper reports the Polymarket fill back to chain. Account-backed fill
- * confirmation. Any unspent max_spend is credited back to the order's
- * waterx_account, then `position_id = order_id` is created.
+ * confirmation. Any unspent max_spend is credited back to the payer account, then
+ * a new independent position id is allocated.
  */
 export function fillOrder(options: FillOrderOptions) {
     const packageAddress = options.package ?? '@waterx/prediction';
@@ -431,7 +538,7 @@ export function fillOrder(options: FillOrderOptions) {
 }
 export interface CancelOrderArguments {
     globalConfig: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
@@ -440,7 +547,7 @@ export interface CancelOrderOptions {
     package?: string;
     arguments: CancelOrderArguments | [
         globalConfig: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>
@@ -475,7 +582,7 @@ export function cancelOrder(options: CancelOrderOptions) {
 }
 export interface ConfirmCloseArguments {
     globalConfig: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
@@ -485,7 +592,7 @@ export interface ConfirmCloseOptions {
     package?: string;
     arguments: ConfirmCloseArguments | [
         globalConfig: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>,
@@ -522,7 +629,7 @@ export function confirmClose(options: ConfirmCloseOptions) {
 }
 export interface CancelCloseArguments {
     globalConfig: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
@@ -531,7 +638,7 @@ export interface CancelCloseOptions {
     package?: string;
     arguments: CancelCloseArguments | [
         globalConfig: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>
@@ -566,7 +673,7 @@ export function cancelClose(options: CancelCloseOptions) {
 }
 export interface ForceClaimArguments {
     globalConfig: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     marketRegistry: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
@@ -575,7 +682,7 @@ export interface ForceClaimOptions {
     package?: string;
     arguments: ForceClaimArguments | [
         globalConfig: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         marketRegistry: RawTransactionArgument<string>,
         wxaRegistry: RawTransactionArgument<string>,
         positionId: RawTransactionArgument<number | bigint>
@@ -770,19 +877,19 @@ export function setOrderCancelCooldownMs(options: SetOrderCancelCooldownMsOption
 }
 export interface ResolveMarketArguments {
     globalConfig: RawTransactionArgument<string>;
-    keeperRequest: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
     marketRegistry: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<Array<number>>;
-    outcome: RawTransactionArgument<string>;
+    outcome: TransactionArgument;
 }
 export interface ResolveMarketOptions {
     package?: string;
     arguments: ResolveMarketArguments | [
         globalConfig: RawTransactionArgument<string>,
-        keeperRequest: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
         marketRegistry: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<Array<number>>,
-        outcome: RawTransactionArgument<string>
+        outcome: TransactionArgument
     ];
     typeArguments: [
         string
@@ -1331,6 +1438,61 @@ export function nextOrderId(options: NextOrderIdOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface NextPositionIdArguments {
+    marketRegistry: RawTransactionArgument<string>;
+}
+export interface NextPositionIdOptions {
+    package?: string;
+    arguments: NextPositionIdArguments | [
+        marketRegistry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function nextPositionId(options: NextPositionIdOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'next_position_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PositionIdForOrderArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint>;
+}
+export interface PositionIdForOrderOptions {
+    package?: string;
+    arguments: PositionIdForOrderArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function positionIdForOrder(options: PositionIdForOrderOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "orderId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'position_id_for_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface IsMarketResolvedArguments {
     marketRegistry: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<Array<number>>;
@@ -1867,6 +2029,35 @@ export function orderAccountId(options: OrderAccountIdOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'order_account_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface OrderReceiverAccountIdArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint>;
+}
+export interface OrderReceiverAccountIdOptions {
+    package?: string;
+    arguments: OrderReceiverAccountIdArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function orderReceiverAccountId(options: OrderReceiverAccountIdOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "orderId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'order_receiver_account_id',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -2940,12 +3131,12 @@ export function resolvedMarketPrev(options: ResolvedMarketPrevOptions) {
     });
 }
 export interface StatusIsOpenArguments {
-    s: RawTransactionArgument<string>;
+    s: TransactionArgument;
 }
 export interface StatusIsOpenOptions {
     package?: string;
     arguments: StatusIsOpenArguments | [
-        s: RawTransactionArgument<string>
+        s: TransactionArgument
     ];
 }
 export function statusIsOpen(options: StatusIsOpenOptions) {
@@ -2962,12 +3153,12 @@ export function statusIsOpen(options: StatusIsOpenOptions) {
     });
 }
 export interface StatusIsPendingCloseArguments {
-    s: RawTransactionArgument<string>;
+    s: TransactionArgument;
 }
 export interface StatusIsPendingCloseOptions {
     package?: string;
     arguments: StatusIsPendingCloseArguments | [
-        s: RawTransactionArgument<string>
+        s: TransactionArgument
     ];
 }
 export function statusIsPendingClose(options: StatusIsPendingCloseOptions) {
@@ -2984,12 +3175,12 @@ export function statusIsPendingClose(options: StatusIsPendingCloseOptions) {
     });
 }
 export interface OrderKindIsOpenArguments {
-    kind: RawTransactionArgument<string>;
+    kind: TransactionArgument;
 }
 export interface OrderKindIsOpenOptions {
     package?: string;
     arguments: OrderKindIsOpenArguments | [
-        kind: RawTransactionArgument<string>
+        kind: TransactionArgument
     ];
 }
 export function orderKindIsOpen(options: OrderKindIsOpenOptions) {
@@ -3006,12 +3197,12 @@ export function orderKindIsOpen(options: OrderKindIsOpenOptions) {
     });
 }
 export interface OrderKindIsCloseArguments {
-    kind: RawTransactionArgument<string>;
+    kind: TransactionArgument;
 }
 export interface OrderKindIsCloseOptions {
     package?: string;
     arguments: OrderKindIsCloseArguments | [
-        kind: RawTransactionArgument<string>
+        kind: TransactionArgument
     ];
 }
 export function orderKindIsClose(options: OrderKindIsCloseOptions) {

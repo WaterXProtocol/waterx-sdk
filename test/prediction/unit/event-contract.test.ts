@@ -34,5 +34,6 @@ describe("event contract helpers", () => {
   it("normalizeEnumField accepts string and object enum wire shapes", () => {
     expect(normalizeEnumField("YES")).toBe("YES");
     expect(normalizeEnumField({ Yes: true })).toBe("YES");
+    expect(normalizeEnumField({ "@variant": "Yes" })).toBe("YES");
   });
 });

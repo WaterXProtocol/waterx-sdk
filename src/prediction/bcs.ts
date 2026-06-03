@@ -104,15 +104,25 @@ export const AccountDataViewBcs: any = bcs.struct("AccountDataView", {
   position_back: bcs.option(bcs.u64()),
 });
 
-function enumKind(raw: unknown): string {
+export function decodeEnumVariant(raw: unknown): string {
   if (typeof raw === "string") return raw;
   if (raw && typeof raw === "object") {
     const record = raw as Record<string, unknown>;
     if (typeof record.$kind === "string") return record.$kind;
-    const key = Object.keys(record).find((k) => k !== "$kind");
+    const variant = record["@variant"];
+    if (typeof variant === "string") return variant;
+    if (variant && typeof variant === "object") {
+      const innerKey = Object.keys(variant as Record<string, unknown>)[0];
+      if (innerKey) return innerKey;
+    }
+    const key = Object.keys(record).find((k) => k !== "$kind" && k !== "@variant");
     if (key) return key;
   }
   throw new Error(`Unable to decode enum variant: ${JSON.stringify(raw)}`);
+}
+
+function enumKind(raw: unknown): string {
+  return decodeEnumVariant(raw);
 }
 
 export function mapSelection(raw: unknown): Selection {
