@@ -161,7 +161,7 @@ async function main(): Promise<void> {
   if (usdBalance < depositAmount) {
     throw new Error(
       `deposit-to-wlp: wxa USD balance ${usdBalance} < deposit ${depositAmount}. ` +
-        `Run scripts/mint-usd-from-mock-usdc.ts first (or lower DEPOSIT_AMOUNT).`,
+        `Run scripts/mint-usd-from-collateral.ts first (or lower DEPOSIT_AMOUNT).`,
     );
   }
 

@@ -1,21 +1,31 @@
 /**
- * Convert MOCK_USDC → USD via `native_custody` on testnet.
+ * Convert collateral assets → USD CREDIT via `native_custody`.
  *
- * Flow (single PTB):
- *   1. split `MINT_AMOUNT` raw units off your first Coin<MOCK_USDC>
- *   2. custody_vault::mint<MOCK_USDC, USD>             — get DepositRequest<USD>
+ * Mints USD CREDIT from EVERY backing asset registered on the custody vault,
+ * one `mint` + `consume_deposit_direct` leg per asset in a single PTB. On
+ * testnet the vault assets are MOCK_USDC + MOCK_USDSUI; on mainnet they are
+ * the real USDC / USDSUI coins — the asset list is read from
+ * `config.packages.native_custody.assets`, so this script is network-agnostic.
+ *
+ * Flow (single PTB), per targeted asset C:
+ *   1. split `MINT_AMOUNT` raw units off your largest Coin<C>
+ *   2. custody_vault::mint<C, USD>                     — get DepositRequest<USD>
  *   3. direct_rule::consume_deposit_direct<USD>        — settle USD into wxa account
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID    wxa account id that will receive the USD credit
  *
  * Optional env:
- *   MINT_AMOUNT                raw MOCK_USDC units to convert (default 1_000_000 = 1 USDC, 6 decimals)
+ *   MINT_AMOUNT                raw units to convert per asset (default 1_000_000 = 1 token, 6 decimals)
+ *   MINT_ASSETS                comma-separated asset-name substrings to target
+ *                              (case-insensitive, e.g. "usdc,usdsui"); default = every vault asset
+ *   ALLOW_MISSING_ASSET=1      skip (warn) a targeted asset the wallet has no coin for,
+ *                              instead of aborting; needs ≥1 asset minted to proceed
  *   EXECUTE=1                  actually sign + execute (otherwise simulate only)
  *
  * Run:
- *   WATERX_SMOKE_ACCOUNT_ID=0x… pnpm exec tsx scripts/mint-usd-from-mock-usdc.ts
- *   WATERX_SMOKE_ACCOUNT_ID=0x… EXECUTE=1 pnpm exec tsx scripts/mint-usd-from-mock-usdc.ts
+ *   WATERX_SMOKE_ACCOUNT_ID=0x… pnpm exec tsx scripts/mint-usd-from-collateral.ts
+ *   WATERX_SMOKE_ACCOUNT_ID=0x… EXECUTE=1 pnpm exec tsx scripts/mint-usd-from-collateral.ts
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -79,12 +89,18 @@ async function main(): Promise<void> {
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   if (!accountId) {
     throw new Error(
-      "mint-usd-from-mock-usdc: WATERX_SMOKE_ACCOUNT_ID is required. " +
+      "mint-usd-from-collateral: WATERX_SMOKE_ACCOUNT_ID is required. " +
         "Run scripts/create-wxa-account.ts first and export the printed id.",
     );
   }
   const amount = BigInt(process.env.MINT_AMOUNT ?? "1000000");
   const doExecute = process.env.EXECUTE === "1";
+  const allowMissing = process.env.ALLOW_MISSING_ASSET === "1";
+  // Comma-separated name/type substrings to target (case-insensitive); empty = every vault asset.
+  const filters = (process.env.MINT_ASSETS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
 
   const client = await WaterXClient.create("TESTNET", { cache: true });
 
@@ -94,45 +110,64 @@ async function main(): Promise<void> {
     throw new Error("native_custody / waterx_credit not configured on this network");
   }
 
-  const asset =
-    custody.assets.find((a) => a.type.toLowerCase().includes("::mock_usdc::")) ?? custody.assets[0];
-  if (!asset) throw new Error("no backing assets registered on the vault");
-  const assetLabel = asset.type.split("::").slice(-1)[0] ?? asset.type;
-  if (!asset.type.toLowerCase().includes("::mock_usdc::")) {
-    console.warn(`note: MOCK_USDC not registered, falling back to ${assetLabel}`);
+  const assetMatches = (a: { name?: string; type: string }): boolean =>
+    filters.length === 0 ||
+    filters.some(
+      (f) => a.type.toLowerCase().includes(f) || (a.name ?? "").toLowerCase().includes(f),
+    );
+  const targeted = custody.assets.filter(assetMatches);
+  if (targeted.length === 0) {
+    throw new Error(
+      `mint-usd-from-collateral: no vault asset matched MINT_ASSETS="${process.env.MINT_ASSETS ?? ""}". ` +
+        `Available: ${custody.assets.map((a) => a.name ?? a.type).join(", ")}`,
+    );
   }
 
   console.log(`sender:      ${address}`);
   console.log(`account:     ${accountId}`);
   console.log(`vault:       ${custody.vault}`);
-  console.log(`asset:       ${asset.type}`);
   console.log(`credit:      ${credit.credit_type}`);
-  console.log(`mint raw:    ${amount} (decimals=${asset.decimal})`);
+  console.log(`mint raw:    ${amount} per asset`);
+  console.log(`assets:      ${targeted.map((a) => a.name ?? a.type).join(", ")}`);
   console.log(`mode:        ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
-  const coin = await pickCoin(client, address, asset.type);
-  if (!coin) {
-    throw new Error(
-      `mint-usd-from-mock-usdc: no Coin<${assetLabel}> in wallet ${address}. ` +
-        `Mint MOCK_USDC from the testnet faucet first.`,
-    );
-  }
-  if (coin.balance < amount) {
-    throw new Error(
-      `mint-usd-from-mock-usdc: Coin<${assetLabel}> balance ${coin.balance} < requested ${amount} ` +
-        `(object ${coin.objectId}). Top up MOCK_USDC or lower MINT_AMOUNT.`,
-    );
-  }
-  console.log(`source coin: ${coin.objectId} (balance ${coin.balance})`);
-
   const tx = new Transaction();
-  const [assetCoin] = tx.splitCoins(tx.object(coin.objectId), [tx.pure.u64(amount)]);
+  const minted: string[] = [];
+  const skipped: string[] = [];
 
-  mintCreditToAccount(client, tx, {
-    accountId,
-    assetCoin: assetCoin!,
-    assetType: asset.type,
-  });
+  for (const asset of targeted) {
+    const label = asset.name ?? asset.type.split("::").slice(-1)[0] ?? asset.type;
+    const coin = await pickCoin(client, address, asset.type);
+    if (!coin || coin.balance < amount) {
+      const reason = !coin
+        ? `no Coin<${label}> in wallet ${address} (mint from the faucet first)`
+        : `Coin<${label}> balance ${coin.balance} < requested ${amount} (object ${coin.objectId})`;
+      if (allowMissing) {
+        console.warn(`  ⚠ skip ${label}: ${reason}`);
+        skipped.push(label);
+        continue;
+      }
+      throw new Error(
+        `mint-usd-from-collateral: ${reason}. ` +
+          `Top up the coin, lower MINT_AMOUNT, or set ALLOW_MISSING_ASSET=1 to skip it.`,
+      );
+    }
+
+    console.log(`  + ${label}: split ${amount} off ${coin.objectId} (balance ${coin.balance})`);
+    const [assetCoin] = tx.splitCoins(tx.object(coin.objectId), [tx.pure.u64(amount)]);
+    mintCreditToAccount(client, tx, {
+      accountId,
+      assetCoin: assetCoin!,
+      assetType: asset.type,
+    });
+    minted.push(label);
+  }
+
+  if (minted.length === 0) {
+    throw new Error(
+      `mint-usd-from-collateral: every targeted asset was skipped (${skipped.join(", ")}); nothing to mint.`,
+    );
+  }
 
   tx.setSender(address);
 
@@ -167,7 +202,9 @@ async function main(): Promise<void> {
   console.log(`  ✓ executed  digest=${digest}`);
   await client.grpcClient.waitForTransaction({ digest, timeout: 30_000 }).catch(() => {});
   console.log(
-    `\nUSD credit settled into wxa account ${accountId}. View on https://suiscan.xyz/testnet/tx/${digest}`,
+    `\nUSD credit minted from [${minted.join(", ")}] settled into wxa account ${accountId}.` +
+      (skipped.length ? ` Skipped: ${skipped.join(", ")}.` : "") +
+      `\nView on https://suiscan.xyz/testnet/tx/${digest}`,
   );
 }
 

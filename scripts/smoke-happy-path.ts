@@ -151,7 +151,7 @@ async function main(): Promise<void> {
   const depositAmount = BigInt(process.env.WATERX_DEPOSIT_AMOUNT ?? "50000000"); // 50 USD @ 6 dec
   // Downstream USD draws from the account balance: WLP mint (step 2) + the
   // order collateral (step 3). The deposit step tops the account up from a
-  // wallet Coin<USD>, but in the smoke chain mint-usd-from-mock-usdc already
+  // wallet Coin<USD>, but in the smoke chain mint-usd-from-collateral already
   // funded the account — so if there's no wallet coin we skip rather than fail,
   // as long as the account balance already covers the downstream needs.
   const mintAmount = BigInt(process.env.WATERX_MINT_WLP_AMOUNT ?? "30000000"); // 30 USD

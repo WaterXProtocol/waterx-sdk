@@ -121,6 +121,8 @@ export interface WaterxCreditPackage {
 
 /** One backing-asset row on the native custody vault (PSM). */
 export interface NativeCustodyAsset {
+  /** Human-readable asset label, e.g. `"MOCK_USDC"` / `"USDC"` (from `add_asset`). */
+  name?: string;
   /** Fully-qualified backing asset Move type `T`. */
   type: string;
   decimal: number;
