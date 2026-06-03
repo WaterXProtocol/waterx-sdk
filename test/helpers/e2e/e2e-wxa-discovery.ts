@@ -50,7 +50,7 @@ export async function loadWxaAccountWithWlp(
 
 export function wxaDiscoverySkipReason(kind: "usdc-mint" | "wlp-balance" | "redeem-queue"): string {
   if (kind === "usdc-mint") {
-    return "No wxa account with enough USDC for WLP mint (set WATERX_E2E_WXA_ACCOUNT_ID / run integration persistent-state)";
+    return "No wxa account with enough USDC for WLP mint (deposit policy + WaterXPerp asset gate; set WATERX_E2E_WXA_ACCOUNT_ID / run integration persistent-state)";
   }
   if (kind === "wlp-balance") {
     return "No wxa account with WLP balance (set WATERX_E2E_WXA_ACCOUNT_ID / run integration persistent-state)";
