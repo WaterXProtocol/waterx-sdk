@@ -13,40 +13,16 @@
  *   pnpm exec tsx scripts/smoke-credit-withdraw.ts
  *   WATERX_SMOKE_ACCOUNT_ID=0x… EXECUTE=1 pnpm exec tsx scripts/smoke-credit-withdraw.ts
  */
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
-import { fromBase64 } from "@mysten/bcs";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import type { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { buildRequestCreditWithdrawTx } from "../src/tx-builders.ts";
-
-const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
-const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
+import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 /** Default wxa account (deployer's) if WATERX_SMOKE_ACCOUNT_ID is unset. */
 const DEFAULT_ACCOUNT = "0x9d017d08000a6cfa4eae6366dafe44ffd197480ef01a3707a4057bd7f697b67b";
 /** 1 USD @ 6dp. */
 const WITHDRAW_AMOUNT = 1_000_000n;
-
-function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
-  const yaml = readFileSync(CLIENT_YAML, "utf8");
-  const m = /active_address:\s*"?(0x[a-f0-9]+)"?/i.exec(yaml);
-  if (!m) throw new Error("could not parse active_address from client.yaml");
-  const activeAddress = m[1]!.toLowerCase();
-  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
-  for (const encoded of keystore) {
-    const raw = fromBase64(encoded);
-    if (raw.length !== 33 || raw[0] !== 0x00) continue;
-    const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === activeAddress) {
-      return { keypair: kp, address: kp.toSuiAddress() };
-    }
-  }
-  throw new Error(`no ED25519 key in keystore matches active address ${activeAddress}`);
-}
 
 interface SimResult {
   $kind?: string;
@@ -54,7 +30,7 @@ interface SimResult {
 }
 
 async function main(): Promise<void> {
-  const { keypair, address } = loadActiveKeypair();
+  const address = resolveActiveAddress();
   const client = await WaterXClient.create("TESTNET", { cache: true });
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID ?? DEFAULT_ACCOUNT;
   const execute = process.env.EXECUTE === "1";
@@ -95,7 +71,10 @@ async function main(): Promise<void> {
       console.log(`  \x1b[32m✓\x1b[0m sim ok`);
     }
   } else {
-    const r = (await client.signAndExecuteTransaction({ signer: keypair, transaction: tx })) as {
+    const r = (await client.signAndExecuteTransaction({
+      signer: loadActiveKeypair().keypair,
+      transaction: tx,
+    })) as {
       Transaction?: { digest?: string; status?: { success?: boolean; error?: string | null } };
     };
     const digest = r.Transaction?.digest ?? "";

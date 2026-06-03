@@ -1,6 +1,7 @@
 # Single PR pipeline for `main`: replaces legacy `lint.yml` + `unit-test.yml` (no duplicate runs).
 # Core: pnpm lint, typecheck, build, vitest unit (coverage) + single test-e2e job (simulate only).
-# Extra: Trivy, Semgrep, gitleaks, pnpm audit. On-chain integration is local-only (`pnpm test:integration`; needs keys + funded wallet — not run in CI).
+# Extra: Trivy, Semgrep, gitleaks, pnpm audit, dry smoke chain (testnet simulate-only; skips without signer secrets).
+# On-chain integration is local-only (`pnpm test:integration`; needs keys + funded wallet — not run in CI).
 
 name: CI
 
@@ -173,6 +174,39 @@ jobs:
           name: perp-sdk E2E simulate
           path: test-results-e2e.xml
           reporter: java-junit
+
+  # Testnet dry smoke chain (zero-write, simulate-only) against the committed
+  # default fixture account (owned by the smoke signer, funded with standing
+  # USD CREDIT + WLP). A dry run never signs — `client.simulate()` only needs
+  # the sender ADDRESS — so NO keystore / secret is required: the orchestrator
+  # falls back to the committed default signer address when no client.yaml is
+  # present. Runs on every PR, including forks. (Override the fixture by setting
+  # the `SUI_SMOKE_ADDRESS` repo variable + `WATERX_SMOKE_ACCOUNT_ID`.)
+  smoke-chain-dry:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: Smoke chain (testnet, dry)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - id: cache-nm
+        uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Run dry smoke chain (zero-write, no keystore)
+        env:
+          NODE_NO_WARNINGS: "1"
+          # Optional override; empty falls back to the committed default signer.
+          SUI_ACTIVE_ADDRESS: ${{ vars.SUI_SMOKE_ADDRESS }}
+          WATERX_SMOKE_ACCOUNT_ID: ${{ vars.WATERX_SMOKE_ACCOUNT_ID }}
+        run: pnpm smoke:chain:dry
 
   trivy:
     runs-on: ubuntu-latest

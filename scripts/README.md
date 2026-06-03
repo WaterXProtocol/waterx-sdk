@@ -41,7 +41,14 @@ visible at step 1 instead of step 5.
 # default chain, executes on-chain
 pnpm smoke:chain
 
-# every step in simulate-only mode (no on-chain writes)
+# every step in simulate-only mode (no on-chain writes).
+# A dry run NEVER signs — simulate only needs the sender address, not the
+# keystore. With no WATERX_SMOKE_ACCOUNT_ID / SUI_ACTIVE_ADDRESS / client.yaml
+# the orchestrator falls back to the committed defaults in run-smoke-chain.ts
+# (DEFAULT_SMOKE_ACCOUNT_ID + DEFAULT_SMOKE_SIGNER) — a pre-funded fixture
+# account owned by the smoke signer — so the dry chain passes with zero setup
+# and zero secrets. This is what the `smoke-chain-dry` CI job runs (no keystore).
+# Transient Hermes/network errors are retried (not failed).
 pnpm smoke:chain:dry
 
 # with optional steps
