@@ -11,13 +11,14 @@
  *   0. smoke-remote           — config repo reachability
  *   1. smoke                  — PTB builder simulate sanity (no on-chain writes)
  *   2. create-wxa-account     — emits WATERX_SMOKE_ACCOUNT_ID for downstream
- *   3. mint-usd-from-mock-usdc — MOCK_USDC → USD CREDIT in wxa
+ *   3. mint-usd-from-collateral — USDC + USDSUI → USD CREDIT in wxa (every vault asset)
  *   4. smoke-credit-withdraw  — requestCreditWithdraw + enqueue (native route)
  *   5. deposit-to-wlp         — USD → WLP in wxa
  *   6. smoke-staking          — stake → unstake 1 WLP
- *   7. smoke-happy-path       — deposit + mint WLP + place + cancel
- *   8. smoke-keeper-match     — market buy + keeper match + direct close
- *   9. smoke-custody          — mint/burn CREDIT round-trip
+ *   7. mint-and-stake-wlp     — atomic mint WLP + stake in one PTB
+ *   8. smoke-happy-path       — deposit + mint WLP + place + cancel
+ *   9. smoke-keeper-match     — market buy + keeper match + direct close
+ *  10. smoke-custody          — mint/burn CREDIT round-trip
  *
  * If WATERX_SMOKE_ACCOUNT_ID is already set in the env, step 2 is skipped
  * (the existing account is reused). This lets you re-run the chain without
@@ -65,15 +66,35 @@ function buildChain(flags: CliFlags): Step[] {
       script: "scripts/create-wxa-account.ts",
       args: { capturesAccountId: true },
     },
-    { name: "mint-usd-from-mock-usdc", script: "scripts/mint-usd-from-mock-usdc.ts" },
+    {
+      name: "mint-usd-from-collateral",
+      script: "scripts/mint-usd-from-collateral.ts",
+      // Mint 25 USD per vault asset (USDC + USDSUI) = 50 USD CREDIT, enough to
+      // fund every downstream draw on a fresh account: credit-withdraw (1) +
+      // deposit-to-wlp (1) + mint-and-stake-wlp (1) + happy-path (~35) +
+      // keeper-match (~5), with margin.
+      args: { env: { MINT_AMOUNT: "25000000" } },
+    },
     { name: "smoke-credit-withdraw", script: "scripts/smoke-credit-withdraw.ts" },
     { name: "deposit-to-wlp", script: "scripts/deposit-to-wlp.ts" },
-    { name: "smoke-staking", script: "scripts/smoke-staking.ts" },
+    {
+      name: "smoke-staking",
+      script: "scripts/smoke-staking.ts",
+      // 1 USD deposit-to-wlp yields slightly <1 WLP (mint discount), so stake
+      // a sub-1 WLP amount that fits a fresh account's balance.
+      args: { env: { WATERX_STAKE_AMOUNT: "500000" } },
+    },
   ];
   if (flags.includeClaim) {
     chain.push({ name: "smoke-staking-claim", script: "scripts/smoke-staking-claim.ts" });
   }
   chain.push(
+    {
+      name: "mint-and-stake-wlp",
+      script: "scripts/mint-and-stake-wlp.ts",
+      // 1 USD atomic mint+stake — fits the CREDIT minted above (script default is 30 USD).
+      args: { env: { DEPOSIT_AMOUNT: "1000000", MIN_LP_AMOUNT: "0" } },
+    },
     { name: "smoke-happy-path", script: "scripts/smoke-happy-path.ts" },
     { name: "smoke-keeper-match", script: "scripts/smoke-keeper-match.ts" },
     {
@@ -90,6 +111,7 @@ interface StepResult {
   exitCode: number;
   durationMs: number;
   capturedAccountId?: string;
+  skipped?: boolean;
 }
 
 async function runStep(step: Step, env: NodeJS.ProcessEnv): Promise<StepResult> {
@@ -149,7 +171,7 @@ async function main(): Promise<void> {
   if (reusing) {
     console.log(
       `[smoke-chain] reusing WATERX_SMOKE_ACCOUNT_ID=${chainEnv.WATERX_SMOKE_ACCOUNT_ID} ` +
-        `— create-wxa-account step will still run (idempotent) but its capture is ignored.`,
+        `— account-creating steps are skipped.`,
     );
   }
 
@@ -160,6 +182,15 @@ async function main(): Promise<void> {
 
   const results: StepResult[] = [];
   for (const step of chain) {
+    // When an account id is already provided, the account-creating step is a
+    // no-op (its captured id is ignored) — skip it instead of broadcasting a
+    // redundant create.
+    if (reusing && step.args?.capturesAccountId) {
+      console.log(`\n========== [${step.name}] skipped (reusing existing account) ==========`);
+      results.push({ step, exitCode: 0, durationMs: 0, skipped: true });
+      continue;
+    }
+
     const result = await runStep(step, chainEnv);
     results.push(result);
 
@@ -187,7 +218,7 @@ async function main(): Promise<void> {
 function summarize(results: StepResult[]): void {
   console.log("\n========== smoke-chain summary ==========");
   for (const r of results) {
-    const tag = r.exitCode === 0 ? "OK  " : "FAIL";
+    const tag = r.skipped ? "SKIP" : r.exitCode === 0 ? "OK  " : "FAIL";
     console.log(`  [${tag}] ${r.step.name.padEnd(28)} ${r.durationMs}ms`);
   }
 }

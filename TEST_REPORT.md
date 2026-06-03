@@ -59,9 +59,9 @@ injects it as env into every downstream step. Fail-fast on any non-zero exit.
 
 ### Chain (default)
 
-`smoke-remote` → `smoke` → `create-wxa-account` → `mint-usd-from-mock-usdc` →
-`deposit-to-wlp` → `smoke-staking` → `smoke-happy-path` → `smoke-keeper-match` →
-`smoke-custody`
+`smoke-remote` → `smoke` → `create-wxa-account` → `mint-usd-from-collateral` →
+`smoke-credit-withdraw` → `deposit-to-wlp` → `smoke-staking` → `mint-and-stake-wlp` →
+`smoke-happy-path` → `smoke-keeper-match` → `smoke-custody`
 
 Opt-in (`--include-claim`, `--include-referral`) and dry-run (`--dry-run`) flags
 supported. Reusing an account: set `WATERX_SMOKE_ACCOUNT_ID` before invoking
@@ -74,9 +74,10 @@ step that produces the missing state:
 
 | File | Preflight |
 |------|-----------|
-| `mint-usd-from-mock-usdc.ts` | wxa account id set; MOCK_USDC coin ≥ MINT_AMOUNT |
+| `mint-usd-from-collateral.ts` | wxa account id set; per-asset coin (USDC + USDSUI) ≥ MINT_AMOUNT |
 | `deposit-to-wlp.ts` | wxa account id set; wxa USD balance ≥ DEPOSIT_AMOUNT |
 | `smoke-staking.ts` | wxa account id set; wxa WLP balance ≥ STAKE_AMOUNT |
+| `mint-and-stake-wlp.ts` | wxa account id set; wxa USD CREDIT balance ≥ DEPOSIT_AMOUNT |
 | `smoke-staking-claim.ts` | account set; ≥1 rewarder configured; WLP balance ≥ stake |
 | `smoke-keeper-match.ts` | wxa account id set |
 | `smoke-happy-path.ts` | wxa account id set |

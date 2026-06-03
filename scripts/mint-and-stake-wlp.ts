@@ -1,26 +1,28 @@
 /**
  * Mint WLP from the wxa account's USD balance AND stake it atomically — the
- * "deposit USD and earn rewards" flow — WITHOUT pushing a fresh Pyth price.
+ * "deposit USD and earn rewards" flow.
  *
- * Like `deposit-to-wlp.ts`'s SKIP_PRICE_UPDATE path: we skip the Hermes fetch
- * + on-chain Pyth push (updatePythPrices) and only re-aggregate the price
- * already sitting on-chain. mint_wlp still calls oracle::get_price, which
- * aborts EStalePrice unless oracle::aggregate ran THIS PTB — so we run the
- * collector → feed → aggregate cycle ourselves, then hand the same PTB to
- * buildMintAndStakeWlpTx with `skipOraclePriceRefresh: true`.
+ * By default does a FULL oracle refresh (Hermes fetch + on-chain Pyth push +
+ * aggregate + TokenPoolInfo.value_usd bump) via `buildMintAndStakeWlpTx`'s
+ * default refresh path, so it works regardless of how stale the on-chain Pyth
+ * price is.
  *
- * Only succeeds while the on-chain USDCUSD Pyth price is within the pyth_rule
- * tolerance window (set to 1 year on this testnet); otherwise the aggregate
- * fails ETotalWeightNotEnough and you must run a full refresh instead.
+ * `SKIP_PRICE_UPDATE=1` switches to the aggregate-only path: skip the Hermes
+ * fetch + Pyth push and only re-aggregate the price already on-chain (mint_wlp
+ * still needs a same-PTB `oracle::aggregate` or it aborts EStalePrice). That
+ * only succeeds while the on-chain USDCUSD Pyth price is within the pyth_rule
+ * tolerance window — otherwise the aggregate fails ETotalWeightNotEnough and
+ * you must run the default full refresh instead.
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID (or WATERX_ACCOUNT_ID)  wxa account id
  *
  * Optional env:
- *   DEPOSIT_AMOUNT   raw USD units to deposit (default 30_000_000 = 30 USD)
- *   MIN_LP_AMOUNT    slippage floor in raw WLP units (default 0)
- *   STAKE_ALIAS      staking pool alias (default "WLP")
- *   EXECUTE=1        sign + execute (otherwise simulate only)
+ *   DEPOSIT_AMOUNT     raw USD units to deposit (default 30_000_000 = 30 USD)
+ *   MIN_LP_AMOUNT      slippage floor in raw WLP units (default 0)
+ *   STAKE_ALIAS        staking pool alias (default "WLP")
+ *   SKIP_PRICE_UPDATE=1  aggregate-only (no Pyth push) — needs a fresh on-chain price
+ *   EXECUTE=1          sign + execute (otherwise simulate only)
  *
  * Run:
  *   WATERX_SMOKE_ACCOUNT_ID=0x… pnpm exec tsx scripts/mint-and-stake-wlp.ts
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
   const depositAmount = BigInt(process.env.DEPOSIT_AMOUNT ?? "30000000");
   const minLpAmount = BigInt(process.env.MIN_LP_AMOUNT ?? "0");
   const stakeAlias = process.env.STAKE_ALIAS ?? "WLP";
+  const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
   const doExecute = process.env.EXECUTE === "1";
 
   const client = await WaterXClient.create("TESTNET", { cache: true });
@@ -83,7 +86,9 @@ async function main(): Promise<void> {
   console.log(`deposit raw:   ${depositAmount} (USD, 6 dec)`);
   console.log(`min lp raw:    ${minLpAmount}`);
   console.log(`stake alias:   ${stakeAlias}`);
-  console.log(`price update:  SKIPPED (aggregate-only, no Pyth push)`);
+  console.log(
+    `price update:  ${skipPriceUpdate ? "SKIPPED (aggregate-only, no Pyth push)" : "full refresh (Hermes + Pyth push)"}`,
+  );
   console.log(`mode:          ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
   const usdBalance = await getAccountBalance(client, accountId, usdType);
@@ -93,17 +98,20 @@ async function main(): Promise<void> {
   }
 
   const tx = new Transaction();
-  // Re-aggregate the on-chain USDCUSD price (no Hermes / no Pyth push) so
-  // mint_wlp's oracle::get_price sees a same-PTB aggregate.
-  const feed = client.getPythFeed(TICKER);
-  aggregateTickerWithPyth(tx, client, {
-    ticker: TICKER,
-    priceInfoObjectId: feed.price_info_object,
-  });
+  if (skipPriceUpdate) {
+    // Re-aggregate the on-chain USDCUSD price (no Hermes / no Pyth push) so
+    // mint_wlp's oracle::get_price sees a same-PTB aggregate. Only works while
+    // that on-chain price is within pyth_rule tolerance.
+    const feed = client.getPythFeed(TICKER);
+    aggregateTickerWithPyth(tx, client, {
+      ticker: TICKER,
+      priceInfoObjectId: feed.price_info_object,
+    });
+  }
 
   await buildMintAndStakeWlpTx(client, {
     tx,
-    skipOraclePriceRefresh: true,
+    skipOraclePriceRefresh: skipPriceUpdate,
     accountId,
     depositTokenType: usdType,
     depositTicker: TICKER,
