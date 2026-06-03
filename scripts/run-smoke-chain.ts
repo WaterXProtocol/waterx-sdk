@@ -4,7 +4,7 @@
  * each step finds the state the previous one produced. Fail-fast.
  *
  *   pnpm smoke:chain               # full chain, EXECUTE=1 each step
- *   pnpm smoke:chain --dry-run     # simulate-only mode for every step
+ *   pnpm smoke:chain --dry-run     # zero-write: simulate-only, execute-only steps skipped
  *   pnpm smoke:chain --include-claim
  *
  * Steps (in order):
@@ -16,13 +16,18 @@
  *   5. deposit-to-wlp         — USD → WLP in wxa
  *   6. smoke-staking          — stake → unstake 1 WLP
  *   7. mint-and-stake-wlp     — atomic mint WLP + stake in one PTB
- *   8. smoke-happy-path       — deposit + mint WLP + place + cancel
- *   9. smoke-keeper-match     — market buy + keeper match + direct close
+ *   8. smoke-happy-path       — deposit + mint WLP + place + cancel  [execute-only]
+ *   9. smoke-keeper-match     — market buy + keeper match + direct close  [execute-only]
  *  10. smoke-custody          — mint/burn CREDIT round-trip
  *
- * If WATERX_SMOKE_ACCOUNT_ID is already set in the env, step 2 is skipped
- * (the existing account is reused). This lets you re-run the chain without
- * creating a new account every time.
+ * If WATERX_SMOKE_ACCOUNT_ID is already set in the env, the account-creating
+ * step is skipped (the existing account is reused). This lets you re-run the
+ * chain without creating a new account every time.
+ *
+ * `--dry-run` is guaranteed zero-write: every step gates its broadcast on
+ * EXECUTE (deleted in dry mode), `executeEnv` flags are stripped, and
+ * `executeOnly` steps (happy-path, keeper-match — no simulate path) are
+ * skipped. Steps still need a signer + network to simulate against testnet.
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -35,8 +40,20 @@ loadRepoEnvFiles();
 type StepArgs = {
   /** If true, this step is the source of WATERX_SMOKE_ACCOUNT_ID for the rest of the chain. */
   capturesAccountId?: boolean;
-  /** Extra env to merge into this step (e.g., WATERX_CUSTODY_EXECUTE=1). */
+  /** Extra env to merge into this step, always (e.g. amount tuning). */
   env?: Record<string, string>;
+  /**
+   * Env applied only in EXECUTE mode, stripped under `--dry-run`. Use for
+   * per-step "actually broadcast" flags (e.g. WATERX_CUSTODY_EXECUTE) so a dry
+   * run never writes on chain.
+   */
+  executeEnv?: Record<string, string>;
+  /**
+   * Step has no simulate-only mode (it broadcasts unconditionally and later
+   * PTBs depend on earlier executes' on-chain results). Skipped under
+   * `--dry-run` so a dry chain stays zero-write.
+   */
+  executeOnly?: boolean;
 };
 
 interface Step {
@@ -95,12 +112,21 @@ function buildChain(flags: CliFlags): Step[] {
       // 1 USD atomic mint+stake — fits the CREDIT minted above (script default is 30 USD).
       args: { env: { DEPOSIT_AMOUNT: "1000000", MIN_LP_AMOUNT: "0" } },
     },
-    { name: "smoke-happy-path", script: "scripts/smoke-happy-path.ts" },
-    { name: "smoke-keeper-match", script: "scripts/smoke-keeper-match.ts" },
+    {
+      name: "smoke-happy-path",
+      script: "scripts/smoke-happy-path.ts",
+      args: { executeOnly: true },
+    },
+    {
+      name: "smoke-keeper-match",
+      script: "scripts/smoke-keeper-match.ts",
+      args: { executeOnly: true },
+    },
     {
       name: "smoke-custody",
       script: "scripts/smoke-custody.ts",
-      args: { env: { WATERX_CUSTODY_EXECUTE: "1" } },
+      // Only broadcast custody writes in EXECUTE mode; dry runs stay simulate-only.
+      args: { executeEnv: { WATERX_CUSTODY_EXECUTE: "1" } },
     },
   );
   return chain;
@@ -114,7 +140,7 @@ interface StepResult {
   skipped?: boolean;
 }
 
-async function runStep(step: Step, env: NodeJS.ProcessEnv): Promise<StepResult> {
+async function runStep(step: Step, env: NodeJS.ProcessEnv, dryRun: boolean): Promise<StepResult> {
   const scriptAbs = path.resolve(process.cwd(), step.script);
   const tsxBin = path.resolve(
     process.cwd(),
@@ -127,7 +153,11 @@ async function runStep(step: Step, env: NodeJS.ProcessEnv): Promise<StepResult> 
 
   return new Promise<StepResult>((resolveStep) => {
     const child = spawn(tsxBin, [scriptAbs], {
-      env: { ...env, ...(step.args?.env ?? {}) },
+      env: {
+        ...env,
+        ...(step.args?.env ?? {}),
+        ...(dryRun ? {} : (step.args?.executeEnv ?? {})),
+      },
       stdio: ["inherit", "pipe", "inherit"],
     });
     let captured: string | undefined;
@@ -190,8 +220,15 @@ async function main(): Promise<void> {
       results.push({ step, exitCode: 0, durationMs: 0, skipped: true });
       continue;
     }
+    // Execute-only steps have no simulate path — skip under --dry-run so the
+    // dry chain never broadcasts.
+    if (flags.dryRun && step.args?.executeOnly) {
+      console.log(`\n========== [${step.name}] skipped (execute-only, dry run) ==========`);
+      results.push({ step, exitCode: 0, durationMs: 0, skipped: true });
+      continue;
+    }
 
-    const result = await runStep(step, chainEnv);
+    const result = await runStep(step, chainEnv, flags.dryRun);
     results.push(result);
 
     if (result.exitCode !== 0) {

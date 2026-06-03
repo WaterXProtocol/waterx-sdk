@@ -1,0 +1,105 @@
+# Live testnet smoke chain (run-smoke-chain.ts): mint USD (USDC + USDSUI) ->
+# credit withdraw -> WLP deposit -> stake -> mint-and-stake -> happy path ->
+# keeper match -> custody.
+#
+# Runs in DRY mode by default (nightly + manual): every step is simulate-only,
+# `executeOnly` steps (happy-path, keeper-match) are skipped, so the run NEVER
+# broadcasts a transaction. Manual dispatch can pick `execute` to broadcast the
+# full chain (self-funding) instead.
+#
+# A dry run still needs a signer + network to simulate against testnet, and the
+# wxa account must hold a STANDING balance (≥ a few USD CREDIT + ≥ the stake
+# amount in WLP) — dry sims read live balances but never deduct, so one top-up
+# funds the dry chain indefinitely. The `execute` mode self-funds.
+#
+# Required repo secrets:
+#   SUI_KEYSTORE             full contents of ~/.sui/sui_config/sui.keystore
+#                            (JSON array of base64 keys; must contain the key
+#                            for SUI_ACTIVE_ADDRESS)
+#   SUI_ACTIVE_ADDRESS       0x… address that signs (funded with SUI gas; for
+#                            `execute` also holds MOCK_USDC + MOCK_USDSUI and
+#                            owns the wxa account below)
+#   WATERX_SMOKE_ACCOUNT_ID  0x… wxa account id reused across steps (owned by
+#                            SUI_ACTIVE_ADDRESS; funded with standing USD + WLP)
+
+name: Smoke Chain (testnet)
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC nightly — dry (zero-write)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry (simulate-only, zero-write) or execute (broadcast full chain)"
+        type: choice
+        options:
+          - dry
+          - execute
+        default: dry
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-chain # one run at a time (shared on-chain account)
+  cancel-in-progress: false
+
+jobs:
+  smoke-chain:
+    runs-on: ubuntu-latest
+    name: Smoke chain (testnet)
+    timeout-minutes: 20
+    steps:
+      - name: Resolve mode (schedule → dry)
+        id: mode
+        run: echo "mode=${{ github.event.inputs.mode || 'dry' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight — require signer secrets
+        env:
+          SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
+          SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
+          WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
+        run: |
+          missing=
+          [ -z "$SUI_KEYSTORE" ] && missing="$missing SUI_KEYSTORE"
+          [ -z "$SUI_ACTIVE_ADDRESS" ] && missing="$missing SUI_ACTIVE_ADDRESS"
+          [ -z "$WATERX_SMOKE_ACCOUNT_ID" ] && missing="$missing WATERX_SMOKE_ACCOUNT_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::missing required secret(s):$missing — add them in repo Settings → Secrets → Actions"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Materialize sui keystore + client.yaml from secrets
+        env:
+          SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
+          SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
+        run: |
+          mkdir -p "$HOME/.sui/sui_config"
+          printf '%s' "$SUI_KEYSTORE" > "$HOME/.sui/sui_config/sui.keystore"
+          # smoke scripts only parse `active_address` out of client.yaml.
+          printf 'active_env: testnet\nactive_address: "%s"\n' "$SUI_ACTIVE_ADDRESS" \
+            > "$HOME/.sui/sui_config/client.yaml"
+          chmod 600 "$HOME/.sui/sui_config/sui.keystore"
+
+      - name: Run smoke chain (${{ steps.mode.outputs.mode }})
+        env:
+          NODE_NO_WARNINGS: "1"
+          WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ steps.mode.outputs.mode }}" = "execute" ]; then
+            pnpm smoke:chain
+          else
+            pnpm smoke:chain:dry
+          fi
+
+      - name: Cleanup secrets
+        if: always()
+        run: rm -rf "$HOME/.sui/sui_config"

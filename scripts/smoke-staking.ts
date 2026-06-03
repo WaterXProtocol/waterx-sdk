@@ -22,6 +22,7 @@
  *   WATERX_STAKE_AMOUNT        raw u64 to stake/unstake, default 1_000_000
  *   WATERX_SKIP_STAKE=1        skip stake step
  *   WATERX_SKIP_UNSTAKE=1      skip unstake step
+ *   EXECUTE=1                  broadcast stake/unstake (otherwise simulate only)
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -200,6 +201,7 @@ async function main(): Promise<void> {
   const client = await WaterXClient.create("TESTNET", { cache: true });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
+  const doExecute = process.env.EXECUTE === "1";
 
   // Preflight: wxa must hold enough WLP to stake.
   const wlpBalance = await getAccountBalance(client, accountId, client.wlpType());
@@ -256,8 +258,12 @@ async function main(): Promise<void> {
       rewarderTypes: [], // WLP pool has no rewarders configured on testnet
     });
     if (!(await sim(client, keypair, tx, "stake (sim)"))) process.exit(2);
-    if (!(await execute(client, keypair, tx, "stake (execute)"))) process.exit(1);
-    await snapshot(client, accountId, "post-stake");
+    if (doExecute) {
+      if (!(await execute(client, keypair, tx, "stake (execute)"))) process.exit(1);
+      await snapshot(client, accountId, "post-stake");
+    } else {
+      console.log("  EXECUTE != 1 — simulate only, skipping broadcast");
+    }
   }
 
   // ============================================================================
@@ -274,8 +280,12 @@ async function main(): Promise<void> {
       rewarderTypes: [],
     });
     if (!(await sim(client, keypair, tx, "unstake (sim)"))) process.exit(2);
-    if (!(await execute(client, keypair, tx, "unstake (execute)"))) process.exit(1);
-    await snapshot(client, accountId, "post-unstake");
+    if (doExecute) {
+      if (!(await execute(client, keypair, tx, "unstake (execute)"))) process.exit(1);
+      await snapshot(client, accountId, "post-unstake");
+    } else {
+      console.log("  EXECUTE != 1 — simulate only, skipping broadcast");
+    }
   }
 
   console.log("\nDone.");
