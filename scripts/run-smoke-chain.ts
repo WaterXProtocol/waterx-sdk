@@ -30,6 +30,8 @@
  * skipped. Steps still need a signer + network to simulate against testnet.
  */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -39,14 +41,26 @@ loadRepoEnvFiles();
 
 /**
  * Default wxa account for the smoke chain — owned by the testnet smoke signer
- * (`0x623846…b1f9a`, sui CLI alias `waterx-sdk-smoke-ci`) and funded with
- * standing USD CREDIT + WLP. Used when `WATERX_SMOKE_ACCOUNT_ID` is unset so a
- * dry chain (and CI) reads live balances and passes out of the box, without a
- * per-machine `.env.local`. The signer must own this account — override the env
- * var (or this constant) when running under a different signer.
+ * (`DEFAULT_SMOKE_SIGNER` below) and funded with standing USD CREDIT + WLP.
+ * Used when `WATERX_SMOKE_ACCOUNT_ID` is unset so a dry chain (and CI) reads
+ * live balances and passes out of the box, without a per-machine `.env.local`.
+ * The signer must own this account — override the env var (or this constant)
+ * when running under a different signer.
  */
 const DEFAULT_SMOKE_ACCOUNT_ID =
   "0x1afcce49e1687d71532a4d29ac31db0fca339723cf6b483aa98c1983e96dfac9";
+
+/**
+ * Default signer ADDRESS (public, no key) that owns `DEFAULT_SMOKE_ACCOUNT_ID`.
+ * A dry run is simulate-only — it never signs — so it only needs the sender
+ * address, not the keystore. Injected as `SUI_ACTIVE_ADDRESS` only when neither
+ * the env var nor a local `~/.sui/sui_config/client.yaml` is present (i.e. in
+ * CI), so local dev keeps using its own active address. EXECUTE mode still
+ * needs the matching key in the keystore.
+ */
+const DEFAULT_SMOKE_SIGNER = "0x623846ad4264c9844263a5978f113c054e9fd6a38d395f390d98cc3c353b1f9a";
+
+const CLIENT_YAML = path.resolve(homedir(), ".sui/sui_config/client.yaml");
 
 type StepArgs = {
   /** If true, this step is the source of WATERX_SMOKE_ACCOUNT_ID for the rest of the chain. */
@@ -273,6 +287,18 @@ async function main(): Promise<void> {
     console.log(
       `[smoke-chain] WATERX_SMOKE_ACCOUNT_ID unset — using committed default ` +
         `${DEFAULT_SMOKE_ACCOUNT_ID} (must be owned by the active signer).`,
+    );
+  }
+
+  // No signer address and no local sui config (CI dry run) — fall back to the
+  // default signer address. Dry runs only simulate, so the public address is
+  // enough; no keystore secret is needed. Local dev (client.yaml present) keeps
+  // using its own active address.
+  if (!chainEnv.SUI_ACTIVE_ADDRESS?.trim() && !existsSync(CLIENT_YAML)) {
+    chainEnv.SUI_ACTIVE_ADDRESS = DEFAULT_SMOKE_SIGNER;
+    console.log(
+      `[smoke-chain] no SUI_ACTIVE_ADDRESS and no client.yaml — using default ` +
+        `signer address ${DEFAULT_SMOKE_SIGNER} (simulate-only; EXECUTE needs its key).`,
     );
   }
 

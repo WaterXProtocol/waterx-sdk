@@ -11,18 +11,19 @@
 # testnet fixture account. Run it manually before releases, and keep the
 # scheduled dry run as a testnet health signal.
 #
-# A dry run still needs a signer + network to simulate against testnet, and the
-# wxa account must hold a STANDING balance (≥ a few USD CREDIT + ≥ the stake
-# amount in WLP) — dry sims read live balances but never deduct, so one top-up
-# funds the dry chain indefinitely. The `execute` mode self-funds.
+# A dry run is simulate-only: it never signs, so it needs only the sender
+# ADDRESS (no keystore). The orchestrator falls back to a committed default
+# signer + fixture account, so `dry` needs NO secrets at all. The fixture wxa
+# account holds a STANDING balance (≥ a few USD CREDIT + ≥ the stake amount in
+# WLP) — dry sims read live balances but never deduct, so one top-up funds the
+# dry chain indefinitely. The `execute` mode self-funds and DOES need the key.
 #
-# Required repo secrets:
+# Repo secrets — required ONLY for `execute` (dry needs none):
 #   SUI_KEYSTORE             full contents of ~/.sui/sui_config/sui.keystore
 #                            (JSON array of base64 keys; must contain the key
 #                            for SUI_ACTIVE_ADDRESS)
-#   SUI_ACTIVE_ADDRESS       0x… address that signs (funded with SUI gas; for
-#                            `execute` also holds MOCK_USDC + MOCK_USDSUI and
-#                            owns the wxa account below)
+#   SUI_ACTIVE_ADDRESS       0x… address that signs (funded with SUI gas; holds
+#                            MOCK_USDC + MOCK_USDSUI and owns the wxa account)
 #   WATERX_SMOKE_ACCOUNT_ID  0x… wxa account id reused across steps (owned by
 #                            SUI_ACTIVE_ADDRESS; funded with standing USD + WLP)
 
@@ -69,8 +70,12 @@ jobs:
           esac
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
-      - name: Preflight — check signer secrets
+      # `execute` signs + broadcasts, so it needs the keystore secrets. `dry`
+      # is simulate-only and needs none — it falls back to the committed default
+      # signer address + fixture account.
+      - name: Preflight — check signer secrets (execute only)
         id: signer
+        if: steps.mode.outputs.mode == 'execute'
         env:
           SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
@@ -81,25 +86,20 @@ jobs:
           [ -z "$SUI_ACTIVE_ADDRESS" ] && missing="$missing SUI_ACTIVE_ADDRESS"
           [ -z "$WATERX_SMOKE_ACCOUNT_ID" ] && missing="$missing WATERX_SMOKE_ACCOUNT_ID"
           if [ -n "$missing" ]; then
-            echo "::error::missing required secret(s):$missing — add them in repo Settings → Secrets → Actions"
+            echo "::error::execute mode needs secret(s):$missing — add them in repo Settings → Secrets → Actions"
             exit 1
           fi
-          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
-        if: steps.signer.outputs.available == 'true'
       - uses: pnpm/action-setup@v5
-        if: steps.signer.outputs.available == 'true'
       - uses: actions/setup-node@v5
-        if: steps.signer.outputs.available == 'true'
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-        if: steps.signer.outputs.available == 'true'
 
-      - name: Materialize sui keystore + client.yaml from secrets
-        if: steps.signer.outputs.available == 'true'
+      - name: Materialize sui keystore + client.yaml (execute only)
+        if: steps.mode.outputs.mode == 'execute'
         env:
           SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
@@ -112,10 +112,11 @@ jobs:
           chmod 600 "$HOME/.sui/sui_config/sui.keystore"
 
       - name: Run smoke chain (${{ steps.mode.outputs.mode }})
-        if: steps.signer.outputs.available == 'true'
         env:
           NODE_NO_WARNINGS: "1"
           SMOKE_MODE: ${{ steps.mode.outputs.mode }}
+          # Dry: empty → orchestrator uses committed defaults. Execute: the secrets.
+          SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
         run: |
           if [ "$SMOKE_MODE" = "execute" ]; then
