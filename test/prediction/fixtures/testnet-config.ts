@@ -1,16 +1,17 @@
 import type { WaterxPredictionConfig } from "~predict/config.ts";
 
+/** Mirrors WaterXProtocol/waterx-config `testnet.json` (2026-06 redeploy). */
 export const TESTNET_FIXTURE_IDS = {
-  packageId: "0x0ced3be529195de0e9f3714622bff49feb4e72ef8588e0d53594324d961b6738",
+  packageId: "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
   bucketFrameworkPackageId: "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
-  waterxAccountPackageId: "0xaca20506c4b14cfd2ea767d68e3dd489af082b2d0f6ed6f33b32e78abeaff2cc",
-  globalConfig: "0xade50b742d24e938196922f79e15ffeb6d98ad0c58eab005d3bb5ad80afad14c",
-  marketRegistry: "0x1e973f83ba2f08fcbdd91953d0ec2c7d88e7f97aa83ceb8cab89f30e6daaa717",
-  accountRegistry: "0x7f3cc3c674daff974efb81fc84ae816df58797b352d5d45453fddbd5380fa292",
-  predictionAdminCap: "0xb07b11774c595c4c5fc0d1299d04c4dc6eea248b7ec1bb246fe31077107c12ff",
-  waterxAccountAdminCap: "0xa95510259d9995fb9440ffb5c16c21b64e0ae5287509be84ec61ade1d6bf273a",
+  waterxAccountPackageId: "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+  globalConfig: "0x3e2d7bfce29e077f13f9feaf68af62410872817be476b2708540a0d5b23c5936",
+  marketRegistry: "0x6571c67131ea645bd3fd747c2b4c387f23ac80d83317f82f495cabfeadc512e0",
+  accountRegistry: "0xf21bc5a813637998a1ff40c6d412a795faeb94cfad25b3370d518b55b0e5ec41",
+  predictionAdminCap: "0x31acc29c6f6171a86ad5583e4610d75bdd9bcc71e16b46b1b994770743cdc782",
+  waterxAccountAdminCap: "0xad7493ea56fe66c18b2c7f41123603968352eb54d0dda8da67c8fd78d7c575f6",
   settlementCoinType:
-    "0x5b60857dc403e65a3406c65402765e518259ba3394588f9528aa4f895378764e::usd::USD",
+    "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
 } as const;
 
 /**
