@@ -54,6 +54,18 @@ import {
   referralCodeExists as referralCodeExistsCall,
   tryGetRefer as tryGetReferCall,
 } from "./generated/waterx_referral/referral_table.ts";
+import {
+  dailyBurned as dailyBurnedCall,
+  dailyBurnLimit as dailyBurnLimitCall,
+  dailyMinted as dailyMintedCall,
+  dailyMintLimit as dailyMintLimitCall,
+  maxBurnPerTx as maxBurnPerTxCall,
+  maxMintPerTx as maxMintPerTxCall,
+  mintedFor as mintedForCall,
+  paused as pausedCall,
+  personalBurnCapAmount as personalBurnCapAmountCall,
+  personalBurned as personalBurnedCall,
+} from "./generated/wormhole_bridge/wormhole_bridge.ts";
 
 // ============================================================================
 // Simulate / decode helpers
@@ -80,20 +92,18 @@ function toBytes(b: Uint8Array | string | undefined): Uint8Array | undefined {
   return new Uint8Array(Object.values(b as Record<string, number>));
 }
 
-async function simulateAndExtract(
-  client: WaterXClient,
-  tx: Transaction,
-  commandIndex = 0,
-  returnIndex = 0,
-): Promise<Uint8Array> {
+async function simulateRaw(client: WaterXClient, tx: Transaction): Promise<SimulationResult> {
   tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   if (sim.$kind === "FailedTransaction") {
     const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
     throw new Error(`simulate aborted: ${err}`);
   }
-  const cmd = sim.commandResults?.[commandIndex];
-  const ret = cmd?.returnValues?.[returnIndex];
+  return sim;
+}
+
+function extractAt(sim: SimulationResult, commandIndex: number, returnIndex = 0): Uint8Array {
+  const ret = sim.commandResults?.[commandIndex]?.returnValues?.[returnIndex];
   const bytes = toBytes(ret?.bcs) ?? toBytes(ret?.value?.bcs);
   if (!bytes) {
     throw new Error(
@@ -101,6 +111,16 @@ async function simulateAndExtract(
     );
   }
   return bytes;
+}
+
+async function simulateAndExtract(
+  client: WaterXClient,
+  tx: Transaction,
+  commandIndex = 0,
+  returnIndex = 0,
+): Promise<Uint8Array> {
+  const sim = await simulateRaw(client, tx);
+  return extractAt(sim, commandIndex, returnIndex);
 }
 
 function withLp(client: WaterXClient, lpType?: string): string {
@@ -634,4 +654,116 @@ export async function getCustodyAssetData(
   const burnFeeRate = BigInt(bcs.u128().parse(await simulateAndExtract(client, burnTx)));
 
   return { registered: true, mintFeeRate, burnFeeRate };
+}
+
+// ============================================================================
+// Wormhole bridge (rate-limit / cap reads)
+// ============================================================================
+
+/**
+ * Live rate-limit / cap snapshot read from the `wormhole_bridge::Bridge`
+ * shared object. All amounts are raw base units of the bridged credit coin.
+ *
+ * `dailyMinted` / `dailyBurned` are the sliding-window sums as the on-chain
+ * `daily_minted` / `daily_burned` views report them — buckets that rotated
+ * out of the trailing window are evicted lazily on the next mint/burn, so
+ * these can read slightly high until then (conservative).
+ */
+export interface BridgeLimitsView {
+  paused: boolean;
+  dailyMintLimit: bigint;
+  dailyMinted: bigint;
+  maxMintPerTx: bigint;
+  dailyBurnLimit: bigint;
+  dailyBurned: bigint;
+  maxBurnPerTx: bigint;
+  /** Per-account 24h burn cap; 0n means the gate is disabled. */
+  personalBurnCapAmount: bigint;
+  /** Present only when `accountId` is supplied — burn counted in that
+   *  account's current window (the per-account cap key is the account id). */
+  personalBurned?: bigint;
+  /** Present only when `backing` is supplied — `minted_for(chainId, token)`,
+   *  the amount currently withdrawable to that EVM (chain, token). */
+  backingMinted?: bigint;
+}
+
+export interface BridgeLimitsArgs {
+  /** wxa trading account id — enables the per-account `personalBurned` read. */
+  accountId?: string;
+  /** Wormhole destination chain id + 20-byte EVM token — enables the
+   *  `mintedFor` backing read. */
+  backing?: { wormholeChainId: number; token: Uint8Array | number[] };
+}
+
+/**
+ * Batched read of the bridge's rate-limit / cap state in a single simulate.
+ * Pass `accountId` to also fetch the per-account burn usage, and `backing`
+ * to also fetch the destination-chain backing (`minted_for`).
+ *
+ * Throws if `wormhole_bridge` (or its `Bridge` object id) is absent from the
+ * canonical config — e.g. on a network where the Sui bridge isn't published.
+ */
+export async function getBridgeLimits(
+  client: WaterXClient,
+  args: BridgeLimitsArgs = {},
+): Promise<BridgeLimitsView> {
+  const pkg = client.config.packages.wormhole_bridge;
+  if (!pkg?.bridge) {
+    throw new Error(
+      "wormhole_bridge is not deployed on this network (no `bridge` object id in config)",
+    );
+  }
+  const packageId = pkg.published_at;
+  const bridge = pkg.bridge;
+
+  const tx = new Transaction();
+  // Fixed-order view calls; indices tracked below.
+  pausedCall({ package: packageId, arguments: { bridge } })(tx); // 0
+  dailyMintLimitCall({ package: packageId, arguments: { bridge } })(tx); // 1
+  dailyMintedCall({ package: packageId, arguments: { bridge } })(tx); // 2
+  maxMintPerTxCall({ package: packageId, arguments: { bridge } })(tx); // 3
+  dailyBurnLimitCall({ package: packageId, arguments: { bridge } })(tx); // 4
+  dailyBurnedCall({ package: packageId, arguments: { bridge } })(tx); // 5
+  maxBurnPerTxCall({ package: packageId, arguments: { bridge } })(tx); // 6
+  personalBurnCapAmountCall({ package: packageId, arguments: { bridge } })(tx); // 7
+
+  let backingIdx = -1;
+  if (args.backing) {
+    backingIdx = 8;
+    mintedForCall({
+      package: packageId,
+      arguments: {
+        bridge,
+        chainId: args.backing.wormholeChainId,
+        token: Array.from(args.backing.token),
+      },
+    })(tx);
+  }
+
+  let personalIdx = -1;
+  if (args.accountId) {
+    personalIdx = backingIdx === -1 ? 8 : 9;
+    // Clock (0x6) is auto-injected by the generated wrapper.
+    personalBurnedCall({
+      package: packageId,
+      arguments: { bridge, user: args.accountId },
+    })(tx);
+  }
+
+  const sim = await simulateRaw(client, tx);
+  const u64At = (i: number): bigint => BigInt(bcs.u64().parse(extractAt(sim, i)));
+
+  const view: BridgeLimitsView = {
+    paused: bcs.bool().parse(extractAt(sim, 0)),
+    dailyMintLimit: u64At(1),
+    dailyMinted: u64At(2),
+    maxMintPerTx: u64At(3),
+    dailyBurnLimit: u64At(4),
+    dailyBurned: u64At(5),
+    maxBurnPerTx: u64At(6),
+    personalBurnCapAmount: u64At(7),
+  };
+  if (backingIdx >= 0) view.backingMinted = u64At(backingIdx);
+  if (personalIdx >= 0) view.personalBurned = u64At(personalIdx);
+  return view;
 }
