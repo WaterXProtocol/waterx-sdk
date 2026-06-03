@@ -194,7 +194,7 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
     - PSM direct: `custodyMint` (against the native `CustodyVault`).
     Needs `waterx_credit` + `wormhole_bridge` + `withdrawal_queue` (+ `native_custody` for the native paths) in config.
   - `referral.ts` — **stub**: contract has no `referral_table` module anymore; functions throw `removed in v3`.
-- **`fetch.ts`** — read-only `simulate`-based queries via `waterx_perp_view`. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, etc.).
+- **`fetch.ts`** — read-only `simulate`-based queries. Perp reads (positions / orders / market / pool / global config / referrals) go through `waterx_perp_view`; PSM reads (`getCustodyVaultData`, `getCustodyAssetData`) hit `native_custody` directly; bridge rate-limit / cap snapshot (`getBridgeLimits` — daily mint/burn + usage, per-tx caps, optional per-account `personalBurned`, optional `mintedFor` backing per (chain, EVM token)) batches `wormhole_bridge` views in a single simulate. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, `BridgeLimitsView`, etc.).
 - **`tx-builders.ts`** — high-level `build*Tx` wrappers that compose oracle refresh + `*Request` + `executeTrading`. Each accepts `tx?`, `updatePythPrice`, `pythCache`, `sponsorFund`.
 - **`utils/pyth.ts`** — Hermes REST, on-chain Pyth update PTB, `aggregateTickerWithPyth`, `refreshOraclePrices`. The single source of truth for oracle freshness.
 - **`generated/`** — `sui-ts-codegen` output for the packages in `sui-codegen.config.mjs` (incl. `native_custody`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen.
