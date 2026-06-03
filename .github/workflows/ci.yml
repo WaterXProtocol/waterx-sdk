@@ -1,6 +1,7 @@
 # Single PR pipeline for `main`: replaces legacy `lint.yml` + `unit-test.yml` (no duplicate runs).
 # Core: pnpm lint, typecheck, build, vitest unit (coverage) + single test-e2e job (simulate only).
-# Extra: Trivy, Semgrep, gitleaks, pnpm audit. On-chain integration is local-only (`pnpm test:integration`; needs keys + funded wallet — not run in CI).
+# Extra: Trivy, Semgrep, gitleaks, pnpm audit, dry smoke chain (testnet simulate-only; skips without signer secrets).
+# On-chain integration is local-only (`pnpm test:integration`; needs keys + funded wallet — not run in CI).
 
 name: CI
 
@@ -173,6 +174,66 @@ jobs:
           name: perp-sdk E2E simulate
           path: test-results-e2e.xml
           reporter: java-junit
+
+  # Testnet dry smoke chain (zero-write, simulate-only) against the committed
+  # default fixture account (owned by the smoke signer, funded with standing
+  # USD CREDIT + WLP). Materializes the signer keystore from repo secrets.
+  # Skipped — never failed — when SUI_KEYSTORE/SUI_ACTIVE_ADDRESS are absent
+  # (e.g. forked PRs), so it never blocks external contributors.
+  smoke-chain-dry:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: Smoke chain (testnet, dry)
+    steps:
+      - name: Check signer secret
+        id: signer
+        env:
+          SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
+          SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
+        run: |
+          if [ -z "$SUI_KEYSTORE" ] || [ -z "$SUI_ACTIVE_ADDRESS" ]; then
+            echo "::notice::SUI signer secrets absent — skipping dry smoke chain"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.signer.outputs.available == 'true'
+      - uses: pnpm/action-setup@v5
+        if: steps.signer.outputs.available == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.signer.outputs.available == 'true'
+        with:
+          node-version: 24
+      - id: cache-nm
+        if: steps.signer.outputs.available == 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.signer.outputs.available == 'true' && steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Materialize sui keystore + client.yaml from secrets
+        if: steps.signer.outputs.available == 'true'
+        env:
+          SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
+          SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
+        run: |
+          mkdir -p "$HOME/.sui/sui_config"
+          printf '%s' "$SUI_KEYSTORE" > "$HOME/.sui/sui_config/sui.keystore"
+          # smoke scripts only parse `active_address` out of client.yaml.
+          printf 'active_env: testnet\nactive_address: "%s"\n' "$SUI_ACTIVE_ADDRESS" \
+            > "$HOME/.sui/sui_config/client.yaml"
+          chmod 600 "$HOME/.sui/sui_config/sui.keystore"
+      - name: Run dry smoke chain (zero-write)
+        if: steps.signer.outputs.available == 'true'
+        env:
+          NODE_NO_WARNINGS: "1"
+        run: pnpm smoke:chain:dry
+      - name: Cleanup secrets
+        if: always()
+        run: rm -rf "$HOME/.sui/sui_config"
 
   trivy:
     runs-on: ubuntu-latest

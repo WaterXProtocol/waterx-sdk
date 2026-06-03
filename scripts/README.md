@@ -42,6 +42,12 @@ visible at step 1 instead of step 5.
 pnpm smoke:chain
 
 # every step in simulate-only mode (no on-chain writes)
+# Uses the committed default fixture account (DEFAULT_SMOKE_ACCOUNT_ID in
+# run-smoke-chain.ts) when WATERX_SMOKE_ACCOUNT_ID is unset — owned by the
+# smoke signer (sui alias `waterx-sdk-smoke-ci`) and pre-funded with standing
+# USD CREDIT + WLP, so the dry chain passes with no per-machine setup. This is
+# what the `smoke-chain-dry` CI job runs. Transient Hermes/network errors are
+# retried (not failed).
 pnpm smoke:chain:dry
 
 # with optional steps

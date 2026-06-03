@@ -37,6 +37,17 @@ import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 loadRepoEnvFiles();
 
+/**
+ * Default wxa account for the smoke chain — owned by the testnet smoke signer
+ * (`0x623846…b1f9a`, sui CLI alias `waterx-sdk-smoke-ci`) and funded with
+ * standing USD CREDIT + WLP. Used when `WATERX_SMOKE_ACCOUNT_ID` is unset so a
+ * dry chain (and CI) reads live balances and passes out of the box, without a
+ * per-machine `.env.local`. The signer must own this account — override the env
+ * var (or this constant) when running under a different signer.
+ */
+const DEFAULT_SMOKE_ACCOUNT_ID =
+  "0x1afcce49e1687d71532a4d29ac31db0fca339723cf6b483aa98c1983e96dfac9";
+
 type StepArgs = {
   /** If true, this step is the source of WATERX_SMOKE_ACCOUNT_ID for the rest of the chain. */
   capturesAccountId?: boolean;
@@ -138,6 +149,24 @@ interface StepResult {
   durationMs: number;
   capturedAccountId?: string;
   skipped?: boolean;
+  attempts?: number;
+}
+
+/**
+ * Transient infra failures that are NOT an SDK/account regression — almost
+ * always the testnet Hermes beta endpoint (oracle price VAAs) returning
+ * 5xx/429, or a flaky fullnode connection. These steps are retried instead of
+ * failing the chain. SDK aborts (`MoveAbort`, `EUnauthorized`, BCS errors)
+ * deliberately do NOT match — those stay red.
+ */
+const TRANSIENT_RE =
+  /Hermes price fetch failed: (?:429|5\d\d)|Service Temporarily Unavailable|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|503|502|504|UNAVAILABLE|DEADLINE_EXCEEDED/i;
+
+const MAX_TRANSIENT_RETRIES = 2;
+const RETRY_BACKOFF_MS = 5000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function runStep(step: Step, env: NodeJS.ProcessEnv, dryRun: boolean): Promise<StepResult> {
@@ -151,28 +180,37 @@ async function runStep(step: Step, env: NodeJS.ProcessEnv, dryRun: boolean): Pro
   const startedAt = Date.now();
   console.log(`\n========== [${step.name}] running ${step.script} ==========`);
 
-  return new Promise<StepResult>((resolveStep) => {
+  return new Promise<StepResult & { output: string }>((resolveStep) => {
     const child = spawn(tsxBin, [scriptAbs], {
       env: {
         ...env,
         ...(step.args?.env ?? {}),
         ...(dryRun ? {} : (step.args?.executeEnv ?? {})),
       },
-      stdio: ["inherit", "pipe", "inherit"],
+      // Capture stderr too (tee'd below) so we can classify transient infra
+      // failures — script errors are thrown to stderr.
+      stdio: ["inherit", "pipe", "pipe"],
     });
     let captured: string | undefined;
+    let output = "";
     const accountIdRe = /WATERX_SMOKE_ACCOUNT_ID=(0x[0-9a-fA-F]+)/;
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
+      output += text;
       process.stdout.write(text);
       if (step.args?.capturesAccountId && !captured) {
         const m = accountIdRe.exec(text);
         if (m) captured = m[1];
       }
     });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      process.stderr.write(text);
+    });
     child.on("error", (e) => {
       console.error("[%s] spawn error:", step.name, e);
-      resolveStep({ step, exitCode: 1, durationMs: Date.now() - startedAt });
+      resolveStep({ step, exitCode: 1, durationMs: Date.now() - startedAt, output: String(e) });
     });
     child.on("exit", (code) => {
       resolveStep({
@@ -180,9 +218,42 @@ async function runStep(step: Step, env: NodeJS.ProcessEnv, dryRun: boolean): Pro
         exitCode: code ?? 1,
         durationMs: Date.now() - startedAt,
         capturedAccountId: captured,
+        output,
       });
     });
   });
+}
+
+/**
+ * Run a step, retrying up to `MAX_TRANSIENT_RETRIES` times when it fails with a
+ * recognized transient infra error (Hermes 5xx/429, network blips). Genuine SDK
+ * failures fail immediately.
+ */
+async function runStepWithRetry(
+  step: Step,
+  env: NodeJS.ProcessEnv,
+  dryRun: boolean,
+): Promise<StepResult> {
+  let last: StepResult & { output: string } = {
+    step,
+    exitCode: 1,
+    durationMs: 0,
+    output: "",
+  } as StepResult & { output: string };
+  for (let attempt = 1; attempt <= MAX_TRANSIENT_RETRIES + 1; attempt++) {
+    last = (await runStep(step, env, dryRun)) as StepResult & { output: string };
+    last.attempts = attempt;
+    if (last.exitCode === 0) return last;
+    const transient = TRANSIENT_RE.test(last.output);
+    if (!transient || attempt > MAX_TRANSIENT_RETRIES) return last;
+    console.warn(
+      `\n[smoke-chain] step "${step.name}" hit a transient infra error ` +
+        `(attempt ${attempt}/${MAX_TRANSIENT_RETRIES + 1}) — retrying in ` +
+        `${RETRY_BACKOFF_MS / 1000}s…`,
+    );
+    await sleep(RETRY_BACKOFF_MS);
+  }
+  return last;
 }
 
 async function main(): Promise<void> {
@@ -195,6 +266,14 @@ async function main(): Promise<void> {
     delete chainEnv.WATERX_CUSTODY_EXECUTE;
   } else {
     chainEnv.EXECUTE = "1";
+  }
+
+  if (!chainEnv.WATERX_SMOKE_ACCOUNT_ID?.trim()) {
+    chainEnv.WATERX_SMOKE_ACCOUNT_ID = DEFAULT_SMOKE_ACCOUNT_ID;
+    console.log(
+      `[smoke-chain] WATERX_SMOKE_ACCOUNT_ID unset — using committed default ` +
+        `${DEFAULT_SMOKE_ACCOUNT_ID} (must be owned by the active signer).`,
+    );
   }
 
   const reusing = Boolean(chainEnv.WATERX_SMOKE_ACCOUNT_ID?.trim());
@@ -228,7 +307,7 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const result = await runStep(step, chainEnv, flags.dryRun);
+    const result = await runStepWithRetry(step, chainEnv, flags.dryRun);
     results.push(result);
 
     if (result.exitCode !== 0) {
@@ -256,7 +335,11 @@ function summarize(results: StepResult[]): void {
   console.log("\n========== smoke-chain summary ==========");
   for (const r of results) {
     const tag = r.skipped ? "SKIP" : r.exitCode === 0 ? "OK  " : "FAIL";
-    console.log(`  [${tag}] ${r.step.name.padEnd(28)} ${r.durationMs}ms`);
+    const retries =
+      r.attempts && r.attempts > 1
+        ? ` (after ${r.attempts - 1} retr${r.attempts - 1 === 1 ? "y" : "ies"})`
+        : "";
+    console.log(`  [${tag}] ${r.step.name.padEnd(28)} ${r.durationMs}ms${retries}`);
   }
 }
 
