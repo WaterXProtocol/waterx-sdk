@@ -307,6 +307,9 @@ async function main(): Promise<void> {
     process.env.WATERX_POSITION_ID !== undefined
       ? BigInt(process.env.WATERX_POSITION_ID)
       : undefined;
+  // Track whether this run freshly opened the position via match — only then
+  // must we wait out the market cooldown before the close step.
+  let justOpened = false;
 
   if (process.env.WATERX_SKIP_MATCH !== "1" && positionId === undefined) {
     console.log("\n=== Keeper match_orders (LIMIT_BUY book, from tick 0) ===");
@@ -333,6 +336,7 @@ async function main(): Promise<void> {
     if (!(await sim(client, keypair, matchTx, "matchOrders (sim)"))) process.exit(2);
     const matchRes = await execute(client, keypair, matchTx, "matchOrders (execute)");
     if (!matchRes.success) process.exit(1);
+    justOpened = true;
 
     const events = await fetchTxEvents(matchRes.digest);
     const ev = findEvent(events, "::events::PositionOpened");
@@ -366,6 +370,20 @@ async function main(): Promise<void> {
   if (positionId === undefined) {
     console.warn("no positionId — set WATERX_POSITION_ID to close an existing position");
     return;
+  }
+
+  // The position just opened by match carries an update_timestamp ≈ now;
+  // `close_position_request` aborts ECooldownNotElapsed until the market's
+  // cooldown_ms elapses. Wait it out (plus a small buffer) when we opened
+  // fresh this run. Positions passed in via WATERX_POSITION_ID are assumed
+  // past cooldown already, so we skip the wait for them.
+  if (justOpened) {
+    const cooldownMs = Number(market2.cooldown_ms ?? 0n);
+    if (cooldownMs > 0) {
+      const waitMs = cooldownMs + 1500;
+      console.log(`\n=== Cooldown wait ${waitMs}ms (market cooldown_ms=${cooldownMs}) ===`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
   }
 
   const positionsForClose = await getAccountPositions(client, {
