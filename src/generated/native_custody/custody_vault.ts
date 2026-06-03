@@ -2,7 +2,7 @@
  * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
  **************************************************************/
 import { MoveStruct, MoveTuple, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
-import { bcs } from '@mysten/sui/bcs';
+import { bcs, type BcsType } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
 import * as float_1 from './deps/bucket_v2_framework/float.ts';
@@ -506,46 +506,61 @@ export function mintFromRequest(options: MintFromRequestOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface BurnArguments {
+export interface BurnAuthorizedArguments<M extends BcsType<any>> {
     vault: RawTransactionArgument<string>;
     registry: RawTransactionArgument<string>;
+    Witness: RawTransactionArgument<M>;
+    version: RawTransactionArgument<number>;
     accountId: RawTransactionArgument<string>;
     creditCoin: RawTransactionArgument<string>;
 }
-export interface BurnOptions {
+export interface BurnAuthorizedOptions<M extends BcsType<any>> {
     package?: string;
-    arguments: BurnArguments | [
+    arguments: BurnAuthorizedArguments<M> | [
         vault: RawTransactionArgument<string>,
         registry: RawTransactionArgument<string>,
+        Witness: RawTransactionArgument<M>,
+        version: RawTransactionArgument<number>,
         accountId: RawTransactionArgument<string>,
         creditCoin: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
+        string,
         string
     ];
 }
 /**
- * `account_id` identifies the wxa Account that the burned CREDIT belongs to. Used
- * (a) as the personal-burn-cap key on the credit registry and (b) as the
- * partner-fee lookup key — so partner discounts follow the source account, not the
- * executor that calls this function (fixes audit finding #3's partner-fee-evasion
- * vector when invoked via `withdrawal_queue::execute_native`).
+ * Account-authorized burn. Only callable by a `CreditRegistry`-registered module
+ * witness `M` (production: `WithdrawQueue`, via
+ * `withdrawal_queue::execute_native`), which vouches that `account_id` is the
+ * genuine originating wxa Account. `account_id` keys (a) the credit registry's
+ * personal-burn-cap and (b) the partner-fee lookup — so cap accounting and partner
+ * discounts bind to the source account, not whoever executes the queue entry
+ * (audit findings #3 / L03 / M14).
+ *
+ * There is intentionally no unauthenticated public burn: a raw `Coin<CREDIT>`
+ * holder cannot burn against a spoofed `account_id` to dodge burn fees or
+ * per-account burn caps. CREDIT exits route through the withdrawal queue. A
+ * direct-burn entrypoint can be re-added later as a new (additive) function if a
+ * use case arises.
  */
-export function burn(options: BurnOptions) {
+export function burnAuthorized<M extends BcsType<any>>(options: BurnAuthorizedOptions<M>) {
     const packageAddress = options.package ?? '@waterx/native-custody';
     const argumentsTypes = [
         null,
         null,
+        `${options.typeArguments[2]}`,
+        'u16',
         '0x2::object::ID',
         null,
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["vault", "registry", "accountId", "creditCoin"];
+    const parameterNames = ["vault", "registry", "Witness", "version", "accountId", "creditCoin"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'custody_vault',
-        function: 'burn',
+        function: 'burn_authorized',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

@@ -1083,13 +1083,15 @@ export interface DecreaseOiArguments {
     m: RawTransactionArgument<string>;
     isLong: RawTransactionArgument<boolean>;
     amount: RawTransactionArgument<string>;
+    reducedAvgEntryPrice: RawTransactionArgument<string>;
 }
 export interface DecreaseOiOptions {
     package?: string;
     arguments: DecreaseOiArguments | [
         m: RawTransactionArgument<string>,
         isLong: RawTransactionArgument<boolean>,
-        amount: RawTransactionArgument<string>
+        amount: RawTransactionArgument<string>,
+        reducedAvgEntryPrice: RawTransactionArgument<string>
     ];
 }
 export function decreaseOi(options: DecreaseOiOptions) {
@@ -1097,9 +1099,10 @@ export function decreaseOi(options: DecreaseOiOptions) {
     const argumentsTypes = [
         null,
         'bool',
+        null,
         null
     ] satisfies (string | null)[];
-    const parameterNames = ["m", "isLong", "amount"];
+    const parameterNames = ["m", "isLong", "amount", "reducedAvgEntryPrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'market_config',
@@ -1324,6 +1327,37 @@ export function weightedAveragePrice(options: WeightedAveragePriceOptions) {
         package: packageAddress,
         module: 'market_config',
         function: 'weighted_average_price',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface AveragePriceAfterDecreaseArguments {
+    currentSize: RawTransactionArgument<string>;
+    currentAveragePrice: RawTransactionArgument<string>;
+    reduceSize: RawTransactionArgument<string>;
+    reducePrice: RawTransactionArgument<string>;
+}
+export interface AveragePriceAfterDecreaseOptions {
+    package?: string;
+    arguments: AveragePriceAfterDecreaseArguments | [
+        currentSize: RawTransactionArgument<string>,
+        currentAveragePrice: RawTransactionArgument<string>,
+        reduceSize: RawTransactionArgument<string>,
+        reducePrice: RawTransactionArgument<string>
+    ];
+}
+export function averagePriceAfterDecrease(options: AveragePriceAfterDecreaseOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["currentSize", "currentAveragePrice", "reduceSize", "reducePrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'average_price_after_decrease',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

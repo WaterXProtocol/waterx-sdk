@@ -3,7 +3,6 @@ import {
   buildPlaceOrderTx,
   buildRedeemVaaTx,
   buildRequestCreditWithdrawTx,
-  burnCredit,
   claimReward,
   closePositionRequest,
   custodyMint,
@@ -47,9 +46,7 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof mintCredit).toBe("function");
     expect(typeof mintCreditFromRequest).toBe("function");
     expect(typeof mintCreditToAccount).toBe("function");
-    expect(typeof burnCredit).toBe("function");
     expect(typeof nativeCustodyCalls.mint).toBe("function");
-    expect(typeof nativeCustodyCalls.burn).toBe("function");
   });
 
   it("exports credit-bridge builders and wormhole helpers", () => {

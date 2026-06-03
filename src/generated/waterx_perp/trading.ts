@@ -2843,6 +2843,210 @@ export function calculateLossAdjustedEffectiveCollateralAmount(options: Calculat
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface SettleLossToBalanceArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    collateral: RawTransactionArgument<string>;
+    collateralToken: RawTransactionArgument<string>;
+    lossAmount: RawTransactionArgument<number | bigint>;
+    collateralPrice: RawTransactionArgument<string>;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleLossToBalanceOptions {
+    package?: string;
+    arguments: SettleLossToBalanceArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        collateral: RawTransactionArgument<string>,
+        collateralToken: RawTransactionArgument<string>,
+        lossAmount: RawTransactionArgument<number | bigint>,
+        collateralPrice: RawTransactionArgument<string>,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleLossToBalance(options: SettleLossToBalanceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        null,
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "collateral", "collateralToken", "lossAmount", "collateralPrice", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_loss_to_balance',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleLossToPositionArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    position: RawTransactionArgument<string>;
+    collateralToken: RawTransactionArgument<string>;
+    lossAmount: RawTransactionArgument<number | bigint>;
+    collateralPrice: RawTransactionArgument<string>;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleLossToPositionOptions {
+    package?: string;
+    arguments: SettleLossToPositionArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        position: RawTransactionArgument<string>,
+        collateralToken: RawTransactionArgument<string>,
+        lossAmount: RawTransactionArgument<number | bigint>,
+        collateralPrice: RawTransactionArgument<string>,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleLossToPosition(options: SettleLossToPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        null,
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "position", "collateralToken", "lossAmount", "collateralPrice", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_loss_to_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleFeesToBalanceArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    collateral: RawTransactionArgument<string>;
+    protocolShareBps: RawTransactionArgument<number | bigint>;
+    marketId: RawTransactionArgument<string>;
+    collateralToken: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
+    feeAmount: RawTransactionArgument<number | bigint>;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleFeesToBalanceOptions {
+    package?: string;
+    arguments: SettleFeesToBalanceArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        collateral: RawTransactionArgument<string>,
+        protocolShareBps: RawTransactionArgument<number | bigint>,
+        marketId: RawTransactionArgument<string>,
+        collateralToken: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>,
+        feeAmount: RawTransactionArgument<number | bigint>,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleFeesToBalance(options: SettleFeesToBalanceOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        '0x2::object::ID',
+        null,
+        null,
+        'u64',
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "collateral", "protocolShareBps", "marketId", "collateralToken", "collateralPrice", "feeAmount", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_fees_to_balance',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SettleFeesToPositionArguments {
+    globalConfig: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    position: RawTransactionArgument<string>;
+    protocolShareBps: RawTransactionArgument<number | bigint>;
+    marketId: RawTransactionArgument<string>;
+    collateralToken: RawTransactionArgument<string>;
+    collateralPrice: RawTransactionArgument<string>;
+    feeAmount: RawTransactionArgument<number | bigint>;
+    deficit: RawTransactionArgument<number | bigint>;
+}
+export interface SettleFeesToPositionOptions {
+    package?: string;
+    arguments: SettleFeesToPositionArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        position: RawTransactionArgument<string>,
+        protocolShareBps: RawTransactionArgument<number | bigint>,
+        marketId: RawTransactionArgument<string>,
+        collateralToken: RawTransactionArgument<string>,
+        collateralPrice: RawTransactionArgument<string>,
+        feeAmount: RawTransactionArgument<number | bigint>,
+        deficit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+export function settleFeesToPosition(options: SettleFeesToPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        '0x2::object::ID',
+        null,
+        null,
+        'u64',
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "pool", "market", "position", "protocolShareBps", "marketId", "collateralToken", "collateralPrice", "feeAmount", "deficit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'settle_fees_to_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface SettleFundingToBalanceArguments {
     globalConfig: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
@@ -2851,6 +3055,7 @@ export interface SettleFundingToBalanceArguments {
     fundingFee: RawTransactionArgument<number | bigint>;
     collateralPrice: RawTransactionArgument<string>;
     marketTicker: RawTransactionArgument<string>;
+    deficit: RawTransactionArgument<number | bigint>;
 }
 export interface SettleFundingToBalanceOptions {
     package?: string;
@@ -2861,7 +3066,8 @@ export interface SettleFundingToBalanceOptions {
         fundingSign: RawTransactionArgument<boolean>,
         fundingFee: RawTransactionArgument<number | bigint>,
         collateralPrice: RawTransactionArgument<string>,
-        marketTicker: RawTransactionArgument<string>
+        marketTicker: RawTransactionArgument<string>,
+        deficit: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string,
@@ -2877,9 +3083,10 @@ export function settleFundingToBalance(options: SettleFundingToBalanceOptions) {
         'bool',
         'u64',
         null,
-        '0x1::string::String'
+        '0x1::string::String',
+        'u128'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "pool", "collateral", "fundingSign", "fundingFee", "collateralPrice", "marketTicker"];
+    const parameterNames = ["globalConfig", "pool", "collateral", "fundingSign", "fundingFee", "collateralPrice", "marketTicker", "deficit"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',
@@ -2896,6 +3103,7 @@ export interface SettleFundingToPositionArguments {
     fundingFee: RawTransactionArgument<number | bigint>;
     collateralPrice: RawTransactionArgument<string>;
     marketTicker: RawTransactionArgument<string>;
+    deficit: RawTransactionArgument<number | bigint>;
 }
 export interface SettleFundingToPositionOptions {
     package?: string;
@@ -2906,7 +3114,8 @@ export interface SettleFundingToPositionOptions {
         fundingSign: RawTransactionArgument<boolean>,
         fundingFee: RawTransactionArgument<number | bigint>,
         collateralPrice: RawTransactionArgument<string>,
-        marketTicker: RawTransactionArgument<string>
+        marketTicker: RawTransactionArgument<string>,
+        deficit: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string,
@@ -2922,9 +3131,10 @@ export function settleFundingToPosition(options: SettleFundingToPositionOptions)
         'bool',
         'u64',
         null,
-        '0x1::string::String'
+        '0x1::string::String',
+        'u128'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "pool", "position", "fundingSign", "fundingFee", "collateralPrice", "marketTicker"];
+    const parameterNames = ["globalConfig", "pool", "position", "fundingSign", "fundingFee", "collateralPrice", "marketTicker", "deficit"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',

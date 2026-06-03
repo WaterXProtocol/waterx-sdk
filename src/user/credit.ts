@@ -10,7 +10,8 @@
  *     `enqueueWithdrawal` parks a FIFO `Queue<CREDIT>` entry.
  *   - Keeper drains the queue via `executeWithdrawalWormhole` /
  *     `executeWithdrawalNative` (caller must be on the executor allowlist).
- *   - PSM: `custodyMint` / `custodyBurn` against the native `CustodyVault`.
+ *   - PSM: `custodyMint` against the native `CustodyVault` (direct burn was
+ *     removed — audit L03/M14; redeem via the withdraw queue path above).
  *
  * Every builder that emits a hot potato returns its argument so the caller
  * (or the high-level `tx-builders.ts` wrappers) can pair + consume it in the
@@ -21,16 +22,14 @@ import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  burn as custodyBurnCall,
-  mint as custodyMintCall,
-} from "../generated/native_custody/custody_vault.ts";
+import { mint as custodyMintCall } from "../generated/native_custody/custody_vault.ts";
 import { requestWithdraw as requestWithdrawCall } from "../generated/waterx_account/account.ts";
 import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
 import {
   enqueue as enqueueCall,
   executeNative as executeNativeCall,
   executeWormhole as executeWormholeCall,
+  routeNative as routeNativeCall,
   routeWormhole as routeWormholeCall,
 } from "../generated/withdrawal_queue/withdrawal_queue.ts";
 import { redeemVaa as redeemVaaCall } from "../generated/wormhole_bridge/wormhole_bridge.ts";
@@ -219,14 +218,11 @@ export function routeNative(
   tx: Transaction,
   params: RouteNativeParams,
 ): TransactionArgument {
-  // NOTE: the generated `route_native` binding is stale (missing the
-  // `min_output: u64` param added by audit M15), so call moveCall directly
-  // until codegen is re-run against the deployed withdrawal_queue ABI.
-  const out = tx.moveCall({
-    target: `${queuePkg(client)}::withdrawal_queue::route_native`,
+  const out = routeNativeCall({
+    package: queuePkg(client),
+    arguments: { minOutput: BigInt(params.minOutput ?? 0n) },
     typeArguments: [params.assetType],
-    arguments: [tx.pure.u64(BigInt(params.minOutput ?? 0n))],
-  });
+  })(tx);
   return out as unknown as TransactionArgument;
 }
 
@@ -363,7 +359,13 @@ export function executeWithdrawalNative(
 }
 
 // ============================================================================
-// PSM (native custody) direct mint / burn
+// PSM (native custody) direct mint
+//
+// Direct burn was removed from the contract (audit L03/M14): there is no
+// witness-free `custody_vault::burn` anymore — `burn_authorized<T, CREDIT, M>`
+// requires a CreditRegistry-registered module witness that only the
+// withdrawal_queue can construct. CREDIT exits route through
+// requestCreditWithdraw -> enqueueWithdrawal -> keeper executeWithdrawalNative.
 // ============================================================================
 
 export interface CustodyMintParams {
@@ -402,33 +404,3 @@ export function custodyMint(
   return req as unknown as TransactionArgument;
 }
 
-export interface CustodyBurnParams {
-  /** wxa account ID the burned CREDIT belongs to (cap / fee key). */
-  accountId: string;
-  /** `Coin<CREDIT>` to burn. */
-  creditCoin: TransactionArgument;
-  assetType: string;
-  creditType?: string;
-}
-
-/**
- * Build `native_custody::custody_vault::burn<T, CREDIT>`. Returns the
- * resulting `Coin<T>` argument.
- */
-export function custodyBurn(
-  client: WaterXClient,
-  tx: Transaction,
-  params: CustodyBurnParams,
-): TransactionArgument {
-  const out = custodyBurnCall({
-    package: custodyPkg(client),
-    arguments: {
-      vault: tx.object(custodyVaultId(client)),
-      registry: tx.object(creditRegistryId(client)),
-      accountId: params.accountId,
-      creditCoin: params.creditCoin as unknown as string,
-    },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
-  })(tx);
-  return out as unknown as TransactionArgument;
-}

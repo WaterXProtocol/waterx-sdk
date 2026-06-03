@@ -7,7 +7,8 @@
  *
  * Write builders from src/user/custody.ts:
  *   - mintCreditToAccount(...)   Coin<T> → CREDIT, settled into a wxa account
- *   - burnCredit(...)            Coin<CREDIT> → Coin<T>
+ *   (direct burn was removed — audit L03/M14; redeem via the withdraw queue,
+ *    see scripts/smoke-credit-withdraw.ts)
  *
  * The write steps need a wxa account plus a spendable coin, so they only run
  * when WATERX_SMOKE_ACCOUNT_ID is set; each step is skipped with a note if no
@@ -28,14 +29,13 @@ import { resolve } from "node:path";
 import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transactions";
+import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { creditSupply, hasAsset } from "../src/generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
 import {
-  burnCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
   requestDepositFromReceivings,
@@ -271,31 +271,9 @@ async function main(): Promise<void> {
     }
   }
 
-  // ==========================================================================
-  // 3. burnCredit — Coin<CREDIT> → Coin<T>, redeemed coin returned to sender
-  // ==========================================================================
-  console.log("\n=== burnCredit ===");
-  if (!asset) {
-    console.log("  no backing asset registered in config — skipped");
-  } else {
-    const creditCoinId = await firstCoin(client, address, creditType);
-    if (!creditCoinId) {
-      console.log("  no Coin<CREDIT> in wallet — skipped");
-    } else {
-      const tx = new Transaction();
-      const [part] = tx.splitCoins(tx.object(creditCoinId), [tx.pure.u64(SMOKE_AMOUNT)]);
-      const redeemed = burnCredit(client, tx, {
-        accountId,
-        creditCoin: part!,
-        assetType: asset.type,
-      });
-      tx.transferObjects([redeemed as unknown as TransactionObjectArgument], address);
-      const outcome = await sim(client, address, tx, "burnCredit (sim)");
-      if (doExecute && outcome === "ok") {
-        await execute(client, keypair, tx, "burnCredit (execute)");
-      }
-    }
-  }
+  // Direct burn was removed from the contract (audit L03/M14) — CREDIT
+  // redemption now routes through the withdrawal queue. See
+  // scripts/smoke-credit-withdraw.ts for the requestCreditWithdraw path.
 
   // ==========================================================================
   // 4. Transfer-to-object mint — transfer Coin<T> onto the account object,

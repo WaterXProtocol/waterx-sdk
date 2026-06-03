@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { WaterXClient } from "../../src/client.ts";
 import {
   consumeCreditDeposit,
-  custodyBurn,
   custodyMint,
   enqueueWithdrawal,
   executeWithdrawalNative,
@@ -183,7 +182,7 @@ describe("user/credit — PTB builders (configured pipeline)", () => {
     expect(tx.getData().commands?.length).toBe(1);
   });
 
-  it("custodyMint + consumeCreditDeposit and custodyBurn", () => {
+  it("custodyMint + consumeCreditDeposit", () => {
     const txMint = new Transaction();
     const depReq = custodyMint(client, txMint, {
       accountId,
@@ -196,15 +195,6 @@ describe("user/credit — PTB builders (configured pipeline)", () => {
       creditType: MOCK_CREDIT_TYPE,
     });
     expect(txMint.getData().commands?.length).toBe(2);
-
-    const txBurn = new Transaction();
-    const coin = custodyBurn(client, txBurn, {
-      accountId,
-      creditCoin: txBurn.object(PTB_DUMMY_DEPOSIT_COIN),
-      assetType: MOCK_CUSTODY_ASSET_TYPE,
-    });
-    expect(coin).toBeDefined();
-    expect(txBurn.getData().commands?.length).toBe(1);
   });
 });
 

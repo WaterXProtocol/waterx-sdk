@@ -1,15 +1,16 @@
 /**
  * Builders for `native_custody::custody_vault` — the Sui-native PSM that
  * mints the protocol CREDIT CoinType 1:1 against backing stable assets `T`
- * (CCTP USDC, USDT, …) and burns it back the other way.
+ * (CCTP USDC, USDT, …).
  *
  * `mintCredit` / `mintCreditFromRequest` return a `DepositRequest<CREDIT>`
  * hot potato — it must be consumed in the same PTB by the deposit policy
  * registered for CREDIT (the canonical policy is `direct_rule::DirectRule`).
  * `mintCreditToAccount` chains that consume for you.
  *
- * `burnCredit` returns the redeemed `Coin<T>`; the caller decides where it
- * goes (transfer, fold back into a wxa account, …).
+ * There is no direct burn builder: the contract removed witness-free
+ * `custody_vault::burn` (audit L03/M14). CREDIT redemption routes through
+ * requestCreditWithdraw -> enqueueWithdrawal -> keeper executeWithdrawalNative.
  *
  * Requires `waterx_credit` + `native_custody` in the loaded config — both
  * are optional in `WaterXConfig` since not every deployment ships the
@@ -142,43 +143,4 @@ export function mintCreditToAccount(
     },
     typeArguments: [params.creditType ?? client.creditType()],
   })(tx);
-}
-
-// ============================================================================
-// burn — Coin<CREDIT> → Coin<T>
-// ============================================================================
-
-export interface BurnCreditParams {
-  /** wxa account ID the burned CREDIT belongs to (burn-cap + partner-fee key). */
-  accountId: string;
-  /** `Coin<CREDIT>` to redeem. */
-  creditCoin: TransactionArgument;
-  /** Fully-qualified backing-asset Move type `T` to redeem into. */
-  assetType: string;
-  /** CREDIT CoinType. Defaults to `client.creditType()`. */
-  creditType?: string;
-}
-
-/**
- * Build `custody_vault::burn<T, CREDIT>`. Returns the redeemed `Coin<T>`
- * argument for the caller to forward.
- */
-export function burnCredit(
-  client: WaterXClient,
-  tx: Transaction,
-  params: BurnCreditParams,
-): TransactionArgument {
-  const credit = requireCredit(client);
-  const nc = requireCustody(client);
-  const [coin] = custody.burn({
-    package: nc.published_at,
-    arguments: {
-      vault: tx.object(nc.vault),
-      registry: tx.object(credit.credit_registry),
-      accountId: params.accountId,
-      creditCoin: params.creditCoin as unknown as string,
-    },
-    typeArguments: [params.assetType, params.creditType ?? client.creditType()],
-  })(tx);
-  return coin as unknown as TransactionArgument;
 }

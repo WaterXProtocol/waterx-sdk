@@ -19,7 +19,14 @@ export const WormholeRoute = new MoveStruct({ name: `${$moduleName}::WormholeRou
         evm_token: bcs.vector(bcs.u8())
     } });
 export const NativeRoute = new MoveStruct({ name: `${$moduleName}::NativeRoute`, fields: {
-        asset_type: type_name.TypeName
+        asset_type: type_name.TypeName,
+        /**
+         * User-supplied minimum acceptable `Coin<T>` output (after the burn fee).
+         * Snapshotted into `extra_data` at withdraw time and enforced in `execute_native`,
+         * so an admin burn-fee change between enqueue and execute cannot silently reprice
+         * an already-debited withdrawal (audit M15).
+         */
+        min_output: bcs.u64()
     } });
 export const Entry = new MoveStruct({ name: `${$moduleName}::Entry<phantom CREDIT>`, fields: {
         balance: balance.Balance,
@@ -124,9 +131,13 @@ export function routeWormhole(options: RouteWormholeOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface RouteNativeArguments {
+    minOutput: RawTransactionArgument<number | bigint>;
+}
 export interface RouteNativeOptions {
     package?: string;
-    arguments?: [
+    arguments: RouteNativeArguments | [
+        minOutput: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
         string
@@ -134,14 +145,22 @@ export interface RouteNativeOptions {
 }
 /**
  * User helper: encode a Native-bound route as `extra_data` bytes. `T` is the
- * backing asset of the destination `SingleVault<T>`.
+ * backing asset of the destination `SingleVault<T>`. `min_output` is the minimum
+ * `Coin<T>` the user will accept after the native burn fee; `execute_native`
+ * aborts `EOutputBelowMin` if a later fee change would deliver less (audit M15).
+ * Pass 0 to opt out.
  */
 export function routeNative(options: RouteNativeOptions) {
     const packageAddress = options.package ?? '@waterx/withdrawal-queue';
+    const argumentsTypes = [
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["minOutput"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'withdrawal_queue',
         function: 'route_native',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
 }
@@ -506,8 +525,8 @@ export interface ExecuteNativeOptions {
     ];
 }
 /**
- * Execute a queued entry via `native_custody::custody_vault::burn<T>`. Verifies
- * that `extra_data` byte-equals `route_native<T>()` — if `T` was not the
+ * Execute a queued entry via `native_custody::custody_vault::burn<T>`. Decodes the
+ * native route, verifying its `asset_type` matches `T` — if `T` was not the
  * asset_type the user specified, aborts with `ERouteMismatch`.
  */
 export function executeNative(options: ExecuteNativeOptions) {
