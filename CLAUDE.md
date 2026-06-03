@@ -186,7 +186,13 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
   - `order.ts` — `buildPlaceOrderArgument`, `placeOrderRequest`, `cancelOrderRequest`, `updateOrderRequest`, `cancelPreOrderRequest`, `addPreOrderRequest`.
   - `wlp.ts` — `mintWlp`, `requestRedeemWlp`, `cancelRedeemWlp`, `settleRedeemWlp`, `updateTokenValue`.
   - `staking.ts` — `stake`, `unstake`, `claimReward` (with rewarder settle/destroy checker plumbing).
-  - `custody.ts` — `native_custody` PSM: `mintCredit`, `mintCreditFromRequest`, `mintCreditToAccount` (mint + `consume_deposit_direct`), `burnCredit`. Needs `waterx_credit` + `native_custody` in config.
+  - `custody.ts` — `native_custody` PSM (mint side only): `mintCredit`, `mintCreditFromRequest`, `mintCreditToAccount` (mint + `consume_deposit_direct`). Needs `waterx_credit` + `native_custody` in config. **Direct burn was removed (audit L03/M14)** — there is no witness-free `custody_vault::burn` anymore; CREDIT redemption routes through the withdraw queue in `credit.ts`.
+  - `credit.ts` — cross-chain CREDIT / bridge:
+    - Mint (EVM → Sui): `redeemVaa` → `DepositRequest<CREDIT>` hot potato, consumed in-PTB by `consumeCreditDeposit` (`direct_rule::consume_deposit_direct`).
+    - Withdraw (Sui → EVM / native): `routeWormhole` / `routeNative` (`route_native` takes `min_output`, audit M15) encode `extra_data`, fed to `requestCreditWithdraw` (`account::request_withdraw<CREDIT>`) → `enqueueWithdrawal` parks a FIFO `Queue<CREDIT>` entry.
+    - Keeper drain: `executeWithdrawalWormhole` / `executeWithdrawalNative` (caller must be on the executor allowlist).
+    - PSM direct: `custodyMint` (against the native `CustodyVault`).
+    Needs `waterx_credit` + `wormhole_bridge` + `withdrawal_queue` (+ `native_custody` for the native paths) in config.
   - `referral.ts` — **stub**: contract has no `referral_table` module anymore; functions throw `removed in v3`.
 - **`fetch.ts`** — read-only `simulate`-based queries via `waterx_perp_view`. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, etc.).
 - **`tx-builders.ts`** — high-level `build*Tx` wrappers that compose oracle refresh + `*Request` + `executeTrading`. Each accepts `tx?`, `updatePythPrice`, `pythCache`, `sponsorFund`.
