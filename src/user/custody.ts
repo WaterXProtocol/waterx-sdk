@@ -8,8 +8,14 @@
  * registered for CREDIT (the canonical policy is `direct_rule::DirectRule`).
  * `mintCreditToAccount` chains that consume for you.
  *
- * `burnCredit` returns the redeemed `Coin<T>`; the caller decides where it
- * goes (transfer, fold back into a wxa account, …).
+ * There is no user-side direct burn: the contract replaced the public
+ * `custody_vault::burn` with the witness-gated `burn_authorized<T, CREDIT, M>`
+ * (only a `CreditRegistry`-registered module witness may burn, vouching for the
+ * originating account — audit #3 / L03 / M14). CREDIT now exits exclusively
+ * through the withdrawal queue, which holds that witness inside
+ * `withdrawal_queue::execute_native`. See `routeNative` + `requestCreditWithdraw`
+ * (+ keeper `buildExecuteWithdrawalTx`) in `user/credit.ts` / `tx-builders.ts`.
+ * `burnCredit` is kept as a throwing stub so stale call sites fail loudly.
  *
  * Requires `waterx_credit` + `native_custody` in the loaded config — both
  * are optional in `WaterXConfig` since not every deployment ships the
@@ -145,7 +151,7 @@ export function mintCreditToAccount(
 }
 
 // ============================================================================
-// burn — Coin<CREDIT> → Coin<T>
+// burn — REMOVED (no user-side direct burn; CREDIT exits via withdrawal queue)
 // ============================================================================
 
 export interface BurnCreditParams {
@@ -160,25 +166,20 @@ export interface BurnCreditParams {
 }
 
 /**
- * Build `custody_vault::burn<T, CREDIT>`. Returns the redeemed `Coin<T>`
- * argument for the caller to forward.
+ * @deprecated The public `custody_vault::burn` was removed — burning is now
+ * witness-gated (`burn_authorized<T, CREDIT, M>`) and only happens inside the
+ * withdrawal queue. Route CREDIT exits through `routeNative` +
+ * `requestCreditWithdraw` (user) and `buildExecuteWithdrawalTx` (keeper)
+ * instead. Calling this throws.
  */
 export function burnCredit(
-  client: WaterXClient,
-  tx: Transaction,
-  params: BurnCreditParams,
+  _client: WaterXClient,
+  _tx: Transaction,
+  _params: BurnCreditParams,
 ): TransactionArgument {
-  const credit = requireCredit(client);
-  const nc = requireCustody(client);
-  const [coin] = custody.burn({
-    package: nc.published_at,
-    arguments: {
-      vault: tx.object(nc.vault),
-      registry: tx.object(credit.credit_registry),
-      accountId: params.accountId,
-      creditCoin: params.creditCoin as unknown as string,
-    },
-    typeArguments: [params.assetType, params.creditType ?? client.creditType()],
-  })(tx);
-  return coin as unknown as TransactionArgument;
+  throw new Error(
+    "burnCredit removed: native_custody has no user-side burn (burn is witness-gated). " +
+      "CREDIT exits via the withdrawal queue — use routeNative + requestCreditWithdraw, " +
+      "drained by the keeper (buildExecuteWithdrawalTx).",
+  );
 }

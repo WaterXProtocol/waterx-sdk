@@ -77,15 +77,15 @@ describe("user/custody PTB builders (native_custody)", () => {
     expect(tx.getData().commands?.length).toBe(2);
   });
 
-  it("burnCredit emits one moveCall and returns the redeemed coin", () => {
+  it("burnCredit throws — direct burn removed (CREDIT exits via the withdrawal queue)", () => {
     const tx = new Transaction();
-    const coin = burnCredit(client, tx, {
-      accountId,
-      creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
-      assetType: MOCK_CUSTODY_ASSET_TYPE,
-    });
-    expect(coin).toBeDefined();
-    expect(tx.getData().commands?.length).toBe(1);
+    expect(() =>
+      burnCredit(client, tx, {
+        accountId,
+        creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
+        assetType: MOCK_CUSTODY_ASSET_TYPE,
+      }),
+    ).toThrow(/burnCredit removed/);
   });
 
   it("throws a clear error when the credit pipeline is not configured", () => {
@@ -112,9 +112,9 @@ describe("user/custody PTB builders (native_custody)", () => {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
-      burnCredit(clientNoCustody, new Transaction(), {
+      mintCredit(clientNoCustody, new Transaction(), {
         accountId,
-        creditCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
+        assetCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,
       }),
     ).toThrow(/native_custody is not configured/);

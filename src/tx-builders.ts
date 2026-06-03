@@ -816,7 +816,7 @@ export function buildRedeemVaaTx(client: WaterXClient, params: BuildRedeemVaaPar
 
 export type CreditWithdrawRoute =
   | ({ kind: "wormhole" } & RouteWormholeParams)
-  | { kind: "native"; assetType: string };
+  | { kind: "native"; assetType: string; minOutput?: bigint | number };
 
 export interface BuildRequestCreditWithdrawParams {
   accountId: string;
@@ -842,7 +842,10 @@ export function buildRequestCreditWithdrawTx(
   const route =
     params.route.kind === "wormhole"
       ? routeWormhole(client, tx, params.route)
-      : routeNative(client, tx, { assetType: params.route.assetType });
+      : routeNative(client, tx, {
+          assetType: params.route.assetType,
+          minOutput: params.route.minOutput,
+        });
   const wreq = requestCreditWithdraw(client, tx, {
     accountId: params.accountId,
     amount: params.amount,

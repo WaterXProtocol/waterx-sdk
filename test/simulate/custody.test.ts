@@ -1,11 +1,9 @@
 /**
  * E2E: native custody vault reads + CREDIT mint/burn PTB builders (wxa account path).
  */
-import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transactions";
+import { Transaction } from "@mysten/sui/transactions";
 import {
   buildRedeemVaaTx,
-  burnCredit,
-  getAccountBalance,
   getCustodyAssetData,
   getCustodyVaultData,
   mintCredit,
@@ -85,18 +83,6 @@ describe.skipIf(!creditPipeline)(`custody (${e2eNetwork})`, () => {
     });
     expect(tx.getData().commands?.length).toBe(2);
   });
-
-  it("burnCredit composes one moveCall", () => {
-    if (!primaryAsset) return;
-    const tx = new Transaction();
-    const redeemed = burnCredit(client, tx, {
-      accountId: PTB_DUMMY_ACCOUNT_ID,
-      creditCoin: tx.object(DUMMY_SENDER),
-      assetType: primaryAsset,
-    });
-    tx.transferObjects([redeemed as unknown as TransactionObjectArgument], DUMMY_SENDER);
-    expect(tx.getData().commands?.length).toBe(2);
-  });
 });
 
 describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => {
@@ -151,7 +137,6 @@ describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => 
 describe.skipIf(!creditPipeline)(`custody negative simulate (${e2eNetwork})`, () => {
   let wxa: { accountId: string; owner: string } | null;
   const assetType = client.getNativeAssets()[0]?.type;
-  const creditType = creditPipeline ? client.creditType() : "";
 
   beforeAll(async () => {
     wxa = await resolveCustodyWxaRow(client);
@@ -216,92 +201,12 @@ describe.skipIf(!creditPipeline)(`custody negative simulate (${e2eNetwork})`, ()
     if (sim === undefined) return;
     assertSimulateFailed(sim);
   }, 240_000);
-
-  it("burnCredit for more than wallet Coin<CREDIT> balance fails simulate", async (ctx) => {
-    const row = wxa;
-    if (!row || !assetType) {
-      ctx.skip(custodyWxaSkipReason());
-      return;
-    }
-
-    const { objects } = await client.listCoins({ owner: row.owner, coinType: creditType });
-    const coin = objects.find((o) => o.objectId && BigInt(o.balance ?? "0") > 0n);
-    if (!coin?.objectId) {
-      ctx.skip("No wallet Coin<CREDIT> for over-burn negative probe");
-      return;
-    }
-    const coinBal = BigInt(coin.balance ?? "0");
-
-    const tx = new Transaction();
-    const [part] = tx.splitCoins(tx.object(coin.objectId), [tx.pure.u64(coinBal + 1n)]);
-    const redeemed = burnCredit(client, tx, {
-      accountId: row.accountId,
-      creditCoin: part!,
-      assetType,
-    });
-    tx.transferObjects([redeemed as unknown as TransactionObjectArgument], row.owner);
-    tx.setSender(row.owner);
-    tx.setGasBudget(e2eSimulateGasBudget());
-
-    const sim = await simulateForTestOrSkip(ctx, () => client.simulate(tx));
-    if (sim === undefined) return;
-    assertSimulateFailed(sim);
-  }, 240_000);
 });
 
-describe.skipIf(!creditPipeline)(`custody burn simulate (${e2eNetwork})`, () => {
-  let wxa: { accountId: string; owner: string } | null;
-  const assetType = client.getNativeAssets()[0]?.type;
-  const creditType = creditPipeline ? client.creditType() : "";
-
-  beforeAll(async () => {
-    wxa = await resolveCustodyWxaRow(client);
-    if (!wxa) {
-      const probe = await loadFundedProbe(client);
-      if (probe) wxa = { accountId: probe.accountId, owner: probe.owner };
-    }
-  }, 240_000);
-
-  it("simulates burnCredit when wallet holds Coin<CREDIT>", async (ctx) => {
-    const row = wxa;
-    if (!row || !assetType) {
-      ctx.skip(custodyWxaSkipReason());
-      return;
-    }
-
-    const creditBal = await getAccountBalance(client, row.accountId, creditType);
-    if (creditBal < CUSTODY_SIMULATE_AMOUNT) {
-      ctx.skip(
-        `wxa CREDIT ${creditBal} < ${CUSTODY_SIMULATE_AMOUNT} — fund via integration mint first`,
-      );
-      return;
-    }
-
-    const { objects } = await client.listCoins({
-      owner: row.owner,
-      coinType: creditType,
-    });
-    const coinId = objects[0]?.objectId;
-    if (!coinId) {
-      ctx.skip("No Coin<CREDIT> in owner wallet for burnCredit simulate");
-      return;
-    }
-
-    const tx = new Transaction();
-    const [part] = tx.splitCoins(tx.object(coinId), [tx.pure.u64(CUSTODY_SIMULATE_AMOUNT)]);
-    const redeemed = burnCredit(client, tx, {
-      accountId: row.accountId,
-      creditCoin: part!,
-      assetType,
-    });
-    tx.transferObjects([redeemed as unknown as TransactionObjectArgument], row.owner);
-    tx.setSender(row.owner);
-    tx.setGasBudget(e2eSimulateGasBudget());
-
-    const sim = await simulateWithTransientRetry(() => client.simulate(tx));
-    assertSimulateSuccessOrSkipOracleAndState(ctx, sim, 1, tx);
-  }, 240_000);
-
+describe.skipIf(!creditPipeline)(`custody misc builders (${e2eNetwork})`, () => {
+  // Direct burn was removed from native_custody (now witness-gated and only
+  // reachable via the withdrawal queue), so there is no user-side burnCredit
+  // simulate. CREDIT-exit coverage lives in the withdrawal-queue tests.
   it("buildRedeemVaaTx is exported alongside custody mint path", () => {
     const tx = buildRedeemVaaTx(client, { vaaBytes: [0x01] });
     expect(tx.getData().commands?.length).toBe(2);

@@ -21,10 +21,7 @@ import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  burn as custodyBurnCall,
-  mint as custodyMintCall,
-} from "../generated/native_custody/custody_vault.ts";
+import { mint as custodyMintCall } from "../generated/native_custody/custody_vault.ts";
 import { requestWithdraw as requestWithdrawCall } from "../generated/waterx_account/account.ts";
 import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
 import {
@@ -206,6 +203,12 @@ export function routeWormhole(
 export interface RouteNativeParams {
   /** Fully-qualified backing asset Move type `T` (e.g. via `client.getNativeAsset`). */
   assetType: string;
+  /**
+   * Minimum `Coin<T>` the user will accept after the native burn fee;
+   * `execute_native` aborts `EOutputBelowMin` if a later fee change would
+   * deliver less (audit M15). Defaults to `0n` (opt out of the floor).
+   */
+  minOutput?: bigint | number;
 }
 
 /** Build `withdrawal_queue::route_native<T>`. Returns the `extra_data` argument. */
@@ -216,6 +219,7 @@ export function routeNative(
 ): TransactionArgument {
   const out = routeNativeCall({
     package: queuePkg(client),
+    arguments: { minOutput: params.minOutput ?? 0n },
     typeArguments: [params.assetType],
   })(tx);
   return out as unknown as TransactionArgument;
@@ -403,23 +407,20 @@ export interface CustodyBurnParams {
 }
 
 /**
- * Build `native_custody::custody_vault::burn<T, CREDIT>`. Returns the
- * resulting `Coin<T>` argument.
+ * @deprecated The public `custody_vault::burn` was removed — burning is now
+ * witness-gated (`burn_authorized<T, CREDIT, M>`) and only happens inside
+ * `withdrawal_queue::execute_native`. Route CREDIT exits through
+ * {@link routeNative} + {@link requestCreditWithdraw} (user) and the keeper's
+ * `buildExecuteWithdrawalTx` instead. Calling this throws.
  */
 export function custodyBurn(
-  client: WaterXClient,
-  tx: Transaction,
-  params: CustodyBurnParams,
+  _client: WaterXClient,
+  _tx: Transaction,
+  _params: CustodyBurnParams,
 ): TransactionArgument {
-  const out = custodyBurnCall({
-    package: custodyPkg(client),
-    arguments: {
-      vault: tx.object(custodyVaultId(client)),
-      registry: tx.object(creditRegistryId(client)),
-      accountId: params.accountId,
-      creditCoin: params.creditCoin as unknown as string,
-    },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
-  })(tx);
-  return out as unknown as TransactionArgument;
+  throw new Error(
+    "custodyBurn removed: native_custody has no user-side burn (burn is witness-gated). " +
+      "CREDIT exits via the withdrawal queue — use routeNative + requestCreditWithdraw, " +
+      "drained by the keeper (buildExecuteWithdrawalTx).",
+  );
 }

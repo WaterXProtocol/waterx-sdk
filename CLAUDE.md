@@ -186,7 +186,7 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
   - `order.ts` — `buildPlaceOrderArgument`, `placeOrderRequest`, `cancelOrderRequest`, `updateOrderRequest`, `cancelPreOrderRequest`, `addPreOrderRequest`.
   - `wlp.ts` — `mintWlp`, `requestRedeemWlp`, `cancelRedeemWlp`, `settleRedeemWlp`, `updateTokenValue`.
   - `staking.ts` — `stake`, `unstake`, `claimReward` (with rewarder settle/destroy checker plumbing).
-  - `custody.ts` — `native_custody` PSM: `mintCredit`, `mintCreditFromRequest`, `mintCreditToAccount` (mint + `consume_deposit_direct`), `burnCredit`. Needs `waterx_credit` + `native_custody` in config.
+  - `custody.ts` — `native_custody` PSM: `mintCredit`, `mintCreditFromRequest`, `mintCreditToAccount` (mint + `consume_deposit_direct`). Needs `waterx_credit` + `native_custody` in config. There is **no user-side burn**: the contract replaced public `custody_vault::burn` with witness-gated `burn_authorized<T,CREDIT,M>` (only callable inside `withdrawal_queue::execute_native`), so CREDIT exits route through the withdrawal queue. `burnCredit` / `custodyBurn` are throwing stubs kept for migration.
   - `referral.ts` — **stub**: contract has no `referral_table` module anymore; functions throw `removed in v3`.
 - **`fetch.ts`** — read-only `simulate`-based queries via `waterx_perp_view`. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, etc.).
 - **`tx-builders.ts`** — high-level `build*Tx` wrappers that compose oracle refresh + `*Request` + `executeTrading`. Each accepts `tx?`, `updatePythPrice`, `pythCache`, `sponsorFund`.

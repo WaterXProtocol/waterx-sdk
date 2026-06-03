@@ -49,7 +49,7 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof mintCreditToAccount).toBe("function");
     expect(typeof burnCredit).toBe("function");
     expect(typeof nativeCustodyCalls.mint).toBe("function");
-    expect(typeof nativeCustodyCalls.burn).toBe("function");
+    expect(typeof nativeCustodyCalls.burnAuthorized).toBe("function");
   });
 
   it("exports credit-bridge builders and wormhole helpers", () => {
