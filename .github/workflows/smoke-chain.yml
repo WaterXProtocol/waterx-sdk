@@ -7,6 +7,10 @@
 # broadcasts a transaction. Manual dispatch can pick `execute` to broadcast the
 # full chain (self-funding) instead.
 #
+# This is intentionally not a PR CI gate: it depends on a maintained live
+# testnet fixture account. Run it manually before releases, and keep the
+# scheduled dry run as a testnet health signal.
+#
 # A dry run still needs a signer + network to simulate against testnet, and the
 # wxa account must hold a STANDING balance (≥ a few USD CREDIT + ≥ the stake
 # amount in WLP) — dry sims read live balances but never deduct, so one top-up
@@ -52,9 +56,21 @@ jobs:
     steps:
       - name: Resolve mode (schedule → dry)
         id: mode
-        run: echo "mode=${{ github.event.inputs.mode || 'dry' }}" >> "$GITHUB_OUTPUT"
+        env:
+          MODE_INPUT: ${{ github.event.inputs.mode }}
+        run: |
+          mode="${MODE_INPUT:-dry}"
+          case "$mode" in
+            dry|execute) ;;
+            *)
+              echo "::error::invalid mode: $mode"
+              exit 1
+              ;;
+          esac
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
 
-      - name: Preflight — require signer secrets
+      - name: Preflight — check signer secrets
+        id: signer
         env:
           SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
@@ -68,16 +84,22 @@ jobs:
             echo "::error::missing required secret(s):$missing — add them in repo Settings → Secrets → Actions"
             exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
+        if: steps.signer.outputs.available == 'true'
       - uses: pnpm/action-setup@v5
+        if: steps.signer.outputs.available == 'true'
       - uses: actions/setup-node@v5
+        if: steps.signer.outputs.available == 'true'
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        if: steps.signer.outputs.available == 'true'
 
       - name: Materialize sui keystore + client.yaml from secrets
+        if: steps.signer.outputs.available == 'true'
         env:
           SUI_KEYSTORE: ${{ secrets.SUI_KEYSTORE }}
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
@@ -90,11 +112,13 @@ jobs:
           chmod 600 "$HOME/.sui/sui_config/sui.keystore"
 
       - name: Run smoke chain (${{ steps.mode.outputs.mode }})
+        if: steps.signer.outputs.available == 'true'
         env:
           NODE_NO_WARNINGS: "1"
+          SMOKE_MODE: ${{ steps.mode.outputs.mode }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
         run: |
-          if [ "${{ steps.mode.outputs.mode }}" = "execute" ]; then
+          if [ "$SMOKE_MODE" = "execute" ]; then
             pnpm smoke:chain
           else
             pnpm smoke:chain:dry

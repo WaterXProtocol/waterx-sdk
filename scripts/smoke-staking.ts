@@ -23,6 +23,10 @@
  *   WATERX_SKIP_STAKE=1        skip stake step
  *   WATERX_SKIP_UNSTAKE=1      skip unstake step
  *   EXECUTE=1                  broadcast stake/unstake (otherwise simulate only)
+ *
+ * In simulate-only mode, the stake tx does not create live staked balance. The
+ * unstake tx is therefore skipped unless WATERX_SKIP_STAKE=1, which lets you
+ * explicitly simulate unstake against a pre-existing stake.
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -202,6 +206,8 @@ async function main(): Promise<void> {
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
   const doExecute = process.env.EXECUTE === "1";
+  const skipStake = process.env.WATERX_SKIP_STAKE === "1";
+  const skipUnstake = process.env.WATERX_SKIP_UNSTAKE === "1";
 
   // Preflight: wxa must hold enough WLP to stake.
   const wlpBalance = await getAccountBalance(client, accountId, client.wlpType());
@@ -247,7 +253,7 @@ async function main(): Promise<void> {
   // ============================================================================
   // 2. Stake
   // ============================================================================
-  if (process.env.WATERX_SKIP_STAKE !== "1") {
+  if (!skipStake) {
     console.log(`\n=== Stake ${stakeAmount} WLP ===`);
     const tx = new Transaction();
     stake(client, tx, {
@@ -269,7 +275,11 @@ async function main(): Promise<void> {
   // ============================================================================
   // 3. Unstake
   // ============================================================================
-  if (process.env.WATERX_SKIP_UNSTAKE !== "1") {
+  if (!skipUnstake && !doExecute && !skipStake) {
+    console.log(
+      "\n=== Unstake skipped (simulate-only after non-executed stake; set WATERX_SKIP_STAKE=1 to test pre-existing stake) ===",
+    );
+  } else if (!skipUnstake) {
     console.log(`\n=== Unstake ${stakeAmount} WLP ===`);
     const tx = new Transaction();
     unstake(client, tx, {
