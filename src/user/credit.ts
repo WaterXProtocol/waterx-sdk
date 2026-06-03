@@ -31,7 +31,6 @@ import {
   enqueue as enqueueCall,
   executeNative as executeNativeCall,
   executeWormhole as executeWormholeCall,
-  routeNative as routeNativeCall,
   routeWormhole as routeWormholeCall,
 } from "../generated/withdrawal_queue/withdrawal_queue.ts";
 import { redeemVaa as redeemVaaCall } from "../generated/wormhole_bridge/wormhole_bridge.ts";
@@ -206,6 +205,12 @@ export function routeWormhole(
 export interface RouteNativeParams {
   /** Fully-qualified backing asset Move type `T` (e.g. via `client.getNativeAsset`). */
   assetType: string;
+  /**
+   * Minimum `Coin<T>` the user will accept after the native burn fee;
+   * `execute_native` aborts `EOutputBelowMin` if a later fee change would
+   * deliver less (audit M15). Defaults to `0` (opt out).
+   */
+  minOutput?: bigint | number;
 }
 
 /** Build `withdrawal_queue::route_native<T>`. Returns the `extra_data` argument. */
@@ -214,10 +219,14 @@ export function routeNative(
   tx: Transaction,
   params: RouteNativeParams,
 ): TransactionArgument {
-  const out = routeNativeCall({
-    package: queuePkg(client),
+  // NOTE: the generated `route_native` binding is stale (missing the
+  // `min_output: u64` param added by audit M15), so call moveCall directly
+  // until codegen is re-run against the deployed withdrawal_queue ABI.
+  const out = tx.moveCall({
+    target: `${queuePkg(client)}::withdrawal_queue::route_native`,
     typeArguments: [params.assetType],
-  })(tx);
+    arguments: [tx.pure.u64(BigInt(params.minOutput ?? 0n))],
+  });
   return out as unknown as TransactionArgument;
 }
 

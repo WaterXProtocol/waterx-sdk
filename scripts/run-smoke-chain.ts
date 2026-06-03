@@ -12,11 +12,12 @@
  *   1. smoke                  — PTB builder simulate sanity (no on-chain writes)
  *   2. create-wxa-account     — emits WATERX_SMOKE_ACCOUNT_ID for downstream
  *   3. mint-usd-from-mock-usdc — MOCK_USDC → USD CREDIT in wxa
- *   4. deposit-to-wlp         — USD → WLP in wxa
- *   5. smoke-staking          — stake → unstake 1 WLP
- *   6. smoke-happy-path       — deposit + mint WLP + place + cancel
- *   7. smoke-keeper-match     — market buy + keeper match + direct close
- *   8. smoke-custody          — mint/burn CREDIT round-trip
+ *   4. smoke-credit-withdraw  — requestCreditWithdraw + enqueue (native route)
+ *   5. deposit-to-wlp         — USD → WLP in wxa
+ *   6. smoke-staking          — stake → unstake 1 WLP
+ *   7. smoke-happy-path       — deposit + mint WLP + place + cancel
+ *   8. smoke-keeper-match     — market buy + keeper match + direct close
+ *   9. smoke-custody          — mint/burn CREDIT round-trip
  *
  * If WATERX_SMOKE_ACCOUNT_ID is already set in the env, step 2 is skipped
  * (the existing account is reused). This lets you re-run the chain without
@@ -65,6 +66,7 @@ function buildChain(flags: CliFlags): Step[] {
       args: { capturesAccountId: true },
     },
     { name: "mint-usd-from-mock-usdc", script: "scripts/mint-usd-from-mock-usdc.ts" },
+    { name: "smoke-credit-withdraw", script: "scripts/smoke-credit-withdraw.ts" },
     { name: "deposit-to-wlp", script: "scripts/deposit-to-wlp.ts" },
     { name: "smoke-staking", script: "scripts/smoke-staking.ts" },
   ];
