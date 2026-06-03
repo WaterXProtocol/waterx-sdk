@@ -167,6 +167,7 @@ export const WithdrawRequest = new MoveStruct({ name: `${$moduleName}::WithdrawR
         recipient: bcs.Address,
         extra_data: bcs.vector(bcs.u8())
     } });
+export const PausedProtocolsKey = new MoveTuple({ name: `${$moduleName}::PausedProtocolsKey`, fields: [bcs.bool()] });
 export const AccountKey = new MoveStruct({ name: `${$moduleName}::AccountKey`, fields: {
         owner: bcs.Address,
         index: bcs.u64()
@@ -729,6 +730,99 @@ export function delistProtocol(options: DelistProtocolOptions) {
         package: packageAddress,
         module: 'account',
         function: 'delist_protocol',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PauseProtocolArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface PauseProtocolOptions {
+    package?: string;
+    arguments: PauseProtocolArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin: pause protocol `P` WITHOUT delisting it. A paused protocol cannot
+ * `take<_, P>` (new outbound debits) or `new_data<P, _>` (new account state), but
+ * `put<_, P>`, `borrow_data_mut<P, _>`, and `remove_data<P, _>` keep working — so
+ * in-flight refunds, claims, and close/cleanup can complete. Use this instead of
+ * `delist_protocol` for emergency stops; delisting blocks the exit paths too and
+ * strands active per-account state (see audit M09).
+ */
+export function pauseProtocol(options: PauseProtocolOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'pause_protocol',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface UnpauseProtocolArguments {
+    registry: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface UnpauseProtocolOptions {
+    package?: string;
+    arguments: UnpauseProtocolArguments | [
+        registry: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Admin: lift a `pause_protocol<P>`. Idempotent on a non-paused protocol. */
+export function unpauseProtocol(options: UnpauseProtocolOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'unpause_protocol',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface IsProtocolPausedArguments {
+    registry: RawTransactionArgument<string>;
+}
+export interface IsProtocolPausedOptions {
+    package?: string;
+    arguments: IsProtocolPausedArguments | [
+        registry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function isProtocolPaused(options: IsProtocolPausedOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'is_protocol_paused',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
