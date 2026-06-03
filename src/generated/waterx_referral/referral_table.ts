@@ -3,10 +3,9 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
 import * as table from './deps/sui/table.ts';
-import * as table_1 from './deps/sui/table.ts';
 const $moduleName = '@waterx/referral::referral_table';
 export const SetReferralCode = new MoveStruct({ name: `${$moduleName}::SetReferralCode`, fields: {
         refer: bcs.Address,
@@ -20,7 +19,7 @@ export const ReferralTable = new MoveStruct({ name: `${$moduleName}::ReferralTab
         id: bcs.Address,
         versions: vec_set.VecSet(bcs.u16()),
         code_to_refer: table.Table,
-        referee_to_code: table_1.Table
+        referee_to_code: table.Table
     } });
 export const AdminCap = new MoveStruct({ name: `${$moduleName}::AdminCap`, fields: {
         id: bcs.Address
@@ -97,14 +96,14 @@ export function removeVersion(options: RemoveVersionOptions) {
 }
 export interface SetReferralCodeArguments {
     table: RawTransactionArgument<string>;
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
     code: RawTransactionArgument<string>;
 }
 export interface SetReferralCodeOptions {
     package?: string;
     arguments: SetReferralCodeArguments | [
         table: RawTransactionArgument<string>,
-        req: RawTransactionArgument<string>,
+        req: TransactionArgument,
         code: RawTransactionArgument<string>
     ];
 }
@@ -126,14 +125,14 @@ export function setReferralCode(options: SetReferralCodeOptions) {
 }
 export interface UseReferralCodeArguments {
     table: RawTransactionArgument<string>;
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
     code: RawTransactionArgument<string>;
 }
 export interface UseReferralCodeOptions {
     package?: string;
     arguments: UseReferralCodeArguments | [
         table: RawTransactionArgument<string>,
-        req: RawTransactionArgument<string>,
+        req: TransactionArgument,
         code: RawTransactionArgument<string>
     ];
 }

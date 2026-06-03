@@ -3,12 +3,11 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as type_name from './deps/std/type_name.ts';
 import * as balance from './deps/sui/balance.ts';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
-import * as vec_set_1 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/withdrawal-queue::withdrawal_queue';
 export const WithdrawQueue = new MoveStruct({ name: `${$moduleName}::WithdrawQueue`, fields: {
         dummy_field: bcs.bool()
@@ -53,7 +52,7 @@ export const Queue = new MoveStruct({ name: `${$moduleName}::Queue<phantom CREDI
          * `PACKAGE_VERSION ∈ allowed_versions`; admin uses `add_version` /
          * `remove_version` to kill-switch a deprecated package after a contract upgrade.
          */
-        allowed_versions: vec_set_1.VecSet(bcs.u16())
+        allowed_versions: vec_set.VecSet(bcs.u16())
     } });
 export const Enqueued = new MoveStruct({ name: `${$moduleName}::Enqueued<phantom CREDIT>`, fields: {
         key: bcs.u64(),
@@ -97,15 +96,15 @@ export function packageVersion(options: PackageVersionOptions = {}) {
 }
 export interface RouteWormholeArguments {
     evmDestinationChain: RawTransactionArgument<number>;
-    evmRecipient: RawTransactionArgument<number[]>;
-    evmToken: RawTransactionArgument<number[]>;
+    evmRecipient: RawTransactionArgument<Array<number>>;
+    evmToken: RawTransactionArgument<Array<number>>;
 }
 export interface RouteWormholeOptions {
     package?: string;
     arguments: RouteWormholeArguments | [
         evmDestinationChain: RawTransactionArgument<number>,
-        evmRecipient: RawTransactionArgument<number[]>,
-        evmToken: RawTransactionArgument<number[]>
+        evmRecipient: RawTransactionArgument<Array<number>>,
+        evmToken: RawTransactionArgument<Array<number>>
     ];
 }
 /** User helper: encode a Wormhole-bound route as `extra_data` bytes. */
@@ -342,7 +341,7 @@ export function removeVersion(options: RemoveVersionOptions) {
 export interface CancelEntryArguments {
     queue: RawTransactionArgument<string>;
     accountRegistry: RawTransactionArgument<string>;
-    request: RawTransactionArgument<string>;
+    request: TransactionArgument;
     key: RawTransactionArgument<number | bigint>;
 }
 export interface CancelEntryOptions {
@@ -350,7 +349,7 @@ export interface CancelEntryOptions {
     arguments: CancelEntryArguments | [
         queue: RawTransactionArgument<string>,
         accountRegistry: RawTransactionArgument<string>,
-        request: RawTransactionArgument<string>,
+        request: TransactionArgument,
         key: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -398,14 +397,14 @@ export function cancelEntry(options: CancelEntryOptions) {
 export interface EnqueueArguments {
     queue: RawTransactionArgument<string>;
     registry: RawTransactionArgument<string>;
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
 }
 export interface EnqueueOptions {
     package?: string;
     arguments: EnqueueArguments | [
         queue: RawTransactionArgument<string>,
         registry: RawTransactionArgument<string>,
-        req: RawTransactionArgument<string>
+        req: TransactionArgument
     ];
     typeArguments: [
         string
@@ -435,7 +434,7 @@ export function enqueue(options: EnqueueOptions) {
 export interface ExecuteWormholeArguments {
     queue: RawTransactionArgument<string>;
     key: RawTransactionArgument<number | bigint>;
-    request: RawTransactionArgument<string>;
+    request: TransactionArgument;
     bridge: RawTransactionArgument<string>;
     creditRegistry: RawTransactionArgument<string>;
     wormholeState: RawTransactionArgument<string>;
@@ -446,7 +445,7 @@ export interface ExecuteWormholeOptions {
     arguments: ExecuteWormholeArguments | [
         queue: RawTransactionArgument<string>,
         key: RawTransactionArgument<number | bigint>,
-        request: RawTransactionArgument<string>,
+        request: TransactionArgument,
         bridge: RawTransactionArgument<string>,
         creditRegistry: RawTransactionArgument<string>,
         wormholeState: RawTransactionArgument<string>,
@@ -487,7 +486,7 @@ export function executeWormhole(options: ExecuteWormholeOptions) {
 export interface ExecuteNativeArguments {
     queue: RawTransactionArgument<string>;
     key: RawTransactionArgument<number | bigint>;
-    request: RawTransactionArgument<string>;
+    request: TransactionArgument;
     vault: RawTransactionArgument<string>;
     creditRegistry: RawTransactionArgument<string>;
 }
@@ -496,7 +495,7 @@ export interface ExecuteNativeOptions {
     arguments: ExecuteNativeArguments | [
         queue: RawTransactionArgument<string>,
         key: RawTransactionArgument<number | bigint>,
-        request: RawTransactionArgument<string>,
+        request: TransactionArgument,
         vault: RawTransactionArgument<string>,
         creditRegistry: RawTransactionArgument<string>
     ];
@@ -666,12 +665,12 @@ export function entry(options: EntryOptions) {
     });
 }
 export interface EntryAmountArguments {
-    entry: RawTransactionArgument<string>;
+    entry: TransactionArgument;
 }
 export interface EntryAmountOptions {
     package?: string;
     arguments: EntryAmountArguments | [
-        entry: RawTransactionArgument<string>
+        entry: TransactionArgument
     ];
     typeArguments: [
         string
@@ -692,12 +691,12 @@ export function entryAmount(options: EntryAmountOptions) {
     });
 }
 export interface EntryAccountIdArguments {
-    entry: RawTransactionArgument<string>;
+    entry: TransactionArgument;
 }
 export interface EntryAccountIdOptions {
     package?: string;
     arguments: EntryAccountIdArguments | [
-        entry: RawTransactionArgument<string>
+        entry: TransactionArgument
     ];
     typeArguments: [
         string
@@ -718,12 +717,12 @@ export function entryAccountId(options: EntryAccountIdOptions) {
     });
 }
 export interface EntryRecipientArguments {
-    entry: RawTransactionArgument<string>;
+    entry: TransactionArgument;
 }
 export interface EntryRecipientOptions {
     package?: string;
     arguments: EntryRecipientArguments | [
-        entry: RawTransactionArgument<string>
+        entry: TransactionArgument
     ];
     typeArguments: [
         string
@@ -744,12 +743,12 @@ export function entryRecipient(options: EntryRecipientOptions) {
     });
 }
 export interface EntryExtraDataArguments {
-    entry: RawTransactionArgument<string>;
+    entry: TransactionArgument;
 }
 export interface EntryExtraDataOptions {
     package?: string;
     arguments: EntryExtraDataArguments | [
-        entry: RawTransactionArgument<string>
+        entry: TransactionArgument
     ];
     typeArguments: [
         string
@@ -770,12 +769,12 @@ export function entryExtraData(options: EntryExtraDataOptions) {
     });
 }
 export interface RouteTagArguments {
-    extraData: RawTransactionArgument<number[]>;
+    extraData: RawTransactionArgument<Array<number>>;
 }
 export interface RouteTagOptions {
     package?: string;
     arguments: RouteTagArguments | [
-        extraData: RawTransactionArgument<number[]>
+        extraData: RawTransactionArgument<Array<number>>
     ];
 }
 /**

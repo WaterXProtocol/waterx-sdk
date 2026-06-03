@@ -60,7 +60,7 @@ function foldRequestToUsd(
     package: client.config.packages.waterx_account.published_at,
     arguments: {
       registry: tx.object(client.config.packages.waterx_account.account_registry),
-      req: usdReq as unknown as string,
+      req: usdReq as unknown as TransactionArgument,
     },
     typeArguments: [usdType],
   })(tx);

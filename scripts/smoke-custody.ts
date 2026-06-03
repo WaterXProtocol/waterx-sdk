@@ -28,7 +28,11 @@ import { resolve } from "node:path";
 import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { Transaction, type TransactionObjectArgument } from "@mysten/sui/transactions";
+import {
+  Transaction,
+  type TransactionArgument,
+  type TransactionObjectArgument,
+} from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
@@ -340,7 +344,7 @@ async function main(): Promise<void> {
             package: client.config.packages.waterx_account.published_at,
             arguments: {
               registry: txB.object(client.config.packages.waterx_account.account_registry),
-              req: creditReq as unknown as string,
+              req: creditReq as unknown as TransactionArgument,
             },
             typeArguments: [creditType],
           })(txB);
