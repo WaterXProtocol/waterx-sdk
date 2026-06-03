@@ -1,9 +1,9 @@
 /**************************************************************
  * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
  **************************************************************/
-import { MoveEnum, MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
+import { MoveEnum, MoveStruct, normalizeMoveArguments } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as position from './position.ts';
 const $moduleName = '@waterx/prediction::order';
 export const OrderKind = new MoveEnum({ name: `${$moduleName}::OrderKind`, fields: {
@@ -13,7 +13,13 @@ export const OrderKind = new MoveEnum({ name: `${$moduleName}::OrderKind`, field
 export const Order: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
         order_id: bcs.u64(),
         kind: OrderKind,
+        /**
+         * Account that funded the order and owns pending-order cancellation / refund
+         * rights.
+         */
         account_id: bcs.Address,
+        /** Account that receives the position after an open order is filled. */
+        receiver_account_id: bcs.Address,
         market_id: bcs.vector(bcs.u8()),
         selection: position.Selection,
         /** `Some(position_id)` only for close orders. */
@@ -31,12 +37,12 @@ export const Order: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName
         by_admin: bcs.bool()
     } });
 export interface OrderIdArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface OrderIdOptions {
     package?: string;
     arguments: OrderIdArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function orderId(options: OrderIdOptions) {
@@ -53,12 +59,12 @@ export function orderId(options: OrderIdOptions) {
     });
 }
 export interface KindArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface KindOptions {
     package?: string;
     arguments: KindArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function kind(options: KindOptions) {
@@ -75,12 +81,12 @@ export function kind(options: KindOptions) {
     });
 }
 export interface AccountIdArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface AccountIdOptions {
     package?: string;
     arguments: AccountIdArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function accountId(options: AccountIdOptions) {
@@ -96,13 +102,35 @@ export function accountId(options: AccountIdOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface ReceiverAccountIdArguments {
+    order: TransactionArgument;
+}
+export interface ReceiverAccountIdOptions {
+    package?: string;
+    arguments: ReceiverAccountIdArguments | [
+        order: TransactionArgument
+    ];
+}
+export function receiverAccountId(options: ReceiverAccountIdOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["order"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'order',
+        function: 'receiver_account_id',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface MarketIdArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface MarketIdOptions {
     package?: string;
     arguments: MarketIdArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function marketId(options: MarketIdOptions) {
@@ -119,12 +147,12 @@ export function marketId(options: MarketIdOptions) {
     });
 }
 export interface SelectionArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface SelectionOptions {
     package?: string;
     arguments: SelectionArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function selection(options: SelectionOptions) {
@@ -141,12 +169,12 @@ export function selection(options: SelectionOptions) {
     });
 }
 export interface PositionIdArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface PositionIdOptions {
     package?: string;
     arguments: PositionIdArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function positionId(options: PositionIdOptions) {
@@ -163,12 +191,12 @@ export function positionId(options: PositionIdOptions) {
     });
 }
 export interface MaxSpendArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface MaxSpendOptions {
     package?: string;
     arguments: MaxSpendArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function maxSpend(options: MaxSpendOptions) {
@@ -185,12 +213,12 @@ export function maxSpend(options: MaxSpendOptions) {
     });
 }
 export interface MinSharesArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface MinSharesOptions {
     package?: string;
     arguments: MinSharesArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function minShares(options: MinSharesOptions) {
@@ -207,12 +235,12 @@ export function minShares(options: MinSharesOptions) {
     });
 }
 export interface PriceCapArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface PriceCapOptions {
     package?: string;
     arguments: PriceCapArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function priceCap(options: PriceCapOptions) {
@@ -229,12 +257,12 @@ export function priceCap(options: PriceCapOptions) {
     });
 }
 export interface MinProceedsArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface MinProceedsOptions {
     package?: string;
     arguments: MinProceedsArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function minProceeds(options: MinProceedsOptions) {
@@ -251,12 +279,12 @@ export function minProceeds(options: MinProceedsOptions) {
     });
 }
 export interface ExpiryTsArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface ExpiryTsOptions {
     package?: string;
     arguments: ExpiryTsArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function expiryTs(options: ExpiryTsOptions) {
@@ -273,12 +301,12 @@ export function expiryTs(options: ExpiryTsOptions) {
     });
 }
 export interface SelfCancelAfterTsArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface SelfCancelAfterTsOptions {
     package?: string;
     arguments: SelfCancelAfterTsArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function selfCancelAfterTs(options: SelfCancelAfterTsOptions) {
@@ -295,12 +323,12 @@ export function selfCancelAfterTs(options: SelfCancelAfterTsOptions) {
     });
 }
 export interface CreatedTsArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface CreatedTsOptions {
     package?: string;
     arguments: CreatedTsArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function createdTs(options: CreatedTsOptions) {
@@ -317,12 +345,12 @@ export function createdTs(options: CreatedTsOptions) {
     });
 }
 export interface ByAdminArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface ByAdminOptions {
     package?: string;
     arguments: ByAdminArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function byAdmin(options: ByAdminOptions) {
@@ -339,12 +367,12 @@ export function byAdmin(options: ByAdminOptions) {
     });
 }
 export interface IsOpenArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface IsOpenOptions {
     package?: string;
     arguments: IsOpenArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function isOpen(options: IsOpenOptions) {
@@ -361,12 +389,12 @@ export function isOpen(options: IsOpenOptions) {
     });
 }
 export interface IsCloseArguments {
-    order: RawTransactionArgument<string>;
+    order: TransactionArgument;
 }
 export interface IsCloseOptions {
     package?: string;
     arguments: IsCloseArguments | [
-        order: RawTransactionArgument<string>
+        order: TransactionArgument
     ];
 }
 export function isClose(options: IsCloseOptions) {
@@ -383,12 +411,12 @@ export function isClose(options: IsCloseOptions) {
     });
 }
 export interface KindIsOpenArguments {
-    kind: RawTransactionArgument<string>;
+    kind: TransactionArgument;
 }
 export interface KindIsOpenOptions {
     package?: string;
     arguments: KindIsOpenArguments | [
-        kind: RawTransactionArgument<string>
+        kind: TransactionArgument
     ];
 }
 export function kindIsOpen(options: KindIsOpenOptions) {
@@ -405,12 +433,12 @@ export function kindIsOpen(options: KindIsOpenOptions) {
     });
 }
 export interface KindIsCloseArguments {
-    kind: RawTransactionArgument<string>;
+    kind: TransactionArgument;
 }
 export interface KindIsCloseOptions {
     package?: string;
     arguments: KindIsCloseArguments | [
-        kind: RawTransactionArgument<string>
+        kind: TransactionArgument
     ];
 }
 export function kindIsClose(options: KindIsCloseOptions) {

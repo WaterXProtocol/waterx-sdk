@@ -1,9 +1,9 @@
 /**************************************************************
  * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
  **************************************************************/
-import { MoveEnum, MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
+import { MoveEnum, MoveStruct, normalizeMoveArguments } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 const $moduleName = '@waterx/prediction::position';
 /**
  * Which outcome the user predicted. The broker module routes fills externally; it
@@ -29,12 +29,12 @@ export const Status = new MoveEnum({ name: `${$moduleName}::Status`, fields: {
         PendingClose: null
     } });
 export interface AccountIdArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface AccountIdOptions {
     package?: string;
     arguments: AccountIdArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function accountId(options: AccountIdOptions) {
@@ -51,12 +51,12 @@ export function accountId(options: AccountIdOptions) {
     });
 }
 export interface MarketIdArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface MarketIdOptions {
     package?: string;
     arguments: MarketIdArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function marketId(options: MarketIdOptions) {
@@ -73,12 +73,12 @@ export function marketId(options: MarketIdOptions) {
     });
 }
 export interface SelectionArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface SelectionOptions {
     package?: string;
     arguments: SelectionArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function selection(options: SelectionOptions) {
@@ -95,12 +95,12 @@ export function selection(options: SelectionOptions) {
     });
 }
 export interface FilledSharesArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface FilledSharesOptions {
     package?: string;
     arguments: FilledSharesArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function filledShares(options: FilledSharesOptions) {
@@ -117,12 +117,12 @@ export function filledShares(options: FilledSharesOptions) {
     });
 }
 export interface FilledCostArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface FilledCostOptions {
     package?: string;
     arguments: FilledCostArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function filledCost(options: FilledCostOptions) {
@@ -139,12 +139,12 @@ export function filledCost(options: FilledCostOptions) {
     });
 }
 export interface OpenedTsArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface OpenedTsOptions {
     package?: string;
     arguments: OpenedTsArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function openedTs(options: OpenedTsOptions) {
@@ -161,12 +161,12 @@ export function openedTs(options: OpenedTsOptions) {
     });
 }
 export interface CloseOrderIdArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface CloseOrderIdOptions {
     package?: string;
     arguments: CloseOrderIdArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function closeOrderId(options: CloseOrderIdOptions) {
@@ -183,12 +183,12 @@ export function closeOrderId(options: CloseOrderIdOptions) {
     });
 }
 export interface HasPendingCloseArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface HasPendingCloseOptions {
     package?: string;
     arguments: HasPendingCloseArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function hasPendingClose(options: HasPendingCloseOptions) {
@@ -205,12 +205,12 @@ export function hasPendingClose(options: HasPendingCloseOptions) {
     });
 }
 export interface StatusArguments {
-    position: RawTransactionArgument<string>;
+    position: TransactionArgument;
 }
 export interface StatusOptions {
     package?: string;
     arguments: StatusArguments | [
-        position: RawTransactionArgument<string>
+        position: TransactionArgument
     ];
 }
 export function status(options: StatusOptions) {
@@ -253,12 +253,12 @@ export function selectionYes(options: SelectionYesOptions = {}) {
     });
 }
 export interface StatusIsOpenArguments {
-    s: RawTransactionArgument<string>;
+    s: TransactionArgument;
 }
 export interface StatusIsOpenOptions {
     package?: string;
     arguments: StatusIsOpenArguments | [
-        s: RawTransactionArgument<string>
+        s: TransactionArgument
     ];
 }
 export function statusIsOpen(options: StatusIsOpenOptions) {
@@ -275,12 +275,12 @@ export function statusIsOpen(options: StatusIsOpenOptions) {
     });
 }
 export interface StatusIsPendingCloseArguments {
-    s: RawTransactionArgument<string>;
+    s: TransactionArgument;
 }
 export interface StatusIsPendingCloseOptions {
     package?: string;
     arguments: StatusIsPendingCloseArguments | [
-        s: RawTransactionArgument<string>
+        s: TransactionArgument
     ];
 }
 export function statusIsPendingClose(options: StatusIsPendingCloseOptions) {
@@ -297,12 +297,12 @@ export function statusIsPendingClose(options: StatusIsPendingCloseOptions) {
     });
 }
 export interface SelectionIsNoArguments {
-    s: RawTransactionArgument<string>;
+    s: TransactionArgument;
 }
 export interface SelectionIsNoOptions {
     package?: string;
     arguments: SelectionIsNoArguments | [
-        s: RawTransactionArgument<string>
+        s: TransactionArgument
     ];
 }
 export function selectionIsNo(options: SelectionIsNoOptions) {
@@ -319,12 +319,12 @@ export function selectionIsNo(options: SelectionIsNoOptions) {
     });
 }
 export interface SelectionIsYesArguments {
-    s: RawTransactionArgument<string>;
+    s: TransactionArgument;
 }
 export interface SelectionIsYesOptions {
     package?: string;
     arguments: SelectionIsYesArguments | [
-        s: RawTransactionArgument<string>
+        s: TransactionArgument
     ];
 }
 export function selectionIsYes(options: SelectionIsYesOptions) {

@@ -10,6 +10,11 @@ export const PTB_DUMMY = {
   adminCap: "0xb036ca849843fab73fa08376ca87dc43389fc94606cb245046886722953fbc55",
 } as const;
 
+/** 100% cap — keeper fill of 1 share @ 1 base unit fails below this (fill_order abort 20). */
+export const INTEGRATION_FILLABLE_PRICE_CAP_BPS = 10_000n;
+
+export const INTEGRATION_MIN_FILL = { filledShares: 1n, filledCost: 1n } as const;
+
 export function minimalPlaceOrderParams(_client: PredictClient) {
   return {
     accountId: PTB_DUMMY.accountId as IdArgument,

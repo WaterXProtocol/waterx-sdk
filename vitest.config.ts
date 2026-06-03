@@ -167,13 +167,50 @@ export default defineConfig({
         test: {
           name: "predict-integration",
           include: ["test/prediction/integration/**/*.test.ts"],
+          exclude: [
+            "**/node_modules/**",
+            "**/dist/**",
+            "test/prediction/integration/**/*.keeper.test.ts",
+            "test/prediction/integration/admin.test.ts",
+            "test/prediction/integration/claim.test.ts",
+          ],
           environment: "node",
-          exclude: ["**/node_modules/**", "**/dist/**"],
           setupFiles: ["./test/prediction/setup-integration.ts"],
           testTimeout: 180_000,
           hookTimeout: 180_000,
-          // Integration signs+executes against testnet with one gas coin — single worker.
-          // Vitest 4 migration: see predict-e2e block above.
+          maxWorkers: 1,
+          isolate: false,
+          sequence: { concurrent: false },
+        },
+      },
+      {
+        resolve: { alias: aliases },
+        test: {
+          name: "predict-integration-keeper",
+          include: [
+            "test/prediction/integration/**/*.keeper.test.ts",
+            "test/prediction/integration/claim.test.ts",
+          ],
+          environment: "node",
+          exclude: ["**/node_modules/**", "**/dist/**"],
+          setupFiles: ["./test/prediction/setup-integration.ts"],
+          testTimeout: 360_000,
+          hookTimeout: 180_000,
+          maxWorkers: 1,
+          isolate: false,
+          sequence: { concurrent: false },
+        },
+      },
+      {
+        resolve: { alias: aliases },
+        test: {
+          name: "predict-integration-admin",
+          include: ["test/prediction/integration/admin.test.ts"],
+          environment: "node",
+          exclude: ["**/node_modules/**", "**/dist/**"],
+          setupFiles: ["./test/prediction/setup-integration.ts"],
+          testTimeout: 240_000,
+          hookTimeout: 180_000,
           maxWorkers: 1,
           isolate: false,
           sequence: { concurrent: false },

@@ -4,14 +4,7 @@
 import { MoveStruct } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 import * as position from './position.ts';
-import * as position_1 from './position.ts';
-import * as position_2 from './position.ts';
 import * as outcome from './outcome.ts';
-import * as position_3 from './position.ts';
-import * as outcome_1 from './outcome.ts';
-import * as position_4 from './position.ts';
-import * as position_5 from './position.ts';
-import * as position_6 from './position.ts';
 const $moduleName = '@waterx/prediction::events';
 export const KeeperAdded: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::KeeperAdded`, fields: {
         global_config_id: bcs.Address,
@@ -31,7 +24,10 @@ export const MarketCreated: MoveStruct<any, any> = new MoveStruct({ name: `${$mo
 export const OrderPlaced: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::OrderPlaced`, fields: {
         market_registry_id: bcs.Address,
         order_id: bcs.u64(),
+        /** Funding/refund account for the pending order. */
         account_id: bcs.Address,
+        /** Account that receives the position after fill. */
+        receiver_account_id: bcs.Address,
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
         selection: position.Selection,
@@ -52,7 +48,7 @@ export const OrderFilled: MoveStruct<any, any> = new MoveStruct({ name: `${$modu
         position_id: bcs.u64(),
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
-        selection: position_1.Selection,
+        selection: position.Selection,
         filled_shares: bcs.u64(),
         filled_cost: bcs.u64(),
         event_ts: bcs.u64()
@@ -63,7 +59,7 @@ export const OrderCancelled: MoveStruct<any, any> = new MoveStruct({ name: `${$m
         account_id: bcs.Address,
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
-        selection: position_2.Selection,
+        selection: position.Selection,
         refund_amount: bcs.u64(),
         by_self: bcs.bool(),
         event_ts: bcs.u64()
@@ -78,16 +74,42 @@ export const MarketResolved: MoveStruct<any, any> = new MoveStruct({ name: `${$m
     } });
 export const PositionClaimed: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::PositionClaimed`, fields: {
         market_registry_id: bcs.Address,
-        originating_order_id: bcs.u64(),
         account_id: bcs.Address,
         position_id: bcs.u64(),
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
-        selection: position_3.Selection,
-        outcome: outcome_1.Outcome,
+        selection: position.Selection,
+        outcome: outcome.Outcome,
         filled_shares: bcs.u64(),
         filled_cost: bcs.u64(),
         payout: bcs.u64(),
+        event_ts: bcs.u64()
+    } });
+export const PositionTransferred: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::PositionTransferred`, fields: {
+        market_registry_id: bcs.Address,
+        position_id: bcs.u64(),
+        from_account_id: bcs.Address,
+        to_account_id: bcs.Address,
+        market_key: bcs.u64(),
+        market_id: bcs.vector(bcs.u8()),
+        selection: position.Selection,
+        filled_shares: bcs.u64(),
+        filled_cost: bcs.u64(),
+        event_ts: bcs.u64()
+    } });
+export const PositionSplit: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::PositionSplit`, fields: {
+        market_registry_id: bcs.Address,
+        source_position_id: bcs.u64(),
+        split_position_id: bcs.u64(),
+        from_account_id: bcs.Address,
+        to_account_id: bcs.Address,
+        market_key: bcs.u64(),
+        market_id: bcs.vector(bcs.u8()),
+        selection: position.Selection,
+        split_shares: bcs.u64(),
+        split_cost: bcs.u64(),
+        remaining_shares: bcs.u64(),
+        remaining_cost: bcs.u64(),
         event_ts: bcs.u64()
     } });
 export const CloseRequested: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::CloseRequested`, fields: {
@@ -97,7 +119,7 @@ export const CloseRequested: MoveStruct<any, any> = new MoveStruct({ name: `${$m
         position_id: bcs.u64(),
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
-        selection: position_4.Selection,
+        selection: position.Selection,
         min_proceeds: bcs.u64(),
         expiry_ts: bcs.u64(),
         self_cancel_after_ts: bcs.u64(),
@@ -111,7 +133,7 @@ export const CloseConfirmed: MoveStruct<any, any> = new MoveStruct({ name: `${$m
         position_id: bcs.u64(),
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
-        selection: position_5.Selection,
+        selection: position.Selection,
         filled_shares: bcs.u64(),
         filled_cost: bcs.u64(),
         proceeds: bcs.u64(),
@@ -124,7 +146,7 @@ export const CloseCancelled: MoveStruct<any, any> = new MoveStruct({ name: `${$m
         position_id: bcs.u64(),
         market_key: bcs.u64(),
         market_id: bcs.vector(bcs.u8()),
-        selection: position_6.Selection,
+        selection: position.Selection,
         /** True if the user initiated the cancel via self_cancel_close. */
         by_self: bcs.bool(),
         event_ts: bcs.u64()

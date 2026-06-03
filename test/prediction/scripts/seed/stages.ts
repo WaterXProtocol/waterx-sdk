@@ -1,12 +1,6 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { PTB_DUMMY } from "~predict-tests/fixtures/ptb-params.ts";
-import {
-  assertSuccessfulExecution,
-  registryAccountIdFromAccountCreated,
-  transactionDigest,
-} from "~predict-tests/helpers/tx-result.ts";
-import { createAccount, deposit } from "~predict/account.ts";
+import { createAccount } from "~predict/account.ts";
 import {
   addKeeper,
   adminWithdraw,
@@ -28,8 +22,33 @@ import {
   getPositionCursor,
   getRegistry,
 } from "~predict/fetch.ts";
-import { fillOrder, placeOrder, requestClose, resolveMarket } from "~predict/prediction.ts";
+import {
+  cancelClose,
+  cancelOrder,
+  confirmClose,
+  fillOrder,
+  forceClaim,
+  placeOrder,
+  requestClose,
+  resolveMarket,
+  selfCancelClose,
+  selfCancelOrder,
+} from "~predict/prediction.ts";
 
+import { PTB_DUMMY } from "../../fixtures/ptb-params.ts";
+import {
+  appendPsmDeposit,
+  appendWalletUsdDeposit,
+  listBestWalletCoin,
+  planAccountFunding,
+  resolveMockUsdcCoinType,
+  resolveOwnerRegistryAccountId,
+} from "../../helpers/account-funding.ts";
+import {
+  assertSuccessfulExecution,
+  registryAccountIdFromAccountCreated,
+  transactionDigest,
+} from "../../helpers/tx-result.ts";
 import type { SeedContext } from "./context.ts";
 import type { SeedFixture } from "./fixture.ts";
 
@@ -46,6 +65,9 @@ function labelToBytes(label: string): Uint8Array {
 }
 
 const FAR_FUTURE = 9_999_999_999_999n;
+/** 100% cap — required so keeper can fill 1 share @ 1 base-unit cost (fill_order abort 20 at 9000 bps). */
+const SEED_FILLABLE_PRICE_CAP_BPS = 10_000n;
+const SEED_MIN_FILL = { filledShares: 1n, filledCost: 1n } as const;
 
 async function executeTx(
   client: PredictClient,
@@ -76,40 +98,6 @@ async function executeTx(
   return result;
 }
 
-interface WalletCoin {
-  objectId: string;
-  balance: bigint;
-}
-
-async function listFirstCoin(
-  client: PredictClient,
-  owner: string,
-  coinType: string,
-): Promise<WalletCoin | undefined> {
-  const page = await client.listCoins({ owner, coinType });
-  const objects = (
-    page as { objects?: { objectId?: string; coinObjectId?: string; balance?: string }[] }
-  ).objects;
-  const first = objects?.[0];
-  if (!first) return undefined;
-  const objectId = first.objectId ?? first.coinObjectId;
-  if (!objectId) return undefined;
-  return { objectId, balance: BigInt(first.balance ?? 0) };
-}
-
-async function freshSettlementCoin(
-  client: PredictClient,
-  owner: string,
-  minBalance: bigint,
-): Promise<WalletCoin> {
-  const coin = await listFirstCoin(client, owner, client.settlementCoinType());
-  if (!coin) throw new Error(`No settlement coin in wallet ${owner}`);
-  if (coin.balance < minBalance) {
-    throw new Error(`Coin ${coin.objectId} balance ${coin.balance} < required ${minBalance}`);
-  }
-  return coin;
-}
-
 async function inferNextId(
   before: { back: bigint | null; front: bigint | null },
   after: { back: bigint | null; front: bigint | null },
@@ -118,14 +106,6 @@ async function inferNextId(
   const prevBack = before.back ?? undefined;
   if (prevBack !== undefined) return prevBack + 1n;
   return after.front ?? undefined;
-}
-
-async function findAccountIdForOwner(
-  client: PredictClient,
-  owner: string,
-): Promise<string | undefined> {
-  const ids = await getAccountIds(client, { owner });
-  return ids[0];
 }
 
 async function scanAccountPositions(
@@ -186,10 +166,14 @@ async function scanAccountOpenOrders(
 
 /** Ensure owner has at least one registry account; reuse if so. */
 export async function stageAccount(ctx: SeedContext): Promise<void> {
-  const existing =
-    ctx.fixture.accountId ?? (await findAccountIdForOwner(ctx.client, ctx.ownerAddress));
+  const preferred = ctx.fixture.accountId;
+  const existing = await resolveOwnerRegistryAccountId(ctx.client, ctx.ownerAddress, preferred);
   if (existing) {
-    ctx.log("stage account", `reuse ${existing}`);
+    if (preferred && preferred.toLowerCase() !== existing.toLowerCase()) {
+      ctx.log("stage account", `reuse ${existing} (fixture id stale: ${preferred})`);
+    } else {
+      ctx.log("stage account", `reuse ${existing}`);
+    }
     ctx.setFixture({ accountId: existing });
     return;
   }
@@ -215,32 +199,89 @@ export async function stageAccount(ctx: SeedContext): Promise<void> {
   ctx.log("stage account", `created ${accountId}`);
 }
 
-/** Ensure the account has data (calls deposit if `hasData=false`). */
+/** Ensure the account can pay for orders (wallet USD deposit or MOCK_USDC PSM if needed). */
 export async function stageDeposit(ctx: SeedContext): Promise<void> {
   const accountId = ctx.fixture.accountId;
   if (!accountId) throw new Error("stageDeposit: accountId not set — run 'account' stage first");
 
-  const data = await getAccountData(ctx.client, { accountId });
-  if (data.hasData) {
+  const plan = await planAccountFunding(ctx.client, ctx.ownerAddress, ctx.depositAmount, {
+    accountId,
+  });
+  if (plan === "skipped") {
     ctx.log("stage deposit", "skip (account.hasData=true)");
     return;
   }
   if (ctx.dryRun) {
-    ctx.log("stage deposit", `would deposit ${ctx.depositAmount} base units (dry-run)`);
+    if (plan === "wallet-usd") {
+      ctx.log("stage deposit", `would deposit ${ctx.depositAmount} USD from wallet (dry-run)`);
+    } else if (plan === "psm-mock-usdc") {
+      ctx.log("stage deposit", `would PSM ${ctx.depositAmount} MOCK_USDC → account USD (dry-run)`);
+    } else {
+      ctx.log(
+        "stage deposit",
+        `would fail — need wallet USD or MOCK_USDC (≥ ${ctx.depositAmount} base units)`,
+      );
+    }
     return;
   }
-  const usd = await freshSettlementCoin(ctx.client, ctx.ownerAddress, ctx.depositAmount);
-  await executeTx(
-    ctx.client,
-    ctx.owner,
-    (tx) => {
-      const [coin] = tx.splitCoins(tx.object(usd.objectId), [ctx.depositAmount]);
-      deposit(ctx.client, tx, { accountId, coin });
-    },
-    "deposit",
-    ctx.log,
-  );
-  ctx.log("stage deposit", `${ctx.depositAmount} base units deposited`);
+  if (plan === "needed") {
+    throw new Error(
+      `stageDeposit: wallet ${ctx.ownerAddress} has neither settlement USD nor enough MOCK_USDC ` +
+        `for PSM (need ≥ ${ctx.depositAmount} base units)`,
+    );
+  }
+
+  const label = plan === "psm-mock-usdc" ? "PSM mint (MOCK_USDC → account USD)" : "deposit";
+  if (plan === "wallet-usd") {
+    const usd = await listBestWalletCoin(
+      ctx.client,
+      ctx.ownerAddress,
+      ctx.client.settlementCoinType(),
+      ctx.depositAmount,
+    );
+    if (!usd) {
+      throw new Error(`No settlement coin in wallet ${ctx.ownerAddress}`);
+    }
+    await executeTx(
+      ctx.client,
+      ctx.owner,
+      (tx) => {
+        appendWalletUsdDeposit(ctx.client, tx, {
+          accountId,
+          usdCoinId: usd.objectId,
+          amount: ctx.depositAmount,
+        });
+      },
+      label,
+      ctx.log,
+    );
+  } else {
+    const mockUsdcType = resolveMockUsdcCoinType(ctx.client);
+    if (!mockUsdcType) throw new Error("MOCK_USDC not configured in waterx-config");
+    const mock = await listBestWalletCoin(
+      ctx.client,
+      ctx.ownerAddress,
+      mockUsdcType,
+      ctx.depositAmount,
+    );
+    if (!mock) {
+      throw new Error(`Insufficient MOCK_USDC in wallet ${ctx.ownerAddress}`);
+    }
+    await executeTx(
+      ctx.client,
+      ctx.owner,
+      (tx) => {
+        appendPsmDeposit(ctx.client, tx, {
+          accountId,
+          mockUsdcCoinId: mock.objectId,
+          amount: ctx.depositAmount,
+        });
+      },
+      label,
+      ctx.log,
+    );
+  }
+  ctx.log("stage deposit", `${ctx.depositAmount} base units via ${label}`);
 }
 
 /**
@@ -274,7 +315,7 @@ export async function stagePlaceOpen(ctx: SeedContext): Promise<void> {
         selection: "YES",
         maxSpend: 1_000n,
         minShares: 1n,
-        priceCapBps: 9_000n,
+        priceCapBps: SEED_FILLABLE_PRICE_CAP_BPS,
         expiryTs: FAR_FUTURE,
       });
     },
@@ -321,7 +362,7 @@ export async function stageFill(ctx: SeedContext): Promise<void> {
         selection: "YES",
         maxSpend: 1_000n,
         minShares: 1n,
-        priceCapBps: 9_000n,
+        priceCapBps: SEED_FILLABLE_PRICE_CAP_BPS,
         expiryTs: FAR_FUTURE,
       });
     },
@@ -336,7 +377,7 @@ export async function stageFill(ctx: SeedContext): Promise<void> {
   await executeTx(
     ctx.client,
     ctx.keeper,
-    (tx) => fillOrder(ctx.client, tx, { orderId, filledShares: 1n, filledCost: 1n }),
+    (tx) => fillOrder(ctx.client, tx, { orderId, ...SEED_MIN_FILL }),
     "fillOrder",
     ctx.log,
   );
@@ -395,7 +436,7 @@ export async function stageRequestClose(ctx: SeedContext): Promise<void> {
           selection: "YES",
           maxSpend: 1_000n,
           minShares: 1n,
-          priceCapBps: 9_000n,
+          priceCapBps: SEED_FILLABLE_PRICE_CAP_BPS,
           expiryTs: FAR_FUTURE,
         });
       },
@@ -409,7 +450,7 @@ export async function stageRequestClose(ctx: SeedContext): Promise<void> {
     await executeTx(
       ctx.client,
       ctx.keeper,
-      (tx) => fillOrder(ctx.client, tx, { orderId, filledShares: 1n, filledCost: 1n }),
+      (tx) => fillOrder(ctx.client, tx, { orderId, ...SEED_MIN_FILL }),
       "fillOrder (for requestClose)",
       ctx.log,
     );
@@ -501,7 +542,7 @@ export async function stagePlaceAndResolve(ctx: SeedContext): Promise<void> {
           selection: "YES",
           maxSpend: 1_000n,
           minShares: 1n,
-          priceCapBps: 9_000n,
+          priceCapBps: SEED_FILLABLE_PRICE_CAP_BPS,
           expiryTs: FAR_FUTURE,
         });
       },
@@ -515,7 +556,7 @@ export async function stagePlaceAndResolve(ctx: SeedContext): Promise<void> {
     await executeTx(
       ctx.client,
       ctx.keeper,
-      (tx) => fillOrder(ctx.client, tx, { orderId, filledShares: 1n, filledCost: 1n }),
+      (tx) => fillOrder(ctx.client, tx, { orderId, ...SEED_MIN_FILL }),
       "fillOrder (claim market)",
       ctx.log,
     );
@@ -595,7 +636,7 @@ export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
     }
   }
 
-  const needOpen = !ctx.fixture.expiredOpenOrderId;
+  let needOpen = !ctx.fixture.expiredOpenOrderId;
   let needClose = !ctx.fixture.expiredPendingClosePositionId;
 
   if (ctx.fixture.expiredPendingClosePositionId) {
@@ -639,7 +680,7 @@ export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
           selection: "YES",
           maxSpend: 1_000n,
           minShares: 1n,
-          priceCapBps: 9_000n,
+          priceCapBps: SEED_FILLABLE_PRICE_CAP_BPS,
           expiryTs,
         });
       },
@@ -673,7 +714,7 @@ export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
             selection: "YES",
             maxSpend: 1_000n,
             minShares: 1n,
-            priceCapBps: 9_000n,
+            priceCapBps: SEED_FILLABLE_PRICE_CAP_BPS,
             expiryTs: FAR_FUTURE, // open order stays open long enough to be filled
           });
         },
@@ -687,7 +728,7 @@ export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
       await executeTx(
         ctx.client,
         ctx.keeper,
-        (tx) => fillOrder(ctx.client, tx, { orderId, filledShares: 1n, filledCost: 1n }),
+        (tx) => fillOrder(ctx.client, tx, { orderId, ...SEED_MIN_FILL }),
         "fillOrder (expired close-rescue)",
         ctx.log,
       );
@@ -883,7 +924,15 @@ export async function stageTreasuryRoundtrip(ctx: SeedContext): Promise<void> {
     ctx.log("stage treasury", "would depositSettlement + adminWithdraw (dry-run)");
     return;
   }
-  const usd = await freshSettlementCoin(ctx.client, ctx.ownerAddress, 1n);
+  const usd = await listBestWalletCoin(
+    ctx.client,
+    ctx.ownerAddress,
+    ctx.client.settlementCoinType(),
+    1n,
+  );
+  if (!usd) {
+    throw new Error(`No settlement coin in wallet ${ctx.ownerAddress}`);
+  }
   await executeTx(
     ctx.client,
     ctx.owner,

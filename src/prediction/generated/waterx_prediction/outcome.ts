@@ -1,8 +1,8 @@
 /**************************************************************
  * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
  **************************************************************/
-import { MoveEnum, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
-import { type Transaction } from '@mysten/sui/transactions';
+import { MoveEnum, normalizeMoveArguments } from '../utils/index.ts';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 const $moduleName = '@waterx/prediction::outcome';
 export const Outcome = new MoveEnum({ name: `${$moduleName}::Outcome`, fields: {
         No: null,
@@ -49,12 +49,12 @@ export function invalid(options: InvalidOptions = {}) {
     });
 }
 export interface IsNoArguments {
-    outcome: RawTransactionArgument<string>;
+    outcome: TransactionArgument;
 }
 export interface IsNoOptions {
     package?: string;
     arguments: IsNoArguments | [
-        outcome: RawTransactionArgument<string>
+        outcome: TransactionArgument
     ];
 }
 export function isNo(options: IsNoOptions) {
@@ -71,12 +71,12 @@ export function isNo(options: IsNoOptions) {
     });
 }
 export interface IsYesArguments {
-    outcome: RawTransactionArgument<string>;
+    outcome: TransactionArgument;
 }
 export interface IsYesOptions {
     package?: string;
     arguments: IsYesArguments | [
-        outcome: RawTransactionArgument<string>
+        outcome: TransactionArgument
     ];
 }
 export function isYes(options: IsYesOptions) {
@@ -93,12 +93,12 @@ export function isYes(options: IsYesOptions) {
     });
 }
 export interface IsInvalidArguments {
-    outcome: RawTransactionArgument<string>;
+    outcome: TransactionArgument;
 }
 export interface IsInvalidOptions {
     package?: string;
     arguments: IsInvalidArguments | [
-        outcome: RawTransactionArgument<string>
+        outcome: TransactionArgument
     ];
 }
 export function isInvalid(options: IsInvalidOptions) {

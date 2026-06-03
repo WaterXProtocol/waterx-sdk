@@ -1,3 +1,4 @@
+import { decodeEnumVariant } from "~predict/bcs.ts";
 import { expect } from "vitest";
 
 import type { EventFieldContract, JsonFieldKind } from "../contract/event-fields.ts";
@@ -161,12 +162,11 @@ export function expectEventShape(event: SuiEventEnvelope, contract: EventFieldCo
   }
 }
 
-/** Normalise Move enum wire shapes (`"YES"`, `{ Yes: true }`, etc.) to uppercase token. */
+/** Normalise Move enum wire shapes (`"YES"`, `{ Yes: true }`, `{ "@variant": "Yes" }`, etc.). */
 export function normalizeEnumField(value: unknown): string {
-  if (typeof value === "string") return value.toUpperCase();
-  if (value && typeof value === "object") {
-    const key = Object.keys(value as Record<string, unknown>)[0];
-    if (key) return key.toUpperCase();
+  try {
+    return decodeEnumVariant(value).toUpperCase();
+  } catch {
+    return String(value).toUpperCase();
   }
-  return String(value).toUpperCase();
 }

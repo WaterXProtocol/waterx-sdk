@@ -2,10 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { createAccount, deposit } from "~predict/account.ts";
+import { createAccount } from "~predict/account.ts";
 import type { PredictClient } from "~predict/client.ts";
-import { getAccountData, getAccountIds, isKeeper } from "~predict/fetch.ts";
+import { getAccountIds, isKeeper } from "~predict/fetch.ts";
+import type { TestContext } from "vitest";
 
+import { ensureAccountFunded, resolveOwnerRegistryAccountId } from "./account-funding.ts";
 import { createE2eClient } from "./e2e-context.ts";
 import {
   hasWriteCredentials,
@@ -82,11 +84,8 @@ export async function setupIntegration(): Promise<IntegrationCtx> {
   const seed = readSeedFixture();
   let accountId = seed?.accountId;
   if (accountId) {
-    try {
-      await getAccountData(client, { accountId });
-    } catch {
-      accountId = undefined;
-    }
+    const resolved = await resolveOwnerRegistryAccountId(client, ownerAddress, accountId);
+    accountId = resolved;
   }
   if (!accountId) {
     const ids = await getAccountIds(client, { owner: ownerAddress });
@@ -115,29 +114,8 @@ export async function setupIntegration(): Promise<IntegrationCtx> {
     if (!accountId) throw new Error("setupIntegration: could not create or resolve account id");
   }
 
-  // Ensure deposit so subsequent placeOrder works.
-  const data = await getAccountData(client, { accountId });
-  if (!data.hasData) {
-    const amount = readSeedDepositAmount();
-    const coins = await client.listCoins({
-      owner: ownerAddress,
-      coinType: client.settlementCoinType(),
-    });
-    const first = (coins as { objects?: { objectId?: string; balance?: string }[] }).objects?.[0];
-    if (!first?.objectId) {
-      throw new Error(`No settlement coin in wallet ${ownerAddress} — cannot deposit`);
-    }
-    const tx = new Transaction();
-    tx.setSender(ownerAddress);
-    const [split] = tx.splitCoins(tx.object(first.objectId), [amount]);
-    deposit(client, tx, { accountId, coin: split });
-    const exec = await client.signAndExecuteTransaction({
-      signer,
-      transaction: tx,
-      include: { effects: true, objectTypes: true },
-    });
-    assertSuccessfulExecution(exec);
-  }
+  // Ensure the account can pay for placeOrder (wallet USD or MOCK_USDC PSM).
+  await ensureAccountFunded(client, signer, accountId, readSeedDepositAmount());
 
   return {
     client,
@@ -150,24 +128,64 @@ export async function setupIntegration(): Promise<IntegrationCtx> {
   };
 }
 
+/** Skip when `E2E_KEEPER_PRIVATE_KEY` / owner is not a registered on-chain keeper. */
+export function requireIntegrationKeeper(
+  ctx: IntegrationCtx,
+  testCtx: TestContext,
+): asserts ctx is IntegrationCtx & { keeper: Ed25519Keypair; keeperAddress: string } {
+  if (!ctx.keeper) {
+    testCtx.skip(
+      true,
+      "needs registered keeper — set E2E_KEEPER_PRIVATE_KEY or register SUI_PRIVATE_KEY wallet as keeper",
+    );
+  }
+}
+
+export type IntegrationTxBuilder = (tx: Transaction) => void;
+
+/** Shared-object version races on public testnet (other integration tests / keeper bots). */
+export function isStaleObjectError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    /needs to be rebuilt/i.test(msg) ||
+    /unavailable for consumption/i.test(msg) ||
+    /object.*version/i.test(msg)
+  );
+}
+
 /**
- * Helper: execute a Transaction signed by `signer`, wait for it, re-fetch with events,
- * and return the full transaction object (suitable for `expectEvent`).
+ * Helper: build, sign, execute, wait, re-fetch with events.
+ * Rebuilds the PTB and retries on stale shared-object version errors.
  */
 export async function executeAndFetch(
   client: PredictClient,
   signer: Ed25519Keypair,
-  tx: Transaction,
+  build: IntegrationTxBuilder,
+  opts?: { maxAttempts?: number },
 ): Promise<unknown> {
-  tx.setSender(signer.toSuiAddress());
-  const result = await client.signAndExecuteTransaction({
-    signer,
-    transaction: tx,
-    include: { effects: true, objectTypes: true, events: true },
-  });
-  assertSuccessfulExecution(result);
-  const digest = transactionDigest(result);
-  if (!digest) return result;
-  await client.waitForTransaction(digest);
-  return await client.grpcClient.getTransaction({ digest, include: { events: true } });
+  const maxAttempts = opts?.maxAttempts ?? 4;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const tx = new Transaction();
+    build(tx);
+    tx.setSender(signer.toSuiAddress());
+    try {
+      const result = await client.signAndExecuteTransaction({
+        signer,
+        transaction: tx,
+        include: { effects: true, objectTypes: true, events: true },
+      });
+      assertSuccessfulExecution(result);
+      const digest = transactionDigest(result);
+      if (!digest) return result;
+      await client.waitForTransaction(digest);
+      return await client.grpcClient.getTransaction({ digest, include: { events: true } });
+    } catch (err) {
+      lastErr = err;
+      if (!isStaleObjectError(err) || attempt === maxAttempts - 1) throw err;
+      const backoffMs = 250 * 2 ** attempt + Math.floor(Math.random() * 100);
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+  }
+  throw lastErr;
 }

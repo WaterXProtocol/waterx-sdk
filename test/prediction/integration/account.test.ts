@@ -1,9 +1,10 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { createAccount, deposit } from "~predict/account.ts";
+import { createAccount } from "~predict/account.ts";
 import type { PredictClient } from "~predict/client.ts";
 import { getAccountData } from "~predict/fetch.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { ensureAccountFunded } from "../helpers/account-funding.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
 import { hasWriteCredentials, loadSigner, readSeedDepositAmount } from "../helpers/env.ts";
 import { expectEvent } from "../helpers/events.ts";
@@ -61,43 +62,17 @@ describe.skipIf(!hasWriteCredentials())("account integration (sign + execute)", 
     expect(data.accountId).toBe(createdAccountId);
   });
 
-  it("deposit credits the new account (no settlement event — only AccountData state)", async (testCtx) => {
+  it("deposit credits the new account (wallet USD or PSM MOCK_USDC fallback)", async () => {
     if (!createdAccountId) {
       throw new Error("createdAccountId not set — preceding createAccount test should have run");
     }
     const depositAmount = readSeedDepositAmount();
-    const owner = signer.toSuiAddress();
-    const coinPage = await client.listCoins({
-      owner,
-      coinType: client.settlementCoinType(),
-    });
-    const first = (coinPage as { objects?: { objectId?: string; balance?: string }[] })
-      .objects?.[0];
-    const coinId = first?.objectId;
-    if (!coinId) {
-      // Explicit skip instead of silent return — `return` would mark the test PASS even though
-      // the deposit path never executed, hiding regressions when the wallet is unfunded.
-      testCtx.skip(
-        true,
-        `no settlement coin (${client.settlementCoinType()}) in wallet ${owner} — fund the wallet to exercise the deposit path`,
-      );
-      return;
-    }
-
-    const tx = new Transaction();
-    tx.setSender(owner);
-    const [split] = tx.splitCoins(tx.object(coinId), [depositAmount]);
-    deposit(client, tx, { accountId: createdAccountId, coin: split });
-
-    const exec = await client.signAndExecuteTransaction({
-      signer,
-      transaction: tx,
-      include: { effects: true, objectTypes: true },
-    });
-    assertSuccessfulExecution(exec);
+    const plan = await ensureAccountFunded(client, signer, createdAccountId, depositAmount);
+    expect(plan, "fresh account should accept a deposit").not.toBe("skipped");
+    expect(["wallet-usd", "psm-mock-usdc"]).toContain(plan);
 
     // `hasData=true` requires a prediction-side write (placeOrder / fillOrder) on this account;
-    // a bare `deposit` only credits the waterx_account balance, so the prediction view stays empty
+    // funding only credits the waterx_account balance, so the prediction view stays empty
     // until first order. Just verify the account id round-trips through the view.
     const data = await getAccountData(client, { accountId: createdAccountId });
     expect(data.accountId).toBe(createdAccountId);
