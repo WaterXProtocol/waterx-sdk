@@ -60,8 +60,9 @@ async function main(): Promise<void> {
   const execute = process.env.EXECUTE === "1";
   const usd = `${(client.config.packages as any).usd.published_at}::usd::USD`;
   // Native payout asset = MOCK_USDC (a registered, non-deprecated backing asset).
-  const assetType = client.getNativeAssets().find((a) => /::mock_usdc::/i.test(a.type))?.type
-    ?? client.getNativeAssets()[0]!.type;
+  const assetType =
+    client.getNativeAssets().find((a) => /::mock_usdc::/i.test(a.type))?.type ??
+    client.getNativeAssets()[0]!.type;
 
   console.log(`Sender:     ${address}`);
   console.log(`AccountId:  ${accountId}`);
@@ -102,7 +103,8 @@ async function main(): Promise<void> {
     console.log(
       `  ${success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"} ${digest || "(no digest)"} ${success ? "" : (r.Transaction?.status?.error ?? "")}`,
     );
-    if (digest) await client.grpcClient.waitForTransaction({ digest, timeout: 30_000 }).catch(() => {});
+    if (digest)
+      await client.grpcClient.waitForTransaction({ digest, timeout: 30_000 }).catch(() => {});
   }
   console.log("\nDone.");
 }

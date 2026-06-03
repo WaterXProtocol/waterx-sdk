@@ -177,7 +177,9 @@ async function main(): Promise<void> {
       // No usable wallet Coin<USD> — fall back to the existing account balance.
       const accBal = await getAccountBalance(client, accountId, usdcType);
       if (accBal >= downstreamNeed) {
-        const why = picked ? `wallet coin ${picked.bal} < deposit ${depositAmount}` : "no wallet Coin<USD>";
+        const why = picked
+          ? `wallet coin ${picked.bal} < deposit ${depositAmount}`
+          : "no wallet Coin<USD>";
         console.log(
           `  skip deposit (${why}); account already holds ${accBal} USD ≥ downstream need ${downstreamNeed}`,
         );

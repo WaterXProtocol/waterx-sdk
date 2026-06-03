@@ -83,7 +83,6 @@ describe.skipIf(!creditPipeline)(`custody (${e2eNetwork})`, () => {
     });
     expect(tx.getData().commands?.length).toBe(2);
   });
-
 });
 
 describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => {
@@ -202,7 +201,6 @@ describe.skipIf(!creditPipeline)(`custody negative simulate (${e2eNetwork})`, ()
     if (sim === undefined) return;
     assertSimulateFailed(sim);
   }, 240_000);
-
 });
 
 describe.skipIf(!creditPipeline)(`custody buildRedeemVaaTx (${e2eNetwork})`, () => {
