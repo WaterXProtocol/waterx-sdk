@@ -5,20 +5,25 @@
  *   tsx scripts/smoke-remote.ts
  *
  * Hits https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
- * by default; pass `WATERX_CONFIG_URL` to override.
+ * by default. Override via:
+ *   WATERX_CONFIG_URL=<full URL>     pin to an arbitrary URL (wins)
+ *   WATERX_CONFIG_REF=<sha|branch>   pin canonical repo to a git ref
  */
 import { WaterXClient } from "../src/client.ts";
 import { defaultConfigUrl } from "../src/config.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
-const overrideUrl = process.env.WATERX_CONFIG_URL;
+const overrideUrl = process.env.WATERX_CONFIG_URL?.trim() || undefined;
+const overrideRef = process.env.WATERX_CONFIG_REF?.trim() || undefined;
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const t0 = Date.now();
-  console.log(`fetching config: ${overrideUrl ?? defaultConfigUrl("TESTNET")}`);
+  const effectiveUrl = overrideUrl ?? defaultConfigUrl("TESTNET", overrideRef);
+  console.log(`fetching config: ${effectiveUrl}`);
   const client = await WaterXClient.create("TESTNET", {
     configUrl: overrideUrl,
+    configRef: overrideRef,
     cache: true,
   });
   const dt = Date.now() - t0;
@@ -46,6 +51,7 @@ async function main(): Promise<void> {
   const t1 = Date.now();
   const client2 = await WaterXClient.create("TESTNET", {
     configUrl: overrideUrl,
+    configRef: overrideRef,
     cache: true,
   });
   const dt2 = Date.now() - t1;

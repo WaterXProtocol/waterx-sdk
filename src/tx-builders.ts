@@ -581,12 +581,6 @@ export interface BuildMintAndStakeWlpParams extends BuildMintWlpParams {
    * Staking pool alias (key into `waterx_staking.pools`). Defaults to `"WLP"`.
    */
   stakeAlias?: string;
-  /**
-   * Rewarder coin types to settle on the stake deposit. Order must match the
-   * pool's on-chain `rewarder_ids`. Defaults to every rewarder configured for
-   * the stake pool in `waterx_staking.rewarders[stakeAlias]`.
-   */
-  rewarderTypes?: string[];
 }
 
 /**
@@ -620,7 +614,6 @@ export async function buildMintAndStakeWlpTx(
     stakeAlias,
     stakeType: params.lpType ?? client.wlpType(),
     stakeAmount: lpAmount,
-    rewarderTypes: params.rewarderTypes ?? client.getRewarderTypes(stakeAlias),
     bucketAccount: params.bucketAccount,
   });
   return tx;
@@ -636,11 +629,6 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
   withdrawalAmount: bigint | number;
   /** Staking pool alias. Defaults to `"WLP"`. */
   stakeAlias?: string;
-  /**
-   * Rewarder coin types to settle on unstake. Defaults to every rewarder
-   * configured for the stake pool in `waterx_staking.rewarders[stakeAlias]`.
-   */
-  rewarderTypes?: string[];
 }
 
 /**
@@ -673,7 +661,6 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
     stakeAlias,
     stakeType: params.lpType ?? client.wlpType(),
     withdrawalAmount: params.withdrawalAmount,
-    rewarderTypes: params.rewarderTypes ?? client.getRewarderTypes(stakeAlias),
     bucketAccount: params.bucketAccount,
   });
 
@@ -702,11 +689,6 @@ export interface BuildCancelRedeemAndStakeWlpParams extends CancelRedeemWlpParam
   stakeAmount: bigint | number;
   /** Staking pool alias. Defaults to `"WLP"`. */
   stakeAlias?: string;
-  /**
-   * Rewarder coin types to settle on stake. Defaults to every rewarder
-   * configured for the stake pool in `waterx_staking.rewarders[stakeAlias]`.
-   */
-  rewarderTypes?: string[];
 }
 
 /**
@@ -733,7 +715,6 @@ export function buildCancelRedeemAndStakeWlpTx(
     stakeAlias,
     stakeType: params.lpType ?? client.wlpType(),
     stakeAmount: params.stakeAmount,
-    rewarderTypes: params.rewarderTypes ?? client.getRewarderTypes(stakeAlias),
     bucketAccount: params.bucketAccount,
   });
 

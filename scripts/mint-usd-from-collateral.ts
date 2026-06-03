@@ -33,6 +33,7 @@ import { WaterXClient } from "../src/client.ts";
 import { mintCreditToAccount } from "../src/user/custody.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 /** First spendable coin of `coinType` owned by `owner`, with its balance. */
 async function pickCoin(
@@ -78,7 +79,7 @@ async function main(): Promise<void> {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
 
   const custody = client.config.packages.native_custody;
   const credit = client.config.packages.waterx_credit;

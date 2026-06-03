@@ -34,6 +34,7 @@ import {
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 const CONFIG_PATH = resolve(import.meta.dirname, "..", "..", "waterx-config", "testnet.json");
 
@@ -142,7 +143,7 @@ async function main(): Promise<void> {
     client = new WaterXClient("TESTNET", config);
   } else {
     console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
-    client = await WaterXClient.create("TESTNET", { cache: true });
+    client = await makeSmokeClient();
     config = client.config;
   }
 

@@ -58,8 +58,6 @@ describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
         depositTicker: "USDCUSD",
         depositAmount: 1_000_000n,
         minLpAmount: 0n,
-        // testnet WLP pool has no rewarders; defaults to client.getRewarderTypes("WLP").
-        rewarderTypes: client.getRewarderTypes("WLP"),
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;

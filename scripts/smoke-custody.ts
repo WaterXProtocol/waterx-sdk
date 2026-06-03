@@ -40,6 +40,7 @@ import {
 } from "../src/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 /** Raw units split off a discovered coin for the write-builder dry-runs. */
 const SMOKE_AMOUNT = 1000n;
@@ -164,7 +165,7 @@ async function coinRefsOwnedBy(
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const address = resolveActiveAddress();
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   const doExecute = process.env.WATERX_CUSTODY_EXECUTE === "1";

@@ -33,6 +33,7 @@ import { mintWlp, updateTokenValue } from "../src/user/wlp.ts";
 import { aggregateTickerWithPyth, refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 async function isUsdAllowed(
   client: WaterXClient,
@@ -118,7 +119,7 @@ async function main(): Promise<void> {
   // `skipOraclePriceRefresh: true`.
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
 
   const usdType = client.creditType();
   const wlpType = client.wlpType();

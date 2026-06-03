@@ -92,6 +92,16 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       original_id: "0x33b128a17cb484919ff90e2035d5b8914acee808b8ce040cff723cce15214862",
       version: 1,
       pools: { WLP: "0xa5da612cf5bd9c5bc90495e67a12cbbd1fbf4d872886d5cd9d95022058624830" },
+      rewarders: {
+        WLP: {
+          MOCK_DEEP: {
+            rewarder_id: "0x04fa44e41433cdf0a6b253036ffdf0715510809a5c132c6288ee68b581d5c4ad",
+            coin_type:
+              "0x8a14c090204331e3cf8d999d8a2653929869e3e406d2a8a8f46852e247a38d18::mock_deep::MOCK_DEEP",
+            decimals: 6,
+          },
+        },
+      },
     },
     wlp: {
       published_at: "0xe6112759a0d6f503ef24050a891bd3cd1ced587a87a83b3fa9c96a8cc417558c",

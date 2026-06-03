@@ -72,6 +72,7 @@ import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 const BTC = "BTCUSD";
 
@@ -198,7 +199,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
   const usdcType = client.getPoolTokenType("USD");
 
   // ============================================================================

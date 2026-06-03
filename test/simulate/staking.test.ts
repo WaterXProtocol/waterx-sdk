@@ -16,17 +16,14 @@ import {
   simulateWithTransientRetry,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
-import { discoverStakingRewarderTypes } from "../helpers/e2e/staking-rewarders.ts";
 
 const stakingReady = Boolean(client.config.packages.waterx_staking?.pools?.WLP);
 
 describe.skipIf(!stakingReady)(`staking (${e2eNetwork})`, () => {
   let wxa: DiscoveredWxaAccount | null;
-  let rewarderTypes: string[] = [];
 
   beforeAll(async () => {
     wxa = await loadWxaAccountWithWlp(client, 1n);
-    rewarderTypes = await discoverStakingRewarderTypes(client, "WLP");
   }, 240_000);
 
   it("stake() builds deposit + checker destroy plumbing (discovered wxa WLP)", async (ctx) => {
@@ -42,7 +39,6 @@ describe.skipIf(!stakingReady)(`staking (${e2eNetwork})`, () => {
       stakeAlias: "WLP",
       stakeType: client.wlpType(),
       stakeAmount: 1n,
-      rewarderTypes,
     });
     tx.setSender(row.ownerAddress);
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));

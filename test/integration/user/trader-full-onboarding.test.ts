@@ -118,7 +118,6 @@ describe.skipIf(!isIntegrationTraderConfigured())(
               stakeAlias: "WLP",
               stakeType: wlpType,
               stakeAmount: 1n,
-              rewarderTypes: [],
             });
             return tx;
           })(),

@@ -41,6 +41,14 @@ on:
           - dry
           - execute
         default: dry
+      config_ref:
+        description: "waterx-config git ref (commit SHA, branch, or tag). Empty = main."
+        type: string
+        default: ""
+      config_url:
+        description: "Full waterx-config URL override (wins over config_ref). Empty = use ref."
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -118,6 +126,10 @@ jobs:
           # Dry: empty → orchestrator uses committed defaults. Execute: the secrets.
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
+          # Pin waterx-config to a specific commit/branch/tag (workflow_dispatch only).
+          # Scheduled runs leave both empty → SDK fetches `main`.
+          WATERX_CONFIG_REF: ${{ github.event.inputs.config_ref }}
+          WATERX_CONFIG_URL: ${{ github.event.inputs.config_url }}
         run: |
           if [ "$SMOKE_MODE" = "execute" ]; then
             pnpm smoke:chain

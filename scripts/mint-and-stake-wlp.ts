@@ -30,12 +30,12 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
 import { getAccountBalance } from "../src/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/tx-builders.ts";
 import { aggregateTickerWithPyth } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 const TICKER = "USDCUSD"; // WLP pool's only token's ticker
 
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
   const doExecute = process.env.EXECUTE === "1";
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
   const usdType = client.creditType();
   const wlpType = client.wlpType();
 
@@ -95,7 +95,6 @@ async function main(): Promise<void> {
     depositAmount,
     minLpAmount,
     stakeAlias,
-    rewarderTypes: [], // current WLP pool has no rewarders
   });
   tx.setSender(address);
 

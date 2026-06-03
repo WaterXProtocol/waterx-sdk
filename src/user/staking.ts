@@ -2,14 +2,24 @@
  * Staking builders for `waterx_staking::waterx_staking`.
  *
  * Deposit / redeem produce a "checker" hot potato keyed by the set of
- * rewarders configured on the pool. The PTB shape is:
+ * rewarders registered on the pool. The protocol enforces that every
+ * registered rewarder is settled in the same PTB — partial settlement
+ * aborts at `destroy_<deposit|withdraw>_checker` with
+ * `EMissingRewarderCheck`. The PTB shape is:
  *
  *   checker = deposit(...) | redeem(...)
- *   for each rewarder_R:
+ *   for each rewarder_R registered on the pool:
  *     settle_rewarder_on_<deposit|withdraw><STAKE, R>(checker, pool, clock)
  *   destroy_<deposit|withdraw>_checker(checker)
  *
- * `claim<STAKE, R>` is single-call (no checker).
+ * The "for each rewarder" set is read from
+ * `config.packages.waterx_staking.rewarders[stakeAlias]` via
+ * `client.getRewarderTypes(stakeAlias)`. There is intentionally no caller
+ * override — the on-chain check is all-or-nothing, so picking a subset
+ * would only ever produce a guaranteed abort. Keep the config truthful.
+ *
+ * `claim<STAKE, R>` is single-call (no checker) and can be invoked per
+ * reward independently.
  *
  * Each builder takes a `stakeAlias` (e.g. `"WLP"`) that keys into
  * `config.packages.waterx_staking.pools` to find the actual
@@ -54,8 +64,6 @@ export interface StakeParams {
    * (e.g. the `lp_amount` returned by `mintWlp`).
    */
   stakeAmount: bigint | number | TransactionArgument;
-  /** Rewarder types to settle on this deposit. Order matters and must match the pool's `rewarder_ids` set on-chain. */
-  rewarderTypes?: string[];
   bucketAccount?: string | TransactionArgument;
 }
 
@@ -75,7 +83,7 @@ export function stake(client: WaterXClient, tx: Transaction, params: StakeParams
     typeArguments: [params.stakeType],
   })(tx);
 
-  for (const r of params.rewarderTypes ?? []) {
+  for (const r of client.getRewarderTypes(params.stakeAlias)) {
     staking.settleRewarderOnDeposit({
       package: pkg,
       arguments: {
@@ -102,7 +110,6 @@ export interface UnstakeParams {
   stakeAlias: string;
   stakeType: string;
   withdrawalAmount: bigint | number | TransactionArgument;
-  rewarderTypes?: string[];
   bucketAccount?: string | TransactionArgument;
 }
 
@@ -122,7 +129,7 @@ export function unstake(client: WaterXClient, tx: Transaction, params: UnstakePa
     typeArguments: [params.stakeType],
   })(tx);
 
-  for (const r of params.rewarderTypes ?? []) {
+  for (const r of client.getRewarderTypes(params.stakeAlias)) {
     staking.settleRewarderOnWithdraw({
       package: pkg,
       arguments: {

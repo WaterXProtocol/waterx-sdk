@@ -42,6 +42,7 @@ import {
 import { claimReward, stake, unstake } from "../src/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 const TESTNET_JSON_RPC = "https://fullnode.testnet.sui.io:443";
 
@@ -230,7 +231,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const waitMs = Number(process.env.WATERX_REWARD_WAIT_MS ?? "15000");
   const pollMs = Number(process.env.WATERX_POLL_INTERVAL_MS ?? "1500");
@@ -285,7 +286,6 @@ async function main(): Promise<void> {
       stakeAlias: "WLP",
       stakeType: client.wlpType(),
       stakeAmount,
-      rewarderTypes,
     });
     if (!(await sim(client, keypair, tx, "stake (sim)"))) process.exit(2);
     if (!(await execute(client, keypair, tx, "stake (execute)"))) process.exit(1);
@@ -335,7 +335,6 @@ async function main(): Promise<void> {
       stakeAlias: "WLP",
       stakeType: client.wlpType(),
       withdrawalAmount: stakeAmount,
-      rewarderTypes,
     });
     if (!(await sim(client, keypair, tx, "unstake (sim)"))) process.exit(2);
     if (!(await execute(client, keypair, tx, "unstake (execute)"))) process.exit(1);

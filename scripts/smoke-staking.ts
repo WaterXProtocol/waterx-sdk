@@ -12,8 +12,12 @@
  *   - `stake_exists(pool, account) → bool`  (raw simulate + bcs.bool parse)
  *
  * The wxa account must already hold WLP (run smoke-happy-path's mintWlp
- * step first if not). Staking has no rewarders configured for the WLP
- * pool on testnet, so the `claim` path is skipped here.
+ * step first if not). `stake` / `unstake` always settle every rewarder
+ * registered for the pool in
+ * `config.packages.waterx_staking.rewarders[stakeAlias]` (the protocol's
+ * checker is all-or-nothing), so the call site here just passes
+ * `accountId` / `stakeAlias` / `stakeAmount`. The `claim` path is covered
+ * separately by smoke-staking-claim.
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID    wxa account id you own with WLP balance
@@ -44,6 +48,7 @@ import {
 import { stake, unstake } from "../src/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 interface SimResult {
   $kind?: string;
@@ -180,7 +185,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
   const doExecute = process.env.EXECUTE === "1";
@@ -241,7 +246,6 @@ async function main(): Promise<void> {
       stakeAlias,
       stakeType: client.wlpType(),
       stakeAmount,
-      rewarderTypes: [], // WLP pool has no rewarders configured on testnet
     });
     if (!(await sim(client, address, tx, "stake (sim)"))) process.exit(2);
     if (doExecute) {
@@ -267,7 +271,6 @@ async function main(): Promise<void> {
       stakeAlias,
       stakeType: client.wlpType(),
       withdrawalAmount: stakeAmount,
-      rewarderTypes: [],
     });
     if (!(await sim(client, address, tx, "unstake (sim)"))) process.exit(2);
     if (doExecute) {

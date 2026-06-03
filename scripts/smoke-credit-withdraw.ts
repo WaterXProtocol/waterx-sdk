@@ -15,9 +15,9 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
 import { buildRequestCreditWithdrawTx } from "../src/tx-builders.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 /** Default wxa account (deployer's) if WATERX_SMOKE_ACCOUNT_ID is unset. */
 const DEFAULT_ACCOUNT = "0x9d017d08000a6cfa4eae6366dafe44ffd197480ef01a3707a4057bd7f697b67b";
@@ -31,7 +31,7 @@ interface SimResult {
 
 async function main(): Promise<void> {
   const address = resolveActiveAddress();
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID ?? DEFAULT_ACCOUNT;
   const execute = process.env.EXECUTE === "1";
   const usd = `${(client.config.packages as any).usd.published_at}::usd::USD`;

@@ -63,7 +63,6 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: staking stake + 
             stakeAlias: "WLP",
             stakeType: wlpType,
             stakeAmount: 1n,
-            rewarderTypes: [],
           });
           return tx;
         })(),
@@ -83,7 +82,6 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: staking stake + 
             stakeAlias: "WLP",
             stakeType: wlpType,
             withdrawalAmount: 1n,
-            rewarderTypes: [],
           });
           return tx;
         })(),

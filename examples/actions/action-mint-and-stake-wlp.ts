@@ -62,7 +62,6 @@ run(async () => {
     depositAmount: BigInt(process.env.WATERX_AMOUNT ?? "30000000"),
     minLpAmount: BigInt(process.env.WATERX_MIN_LP ?? "0"),
     stakeAlias: process.env.WATERX_STAKE_ALIAS ?? "WLP",
-    rewarderTypes: [], // current WLP pool has no rewarders; drop this to auto-fill from config
   });
 
   await simThenMaybeExecute(client, tx, "mintAndStakeWlp", keypair);

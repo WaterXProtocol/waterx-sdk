@@ -1,7 +1,8 @@
 /**
- * `unstake({ accountId, stakeAlias, stakeType, withdrawalAmount, rewarderTypes })`
- * — withdraw a stake-type coin back to the wxa account. Same rewarder-set
- * shape contract as `stake`.
+ * `unstake({ accountId, stakeAlias, stakeType, withdrawalAmount })` —
+ * withdraw a stake-type coin back to the wxa account. Every rewarder
+ * declared for the pool in config is settled in the same PTB automatically;
+ * see `stake` for the all-or-nothing rationale.
  *
  *   WATERX_ACCOUNT_ID=0x... WATERX_AMOUNT=1000000 \
  *     pnpm exec tsx examples/actions/action-unstake.ts
@@ -27,7 +28,6 @@ run(async () => {
     stakeAlias: process.env.WATERX_STAKE_ALIAS ?? "WLP",
     stakeType: client.wlpType(),
     withdrawalAmount: BigInt(process.env.WATERX_AMOUNT ?? "1000000"),
-    rewarderTypes: [],
   });
 
   await simThenMaybeExecute(client, tx, "unstake", keypair);

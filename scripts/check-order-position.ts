@@ -2,9 +2,9 @@
  * Read-only: list a wxa account's open orders + positions for a ticker.
  *   WATERX_ACCOUNT_ID=0x... WATERX_TICKER=BTCUSD pnpm exec tsx scripts/check-order-position.ts
  */
-import { WaterXClient } from "../src/client.ts";
 import { getAccountOrders, getAccountPositions } from "../src/fetch.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { makeSmokeClient } from "./make-smoke-client.ts";
 
 function j(v: unknown): string {
   return JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2);
@@ -12,7 +12,7 @@ function j(v: unknown): string {
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await makeSmokeClient();
   const accountId = process.env.WATERX_ACCOUNT_ID ?? process.env.WATERX_SMOKE_ACCOUNT_ID ?? "";
   const ticker = process.env.WATERX_TICKER ?? "BTCUSD";
   if (!accountId) throw new Error("set WATERX_ACCOUNT_ID");

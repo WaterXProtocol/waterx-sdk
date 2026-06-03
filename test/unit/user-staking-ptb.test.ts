@@ -11,28 +11,73 @@ const stakeType = client.wlpType();
 const rewardType = "0x896e53015216c5034825c056bcde37a694263601df2534ae5c91b8a3d9150c78::sui::SUI";
 
 describe("user/staking PTB builders (v3)", () => {
-  it("stake with rewarder settlement", () => {
+  it("stake settles every rewarder configured for the pool", () => {
     const tx = new Transaction();
     stake(client, tx, {
       accountId,
       stakeAlias: "WLP",
       stakeType,
       stakeAmount: 1_000_000n,
-      rewarderTypes: [rewardType],
     });
+    // deposit + 1 rewarder settle (mock config declares MOCK_DEEP) + destroy_deposit_checker
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("unstake with rewarder settlement", () => {
+  it("unstake settles every rewarder configured for the pool", () => {
     const tx = new Transaction();
     unstake(client, tx, {
       accountId,
       stakeAlias: "WLP",
       stakeType,
       withdrawalAmount: 500_000n,
-      rewarderTypes: [rewardType],
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("stake / unstake on a pool with no configured rewarders skip the settle loop", () => {
+    const bare = createUnitTestClient();
+    const stakingCfg = structuredClone(bare.config.packages.waterx_staking!);
+    stakingCfg.rewarders = {};
+    bare.config = {
+      ...bare.config,
+      packages: { ...bare.config.packages, waterx_staking: stakingCfg },
+    };
+
+    const stakeWithRewarder = new Transaction();
+    stake(client, stakeWithRewarder, {
+      accountId,
+      stakeAlias: "WLP",
+      stakeType,
+      stakeAmount: 1_000_000n,
+    });
+    const stakeWithoutRewarder = new Transaction();
+    stake(bare, stakeWithoutRewarder, {
+      accountId,
+      stakeAlias: "WLP",
+      stakeType,
+      stakeAmount: 1_000_000n,
+    });
+    expect(stakeWithoutRewarder.getData().commands!.length).toBeLessThan(
+      stakeWithRewarder.getData().commands!.length,
+    );
+
+    const unstakeWithRewarder = new Transaction();
+    unstake(client, unstakeWithRewarder, {
+      accountId,
+      stakeAlias: "WLP",
+      stakeType,
+      withdrawalAmount: 500_000n,
+    });
+    const unstakeWithoutRewarder = new Transaction();
+    unstake(bare, unstakeWithoutRewarder, {
+      accountId,
+      stakeAlias: "WLP",
+      stakeType,
+      withdrawalAmount: 500_000n,
+    });
+    expect(unstakeWithoutRewarder.getData().commands!.length).toBeLessThan(
+      unstakeWithRewarder.getData().commands!.length,
+    );
   });
 
   it("claimReward", () => {
@@ -44,46 +89,6 @@ describe("user/staking PTB builders (v3)", () => {
       rewardType,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("stake and unstake without rewarderTypes skip settlement loops", () => {
-    const withRewarder = new Transaction();
-    stake(client, withRewarder, {
-      accountId,
-      stakeAlias: "WLP",
-      stakeType,
-      stakeAmount: 1_000_000n,
-      rewarderTypes: [rewardType],
-    });
-    const withoutRewarder = new Transaction();
-    stake(client, withoutRewarder, {
-      accountId,
-      stakeAlias: "WLP",
-      stakeType,
-      stakeAmount: 1_000_000n,
-    });
-    expect(withoutRewarder.getData().commands!.length).toBeLessThan(
-      withRewarder.getData().commands!.length,
-    );
-
-    const unstakeWith = new Transaction();
-    unstake(client, unstakeWith, {
-      accountId,
-      stakeAlias: "WLP",
-      stakeType,
-      withdrawalAmount: 500_000n,
-      rewarderTypes: [rewardType],
-    });
-    const unstakeWithout = new Transaction();
-    unstake(client, unstakeWithout, {
-      accountId,
-      stakeAlias: "WLP",
-      stakeType,
-      withdrawalAmount: 500_000n,
-    });
-    expect(unstakeWithout.getData().commands!.length).toBeLessThan(
-      unstakeWith.getData().commands!.length,
-    );
   });
 
   it("throws when staking pool alias missing", () => {
