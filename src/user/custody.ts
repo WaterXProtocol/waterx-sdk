@@ -18,6 +18,7 @@
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+import { normalizeStructTag } from "@mysten/sui/utils";
 
 import type { WaterXClient } from "../client.ts";
 import * as custody from "../generated/native_custody/custody_vault.ts";
@@ -77,7 +78,10 @@ export function mintCredit(
       assetCoin: params.assetCoin as unknown as string,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
     },
-    typeArguments: [params.assetType, params.creditType ?? client.creditType()],
+    typeArguments: [
+      normalizeStructTag(params.assetType),
+      normalizeStructTag(params.creditType ?? client.creditType()),
+    ],
   })(tx);
   return req as unknown as TransactionArgument;
 }
@@ -115,7 +119,10 @@ export function mintCreditFromRequest(
       accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       depositRequest: params.depositRequest as unknown as string,
     },
-    typeArguments: [params.assetType, params.creditType ?? client.creditType()],
+    typeArguments: [
+      normalizeStructTag(params.assetType),
+      normalizeStructTag(params.creditType ?? client.creditType()),
+    ],
   })(tx);
   return req as unknown as TransactionArgument;
 }
@@ -141,6 +148,6 @@ export function mintCreditToAccount(
       registry: tx.object(client.config.packages.waterx_account.account_registry),
       req: req as unknown as string,
     },
-    typeArguments: [params.creditType ?? client.creditType()],
+    typeArguments: [normalizeStructTag(params.creditType ?? client.creditType())],
   })(tx);
 }

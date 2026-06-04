@@ -20,6 +20,7 @@
 
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+import { normalizeStructTag } from "@mysten/sui/utils";
 
 import type { WaterXClient } from "../client.ts";
 import { mint as custodyMintCall } from "../generated/native_custody/custody_vault.ts";
@@ -62,7 +63,7 @@ function toEvmAddressBytes(
 }
 
 function creditTypeOf(client: WaterXClient, override?: string): string {
-  return override ?? client.creditType();
+  return normalizeStructTag(override ?? client.creditType());
 }
 
 // Required-ID accessors: the credit/bridge package entries carry their
@@ -221,7 +222,7 @@ export function routeNative(
   const out = routeNativeCall({
     package: queuePkg(client),
     arguments: { minOutput: BigInt(params.minOutput ?? 0n) },
-    typeArguments: [params.assetType],
+    typeArguments: [normalizeStructTag(params.assetType)],
   })(tx);
   return out as unknown as TransactionArgument;
 }
@@ -354,7 +355,7 @@ export function executeWithdrawalNative(
       vault: tx.object(custodyVaultId(client)),
       creditRegistry: tx.object(creditRegistryId(client)),
     },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
+    typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],
   })(tx);
 }
 
@@ -399,7 +400,7 @@ export function custodyMint(
       assetCoin: params.assetCoin as unknown as string,
       extraData: toBytes(params.extraData ?? new Uint8Array()),
     },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
+    typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],
   })(tx);
   return req as unknown as TransactionArgument;
 }
