@@ -12,8 +12,11 @@
  *   - `stake_exists(pool, account) → bool`  (raw simulate + bcs.bool parse)
  *
  * The wxa account must already hold WLP (run smoke-happy-path's mintWlp
- * step first if not). Staking has no rewarders configured for the WLP
- * pool on testnet, so the `claim` path is skipped here.
+ * step first if not). Rewarder settle calls are auto-derived from
+ * `config.packages.waterx_staking.rewarders[stakeAlias]` via
+ * `client.getRewarderTypes(stakeAlias)`, so every registered rewarder on
+ * the pool gets settled in the same PTB (the on-chain checker is
+ * all-or-nothing). The `claim` path is covered by smoke-staking-claim.
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID    wxa account id you own with WLP balance
@@ -241,7 +244,7 @@ async function main(): Promise<void> {
       stakeAlias,
       stakeType: client.wlpType(),
       stakeAmount,
-      rewarderTypes: [], // WLP pool has no rewarders configured on testnet
+      rewarderTypes: client.getRewarderTypes(stakeAlias),
     });
     if (!(await sim(client, address, tx, "stake (sim)"))) process.exit(2);
     if (doExecute) {
@@ -267,7 +270,7 @@ async function main(): Promise<void> {
       stakeAlias,
       stakeType: client.wlpType(),
       withdrawalAmount: stakeAmount,
-      rewarderTypes: [],
+      rewarderTypes: client.getRewarderTypes(stakeAlias),
     });
     if (!(await sim(client, address, tx, "unstake (sim)"))) process.exit(2);
     if (doExecute) {

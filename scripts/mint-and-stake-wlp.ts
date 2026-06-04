@@ -95,7 +95,7 @@ async function main(): Promise<void> {
     depositAmount,
     minLpAmount,
     stakeAlias,
-    rewarderTypes: [], // current WLP pool has no rewarders
+    rewarderTypes: client.getRewarderTypes(stakeAlias),
   });
   tx.setSender(address);
 
