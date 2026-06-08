@@ -116,4 +116,35 @@ describe("unified Client facade", () => {
       }),
     );
   });
+
+  it("Client.create defaults both lines to TESTNET when called with no args", async () => {
+    const perpSpy = vi.spyOn(WaterXClient, "create").mockResolvedValue(perpClient);
+    const predictSpy = vi
+      .spyOn(PredictClient, "create")
+      .mockResolvedValue(predictClient as unknown as PredictClient);
+
+    await Client.create();
+
+    expect(perpSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
+    expect(predictSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
+  });
+
+  it("Client.create honors per-line network overrides", async () => {
+    const perpSpy = vi.spyOn(WaterXClient, "create").mockResolvedValue(perpClient);
+    const predictSpy = vi
+      .spyOn(PredictClient, "create")
+      .mockResolvedValue(predictClient as unknown as PredictClient);
+
+    await Client.create({
+      network: "TESTNET",
+      perp: { network: "MAINNET" },
+      predict: { network: "TESTNET", grpcUrl: "https://predict.rpc:443" },
+    });
+
+    expect(perpSpy).toHaveBeenCalledWith("MAINNET", expect.any(Object));
+    expect(predictSpy).toHaveBeenCalledWith(
+      "TESTNET",
+      expect.objectContaining({ grpcUrl: "https://predict.rpc:443" }),
+    );
+  });
 });

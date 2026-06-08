@@ -109,12 +109,42 @@ describe("user/account PTB builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("requestDepositFromReceivings defaults extraData to empty", () => {
+    const tx = new Transaction();
+    const receiving = tx.receivingRef({
+      objectId: PTB_DUMMY_DEPOSIT_COIN,
+      version: "3",
+      digest: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    });
+    const req = requestDepositFromReceivings(client, tx, {
+      accountId,
+      coinType: MOCK_USDC_TYPE,
+      receivings: [receiving],
+    });
+    expect(req).toBeDefined();
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("requestDepositFromFunds drains funds-accumulator balance", () => {
     const tx = new Transaction();
     const req = requestDepositFromFunds(client, tx, {
       accountId,
       coinType: MOCK_USDC_TYPE,
       extraData: new Uint8Array([9]),
+    });
+    expect(req).toBeDefined();
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("requestDepositFromFunds accepts a TransactionArgument accumulator root", () => {
+    const tx = new Transaction();
+    const customRoot = tx.object(
+      "0xacc000000000000000000000000000000000000000000000000000000000001",
+    );
+    const req = requestDepositFromFunds(client, tx, {
+      accountId,
+      coinType: MOCK_USDC_TYPE,
+      accumulatorRoot: customRoot,
     });
     expect(req).toBeDefined();
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);

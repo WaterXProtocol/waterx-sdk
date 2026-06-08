@@ -11,6 +11,7 @@ import {
   optionU64,
   receivingCoinArg,
   requireConfig,
+  resolveAccountPackageId,
   resolveAccountRegistry,
   resolveGlobalConfig,
   resolveMarketRegistry,
@@ -81,6 +82,11 @@ describe("requireConfig", () => {
     expect(() => requireConfig(null, "x")).toThrow(/x is required/);
     expect(() => requireConfig("", "x")).toThrow(/x is required/);
   });
+
+  it("returns the value when present", () => {
+    expect(requireConfig("0xabc", "registry")).toBe("0xabc");
+    expect(requireConfig(42, "n")).toBe(42);
+  });
 });
 
 describe("clockArg", () => {
@@ -125,7 +131,13 @@ describe("resolve*", () => {
     expect(resolveMarketRegistry(stripped, "0xm")).toBe("0xm");
     expect(resolveMarketRegistry(client)).toBe(client.marketRegistry());
     expect(resolveAccountRegistry(client)).toBe(client.accountRegistry());
+    expect(resolveAccountRegistry(client, "0xacc")).toBe("0xacc");
+    expect(resolveAccountRegistry(client, "")).toBe(client.accountRegistry());
     expect(resolveGlobalConfig(client)).toBe(client.globalConfigId());
+    expect(resolveGlobalConfig(client, "0xgc")).toBe("0xgc");
+    expect(resolveGlobalConfig(client, "")).toBe(client.globalConfigId());
+    expect(resolveAccountPackageId(client, "0xap")).toBe("0xap");
+    expect(resolveAccountPackageId(client, "")).toBe(client.waterxAccountPackageId());
   });
 });
 

@@ -17,6 +17,29 @@ const accountId = PTB_DUMMY_ACCOUNT_ID;
 const rewardType = "0x896e53015216c5034825c056bcde37a694263601df2534ae5c91b8a3d9150c78::sui::SUI";
 const originalFetch = globalThis.fetch;
 
+function clientWithConfiguredRewarders() {
+  const c = createUnitTestClient();
+  c.config = {
+    ...c.config,
+    packages: {
+      ...c.config.packages,
+      waterx_staking: {
+        ...c.config.packages.waterx_staking!,
+        rewarders: {
+          WLP: {
+            SUI: {
+              rewarder_id: "0xrewarder",
+              coin_type: rewardType,
+              decimals: 9,
+            },
+          },
+        },
+      },
+    },
+  };
+  return c;
+}
+
 describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -119,6 +142,33 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       accountId,
       rewarderTypes: [rewardType],
     });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("buildUnstakeAndRequestRedeemWlpTx defaults rewarderTypes from config", async () => {
+    const rewarded = clientWithConfiguredRewarders();
+    const tx = await buildUnstakeAndRequestRedeemWlpTx(rewarded, {
+      accountId,
+      redeemTokenType: MOCK_USDC_TYPE,
+      withdrawalAmount: 500_000n,
+      skipOraclePriceRefresh: true,
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("buildCancelRedeemAndStakeWlpTx defaults rewarderTypes from config", () => {
+    const rewarded = clientWithConfiguredRewarders();
+    const tx = buildCancelRedeemAndStakeWlpTx(rewarded, {
+      accountId,
+      requestId: 1n,
+      stakeAmount: 1_000_000n,
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("buildClaimRewardsToAccountTx defaults rewarderTypes from config", () => {
+    const rewarded = clientWithConfiguredRewarders();
+    const tx = buildClaimRewardsToAccountTx(rewarded, { accountId });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
