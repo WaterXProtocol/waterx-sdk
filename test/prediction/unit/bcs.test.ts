@@ -1,4 +1,5 @@
 import {
+  decodeEnumVariant,
   mapAccountDataView,
   mapCursorView,
   mapMarketView,
@@ -31,6 +32,12 @@ describe("map enums", () => {
     expect(mapOutcome("Yes")).toBe("YES");
     expect(mapOutcome("No")).toBe("NO");
     expect(mapOutcome({ No: true })).toBe("NO");
+  });
+
+  it("decodeEnumVariant handles @variant object and plain keys", () => {
+    expect(decodeEnumVariant({ "@variant": { Yes: true } })).toBe("Yes");
+    expect(decodeEnumVariant({ Open: {} })).toBe("Open");
+    expect(() => decodeEnumVariant(42)).toThrow(/Unable to decode enum variant/);
   });
 
   it("mapOrderKind / mapStatus", () => {
