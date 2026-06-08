@@ -92,6 +92,23 @@ exports[`account PTB builders > allow / disallow prediction protocol settlement 
 ]
 `;
 
+exports[`account PTB builders > consumeDepositDirect 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+    ],
+    "function": "consume_deposit_direct",
+    "module": "direct_rule",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
 exports[`account PTB builders > createAccount 1`] = `
 [
   {

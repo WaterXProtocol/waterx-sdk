@@ -636,7 +636,7 @@ export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
     }
   }
 
-  let needOpen = !ctx.fixture.expiredOpenOrderId;
+  const needOpen = !ctx.fixture.expiredOpenOrderId;
   let needClose = !ctx.fixture.expiredPendingClosePositionId;
 
   if (ctx.fixture.expiredPendingClosePositionId) {

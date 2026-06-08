@@ -1,9 +1,12 @@
+import * as RootBcs from "~predict/bcs.ts";
 import * as Index from "~predict/index.ts";
+import * as UserAccount from "~predict/user/account.ts";
 import * as UserAdmin from "~predict/user/admin.ts";
 import * as UserBarrel from "~predict/user/index.ts";
 import * as UserKeeper from "~predict/user/keeper.ts";
 import * as UserOrder from "~predict/user/order.ts";
 import * as UserPosition from "~predict/user/position.ts";
+import * as UtilsBcs from "~predict/utils/bcs.ts";
 import { describe, expect, it } from "vitest";
 
 describe("user subpath exports alias handwritten modules", () => {
@@ -45,5 +48,17 @@ describe("user subpath exports alias handwritten modules", () => {
     expect(UserAdmin.adminPlaceOrderFor).toBe(Index.adminPlaceOrderFor);
     expect(UserAdmin.pauseMarket).toBe(Index.pauseMarket);
     expect(UserAdmin.createMarketRegistry).toBe(Index.createMarketRegistry);
+  });
+
+  it("user/account re-exports account builders from prediction/account", () => {
+    expect(UserAccount.createAccount).toBe(Index.createAccount);
+    expect(UserAccount.requestWithdraw).toBe(Index.requestWithdraw);
+    expect(UserAccount.whitelistPredictionProtocol).toBe(Index.whitelistPredictionProtocol);
+  });
+
+  it("utils/bcs re-exports BCS helpers from prediction/bcs", () => {
+    expect(UtilsBcs.mapOrderView).toBe(RootBcs.mapOrderView);
+    expect(UtilsBcs.decodeEnumVariant).toBe(RootBcs.decodeEnumVariant);
+    expect(UtilsBcs.OrderViewBcs).toBe(RootBcs.OrderViewBcs);
   });
 });

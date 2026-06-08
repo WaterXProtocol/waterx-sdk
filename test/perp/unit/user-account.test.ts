@@ -5,8 +5,11 @@ import { PERM_ALL_TRADING } from "../../../src/constants.ts";
 import {
   addDelegate,
   createAccount,
+  receive,
   removeDelegate,
   requestDeposit,
+  requestDepositFromFunds,
+  requestDepositFromReceivings,
   requestWithdraw,
   setAlias,
   setDelegateProtocolPermission,
@@ -87,5 +90,49 @@ describe("user/account PTB builders (v3)", () => {
       coinType: MOCK_USDC_TYPE,
     });
     expect(tx3.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("requestDepositFromReceivings batches TTO receiving refs", () => {
+    const tx = new Transaction();
+    const receiving = tx.receivingRef({
+      objectId: PTB_DUMMY_DEPOSIT_COIN,
+      version: "2",
+      digest: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    });
+    const req = requestDepositFromReceivings(client, tx, {
+      accountId,
+      coinType: MOCK_USDC_TYPE,
+      receivings: [receiving],
+      extraData: new Uint8Array([4]),
+    });
+    expect(req).toBeDefined();
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("requestDepositFromFunds drains funds-accumulator balance", () => {
+    const tx = new Transaction();
+    const req = requestDepositFromFunds(client, tx, {
+      accountId,
+      coinType: MOCK_USDC_TYPE,
+      extraData: new Uint8Array([9]),
+    });
+    expect(req).toBeDefined();
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("receive drains a TTO receiving ref into the PTB", () => {
+    const tx = new Transaction();
+    const receiving = tx.receivingRef({
+      objectId: PTB_DUMMY_DEPOSIT_COIN,
+      version: "1",
+      digest: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
+    const out = receive(client, tx, {
+      accountId,
+      receiving,
+      receivingType: MOCK_USDC_TYPE,
+    });
+    expect(out).toBeDefined();
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
   });
 });

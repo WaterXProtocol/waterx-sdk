@@ -125,4 +125,36 @@ describe("PredictClient", () => {
       include: { effects: true },
     });
   });
+
+  it("simulate retries on RESOURCE_EXHAUSTED then succeeds", async () => {
+    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const ok = { $kind: "Success" as const };
+    const rateLimitErr = Object.assign(new Error("too many requests"), {
+      code: "RESOURCE_EXHAUSTED",
+    });
+    const simulateTransaction = vi
+      .fn()
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockResolvedValueOnce(ok);
+    (
+      client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }
+    ).grpcClient = { simulateTransaction };
+
+    const tx = new Transaction();
+    await expect(client.simulate(tx)).resolves.toEqual(ok);
+    expect(simulateTransaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("simulate rethrows non-rate-limit errors immediately", async () => {
+    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const simulateTransaction = vi.fn().mockRejectedValue(new Error("invalid transaction"));
+    (
+      client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }
+    ).grpcClient = { simulateTransaction };
+
+    const tx = new Transaction();
+    await expect(client.simulate(tx)).rejects.toThrow(/invalid transaction/);
+    expect(simulateTransaction).toHaveBeenCalledTimes(1);
+  });
 });
