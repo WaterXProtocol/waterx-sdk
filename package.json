@@ -66,6 +66,12 @@
     "test:integration:predict:keeper": "vitest run --project predict-integration-keeper",
     "test:integration:predict:admin": "vitest run --project predict-integration-admin",
     "test:integration:predict:all": "vitest run --project predict-integration --project predict-integration-keeper --project predict-integration-admin",
+    "test:api": "node test/prediction/scripts/run-api-tests.mjs",
+    "test:api:local": "node test/prediction/scripts/run-api-tests.mjs --env local",
+    "test:api:staging": "node test/prediction/scripts/run-api-tests.mjs --env staging",
+    "test:integration:predict:crosscheck": "E2E_API_CROSSCHECK=1 vitest run --project predict-integration-crosscheck",
+    "test:integration:predict:headless": "E2E_HEADLESS_BET=1 vitest run --project predict-integration-headless",
+    "test:integration:predict:journey": "vitest run --project predict-integration test/prediction/integration/user-betting-journey.test.ts",
     "test:integration:perp:mainnet": "tsx scripts/run-integration.ts --mainnet",
     "test:integration:perp:lifecycle": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-position-lifecycle.test.ts",
     "test:integration:perp:market-config": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-market-onchain-config.test.ts",
@@ -75,7 +81,10 @@
     "smoke:chain": "tsx scripts/run-smoke-chain.ts",
     "smoke:chain:dry": "tsx scripts/run-smoke-chain.ts --dry-run",
     "seed:testnet": "tsx test/prediction/scripts/seed-testnet.ts",
-    "predict:list-accounts": "tsx test/prediction/scripts/list-accounts.ts"
+    "predict:list-accounts": "tsx test/prediction/scripts/list-accounts.ts",
+    "mint:api-jwt": "node test/prediction/scripts/mint-api-jwt.mjs",
+    "mint:api-jwt:staging": "node test/prediction/scripts/fetch-staging-api-jwt.mjs",
+    "diagnose:bets-api": "tsx test/prediction/scripts/diagnose-bets-chain-api.ts"
   },
   "peerDependencies": {
     "@mysten/bcs": "^1.9.0",

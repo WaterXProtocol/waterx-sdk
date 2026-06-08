@@ -68,7 +68,7 @@ These are documented for sibling-PR reviewers; fixing them belongs in backend/in
 | **`account_id`** | `OrderPlaced.account_id` is the **registry account object id** (0x…). Indexer stores it verbatim in `events_predict_order_placed.account_id`. | `GET /predict/bets/me` filters by JWT **wallet** `suiAddress` without `AccountResolver` — bet history returns empty until backend maps wallet → account object id ([bucket-backend-mono #498](https://github.com/Bucket-Protocol/bucket-backend-mono/pull/498)). |
 | **`market_id`** | UTF-8 bytes on-chain; indexer hex-encodes to CH `market_id`. Integration tests use throwaway labels (`pred-it-…`) to avoid resolving shared testnet markets. | Bet `cardSnapshot` join expects production `market_id` = `predict_rounds.pm_market_condition_id`. SDK integration tests validate **indexer decode only**, not PG join. |
 | **`position_id` join** | After `OrderFilled`, `position_id === order_id` (contract invariant). Integration asserts this explicitly. | `ChBetSource` joins close/claim tables on `position_id = p.order_id`. |
-| **HTTP catalog E2E** | Not in this PR. | Opt-in `tests/api/` against `E2E_API_BASE_URL` — follow-up PR from `main`. |
+| **HTTP catalog smoke** | Opt-in `test/prediction/api/` — `node test/prediction/scripts/run-api-tests.mjs --env local\|staging`. | Envelope + shape smoke; `bets/me` may be empty until `AccountResolver` (#498). |
 
 ## Local data-infra / API cross-check (optional)
 
@@ -82,5 +82,11 @@ The Integration tests above assert event **type names** and **key field shapes**
 update changes a field name, both the indexer and these tests must be updated together —
 running `pnpm test:integration` on testnet exercises every event in the indexer's 14-handler set.
 
-HTTP/API stack tests (`/predict/feed`, `/predict/bets/me`) are intentionally deferred to a
-follow-up PR once backend infra is available locally.
+HTTP/API smoke tests live under [`api/`](api/) — see [`README.md`](README.md#api-environments-postman-style).
+
+Chain → HTTP cross-check: `pnpm test:integration:predict:crosscheck` runs
+[`integration/api-crosscheck.test.ts`](integration/api-crosscheck.test.ts) after `placeOrder`
+(+ keeper `fillOrder` when available), polling `GET /predict/bets/me` for the new `orderId`.
+Skips when the API returns no bets (wallet→account resolver / label markets).
+
+**Per-field audit (bypass + `bets/me`, debug CLI):** `pnpm diagnose:bets-api` — compares seed fixtures to API wire rows; do not hard-fail CI until backend/indexer align e2e markets and `positionId` join.
