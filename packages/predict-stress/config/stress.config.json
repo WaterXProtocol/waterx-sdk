@@ -1,0 +1,51 @@
+{
+  "api": {
+    "env": "staging",
+    "baseUrl": "https://api-waterx.up.railway.app"
+  },
+  "walletsFile": "config/wallets.json",
+  "stakes": {
+    "startUsd": 1.01,
+    "stepUsd": 0.01
+  },
+  "run": {
+    "segments": ["crypto", "sport"],
+    "brokerWaitMs": 45000,
+    "cooldownMs": 30000,
+    "feedLimit": 200
+  },
+  "profiles": {
+    "dry-run": {
+      "dryRun": true,
+      "phases": [1]
+    },
+    "smoke": {
+      "phases": [1],
+      "placeOnly": true,
+      "cooldownMs": 0
+    },
+    "smoke-fill": {
+      "phases": [1],
+      "cooldownMs": 0
+    },
+    "ramp": {
+      "phases": [1, 2, 4, 8]
+    },
+    "timing-max": {
+      "phases": [8],
+      "cooldownMs": 0
+    },
+    "hammer-smoke": {
+      "hammer": true,
+      "rounds": 1,
+      "placeOnly": true,
+      "cooldownMs": 0
+    },
+    "hammer": {
+      "hammer": true,
+      "rounds": 10,
+      "placeOnly": true,
+      "cooldownMs": 0
+    }
+  }
+}
