@@ -18,6 +18,13 @@ import {
 } from "./api-catalog-pure.ts";
 import { apiPost } from "./api-client.ts";
 import type { ApiEnvironment } from "./api-env.ts";
+import {
+  BrokerFillTimeoutError,
+  CatalogBrokerFillTimeoutError,
+  catalogFillBrokerOnly,
+  DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS,
+  DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS,
+} from "./catalog-fill-policy.ts";
 import { eventsFromResult, findEvent } from "./events-core.ts";
 import {
   keeperFillTargetCost,
@@ -33,25 +40,18 @@ import {
 } from "./staging-amounts.ts";
 import { assertSuccessfulExecution, transactionDigest } from "./tx-result.ts";
 
-/** Default broker poll window before local keeper `fillOrder` (place-all timing probe). */
-export const DEFAULT_CATALOG_BROKER_WAIT_MS = 3_000;
+export {
+  BrokerFillTimeoutError,
+  catalogFillBrokerOnly,
+  CatalogBrokerFillTimeoutError,
+  DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS,
+  DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS,
+  hasCatalogKeeperFallbackEnabled,
+  isCatalogBrokerFillTimeout,
+} from "./catalog-fill-policy.ts";
 
-/** Longer poll when local keeper fallback is off (`E2E_PLACE_ALL_BROKER_ONLY=1`). */
-export const DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS = 45_000;
-
-export class BrokerFillTimeoutError extends Error {
-  readonly orderId: bigint;
-  readonly brokerWaitMs: number;
-
-  constructor(orderId: bigint, brokerWaitMs: number) {
-    super(
-      `order ${orderId} still OPEN after ${brokerWaitMs}ms — backend broker did not fill (broker-only mode, no local fillOrder)`,
-    );
-    this.name = "BrokerFillTimeoutError";
-    this.orderId = orderId;
-    this.brokerWaitMs = brokerWaitMs;
-  }
-}
+/** @deprecated Prefer {@link DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS} when keeper fallback is on. */
+export const DEFAULT_CATALOG_BROKER_WAIT_MS = DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS;
 
 export type CatalogFillSource = "bypass" | "broker" | "keeper";
 
@@ -226,7 +226,10 @@ async function waitForCatalogFill(
   fillPollIntervalMs: number;
   keeperFillMs?: number;
 }> {
-  const brokerWaitMs = options?.brokerWaitMs ?? DEFAULT_CATALOG_BROKER_WAIT_MS;
+  const brokerOnly = catalogFillBrokerOnly(options?.brokerOnly);
+  const brokerWaitMs =
+    options?.brokerWaitMs ??
+    (brokerOnly ? DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS : DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS);
   const placeDoneAt = options?.placeDoneAt ?? Date.now();
   const deadline = Date.now() + brokerWaitMs;
   const pollIntervalMs = Math.min(1_000, Math.max(250, Math.floor(brokerWaitMs / 6)));
@@ -258,8 +261,8 @@ async function waitForCatalogFill(
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
 
-  if (options?.brokerOnly) {
-    throw new BrokerFillTimeoutError(orderId, brokerWaitMs);
+  if (brokerOnly) {
+    throw new CatalogBrokerFillTimeoutError(orderId, brokerWaitMs);
   }
 
   if (!ctx.keeper) {

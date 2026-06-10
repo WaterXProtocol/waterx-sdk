@@ -34,6 +34,8 @@ Run from the repo root.
 
 Refund / broker-matrix / headless / crosscheck 都屬 **staging 實盤探測**，適合本機或手動 pipeline，不進 PR CI。
 
+**Staging fill policy:** catalog integration（headless / crosscheck / place-all）預設只 **place + 等 backend broker**，不送 local `fillOrder`。後端掛了要解耦測試時設 `E2E_CATALOG_KEEPER_FALLBACK=1`。Keeper PTB 形狀仍用 `predict-e2e` simulate；testnet keeper execute 用 `predict-integration-keeper`。
+
 ## Layout
 
 | Path                           | Purpose                                                                          |
@@ -158,8 +160,9 @@ Switch targets via JSON environment file + env var overrides:
 | `E2E_PLACE_ALL_LIMIT` | Cap number of markets (× sides unless `ONE_SIDE`) |
 | `E2E_PLACE_ALL_ONE_SIDE` | `1` — first tradeable side per market only |
 | `E2E_PLACE_ALL_PLACE_ONLY` | `1` — place tx only, skip fill wait (`predict:place-and-watch`) |
-| `E2E_PLACE_ALL_BROKER_ONLY` | `1` — wait for backend broker only (no local `fillOrder`) |
-| `E2E_PLACE_ALL_BROKER_WAIT_MS` | Broker-only fill poll (default **45000**) |
+| `E2E_CATALOG_KEEPER_FALLBACK` | `1` — **opt-in** local `fillOrder` after broker wait (default: broker-only; decoupled testing when backend is down) |
+| `E2E_PLACE_ALL_BROKER_ONLY` | `1` force broker-only; `0` force keeper fallback for place-all only |
+| `E2E_PLACE_ALL_BROKER_WAIT_MS` | Broker fill poll (default **45000** broker-only / **10000** with keeper fallback) |
 | `E2E_PLACE_ALL_CONCURRENCY` | Parallel **broker wait** after sequential place (default **1**; keep ≤3 on public RPC) |
 | `E2E_PLACE_ALL_DELAY_MS` | Pause between markets (default **1500**) |
 | `E2E_PLACE_ALL_SEGMENTS` | Comma filter: `sport,crypto,politics` (default: sport+crypto) |

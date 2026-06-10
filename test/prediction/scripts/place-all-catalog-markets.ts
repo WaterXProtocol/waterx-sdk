@@ -8,7 +8,8 @@
  *   E2E_PLACE_ALL_DRY_RUN=1 pnpm predict:place-all-markets   # list only (crypto+sport+politics)
  *   E2E_PLACE_ALL_LIMIT=5 pnpm predict:place-all-markets      # first N markets (× sides)
  *   E2E_PLACE_ALL_ONE_SIDE=1 pnpm predict:place-all-markets    # first side only per market
- *   E2E_PLACE_ALL_BROKER_ONLY=1 pnpm predict:place-all-markets # wait for backend broker only (no local fillOrder)
+ *   E2E_CATALOG_KEEPER_FALLBACK=1 …  # opt-in local fillOrder when broker is down (default: broker-only)
+ *   E2E_PLACE_ALL_BROKER_ONLY=1 …    # force broker-only even if keeper fallback is on
  *   E2E_PLACE_ALL_PLACE_ONLY=1 pnpm predict:place-all-markets   # place and exit — watch fill on frontend
  *   E2E_PLACE_ALL_CONCURRENCY=5 …  # parallel broker wait only (place txs stay sequential per wallet)
  *   E2E_PLACE_ALL_CRYPTO_EPOCHS=1 …  # also probe crypto upcoming time windows (?epoch=<endsAt>)
@@ -28,9 +29,10 @@ import type { MarketSegment } from "../helpers/api-endpoints.ts";
 import { resolveApiEnvironment } from "../helpers/api-env.ts";
 import {
   BrokerFillTimeoutError,
+  catalogFillBrokerOnly,
   completeCatalogMarketFill,
   DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS,
-  DEFAULT_CATALOG_BROKER_WAIT_MS,
+  DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS,
   formatCatalogBetTiming,
   formatCatalogCliError,
   formatFillLatency,
@@ -103,9 +105,11 @@ function readBothSides(): boolean {
   return v !== "1" && v !== "true";
 }
 
-function readBrokerOnly(): boolean {
+function readPlaceAllBrokerOnlyOverride(): boolean | undefined {
   const v = optionalEnv("E2E_PLACE_ALL_BROKER_ONLY");
-  return v === "1" || v === "true";
+  if (v === "1" || v === "true") return true;
+  if (v === "0" || v === "false") return false;
+  return undefined;
 }
 
 function readPlaceOnly(): boolean {
@@ -167,10 +171,10 @@ async function main(): Promise<void> {
     optionalEnv("E2E_PLACE_ALL_INCLUDE_FEED") === "1" ||
     optionalEnv("E2E_PLACE_ALL_INCLUDE_FEED") === "true";
   const placeOnly = readPlaceOnly();
-  const brokerOnly = !placeOnly && readBrokerOnly();
+  const brokerOnly = !placeOnly && catalogFillBrokerOnly(readPlaceAllBrokerOnlyOverride());
   const brokerWaitMs =
     readPositiveIntEnv("E2E_PLACE_ALL_BROKER_WAIT_MS") ??
-    (brokerOnly ? DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS : DEFAULT_CATALOG_BROKER_WAIT_MS);
+    (brokerOnly ? DEFAULT_CATALOG_BROKER_ONLY_WAIT_MS : DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS);
   const segments = readSegments();
   const stakeUsd = readStagingBetUsd();
   const maxSpend = readStagingMaxSpend();

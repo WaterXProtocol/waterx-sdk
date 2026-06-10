@@ -44,7 +44,9 @@ Scans `GET /predict/browse?sort=trending` (and optionally feed), then places + f
 | `E2E_STAGING_BET_USD=1.03` | Override stake in USD (6-decimal settlement base internally) |
 | `E2E_PLACE_ALL_LIMIT=5` | First N markets (× sides unless `ONE_SIDE`) |
 | `E2E_PLACE_ALL_ONE_SIDE=1` | First side only per market |
-| `E2E_PLACE_ALL_BROKER_ONLY=1` | No local keeper `fillOrder`; poll broker ~45s |
+| *(default)* | Broker-only — no local `fillOrder` (backend owns fill) |
+| `E2E_CATALOG_KEEPER_FALLBACK=1` | After broker wait, local keeper `fillOrder` (backend down / decoupled) |
+| `E2E_PLACE_ALL_BROKER_ONLY=1` | Force broker-only even if keeper fallback env is set |
 | `E2E_PLACE_ALL_CONCURRENCY=3` | Parallel broker wait (place txs stay sequential) |
 | `E2E_PLACE_ALL_CRYPTO_EPOCHS=1` | Extra crypto time windows from `neighbors.upcoming` |
 | `E2E_PLACE_ALL_SEGMENTS=sport,crypto` | Segment filter |

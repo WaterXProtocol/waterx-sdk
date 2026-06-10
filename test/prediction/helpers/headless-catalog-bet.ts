@@ -24,6 +24,11 @@ import {
   type PlaceBetRequestBody,
 } from "./api-tx-build.ts";
 import { findBetForChainFixture, type BetWire } from "./api-wire.ts";
+import {
+  CatalogBrokerFillTimeoutError,
+  catalogFillBrokerOnly,
+  DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS,
+} from "./catalog-fill-policy.ts";
 import { optionalEnv } from "./e2e-env.ts";
 import { expectEvent } from "./events.ts";
 import {
@@ -165,14 +170,24 @@ async function tryLoadOpenOrder(client: PredictClient, orderId: bigint): Promise
 }
 
 /**
- * Wait for off-chain broker `fill_order`, else keeper-fill when `ctx.keeper` is set.
+ * Wait for off-chain broker `fill_order`. Local keeper `fillOrder` only when
+ * `E2E_CATALOG_KEEPER_FALLBACK=1` and `ctx.keeper` is set.
  */
 export async function waitForHeadlessFill(
   ctx: IntegrationCtx,
   orderId: bigint,
-  options?: { brokerWaitMs?: number; placeCaps?: PlaceCaps; targetFilledCost?: bigint },
+  options?: {
+    brokerWaitMs?: number;
+    placeCaps?: PlaceCaps;
+    targetFilledCost?: bigint;
+    /** Override broker-only policy (default: true unless keeper fallback env). */
+    brokerOnly?: boolean;
+  },
 ): Promise<HeadlessFillResult> {
-  const brokerWaitMs = options?.brokerWaitMs ?? HEADLESS_BROKER_WAIT_MS();
+  const brokerOnly = catalogFillBrokerOnly(options?.brokerOnly);
+  const brokerWaitMs =
+    options?.brokerWaitMs ??
+    (brokerOnly ? HEADLESS_BROKER_WAIT_MS() : DEFAULT_CATALOG_KEEPER_FALLBACK_WAIT_MS);
   const deadline = Date.now() + brokerWaitMs;
 
   while (Date.now() < deadline) {
@@ -196,9 +211,14 @@ export async function waitForHeadlessFill(
     await new Promise((r) => setTimeout(r, 2_000));
   }
 
+  if (brokerOnly) {
+    throw new CatalogBrokerFillTimeoutError(orderId, brokerWaitMs);
+  }
+
   if (!ctx.keeper) {
     throw new Error(
-      `order ${orderId} still OPEN after ${brokerWaitMs}ms and no keeper signer — broker may be down`,
+      `order ${orderId} still OPEN after ${brokerWaitMs}ms — broker down and no keeper signer ` +
+        `(set E2E_CATALOG_KEEPER_FALLBACK=1 + keeper key for decoupled fillOrder)`,
     );
   }
 
@@ -270,6 +290,7 @@ export async function runHeadlessCatalogBetFlow(
   const fill = await waitForHeadlessFill(ctx, orderId, {
     placeCaps,
     targetFilledCost: readStagingMaxSpendBase(),
+    brokerOnly: catalogFillBrokerOnly(),
   });
 
   const fixture = { orderId, positionId: fill.positionId };

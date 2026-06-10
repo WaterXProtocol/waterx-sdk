@@ -24,6 +24,7 @@ import {
 } from "./api-tx-build.ts";
 import type { BetsMeListData, BetWire } from "./api-wire.ts";
 import { findBetForChainFixture } from "./api-wire.ts";
+import { catalogFillBrokerOnly } from "./catalog-fill-policy.ts";
 import { optionalEnv } from "./e2e-env.ts";
 import { eventsFromResult, findEvent, type SuiEventEnvelope } from "./events.ts";
 import {
@@ -236,6 +237,7 @@ export async function runCatalogCrosscheckPlaceFill(
       placeCaps,
       brokerWaitMs: crosscheckBrokerWaitMs(),
       targetFilledCost: readStagingMaxSpendBase(),
+      brokerOnly: catalogFillBrokerOnly(),
     });
     positionId = fill.positionId;
     fillResult = fill.fillResult;

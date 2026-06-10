@@ -12,6 +12,7 @@ import {
 } from "../helpers/api-crosscheck-soft.ts";
 import type { CatalogPlaceFailure } from "../helpers/api-tx-build.ts";
 import { formatCatalogPlaceFailures } from "../helpers/api-tx-build.ts";
+import { isCatalogBrokerFillTimeout } from "../helpers/catalog-fill-policy.ts";
 import { hasWriteCredentials } from "../helpers/env.ts";
 import {
   hasApiCrosscheckEnabled,
@@ -50,6 +51,10 @@ describe.skipIf(!hasWriteCredentials() || !hasApiCrosscheckEnabled())(
       } catch (err) {
         if (isApiUnreachableError(err)) {
           testCtx.skip(true, `API unreachable at ${apiEnv!.baseUrl}`);
+          return;
+        }
+        if (isCatalogBrokerFillTimeout(err)) {
+          testCtx.skip(true, err.message);
           return;
         }
         throw err;
