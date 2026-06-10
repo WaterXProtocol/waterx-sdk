@@ -14,7 +14,8 @@ export interface ApiEnvironment {
   jwt?: string;
 }
 
-const DEFAULT_ENV_NAME = "local";
+/** API smoke / crosscheck / diagnose default — matches frontend staging Railway. */
+const DEFAULT_ENV_NAME = "staging";
 
 function repoEnvironmentsDir(): string {
   return resolve(process.cwd(), "test/prediction/api/environments");

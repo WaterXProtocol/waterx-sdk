@@ -17,7 +17,19 @@ export function skipIfNoApiEnv(
 
 export function skipIfNoJwt(ctx: TestContext, env: ApiEnvironment): void {
   if (!env.jwt) {
-    ctx.skip(true, "E2E_API_JWT not set — skipping authenticated /predict/bets/* tests");
+    ctx.skip(true, "E2E_API_JWT not set — skipping authenticated API tests");
+  }
+}
+
+/** Backend #601: GET /predict/bets/me* returns 400 20002 when `?address=` is omitted. */
+export function skipIfBetsMissingAddress(ctx: TestContext, status: number, body: unknown): void {
+  if (status !== 400 || typeof body !== "object" || body === null || !("error" in body)) return;
+  const err = (body as { error?: { code?: number; message?: string } }).error;
+  if (err?.code === 20_002 && /missing required field/i.test(err.message ?? "")) {
+    ctx.skip(
+      true,
+      "GET /predict/bets/me* requires ?address=0x… wallet (backend #601) — set E2E_API_ADDRESS or E2E_API_JWT",
+    );
   }
 }
 

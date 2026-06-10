@@ -3,12 +3,14 @@
  * Print field-level audit: on-chain fixtures vs GET /predict/bets/me.
  *
  * Usage:
- *   pnpm diagnose:bets-api
- *   E2E_API_ENV=staging pnpm diagnose:bets-api
+ *   pnpm diagnose:bets-api              # default staging (api-waterx.up.railway.app)
+ *   E2E_API_ENV=local pnpm diagnose:bets-api
  *
- * Requires: testnet fixtures (seed), optional E2E_API_JWT for authed bets/me.
+ * Requires: testnet fixtures (seed); wallet via E2E_API_ADDRESS or JWT suiAddress for bets/me.
  */
 import { loadRepoEnvFiles } from "../../../scripts/load-repo-env.ts";
+import { tryResolveAccountOwner } from "../helpers/account-owner.ts";
+import { betsMeListPath, resolveBetsWalletAddress } from "../helpers/api-bets-path.ts";
 import {
   auditBetsMeAgainstChain,
   auditIssueCount,
@@ -16,10 +18,8 @@ import {
 } from "../helpers/api-chain-field-audit.ts";
 import { apiGet, assertSuccessEnvelope } from "../helpers/api-client.ts";
 import { resolveApiEnvironment } from "../helpers/api-env.ts";
-import { jwtAuthSkipReason } from "../helpers/api-skip.ts";
 import { isBetsMeListData, type BetsMeListData } from "../helpers/api-wire.ts";
 import { createE2eClient, discoverFixtures } from "../helpers/e2e-context.ts";
-import { optionalEnv } from "../helpers/e2e-env.ts";
 
 loadRepoEnvFiles();
 
@@ -32,26 +32,25 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const jwt = optionalEnv("E2E_API_JWT");
-  if (!jwt) {
+  const client = await createE2eClient();
+  const fx = await discoverFixtures(client);
+  const wallet =
+    resolveBetsWalletAddress(env) ?? (await tryResolveAccountOwner(client, fx.accountId));
+
+  if (!wallet) {
     console.warn(
-      "E2E_API_JWT not set — bets/me will 401; audit will still print chain-side rows.\n",
+      "No wallet for bets/me — set E2E_API_ADDRESS or E2E_API_JWT; audit will print chain-side rows only.\n",
     );
   }
 
-  const client = await createE2eClient();
-  const fx = await discoverFixtures(client);
-
   let apiData: BetsMeListData = { bets: [] };
-  if (jwt) {
+  if (wallet) {
     const { status, envelope } = await apiGet<BetsMeListData>(
       env,
-      "/predict/bets/me?filter=all&limit=50",
+      betsMeListPath(wallet, { filter: "all", limit: 50 }),
     );
     if (status !== 200) {
-      const authHint = jwtAuthSkipReason(status, envelope, { apiEnvName: env.name });
       console.error(`GET /predict/bets/me → HTTP ${status}`, envelope);
-      if (authHint) console.error(`\n${authHint}\n`);
       process.exit(1);
     }
     assertSuccessEnvelope(envelope);
@@ -63,7 +62,7 @@ async function main(): Promise<void> {
   }
 
   const report = await auditBetsMeAgainstChain(client, fx, apiData, {
-    jwt,
+    queryWallet: wallet,
     apiEnvName: env.name,
     apiBaseUrl: env.baseUrl,
   });

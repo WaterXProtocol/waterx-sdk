@@ -26,9 +26,17 @@ import {
 import { findBetForChainFixture, type BetWire } from "./api-wire.ts";
 import { optionalEnv } from "./e2e-env.ts";
 import { expectEvent } from "./events.ts";
+import {
+  assertKeeperFillArgsWithinCaps,
+  keeperFillFromPlaceCaps,
+  keeperFillTargetCost,
+  placeCapsFromOrderPlacedEvent,
+  type PlaceCaps,
+} from "./fill-economics.ts";
 import { fetchBetsMe, type PollBetsMeFixtureResult } from "./integration-api.ts";
 import { executeAndFetch, isStaleObjectError, type IntegrationCtx } from "./integration-setup.ts";
 import { findChainEventByOrderId } from "./query-prediction-events.ts";
+import { readStagingMaxSpend, readStagingMaxSpendBase } from "./staging-amounts.ts";
 import { assertSuccessfulExecution, transactionDigest } from "./tx-result.ts";
 
 export function hasHeadlessBetEnabled(): boolean {
@@ -58,6 +66,8 @@ export interface HeadlessFillResult {
   positionId: bigint;
   /** True when `OrderFilled` appeared before the broker wait deadline (no local keeper fill). */
   brokerFilled: boolean;
+  /** Present when this process executed `fillOrder` (keeper path). */
+  fillResult?: unknown;
 }
 
 export interface HeadlessCatalogBetOutcome {
@@ -68,7 +78,10 @@ export interface HeadlessCatalogBetOutcome {
   betsMe: PollBetsMeFixtureResult;
 }
 
-/** Uses integration ctx account + owner (must match JWT wallet for bets/me). */
+export type { CatalogMarketBetOutcome } from "./catalog-cli.ts";
+export { placeAndFillCatalogMarket } from "./catalog-cli.ts";
+
+/** Uses integration ctx account + owner (must match ?address= wallet for bets/me). */
 export function headlessPlaceCredentials(ctx: IntegrationCtx): PlaceBetCredentials {
   return { accountId: ctx.accountId, sender: ctx.ownerAddress };
 }
@@ -157,7 +170,7 @@ async function tryLoadOpenOrder(client: PredictClient, orderId: bigint): Promise
 export async function waitForHeadlessFill(
   ctx: IntegrationCtx,
   orderId: bigint,
-  options?: { brokerWaitMs?: number },
+  options?: { brokerWaitMs?: number; placeCaps?: PlaceCaps; targetFilledCost?: bigint },
 ): Promise<HeadlessFillResult> {
   const brokerWaitMs = options?.brokerWaitMs ?? HEADLESS_BROKER_WAIT_MS();
   const deadline = Date.now() + brokerWaitMs;
@@ -189,15 +202,38 @@ export async function waitForHeadlessFill(
     );
   }
 
-  const fillResult = await executeAndFetch(ctx.client, ctx.keeper, (tx) => {
-    fillOrder(ctx.client, tx, { orderId, ...INTEGRATION_MIN_FILL });
-  });
+  const fillArgs = options?.placeCaps
+    ? options.targetFilledCost !== undefined
+      ? keeperFillTargetCost(options.placeCaps, options.targetFilledCost)
+      : keeperFillFromPlaceCaps(options.placeCaps)
+    : INTEGRATION_MIN_FILL;
+  if (options?.placeCaps) {
+    assertKeeperFillArgsWithinCaps(options.placeCaps, fillArgs.filledShares, fillArgs.filledCost);
+  }
+
+  let fillResult: unknown;
+  try {
+    fillResult = await executeAndFetch(ctx.client, ctx.keeper, (tx) => {
+      fillOrder(ctx.client, tx, { orderId, ...fillArgs });
+    });
+  } catch (err) {
+    // Broker may have filled between the wait loop and keeper `fill_order` (race → abort 20).
+    const late = await findChainEventByOrderId(ctx.client, EVENT_CONTRACT.OrderFilled, orderId);
+    if (late) {
+      return {
+        positionId: BigInt(String(late.json.position_id)),
+        brokerFilled: true,
+      };
+    }
+    throw err;
+  }
   const ev = expectEvent(fillResult, EVENT_CONTRACT.OrderFilled.suffix, {
     order_id: String(orderId),
   });
   return {
     positionId: BigInt(String(ev.json.position_id)),
     brokerFilled: false,
+    fillResult,
   };
 }
 
@@ -213,7 +249,8 @@ export async function runHeadlessCatalogBetFlow(
 ): Promise<HeadlessCatalogBetOutcome | null> {
   const creds = headlessPlaceCredentials(ctx);
   const placeFailures = options?.placeFailures ?? [];
-  const hit = await tryCatalogPlaceTxBuild(apiEnv, creds, { failures: placeFailures });
+  const maxSpend = readStagingMaxSpend();
+  const hit = await tryCatalogPlaceTxBuild(apiEnv, creds, { failures: placeFailures, maxSpend });
   if (!hit) return null;
 
   assertCatalogPlaceTxBuildResult(hit.envelope);
@@ -228,8 +265,12 @@ export async function runHeadlessCatalogBetFlow(
     account_id: ctx.accountId,
   });
   const orderId = BigInt(String(placed.json.order_id));
+  const placeCaps = placeCapsFromOrderPlacedEvent(placed);
 
-  const fill = await waitForHeadlessFill(ctx, orderId);
+  const fill = await waitForHeadlessFill(ctx, orderId, {
+    placeCaps,
+    targetFilledCost: readStagingMaxSpendBase(),
+  });
 
   const fixture = { orderId, positionId: fill.positionId };
   let sawAnyBet = false;
@@ -237,7 +278,7 @@ export async function runHeadlessCatalogBetFlow(
   try {
     await pollUntil(
       async () => {
-        const data = await fetchBetsMe(testCtx, apiEnv, "?filter=all&limit=50");
+        const data = await fetchBetsMe(testCtx, apiEnv, "?filter=all&limit=50", ctx.ownerAddress);
         if (data.bets.length > 0) {
           sawAnyBet = true;
           const sample = data.bets[0]!;
@@ -273,7 +314,7 @@ export async function runHeadlessCatalogBetFlow(
     return null;
   }
 
-  const data = await fetchBetsMe(testCtx, apiEnv, "?filter=all&limit=50");
+  const data = await fetchBetsMe(testCtx, apiEnv, "?filter=all&limit=50", ctx.ownerAddress);
   const bet = findBetForChainFixture(data.bets, fixture);
   if (!bet) {
     testCtx.skip(true, "poll succeeded but bets/me row missing on final fetch");

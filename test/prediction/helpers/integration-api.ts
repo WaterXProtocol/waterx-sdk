@@ -1,5 +1,6 @@
 import type { TestContext } from "vitest";
 
+import { resolveBetsWalletAddress, skipIfNoBetsWallet, withBetsAddress } from "./api-bets-path.ts";
 import { apiGet, assertSuccessEnvelope } from "./api-client.ts";
 import {
   assertBetsMeList,
@@ -14,9 +15,8 @@ import {
 import { resolveApiEnvironment, type ApiEnvironment } from "./api-env.ts";
 import { pollUntil } from "./api-poll.ts";
 import {
-  skipIfInvalidToken,
+  skipIfBetsMissingAddress,
   skipIfNoApiEnv,
-  skipIfNoJwt,
   skipIfPredictIndexerTablesMissing,
 } from "./api-skip.ts";
 import { optionalEnv } from "./e2e-env.ts";
@@ -34,32 +34,47 @@ export function resolveIntegrationApiEnv(): ApiEnvironment | null {
 export function skipIntegrationApiCrosscheck(
   ctx: TestContext,
   env: ApiEnvironment | null,
+  wallet?: string,
 ): asserts env is ApiEnvironment {
   if (!hasApiCrosscheckEnabled()) {
     ctx.skip(true, "E2E_API_CROSSCHECK not set — skipping HTTP bets cross-check");
   }
-  skipIntegrationApiAuthed(ctx, env);
+  skipIntegrationApiBets(ctx, env, wallet);
 }
 
-/** JWT-backed predict API steps in integration journeys (no `E2E_API_CROSSCHECK` gate). */
+/** Predict bets/me HTTP steps — requires wallet `?address=` (backend #601). */
+export function skipIntegrationApiBets(
+  ctx: TestContext,
+  env: ApiEnvironment | null,
+  wallet?: string,
+): asserts env is ApiEnvironment {
+  skipIfNoApiEnv(ctx, env);
+  skipIfNoBetsWallet(ctx, wallet ?? resolveBetsWalletAddress(env!));
+}
+
+/** @deprecated Use `skipIntegrationApiBets` — bets reads are public since backend #601. */
 export function skipIntegrationApiAuthed(
   ctx: TestContext,
   env: ApiEnvironment | null,
+  wallet?: string,
 ): asserts env is ApiEnvironment {
-  skipIfNoApiEnv(ctx, env);
-  skipIfNoJwt(ctx, env!);
+  skipIntegrationApiBets(ctx, env, wallet);
 }
 
 export async function fetchBetsMe(
   ctx: TestContext,
   env: ApiEnvironment,
   query = "?filter=all&limit=50",
+  wallet?: string,
 ): Promise<BetsMeListData> {
-  const path = query.startsWith("/predict/bets/me")
+  const owner = resolveBetsWalletAddress(env, wallet);
+  skipIfNoBetsWallet(ctx, owner);
+  const raw = query.startsWith("/predict/bets/me")
     ? query
     : `/predict/bets/me${query.startsWith("?") ? query : `?${query}`}`;
+  const path = withBetsAddress(raw, owner);
   const { status, envelope } = await apiGet<BetsMeListData>(env, path);
-  skipIfInvalidToken(ctx, status, envelope, { apiEnvName: env.name });
+  skipIfBetsMissingAddress(ctx, status, envelope);
   skipIfPredictIndexerTablesMissing(ctx, status, envelope);
   if (status !== 200) {
     throw new Error(`GET ${path} returned HTTP ${status}`);
@@ -77,12 +92,16 @@ export async function fetchBetsSummary(
   ctx: TestContext,
   env: ApiEnvironment,
   query = "",
+  wallet?: string,
 ): Promise<BetsSummaryData> {
-  const path = query.startsWith("/predict/bets/me/summary")
+  const owner = resolveBetsWalletAddress(env, wallet);
+  skipIfNoBetsWallet(ctx, owner);
+  const raw = query.startsWith("/predict/bets/me/summary")
     ? query
     : `/predict/bets/me/summary${query.startsWith("?") ? query : query ? `?${query}` : ""}`;
+  const path = withBetsAddress(raw, owner);
   const { status, envelope } = await apiGet<BetsSummaryData>(env, path);
-  skipIfInvalidToken(ctx, status, envelope, { apiEnvName: env.name });
+  skipIfBetsMissingAddress(ctx, status, envelope);
   skipIfPredictIndexerTablesMissing(ctx, status, envelope);
   if (status !== 200) {
     throw new Error(`GET ${path} returned HTTP ${status}`);
@@ -96,13 +115,13 @@ export async function pollBetsMeForOrderId(
   ctx: TestContext,
   env: ApiEnvironment,
   orderId: string | bigint,
-  options?: { timeoutMs?: number; intervalMs?: number },
+  options?: { timeoutMs?: number; intervalMs?: number; wallet?: string },
 ): Promise<boolean> {
   let sawAnyBet = false;
   try {
     await pollUntil(
       async () => {
-        const data = await fetchBetsMe(ctx, env);
+        const data = await fetchBetsMe(ctx, env, "?filter=all&limit=50", options?.wallet);
         if (data.bets.length > 0) sawAnyBet = true;
         return betListIncludesOrderId(data.bets, orderId);
       },
@@ -121,19 +140,19 @@ export async function pollBetsMeForOrderId(
 
 /**
  * Poll `GET /predict/bets/me` until `positionId` appears. Returns false when the list stays
- * empty (resolver/indexer gap); throws on timeout when bets exist but id is missing.
+ * empty (indexer lag); throws on timeout when bets exist but id is missing.
  */
 export async function pollBetsMeForPositionId(
   ctx: TestContext,
   env: ApiEnvironment,
   positionId: string | bigint,
-  options?: { timeoutMs?: number; intervalMs?: number },
+  options?: { timeoutMs?: number; intervalMs?: number; wallet?: string },
 ): Promise<boolean> {
   let sawAnyBet = false;
   try {
     await pollUntil(
       async () => {
-        const data = await fetchBetsMe(ctx, env);
+        const data = await fetchBetsMe(ctx, env, "?filter=all&limit=50", options?.wallet);
         if (data.bets.length > 0) sawAnyBet = true;
         return betListIncludesPositionId(data.bets, positionId);
       },
@@ -164,7 +183,7 @@ export async function pollBetsMeForChainFixture(
   ctx: TestContext,
   env: ApiEnvironment,
   fixture: { orderId?: bigint; positionId?: bigint },
-  options?: { timeoutMs?: number; intervalMs?: number; query?: string },
+  options?: { timeoutMs?: number; intervalMs?: number; query?: string; wallet?: string },
 ): Promise<PollBetsMeFixtureResult | null> {
   const query = options?.query ?? "?filter=all&limit=50";
   let sawAnyBet = false;
@@ -173,7 +192,7 @@ export async function pollBetsMeForChainFixture(
   try {
     await pollUntil(
       async () => {
-        const data = await fetchBetsMe(ctx, env, query);
+        const data = await fetchBetsMe(ctx, env, query, options?.wallet);
         if (data.bets.length > 0) {
           sawAnyBet = true;
           const sample = data.bets[0]!;
@@ -194,7 +213,7 @@ export async function pollBetsMeForChainFixture(
         })} in GET /predict/bets/me`,
       },
     );
-    const data = await fetchBetsMe(ctx, env, query);
+    const data = await fetchBetsMe(ctx, env, query, options?.wallet);
     const bet = findBetForChainFixture(data.bets, fixture);
     if (!bet) throw new Error("poll succeeded but findBetForChainFixture returned undefined");
     return { data, bet };

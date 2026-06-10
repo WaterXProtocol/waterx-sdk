@@ -85,8 +85,10 @@ running `pnpm test:integration` on testnet exercises every event in the indexer'
 HTTP/API smoke tests live under [`api/`](api/) — see [`README.md`](README.md#api-environments-postman-style).
 
 Chain → HTTP cross-check: `pnpm test:integration:predict:crosscheck` runs
-[`integration/api-crosscheck.test.ts`](integration/api-crosscheck.test.ts) after `placeOrder`
-(+ keeper `fillOrder` when available), polling `GET /predict/bets/me` for the new `orderId`.
-Skips when the API returns no bets (wallet→account resolver / label markets).
+[`integration/api-crosscheck.test.ts`](integration/api-crosscheck.test.ts) via catalog
+`POST /predict/bets/place` → on-chain fill (broker or keeper), polling `GET /predict/bets/me` for
+`orderId` / `positionId`, hard-asserting fill economics when a row is found; logs
+`auditCrosscheckFreshBet` (strict via `E2E_API_CROSSCHECK_STRICT=1`). Skips on catalog tx-build
+miss or indexer lag.
 
-**Per-field audit (bypass + `bets/me`, debug CLI):** `pnpm diagnose:bets-api` — compares seed fixtures to API wire rows; do not hard-fail CI until backend/indexer align e2e markets and `positionId` join.
+**Per-field audit (debug CLI):** `pnpm diagnose:bets-api` — compares seed fixtures to API wire rows.

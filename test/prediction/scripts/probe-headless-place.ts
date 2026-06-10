@@ -4,13 +4,14 @@ import { resolve } from "node:path";
 
 import { loadRepoEnvFiles } from "../../../scripts/load-repo-env.ts";
 import { resolveOwnerRegistryAccountId } from "../helpers/account-funding.ts";
+import { buildPlaceBetRequest, pickTradeableSide } from "../helpers/api-catalog-pure.ts";
 import { apiGet, apiPost } from "../helpers/api-client.ts";
 import { inferMarketSegmentFromSlug } from "../helpers/api-contract.ts";
 import type { FeedBrowseListData, MarketDetailData } from "../helpers/api-contract.ts";
 import { resolveApiEnvironment } from "../helpers/api-env.ts";
-import { buildPlaceBetRequest, pickTradeableSide } from "../helpers/api-tx-build.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
 import { hasWriteCredentials, loadSigner } from "../helpers/env.ts";
+import { readBrokerFriendlyPlaceOptions } from "../helpers/staging-amounts.ts";
 
 const SEED_PATH = resolve(process.cwd(), "test/prediction/fixtures/testnet-seeded.json");
 
@@ -75,7 +76,7 @@ async function main(): Promise<void> {
         selection: side.trade?.selection,
       });
 
-      const body = buildPlaceBetRequest(creds, side);
+      const body = buildPlaceBetRequest(creds, side, readBrokerFriendlyPlaceOptions());
       const place = await apiPost(env, "/predict/bets/place", body);
       console.log("POST /predict/bets/place", place.status);
       console.log(JSON.stringify(place.envelope, null, 2));

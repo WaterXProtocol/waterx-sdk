@@ -32,6 +32,17 @@ If `E2E_KEEPER_PRIVATE_KEY` is unset the script checks whether the owner itself 
 | **SUI**                                 | Gas — [testnet faucet](https://faucet.sui.io/) |
 | **USD** (`client.settlementCoinType()`) | `deposit` + `placeOrder` payments              |
 
+### Place all staging markets (`pnpm predict:place-all-markets`)
+
+Scans `GET /predict/feed` + `/predict/browse`, then places + fills **$1.11** on **every tradeable side** (default: both sides — up+down, teamA+teamB).
+
+```bash
+E2E_PLACE_ALL_DRY_RUN=1 pnpm predict:place-all-markets   # scan only (browse?sort=trending, crypto+sport)
+E2E_PLACE_ALL_LIMIT=3 pnpm predict:place-all-markets     # first 3 markets (× 2 sides each)
+E2E_PLACE_ALL_ONE_SIDE=1 pnpm predict:place-all-markets    # first side only per market
+pnpm predict:place-all-markets                             # all tradeable (needs SUI_PRIVATE_KEY + keeper)
+```
+
 ### 4. Run a preset (recommended)
 
 ```bash

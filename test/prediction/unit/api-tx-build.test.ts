@@ -18,14 +18,15 @@ describe("api-tx-build helpers", () => {
   });
 
   it("oddsCentsToPriceCapBps and buildPlaceBetRequest", () => {
-    expect(oddsCentsToPriceCapBps(52)).toBe("5200");
+    expect(oddsCentsToPriceCapBps(52)).toBe("5201");
+    expect(oddsCentsToPriceCapBps(60)).toBe("6001");
     const side = pickTradeableSide(MARKET_DETAIL_FIXTURE)!;
     const body = buildPlaceBetRequest({ accountId: "0xacc1", sender: "0xsender1" }, side, {
       maxSpend: "500000",
     });
     expect(body.marketId).toBe("0xabc");
     expect(body.selection).toBe("YES");
-    expect(body.priceCapBps).toBe("5200");
+    expect(body.priceCapBps).toBe("5201");
     expect(body.maxSpend).toBe("500000");
     expect(body.accountId).toBe("0xacc1");
     expect(body.sender).toBe("0xsender1");

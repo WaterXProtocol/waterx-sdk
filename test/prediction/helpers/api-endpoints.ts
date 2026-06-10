@@ -77,35 +77,43 @@ export const PREDICT_PUBLIC_GET_ENDPOINTS: readonly PredictGetEndpoint[] = [
   },
 ] as const;
 
-/** Authenticated bet-history endpoints (WaterXAuthGuard). */
-export const PREDICT_AUTH_GET_ENDPOINTS: readonly PredictGetEndpoint[] = [
+/**
+ * Public bet-history reads (backend #601). Wallet via required `?address=0x…`;
+ * tests inject address from `E2E_API_ADDRESS` or JWT `suiAddress`.
+ */
+export const PREDICT_BETS_GET_ENDPOINTS: readonly PredictGetEndpoint[] = [
   {
     id: "bets-me",
     path: "/predict/bets/me",
-    auth: true,
+    auth: false,
     sampleQuery: "?filter=all&limit=5",
+    notes: "Requires ?address= wallet; optional filter/limit/cursor/locale",
   },
   {
     id: "bets-me-summary",
     path: "/predict/bets/me/summary",
-    auth: true,
+    auth: false,
     sampleQuery: "",
+    notes: "Requires ?address= wallet",
   },
   {
     id: "bets-me-claimable",
     path: "/predict/bets/me/claimable",
-    auth: true,
+    auth: false,
     sampleQuery: "",
-    notes: "Non-paginated claim batch; empty bets when no account",
+    notes: "Requires ?address= wallet; non-paginated claim batch",
   },
   {
     id: "bets-me-detail",
     path: "/predict/bets/me/:betId/detail",
-    auth: true,
+    auth: false,
     sampleQuery: "",
-    notes: "betId from bets/me — 404 privacy collapse on bad/missing id",
+    notes: "Requires ?address= + betId from list — 404 privacy collapse on bad/missing id",
   },
 ] as const;
+
+/** @deprecated Use `PREDICT_BETS_GET_ENDPOINTS` — bets reads are public since backend #601. */
+export const PREDICT_AUTH_GET_ENDPOINTS = PREDICT_BETS_GET_ENDPOINTS;
 
 /** Unsigned PTB builders (public; client signs txBytes). */
 export const PREDICT_TX_BUILD_POST_ENDPOINTS: readonly PredictPostEndpoint[] = [
@@ -139,7 +147,7 @@ export const PREDICT_TX_BUILD_POST_ENDPOINTS: readonly PredictPostEndpoint[] = [
 
 export const ALL_PREDICT_GET_ENDPOINTS: readonly PredictGetEndpoint[] = [
   ...PREDICT_PUBLIC_GET_ENDPOINTS,
-  ...PREDICT_AUTH_GET_ENDPOINTS,
+  ...PREDICT_BETS_GET_ENDPOINTS,
 ];
 
 /** Unique GET route patterns (Bruno get-*.bru count = 11). */

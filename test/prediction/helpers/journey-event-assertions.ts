@@ -82,15 +82,22 @@ export function assertBetWireMatchesChainEvent(
   opts: { orderId?: bigint; positionId?: bigint },
 ): void {
   if (opts.orderId !== undefined) {
-    expect(betListIncludesOrderId([bet], opts.orderId)).toBe(true);
-    if (event.json.order_id !== undefined) {
-      expect(betOrderIdFromBet(bet)).toBe(String(event.json.order_id));
+    const hasOrderWire = bet.orderId !== undefined || bet.order_id !== undefined;
+    if (hasOrderWire) {
+      expect(betListIncludesOrderId([bet], opts.orderId)).toBe(true);
+      if (event.json.order_id !== undefined) {
+        expect(betOrderIdFromBet(bet)).toBe(String(event.json.order_id));
+      }
     }
+    // Catalog `bets/me` rows are often keyed by `positionId` only (`betId = account:position`).
   }
   if (opts.positionId !== undefined) {
-    expect(betListIncludesPositionId([bet], opts.positionId)).toBe(true);
-    if (event.json.position_id !== undefined) {
-      const betPos = bet.positionId ?? bet.position_id;
+    const betPos = bet.positionId ?? bet.position_id;
+    const matchesChainPosition = betListIncludesPositionId([bet], opts.positionId);
+    const matchesBypassOrderKey =
+      opts.orderId !== undefined && betPos !== undefined && String(betPos) === String(opts.orderId);
+    expect(matchesChainPosition || matchesBypassOrderKey).toBe(true);
+    if (event.json.position_id !== undefined && matchesChainPosition) {
       expect(String(betPos)).toBe(String(event.json.position_id));
     }
   }

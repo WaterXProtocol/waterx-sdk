@@ -80,6 +80,18 @@ describe("api-contract shape assertions", () => {
     expect(hit?.orderId).toBe("0");
   });
 
+  it("findBetForChainFixture prefers positionId over order cursor collision", () => {
+    const bets = [{ positionId: "329" }, { positionId: "123" }];
+    const hit = findBetForChainFixture(bets, { orderId: 329n, positionId: 123n });
+    expect(hit?.positionId).toBe("123");
+  });
+
+  it("findBetForChainFixture matches bypass wire when API positionId equals orderId", () => {
+    const bets = [{ positionId: "332" }];
+    const hit = findBetForChainFixture(bets, { orderId: 332n, positionId: 126n });
+    expect(hit?.positionId).toBe("332");
+  });
+
   it("assertBetsSummary", () => {
     assertBetsSummary(BETS_SUMMARY_FIXTURE);
     expect(() => assertBetsSummary({ summary: { netPnlUsd: 0 } })).toThrow();

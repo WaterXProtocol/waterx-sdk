@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  betsMeListPath,
+  betsMeSummaryPath,
+  resolveBetsWalletAddress,
+} from "../helpers/api-bets-path.ts";
 import { resolveApiEnvironment } from "../helpers/api-env.ts";
 import {
   DEFAULT_REPORT_REQUESTS,
@@ -38,20 +43,21 @@ describe.skipIf(!process.env.E2E_API_REPORT)("predict API response report", () =
       }
     }
 
+    const wallet = resolveBetsWalletAddress(env);
     if (
-      env.jwt &&
+      wallet &&
       (reportSections === "all" || reportSections.has("bets") || reportSections.has("bets-me"))
     ) {
       requests.push(
         {
           id: "bets:me",
           label: "Bets · my history",
-          path: "/predict/bets/me?filter=all&limit=3",
+          path: betsMeListPath(wallet, { filter: "all", limit: 3 }),
         },
         {
           id: "bets:summary",
           label: "Bets · summary",
-          path: "/predict/bets/me/summary",
+          path: betsMeSummaryPath(wallet),
         },
       );
     }

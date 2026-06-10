@@ -3,6 +3,7 @@
  * Run predict HTTP API smoke tests (opt-in, local manual).
  *
  * Usage (from repo root):
+ *   node test/prediction/scripts/run-api-tests.mjs              # default staging
  *   node test/prediction/scripts/run-api-tests.mjs --env local
  *   node test/prediction/scripts/run-api-tests.mjs --env staging
  *   node test/prediction/scripts/run-api-tests.mjs --env staging --report
@@ -13,7 +14,7 @@
 import { spawnSync } from "node:child_process";
 
 function parseArgs(argv) {
-  let envName = process.env.E2E_API_ENV ?? "local";
+  let envName = process.env.E2E_API_ENV ?? "staging";
   let report = null;
   let reportOnly = false;
   const vitestExtra = [];

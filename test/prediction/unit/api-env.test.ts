@@ -23,6 +23,16 @@ describe("resolveApiEnvironment", () => {
     process.env = { ...prevEnv };
   });
 
+  it("defaults to staging when E2E_API_ENV unset", () => {
+    delete process.env.E2E_API_ENV;
+    writeFileSync(
+      join(tmpDir, "staging.json"),
+      JSON.stringify({ name: "staging", baseUrl: "https://api-waterx.up.railway.app" }),
+    );
+    const env = resolveApiEnvironment({ environmentsDir: tmpDir });
+    expect(env).toEqual({ name: "staging", baseUrl: "https://api-waterx.up.railway.app" });
+  });
+
   it("loads baseUrl from environment file", () => {
     const env = resolveApiEnvironment({ envName: "local", environmentsDir: tmpDir });
     expect(env).toEqual({ name: "local", baseUrl: "http://localhost:3003" });

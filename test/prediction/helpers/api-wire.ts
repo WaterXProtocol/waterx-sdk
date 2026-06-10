@@ -55,21 +55,38 @@ export function betListIncludesPositionId(bets: BetWire[], positionId: string | 
   });
 }
 
-/** Match API row by chain fixture id (order and/or position; some APIs only set `orderId`). */
+/** Match API row by chain fixture id (order and/or position; some APIs only set `positionId`). */
 export function findBetForChainFixture(
   bets: BetWire[],
   fixture: { orderId?: bigint; positionId?: bigint },
 ): BetWire | undefined {
-  if (fixture.orderId !== undefined) {
-    const hit = bets.find((b) => betListIncludesOrderId([b], fixture.orderId!));
-    if (hit) return hit;
-  }
+  // Prefer position id — order cursor can collide with another row's `positionId` on catalog wire.
   if (fixture.positionId !== undefined) {
     const byPos = bets.find((b) => betListIncludesPositionId([b], fixture.positionId!));
     if (byPos) return byPos;
     const want = String(fixture.positionId);
     const byOrderField = bets.find((b) => betOrderId(b) === want);
     if (byOrderField) return byOrderField;
+    // Bypass/catalog wire: indexer may expose `order_id` in `positionId` (chain position differs).
+    if (fixture.orderId !== undefined) {
+      const wantOrder = String(fixture.orderId);
+      const byBypassWire = bets.find((b) => {
+        const raw = b.positionId ?? b.position_id;
+        return raw !== undefined && String(raw) === wantOrder;
+      });
+      if (byBypassWire) return byBypassWire;
+    }
+    return undefined;
+  }
+  if (fixture.orderId !== undefined) {
+    const want = String(fixture.orderId);
+    const byExplicitOrder = bets.find((b) => {
+      const raw = b.orderId ?? b.order_id;
+      return raw !== undefined && String(raw) === want;
+    });
+    if (byExplicitOrder) return byExplicitOrder;
+    const hit = bets.find((b) => betOrderId(b) === want);
+    if (hit) return hit;
   }
   return undefined;
 }

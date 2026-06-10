@@ -10,6 +10,7 @@ import type { PredictClient } from "~predict/client.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { EVENT_CONTRACT } from "../contract/event-fields.ts";
+import { resolveBetsWalletAddress } from "../helpers/api-bets-path.ts";
 import { apiGet, assertSuccessEnvelope, isApiUnreachableError } from "../helpers/api-client.ts";
 import type { MarketDetailData, QuotesData } from "../helpers/api-contract.ts";
 import {
@@ -30,7 +31,7 @@ import {
   fetchBetsSummary,
   pollBetsMeForChainFixture,
   resolveIntegrationApiEnv,
-  skipIntegrationApiAuthed,
+  skipIntegrationApiBets,
 } from "../helpers/integration-api.ts";
 import {
   likelyBypassFilledFixtures,
@@ -350,14 +351,13 @@ describe("Integration automation: user betting journey", () => {
   }, 120_000);
 
   it("API: bets/me and summary match seeded chain ids", async (testCtx) => {
-    if (!apiEnv?.jwt) {
-      testCtx.skip(true, "E2E_API_JWT not set — skipping authenticated API assertions");
-      return;
-    }
-    skipIntegrationApiAuthed(testCtx, apiEnv);
+    const wallet =
+      resolveBetsWalletAddress(apiEnv, journey?.ownerAddress) ??
+      (await guard.skipUnlessAccountOwner(testCtx));
+    skipIntegrationApiBets(testCtx, apiEnv, wallet);
 
     try {
-      const summary = await fetchBetsSummary(testCtx, apiEnv);
+      const summary = await fetchBetsSummary(testCtx, apiEnv, "", wallet);
       assertBetsSummaryLiveCount(summary);
 
       const orderId = openOrderId();
@@ -374,12 +374,12 @@ describe("Integration automation: user betting journey", () => {
           ...(orderId !== undefined ? { orderId } : {}),
           ...(posId !== undefined ? { positionId: posId } : {}),
         },
-        { timeoutMs: 60_000 },
+        { timeoutMs: 60_000, wallet },
       );
       if (!polled) {
         testCtx.skip(
           true,
-          `GET /predict/bets/me returned no rows for JWT wallet — API may resolve bets by wallet, ` +
+          `GET /predict/bets/me returned no rows for wallet ${wallet} — API may resolve bets by wallet, ` +
             `while chain fixtures use registry accountId ${fx.accountId} (bypass testnet). ` +
             `Chain + event assertions already passed.`,
         );

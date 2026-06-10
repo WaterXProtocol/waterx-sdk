@@ -18,5 +18,6 @@ package_summaries/
 test-results*.xml
 query-output/
 simulate-dumps/
+test/prediction/fixtures/testnet-seeded.json
 docs/
 waterx-contracts/

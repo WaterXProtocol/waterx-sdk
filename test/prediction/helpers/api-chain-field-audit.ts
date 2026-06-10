@@ -142,7 +142,7 @@ async function auditPositionFixture(
         owner === opts.jwtWallet ? "ok" : owner ? "mismatch" : "info",
         owner ?? "(could not resolve owner from events)",
         opts.jwtWallet,
-        "Backend bets/me filters by JWT wallet — must map to registry accountId (#498)",
+        "Backend bets/me filters by ?address= wallet — must map to registry accountId (#498)",
       ),
     );
   }
@@ -376,16 +376,16 @@ export async function auditBetsMeAgainstChain(
   client: PredictClient,
   fx: AuditFixtureIds,
   apiData: BetsMeListData,
-  opts: { jwt?: string; apiEnvName?: string; apiBaseUrl?: string },
+  opts: { jwt?: string; queryWallet?: string; apiEnvName?: string; apiBaseUrl?: string },
 ): Promise<BetsMeAuditReport> {
-  const jwtWallet = opts.jwt ? decodeJwtWallet(opts.jwt) : undefined;
+  const jwtWallet = opts.queryWallet ?? (opts.jwt ? decodeJwtWallet(opts.jwt) : undefined);
   const owner = await tryResolveAccountOwner(client, fx.accountId);
   const bypassLikely =
     fx.openOrderId === undefined &&
     (fx.openPositionId !== undefined || fx.positionId !== undefined);
 
   const globalHints = [
-    "Registry accountId (chain PTB arg) ≠ JWT wallet unless AccountResolver maps them.",
+    "Registry accountId (chain PTB arg) ≠ query wallet unless AccountResolver maps them.",
     "Bypass testnet: placeOrder may fill immediately → bets/me keyed by position, not resting orderId.",
     "marketSlug (API) vs marketIdHex (chain) — different identifiers; mismatch alone is not always a bug.",
     "stakeUsd scale may differ from max_spend / filled_cost (check backend float rules).",
@@ -444,13 +444,84 @@ export async function auditBetsMeAgainstChain(
   };
 }
 
+/**
+ * Soft audit for a single fresh place (+ optional fill) vs one `bets/me` poll snapshot.
+ * Used by `api-crosscheck.test.ts` — mismatches are logged, not failed, until backend bypass ends.
+ */
+export async function auditCrosscheckFreshBet(
+  client: PredictClient,
+  params: {
+    accountId: string;
+    orderId: bigint;
+    positionId?: bigint;
+    bypassLikely: boolean;
+    apiData: BetsMeListData;
+    queryWallet?: string;
+    apiEnvName?: string;
+    apiBaseUrl?: string;
+  },
+): Promise<BetsMeAuditReport> {
+  const jwtWallet = params.queryWallet;
+  const owner = await tryResolveAccountOwner(client, params.accountId);
+  const fixtures: FixtureAuditReport[] = [];
+
+  // Filled crosscheck: resting order is gone from chain view — audit position + API row only.
+  if (params.positionId === undefined && !params.bypassLikely) {
+    fixtures.push(
+      await auditOpenOrderFixture(
+        client,
+        params.orderId,
+        params.accountId,
+        params.apiData.bets,
+        jwtWallet,
+      ),
+    );
+  }
+
+  const posId = params.positionId;
+  if (posId !== undefined) {
+    fixtures.push(
+      await auditPositionFixture(
+        client,
+        params.bypassLikely ? "crosscheck (bypass fill)" : "crosscheck (keeper/broker fill)",
+        posId,
+        params.accountId,
+        params.apiData.bets,
+        {
+          orderId: params.bypassLikely ? undefined : params.orderId,
+          jwtWallet,
+        },
+      ),
+    );
+  }
+
+  const sample = params.apiData.bets[0];
+  return {
+    apiEnv: params.apiEnvName ?? "unknown",
+    apiBaseUrl: params.apiBaseUrl ?? "",
+    jwtWallet,
+    registryAccountId: params.accountId,
+    registryOwner: owner,
+    bypassLikely: params.bypassLikely,
+    apiBetCount: params.apiData.bets.length,
+    apiSampleKeys: sample ? betRawKeys(sample) : [],
+    fixtures,
+    globalHints: [
+      "Soft crosscheck: field mismatches are logged only (set E2E_API_CROSSCHECK_STRICT=1 to fail).",
+      "Registry accountId (chain PTB arg) ≠ query wallet unless AccountResolver maps them (#498).",
+      "Bypass testnet: placeOrder may fill immediately → bets/me keyed by position, not resting orderId.",
+      "marketSlug (API) vs marketIdHex (chain label) — different identifiers; mismatch alone is not always a bug.",
+    ],
+  };
+}
+
 export function formatBetsMeAuditReport(report: BetsMeAuditReport): string {
   const lines: string[] = [];
   lines.push("═".repeat(72));
   lines.push("Predict bets/me ↔ chain field audit");
   lines.push("═".repeat(72));
   lines.push(`API: ${report.apiEnv} @ ${report.apiBaseUrl}`);
-  lines.push(`JWT wallet: ${report.jwtWallet ?? "(no JWT)"}`);
+  lines.push(`Query wallet (?address=): ${report.jwtWallet ?? "(none)"}`);
   lines.push(`Registry accountId: ${report.registryAccountId}`);
   lines.push(`Account owner (from events): ${report.registryOwner ?? "(unknown)"}`);
   lines.push(`Bypass likely: ${report.bypassLikely}`);

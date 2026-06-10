@@ -1,8 +1,8 @@
 /**
  * Headless frontend E2E (opt-in): catalog → POST place → execute txBytes → fill → bets/me.
  *
- * Enable: `E2E_HEADLESS_BET=1` + `SUI_PRIVATE_KEY` + `E2E_API_ENV` + `E2E_API_JWT`
- * (wallet should own the wxa account; keeper on same key fills when broker is slow).
+ * Enable: `E2E_HEADLESS_BET=1` + `SUI_PRIVATE_KEY` + `E2E_API_ENV`
+ * (integration signer wallet is used as `?address=` for bets/me; keeper on same key fills when broker is slow).
  *
  * Run: `pnpm test:integration:predict:headless`
  */
@@ -17,7 +17,7 @@ import {
   hasHeadlessBetEnabled,
   runHeadlessCatalogBetFlow,
 } from "../helpers/headless-catalog-bet.ts";
-import { resolveIntegrationApiEnv, skipIntegrationApiAuthed } from "../helpers/integration-api.ts";
+import { resolveIntegrationApiEnv, skipIntegrationApiBets } from "../helpers/integration-api.ts";
 import { setupIntegration, type IntegrationCtx } from "../helpers/integration-setup.ts";
 
 describe.skipIf(!hasWriteCredentials() || !hasHeadlessBetEnabled())(
@@ -31,7 +31,7 @@ describe.skipIf(!hasWriteCredentials() || !hasHeadlessBetEnabled())(
     }, 180_000);
 
     it("catalog → place txBytes → on-chain fill → GET /predict/bets/me", async (testCtx) => {
-      skipIntegrationApiAuthed(testCtx, apiEnv);
+      skipIntegrationApiBets(testCtx, apiEnv, ctx.ownerAddress);
 
       const placeFailures: CatalogPlaceFailure[] = [];
       try {

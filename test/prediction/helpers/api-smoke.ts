@@ -1,5 +1,12 @@
 import { expect, type TestContext } from "vitest";
 
+import {
+  betsMeDetailPath,
+  betsMeListPath,
+  resolveBetsWalletAddress,
+  skipIfNoBetsWallet,
+  withBetsAddress,
+} from "./api-bets-path.ts";
 import { apiFetch, apiGet, assertSuccessEnvelope } from "./api-client.ts";
 import {
   assertBetDetail,
@@ -21,9 +28,8 @@ import {
 import type { MarketSegment } from "./api-endpoints.ts";
 import type { ApiEnvironment } from "./api-env.ts";
 import {
-  skipIfInvalidToken,
+  skipIfBetsMissingAddress,
   skipIfNoApiEnv,
-  skipIfNoJwt,
   skipIfPredictIndexerTablesMissing,
   skipIfUnreachable,
 } from "./api-skip.ts";
@@ -92,7 +98,7 @@ export async function fetchReachableBetsMe(
   env: ApiEnvironment | null,
   path: string,
 ): Promise<unknown> {
-  const data = await smokeGetReachableAuthed(ctx, env, path);
+  const data = await smokeGetReachableBets(ctx, env, path);
   assertBetsMeList(data, { limit: parseQueryLimit(path) });
   return data;
 }
@@ -103,7 +109,7 @@ export async function fetchReachableBetsSummary(
   env: ApiEnvironment | null,
   path: string,
 ): Promise<unknown> {
-  const data = await smokeGetReachableAuthed(ctx, env, path);
+  const data = await smokeGetReachableBets(ctx, env, path);
   assertBetsSummary(data);
   return data;
 }
@@ -127,17 +133,20 @@ export async function smokeGetReachable(
   }
 }
 
-/** Same as smokeGetReachable but applies JWT / CH infra skip helpers first. */
-export async function smokeGetReachableAuthed(
+/** GET /predict/bets/me* — public reads with required `?address=` (backend #601). */
+export async function smokeGetReachableBets(
   ctx: TestContext,
   env: ApiEnvironment | null,
   path: string,
+  wallet?: string,
 ): Promise<unknown> {
   skipIfNoApiEnv(ctx, env);
-  skipIfNoJwt(ctx, env!);
+  const owner = resolveBetsWalletAddress(env!, wallet);
+  skipIfNoBetsWallet(ctx, owner);
+  const fullPath = withBetsAddress(path, owner);
   try {
-    const { status, envelope } = await apiGet<unknown>(env!, path);
-    skipIfInvalidToken(ctx, status, envelope, { apiEnvName: env!.name });
+    const { status, envelope } = await apiGet<unknown>(env!, fullPath);
+    skipIfBetsMissingAddress(ctx, status, envelope);
     skipIfPredictIndexerTablesMissing(ctx, status, envelope);
     expect(status).toBe(200);
     assertSuccessEnvelope(envelope);
@@ -159,9 +168,9 @@ export function eventDetailPath(slug: string, query = ""): string {
   return `/predict/events/${encodeURIComponent(slug)}${q}`;
 }
 
-export function betDetailPath(betId: string, query = ""): string {
-  const q = query.startsWith("?") || query === "" ? query : `?${query}`;
-  return `/predict/bets/me/${encodeURIComponent(betId)}/detail${q}`;
+/** @deprecated Use `betsMeDetailPath(betId, wallet, query)` from `api-bets-path.ts`. */
+export function betDetailPath(betId: string, wallet: string, query = ""): string {
+  return betsMeDetailPath(betId, wallet, query);
 }
 
 export { inferMarketSegmentFromSlug } from "./api-contract.ts";
@@ -249,7 +258,7 @@ export async function fetchReachableBetsClaimable(
   env: ApiEnvironment | null,
   path: string,
 ): Promise<unknown> {
-  const data = await smokeGetReachableAuthed(ctx, env, path);
+  const data = await smokeGetReachableBets(ctx, env, path);
   assertBetsClaimableList(data);
   return data;
 }
@@ -259,7 +268,7 @@ export async function fetchReachableBetDetail(
   env: ApiEnvironment | null,
   path: string,
 ): Promise<unknown> {
-  const data = await smokeGetReachableAuthed(ctx, env, path);
+  const data = await smokeGetReachableBets(ctx, env, path);
   assertBetDetail(data);
   return data;
 }
@@ -314,12 +323,16 @@ export async function discoverCatalogContext(
   return null;
 }
 
-/** Authed fallback: first bets/me row with reachable market detail. */
+/** Fallback: first bets/me row with reachable market detail (requires wallet address). */
 export async function discoverCatalogContextFromBetsMe(
   env: ApiEnvironment,
 ): Promise<CatalogContext | null> {
-  if (!env.jwt) return null;
-  const { status, envelope } = await apiGet<BetsMeListData>(env, "/predict/bets/me?limit=10");
+  const wallet = resolveBetsWalletAddress(env);
+  if (!wallet) return null;
+  const { status, envelope } = await apiGet<BetsMeListData>(
+    env,
+    betsMeListPath(wallet, { limit: 10 }),
+  );
   if (status !== 200) return null;
   assertSuccessEnvelope(envelope);
 
@@ -341,7 +354,7 @@ export async function discoverCatalogContextFromBetsMe(
   return null;
 }
 
-/** Feed discovery, then bets/me when JWT is configured. */
+/** Feed discovery, then bets/me when a wallet address is available. */
 export async function discoverCatalogContextWithFallback(
   env: ApiEnvironment,
   options: DiscoverCatalogContextOptions = {},
@@ -394,7 +407,7 @@ export async function discoverReachableEventSlug(env: ApiEnvironment): Promise<s
   return null;
 }
 
-/** First bet with `betId` (or composite id) from authed bets/me. */
+/** First bet with `betId` (or composite id) from bets/me list. */
 export function firstBetIdFromList(data: BetsMeListData): string | undefined {
   for (const bet of data.bets) {
     const id = betWireId(bet);

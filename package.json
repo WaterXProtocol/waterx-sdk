@@ -69,8 +69,8 @@
     "test:api": "node test/prediction/scripts/run-api-tests.mjs",
     "test:api:local": "node test/prediction/scripts/run-api-tests.mjs --env local",
     "test:api:staging": "node test/prediction/scripts/run-api-tests.mjs --env staging",
-    "test:integration:predict:crosscheck": "E2E_API_CROSSCHECK=1 vitest run --project predict-integration-crosscheck",
-    "test:integration:predict:headless": "E2E_HEADLESS_BET=1 vitest run --project predict-integration-headless",
+    "test:integration:predict:crosscheck": "E2E_API_ENV=staging E2E_API_CROSSCHECK=1 vitest run --project predict-integration-crosscheck",
+    "test:integration:predict:headless": "E2E_API_ENV=staging E2E_HEADLESS_BET=1 vitest run --project predict-integration-headless",
     "test:integration:predict:journey": "vitest run --project predict-integration test/prediction/integration/user-betting-journey.test.ts",
     "test:integration:perp:mainnet": "tsx scripts/run-integration.ts --mainnet",
     "test:integration:perp:lifecycle": "tsx scripts/run-integration.ts --testnet test/perp/integration/user/trader-position-lifecycle.test.ts",
@@ -84,7 +84,15 @@
     "predict:list-accounts": "tsx test/prediction/scripts/list-accounts.ts",
     "mint:api-jwt": "node test/prediction/scripts/mint-api-jwt.mjs",
     "mint:api-jwt:staging": "node test/prediction/scripts/fetch-staging-api-jwt.mjs",
-    "diagnose:bets-api": "tsx test/prediction/scripts/diagnose-bets-chain-api.ts"
+    "diagnose:bets-api": "tsx test/prediction/scripts/diagnose-bets-chain-api.ts",
+    "predict:place-all-markets": "E2E_API_ENV=staging tsx test/prediction/scripts/place-all-catalog-markets.ts",
+    "predict:place-dry-run": "E2E_API_ENV=staging E2E_PLACE_ALL_DRY_RUN=1 tsx test/prediction/scripts/place-all-catalog-markets.ts",
+    "predict:place-broker-only": "E2E_API_ENV=staging E2E_PLACE_ALL_BROKER_ONLY=1 E2E_PLACE_ALL_ONE_SIDE=1 E2E_PLACE_ALL_LIMIT=1 tsx test/prediction/scripts/place-all-catalog-markets.ts",
+    "predict:place-and-watch": "E2E_API_ENV=staging E2E_STAGING_BET_USD=1.12 E2E_PLACE_ALL_PLACE_ONLY=1 E2E_PLACE_ALL_ONE_SIDE=1 E2E_PLACE_ALL_LIMIT=1 tsx test/prediction/scripts/place-all-catalog-markets.ts",
+    "predict:refund-probe": "E2E_API_ENV=staging tsx test/prediction/scripts/probe-catalog-refund.ts",
+    "predict:broker-matrix": "E2E_API_ENV=staging tsx test/prediction/scripts/probe-broker-matrix.ts",
+    "test:integration:predict:refund": "E2E_API_ENV=staging E2E_CATALOG_REFUND=1 vitest run --project predict-integration-refund",
+    "test:integration:predict:broker-matrix": "E2E_API_ENV=staging E2E_BROKER_MATRIX=1 vitest run --project predict-integration-broker-matrix"
   },
   "peerDependencies": {
     "@mysten/bcs": "^1.9.0",

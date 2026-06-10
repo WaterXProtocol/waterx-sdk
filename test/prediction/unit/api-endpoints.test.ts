@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_PREDICT_GET_ENDPOINTS,
   brunoPredictRouteCount,
-  PREDICT_AUTH_GET_ENDPOINTS,
+  PREDICT_BETS_GET_ENDPOINTS,
   PREDICT_PUBLIC_GET_ENDPOINTS,
   PREDICT_TX_BUILD_POST_ENDPOINTS,
   uniquePredictGetRoutePatterns,
@@ -33,7 +33,7 @@ describe("api-endpoints catalog", () => {
 
   it("marks auth vs public endpoints", () => {
     expect(PREDICT_PUBLIC_GET_ENDPOINTS.every((e) => !e.auth)).toBe(true);
-    expect(PREDICT_AUTH_GET_ENDPOINTS.every((e) => e.auth)).toBe(true);
+    expect(PREDICT_BETS_GET_ENDPOINTS.every((e) => !e.auth)).toBe(true);
     expect(PREDICT_TX_BUILD_POST_ENDPOINTS.every((e) => !e.auth)).toBe(true);
   });
 
