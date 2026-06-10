@@ -21,8 +21,6 @@ import {
   betListIncludesOrderId,
   betListIncludesPositionId,
   betWireAwaitingBrokerFill,
-  betWireAwaitingBrokerFill,
-  betWireBrokerFilled,
   betWireBrokerFilled,
   findBetForChainFixture,
   inferMarketSegmentFromSlug,

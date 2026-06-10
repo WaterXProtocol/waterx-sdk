@@ -31,6 +31,8 @@ export interface MarketWire {
 
 export interface FeedBrowseItemWire {
   market: MarketWire;
+  /** Present on event-grouped catalog rows (sport tournaments, etc.). */
+  event?: { slug?: string };
   round?: RoundWire;
   nextRound?: RoundWire;
 }
