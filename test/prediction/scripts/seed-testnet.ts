@@ -2,7 +2,7 @@
  * Seed testnet state for E2E / Integration tests.
  *
  * Each stage is idempotent (re-uses existing on-chain state when present). A snapshot of the
- * seeded ids is written to `tests/fixtures/testnet-seeded.json` for the test suite to consume.
+ * seeded ids is written to `test/prediction/fixtures/testnet-seeded.json` for the test suite to consume.
  *
  * Usage:
  *   cp .env.example .env   # set SUI_PRIVATE_KEY (owner) and optionally E2E_KEEPER_PRIVATE_KEY
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     }
   }
 
-  ctx.log("done", `fixture → tests/fixtures/testnet-seeded.json`);
+  ctx.log("done", `fixture → test/prediction/fixtures/testnet-seeded.json`);
   console.log("\n# Seeded fixture:");
   console.log(JSON.stringify(ctx.fixture, null, 2));
 }

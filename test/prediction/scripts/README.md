@@ -2,7 +2,7 @@
 
 ## Testnet seed (`pnpm seed:testnet`)
 
-Builds on-chain state for `pnpm test:e2e` and `pnpm test:integration`. Each stage is **idempotent** — re-runs reuse existing on-chain state when a usable instance already exists. The resulting fixture ids are dumped to `tests/fixtures/testnet-seeded.json` (git-ignored) and consumed by `discoverFixtures()`.
+Builds on-chain state for `pnpm test:e2e` and `pnpm test:integration`. Each stage is **idempotent** — re-runs reuse existing on-chain state when a usable instance already exists. The resulting fixture ids are dumped to `test/prediction/fixtures/testnet-seeded.json` (git-ignored) and consumed by `discoverFixtures()`.
 
 ### 1. Create test-only keys
 
@@ -32,18 +32,34 @@ If `E2E_KEEPER_PRIVATE_KEY` is unset the script checks whether the owner itself 
 | **SUI**                                 | Gas — [testnet faucet](https://faucet.sui.io/) |
 | **USD** (`client.settlementCoinType()`) | `deposit` + `placeOrder` payments              |
 
-### Place all staging markets (`pnpm predict:place-all-markets`)
+## Place all staging markets (`pnpm predict:place-all-markets`)
 
-Scans `GET /predict/feed` + `/predict/browse`, then places + fills **$1.11** on **every tradeable side** (default: both sides — up+down, teamA+teamB).
+Scans `GET /predict/browse?sort=trending` (and optionally feed), then places + fills on every tradeable side. Default stake **$1.11** (`E2E_STAGING_BET_USD`). Requires `SUI_PRIVATE_KEY` + staging API (`E2E_API_ENV=staging` is set by the npm script).
+
+| Command / env | Effect |
+| ------------- | ------ |
+| `pnpm predict:place-dry-run` | `E2E_PLACE_ALL_DRY_RUN=1` — list markets/odds/caps only |
+| `pnpm predict:place-broker-only` | 1 market, broker-only fill (`BROKER_ONLY` + `LIMIT=1` + `ONE_SIDE`) |
+| `pnpm predict:place-and-watch` | Place one **$1.12** order, print `orderId`, exit |
+| `E2E_STAGING_BET_USD=1.03` | Override stake in USD (6-decimal settlement base internally) |
+| `E2E_PLACE_ALL_LIMIT=5` | First N markets (× sides unless `ONE_SIDE`) |
+| `E2E_PLACE_ALL_ONE_SIDE=1` | First side only per market |
+| `E2E_PLACE_ALL_BROKER_ONLY=1` | No local keeper `fillOrder`; poll broker ~45s |
+| `E2E_PLACE_ALL_CONCURRENCY=3` | Parallel broker wait (place txs stay sequential) |
+| `E2E_PLACE_ALL_CRYPTO_EPOCHS=1` | Extra crypto time windows from `neighbors.upcoming` |
+| `E2E_PLACE_ALL_SEGMENTS=sport,crypto` | Segment filter |
+
+Full env matrix: [`../README.md`](../README.md#api-environments-postman-style).
+
+### Other staging probes
 
 ```bash
-E2E_PLACE_ALL_DRY_RUN=1 pnpm predict:place-all-markets   # scan only (browse?sort=trending, crypto+sport)
-E2E_PLACE_ALL_LIMIT=3 pnpm predict:place-all-markets     # first 3 markets (× 2 sides each)
-E2E_PLACE_ALL_ONE_SIDE=1 pnpm predict:place-all-markets    # first side only per market
-pnpm predict:place-all-markets                             # all tradeable (needs SUI_PRIVATE_KEY + keeper)
+pnpm predict:refund-probe              # unfillable priceCap → OrderCancelled + wxa refund
+pnpm predict:broker-matrix             # vary place inputs, observe API + chain outcomes
+E2E_BROKER_MATRIX_SCENARIOS=fillable-normal,tight-701 pnpm predict:broker-matrix
 ```
 
-### 4. Run a preset (recommended)
+### 4. Run a seed preset (recommended)
 
 ```bash
 pnpm seed:testnet                            # preset=baseline
@@ -88,14 +104,14 @@ pnpm test:e2e            # simulate (dry-run, public RPC OK, no secrets needed b
 pnpm test:integration    # sign + execute, opt-in (SUI_PRIVATE_KEY required)
 ```
 
-`discoverFixtures()` prefers `tests/fixtures/testnet-seeded.json` when present; otherwise it walks the registry cursors. Env vars like `E2E_ACCOUNT_ID` / `E2E_ORDER_ID` still override anything discovered.
+`discoverFixtures()` prefers `test/prediction/fixtures/testnet-seeded.json` when present; otherwise it walks the registry cursors. Env vars like `E2E_ACCOUNT_ID` / `E2E_ORDER_ID` still override anything discovered.
 
 ## List accounts (`list-accounts.ts`)
 
 **Developer CLI** — not run by Vitest or CI. Use when you need a registry `E2E_ACCOUNT_ID` after several `createAccount` runs:
 
 ```bash
-pnpm exec tsx scripts/list-accounts.ts 0xYourWalletAddress
+pnpm predict:list-accounts 0xYourWalletAddress
 ```
 
 Same data as SDK `getAccountIds(client, { owner })`.
