@@ -55,7 +55,11 @@ export interface BrokerMatrixScenario {
   priceCapMode: PriceCapMode;
   /** Override maxSpend base units; default from E2E_STAGING_BET_USD. */
   maxSpend?: string;
-  /** Shorter expiry to stress broker (ms). */
+  /** Absolute priceCapBps override — wins over priceCapMode (e.g. "0", "10001"). */
+  priceCapBpsOverride?: string;
+  /** Override minShares (default "1") — huge values make every broker fill abort EFillBelowMin. */
+  minShares?: string;
+  /** Shorter (or negative = already expired) expiry to stress broker (ms). */
   expiryMs?: number;
   /** Skip on-chain execute — API POST only. */
   apiOnly?: boolean;
@@ -76,7 +80,30 @@ export const DEFAULT_BROKER_MATRIX: BrokerMatrixScenario[] = [
     id: "api-reject-zero-cap",
     label: "priceCapBps=0 — API still builds tx (validate on chain)",
     priceCapMode: "fillable",
-    // custom cap injected in runner for this id
+    priceCapBpsOverride: "0",
+    expectOutcome: "cancelled",
+  },
+  {
+    id: "cap-over-10000",
+    label: "priceCapBps=10001 — chain EBadPriceCap(5); sponsored dry-run rejects at POST",
+    priceCapMode: "fillable",
+    priceCapBpsOverride: "10001",
+    apiOnly: true,
+    expectOutcome: "api-reject",
+  },
+  {
+    id: "expired-expiry",
+    label: "expiryTs in the past — chain EBadExpiry(8); sponsored dry-run rejects at POST",
+    priceCapMode: "fillable",
+    expiryMs: -60_000,
+    apiOnly: true,
+    expectOutcome: "api-reject",
+  },
+  {
+    id: "min-shares-unfillable",
+    label: "minShares=u64 max with fillable cap — every fill aborts EFillBelowMin(7); broker must cancel+refund",
+    priceCapMode: "fillable",
+    minShares: "18446744073709551615",
     expectOutcome: "cancelled",
   },
   {
@@ -203,14 +230,13 @@ async function runScenario(
   const maxSpend = scenario.maxSpend ?? readStagingMaxSpend();
   const odds = oddsNumber(market.target.side);
   const quoteBps = Math.round(odds * 100);
-  let priceCapBps = resolvePriceCapBps(scenario.priceCapMode, odds);
-  if (scenario.id === "api-reject-zero-cap") {
-    priceCapBps = "0";
-  }
+  const priceCapBps =
+    scenario.priceCapBpsOverride ?? resolvePriceCapBps(scenario.priceCapMode, odds);
 
   const body = buildPlaceBetRequest(placeCredentials(ctx), market.target.side, {
     ...readBrokerFriendlyPlaceOptions({ maxSpend }),
     priceCapBps,
+    minShares: scenario.minShares,
     expiryMs: scenario.expiryMs,
   });
 

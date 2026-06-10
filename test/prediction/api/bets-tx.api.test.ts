@@ -58,6 +58,79 @@ describe("predict bets tx-build API (phase 2)", () => {
     }
   });
 
+  // Shape-valid body that passes the DTO — per-test overrides probe one
+  // validation hole at a time. accountId/marketId are dummies: every case
+  // below must be rejected before any chain lookup happens.
+  const VALID_PLACE_BODY = {
+    accountId: "0xacc0000000000000000000000000000000000000000000000000000000000001",
+    sender: "0x0000000000000000000000000000000000000000000000000000000000000001",
+    marketId: `0x${"c".repeat(64)}`,
+    selection: "YES",
+    maxSpend: "1110000",
+    minShares: "1",
+    priceCapBps: "6001",
+    expiryTs: String(Date.now() + 3_600_000),
+  };
+
+  it("POST /predict/bets/place rejects the SDK-only receiverAccountId field (forbidNonWhitelisted)", async (ctx: TestContext) => {
+    skipIfNoApiEnv(ctx, env);
+    try {
+      // Security pin: bet-sharing receiver must never be reachable through the
+      // public API — the global pipe rejects unknown fields with 400.
+      const { status, envelope } = await apiPost(env!, "/predict/bets/place", {
+        ...VALID_PLACE_BODY,
+        receiverAccountId: `0x${"d".repeat(64)}`,
+      });
+      expect(status).toBe(400);
+      expect(envelope).toEqual(expect.objectContaining({ success: false }));
+    } catch (err) {
+      skipIfUnreachable(ctx, err, env!.baseUrl);
+      throw err;
+    }
+  });
+
+  it.for([
+    ["negative maxSpend", { maxSpend: "-1" }],
+    ["decimal maxSpend", { maxSpend: "1.5" }],
+    ["non-numeric minShares", { minShares: "abc" }],
+    ["selection outside YES/NO", { selection: "MAYBE" }],
+  ] as const)(
+    "POST /predict/bets/place rejects %s (400)",
+    async ([, overrides], ctx: TestContext) => {
+      skipIfNoApiEnv(ctx, env);
+      try {
+        const { status, envelope } = await apiPost(env!, "/predict/bets/place", {
+          ...VALID_PLACE_BODY,
+          ...overrides,
+        });
+        expect(status).toBe(400);
+        expect(envelope).toEqual(expect.objectContaining({ success: false }));
+      } catch (err) {
+        skipIfUnreachable(ctx, err, env!.baseUrl);
+        throw err;
+      }
+    },
+  );
+
+  it("POST /predict/bets/place never returns txBytes for a u64-overflow maxSpend", async (ctx: TestContext) => {
+    skipIfNoApiEnv(ctx, env);
+    try {
+      // `@IsNumberString` passes any digit string, so u64 max + 1 reaches the
+      // SDK inside the service, which throws "exceeds u64 max". We only pin
+      // "no txBytes": today this surfaces as a 500 (no DTO upper bound).
+      const { status, envelope } = await apiPost<{ txBytes?: string }>(
+        env!,
+        "/predict/bets/place",
+        { ...VALID_PLACE_BODY, maxSpend: "18446744073709551616" },
+      );
+      expect(status).toBeGreaterThanOrEqual(400);
+      expect(envelope.success).toBe(false);
+    } catch (err) {
+      skipIfUnreachable(ctx, err, env!.baseUrl);
+      throw err;
+    }
+  });
+
   it("POST /predict/bets/place catalog closed loop (staging tx-build smoke)", async (ctx: TestContext) => {
     if (!hasTxBuildSmokeEnabled()) {
       ctx.skip(
