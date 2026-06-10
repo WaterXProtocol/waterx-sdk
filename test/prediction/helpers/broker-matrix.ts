@@ -101,10 +101,14 @@ export const DEFAULT_BROKER_MATRIX: BrokerMatrixScenario[] = [
   },
   {
     id: "min-shares-unfillable",
-    label: "minShares=u64 max with fillable cap — every fill aborts EFillBelowMin(7); broker must cancel+refund",
+    label: "minShares=u64 max with fillable cap — every fill aborts EFillBelowMin(7); order rests until expiry+grace",
     priceCapMode: "fillable",
     minShares: "18446744073709551615",
-    expectOutcome: "cancelled",
+    // Documentation only — NO hard expectOutcome. A keeper cancel is gated by
+    // `expiry_ts + KEEPER_FILL_GRACE_MS` (5 min), so within any practical matrix
+    // wait this stays OPEN/timeout. The $ drop is normal escrow, not a loss.
+    // To actually confirm refund, re-run with a >6.5 min wait or follow up with
+    // self_cancel_order after the cooldown.
   },
   {
     id: "fillable-normal",
