@@ -81,6 +81,50 @@ export interface BrokerFriendlyPlaceOptions {
  * Staging catalog place options (`maxSpend` + short expiry).
  * `priceCapBps` comes from catalog odds unless `E2E_PLACE_PRICE_CAP_BPS` is set.
  */
+const DEFAULT_STRESS_BET_START_USD = 1.01;
+const DEFAULT_STRESS_BET_STEP_USD = 0.01;
+
+function parseStressBetUsdList(): number[] | undefined {
+  const raw = optionalEnv("E2E_STRESS_BET_USDS")?.trim();
+  if (!raw) return undefined;
+  return raw.split(",").map((part, i) => parsePositiveUsd(part.trim(), `E2E_STRESS_BET_USDS[${i}]`));
+}
+
+function readStressBetStartUsd(): number {
+  const raw = optionalEnv("E2E_STRESS_BET_START_USD");
+  return raw ? parsePositiveUsd(raw, "E2E_STRESS_BET_START_USD") : DEFAULT_STRESS_BET_START_USD;
+}
+
+function readStressBetStepUsd(): number {
+  const raw = optionalEnv("E2E_STRESS_BET_STEP_USD");
+  return raw ? parsePositiveUsd(raw, "E2E_STRESS_BET_STEP_USD") : DEFAULT_STRESS_BET_STEP_USD;
+}
+
+/**
+ * Per-wallet stake for `pnpm predict:place-stress`.
+ * Priority: entry `betUsd` → `E2E_STRESS_BET_USDS` → `E2E_STAGING_BET_USD` → start + index×step
+ * (default start **1.01**, step **0.01** → wallet 1 = $1.01, wallet 2 = $1.02, …).
+ */
+export function resolveStressBetUsd(walletIndex: number, entryBetUsd?: number): number {
+  if (entryBetUsd != null && Number.isFinite(entryBetUsd) && entryBetUsd > 0) {
+    return entryBetUsd;
+  }
+  const list = parseStressBetUsdList();
+  if (list && list[walletIndex] != null) {
+    return list[walletIndex]!;
+  }
+  const stagingOverride = optionalEnv("E2E_STAGING_BET_USD");
+  if (stagingOverride) {
+    return parsePositiveUsd(stagingOverride, "E2E_STAGING_BET_USD");
+  }
+  const idx = Math.max(0, Math.trunc(walletIndex));
+  return Math.round((readStressBetStartUsd() + idx * readStressBetStepUsd()) * 100) / 100;
+}
+
+export function resolveStressMaxSpend(walletIndex: number, entryBetUsd?: number): string {
+  return usdToSettlementBaseStr(resolveStressBetUsd(walletIndex, entryBetUsd));
+}
+
 export function readBrokerFriendlyPlaceOptions(overrides?: {
   maxSpend?: string;
 }): BrokerFriendlyPlaceOptions {

@@ -19,5 +19,6 @@ test-results*.xml
 query-output/
 simulate-dumps/
 test/prediction/fixtures/testnet-seeded.json
+test/prediction/fixtures/stress-wallets.json
 docs/
 waterx-contracts/

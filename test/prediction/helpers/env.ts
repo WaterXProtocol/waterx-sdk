@@ -106,6 +106,11 @@ function keypairFromEnvSecret(raw: string): Ed25519Keypair {
 export function loadSigner(): Ed25519Keypair {
   const raw = ownerSecretEnv();
   if (!raw) throw new Error("SUI_PRIVATE_KEY (or WATERX_INTEGRATION_PRIVATE_KEY) is not set");
+  return loadSignerFromSecret(raw);
+}
+
+/** Load an Ed25519 keypair from an explicit secret (multi-wallet stress scripts). */
+export function loadSignerFromSecret(raw: string): Ed25519Keypair {
   return keypairFromEnvSecret(raw);
 }
 
