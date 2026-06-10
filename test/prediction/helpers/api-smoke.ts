@@ -7,6 +7,7 @@ import {
   skipIfNoBetsWallet,
   withBetsAddress,
 } from "./api-bets-path.ts";
+import { listCatalogSlugCandidates } from "./api-catalog-pure.ts";
 import { apiFetch, apiGet, assertSuccessEnvelope } from "./api-client.ts";
 import {
   assertBetDetail,
@@ -60,10 +61,6 @@ export interface DiscoverCatalogContextOptions {
   segment?: MarketSegment;
   /** Prefer live/open rounds when probing multiple feed items (e.g. crypto epoch smoke). */
   preferActiveRound?: boolean;
-}
-
-interface FeedDataWire {
-  items: FeedBrowseItemWire[];
 }
 
 /** HTTP 200 + envelope + feed/browse list contract. */
@@ -274,51 +271,35 @@ export async function fetchReachableBetDetail(
 }
 
 /**
- * First feed item whose detail endpoint returns HTTP 200.
- * Falls back to unfiltered feed when `?type=` returns no reachable slug.
+ * First browse/feed item whose detail endpoint returns HTTP 200.
+ * Scans `/predict/feed` and `/predict/browse` (same sources as journey / place-all).
  */
 export async function discoverCatalogContext(
   env: ApiEnvironment,
   options: DiscoverCatalogContextOptions = {},
 ): Promise<CatalogContext | null> {
-  const paths =
-    options.segment === "politics"
-      ? ["/predict/feed?limit=50"]
-      : options.segment
-        ? [`/predict/feed?type=${options.segment}&limit=50`, "/predict/feed?limit=50"]
-        : ["/predict/feed?limit=50"];
+  const segments = options.segment
+    ? ([options.segment] as const)
+    : (["crypto", "sport", "politics"] as const);
+  const candidates = await listCatalogSlugCandidates(env, {
+    segments,
+    limit: 50,
+    includeBrowse: true,
+    includeFeed: true,
+  });
 
-  for (const feedPath of paths) {
-    const { envelope } = await apiGet<FeedDataWire>(env, feedPath);
-    assertSuccessEnvelope(envelope);
-
-    const candidates = envelope.data.items
-      .map((item) => {
-        const slug = item.market?.slug;
-        if (!slug) return null;
-        const segment = segmentFromFeedItem(item);
-        if (!segment) return null;
-        if (options.segment && segment !== options.segment) return null;
-        return { item, slug, segment };
-      })
-      .filter(
-        (row): row is { item: FeedBrowseItemWire; slug: string; segment: MarketSegment } =>
-          row !== null,
-      );
-
-    if (options.preferActiveRound) {
-      candidates.sort((a, b) => {
+  const rows = options.preferActiveRound
+    ? [...candidates].sort((a, b) => {
         const aActive = ACTIVE_ROUND_PHASES.has(normalizePhase(a.item.round?.phase)) ? 0 : 1;
         const bActive = ACTIVE_ROUND_PHASES.has(normalizePhase(b.item.round?.phase)) ? 0 : 1;
         return aActive - bActive;
-      });
-    }
+      })
+    : candidates;
 
-    for (const { item, slug, segment } of candidates) {
-      const { status } = await apiFetch(env, marketDetailPath(segment, slug));
-      if (status !== 200) continue;
-      return feedItemToContext(item, segment, slug);
-    }
+  for (const { item, slug, segment } of rows) {
+    const { status } = await apiFetch(env, marketDetailPath(segment, slug));
+    if (status !== 200) continue;
+    return feedItemToContext(item, segment, slug);
   }
   return null;
 }
@@ -385,7 +366,7 @@ export async function discoverReachablePoliticsSlug(env: ApiEnvironment): Promis
 }
 
 /**
- * Probe feed for `item.event.slug` or env `E2E_PREDICT_EVENT_SLUG`, then verify HTTP 200.
+ * Probe browse/feed for `item.event.slug` or env `E2E_PREDICT_EVENT_SLUG`, then verify HTTP 200.
  */
 export async function discoverReachableEventSlug(env: ApiEnvironment): Promise<string | null> {
   const override = process.env.E2E_PREDICT_EVENT_SLUG?.trim();
@@ -394,10 +375,14 @@ export async function discoverReachableEventSlug(env: ApiEnvironment): Promise<s
     if (status === 200) return override;
   }
 
-  const { envelope } = await apiGet<FeedDataWire>(env, "/predict/feed?limit=50");
-  assertSuccessEnvelope(envelope);
+  const candidates = await listCatalogSlugCandidates(env, {
+    segments: ["crypto", "sport", "politics"],
+    limit: 50,
+    includeBrowse: true,
+    includeFeed: true,
+  });
   const seen = new Set<string>();
-  for (const item of envelope.data.items) {
+  for (const { item } of candidates) {
     const slug = item.event?.slug;
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);

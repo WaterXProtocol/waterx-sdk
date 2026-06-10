@@ -1,20 +1,19 @@
 /**
- * Catalog → tx-build closed loop (Bruno: feed/detail trade fields → POST /predict/bets/place).
+ * Catalog → tx-build closed loop (feed → detail trade fields → POST /predict/bets/place).
  * Backend dry-runs `waterx_prediction::place_order` before returning `txBytes`.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { resolveBetsWalletAddress } from "./api-bets-path.ts";
 import { listCatalogSlugCandidates, oddsCentsToPriceCapBps } from "./api-catalog-pure.ts";
 import { decodeJwtWallet } from "./api-chain-field-audit.ts";
 import { apiGet, apiPost, type ApiEnvelope } from "./api-client.ts";
 import {
   assertTxBuildResponse,
-  inferMarketSegmentFromSlug,
   roundLifecycle,
   type BetSideWire,
   type FeedBrowseItemWire,
-  type FeedBrowseListData,
   type MarketDetailData,
   type RoundWire,
   type TxBuildResponseData,
@@ -63,9 +62,17 @@ export interface CatalogPlaceTarget {
   detail: MarketDetailData;
 }
 
+/** Staging API smoke runs tx-build by default; set `E2E_API_TX_BUILD=0` to opt out. */
 export function hasTxBuildSmokeEnabled(): boolean {
   const v = optionalEnv("E2E_API_TX_BUILD");
-  return v === "1" || v === "true";
+  if (v === "0" || v === "false") return false;
+  if (v === "1" || v === "true") return true;
+  return (optionalEnv("E2E_API_ENV") ?? "staging") === "staging";
+}
+
+function seedWalletOwner(seed: { owner?: string } | undefined): string | undefined {
+  const owner = seed?.owner?.trim();
+  return owner && owner.startsWith("0x") ? owner : undefined;
 }
 
 /** Registry account + wallet sender for POST /predict/bets/place. */
@@ -77,7 +84,8 @@ export function resolvePlaceBetCredentials(env: ApiEnvironment): PlaceBetCredent
   const sender =
     optionalEnv("E2E_API_PLACE_SENDER") ??
     optionalEnv("E2E_ACCOUNT_OWNER") ??
-    seed?.owner ??
+    seedWalletOwner(seed) ??
+    resolveBetsWalletAddress(env) ??
     (env.jwt ? decodeJwtWallet(env.jwt) : undefined);
   if (!accountId || !sender) return null;
   if (!accountId.startsWith("0x") || !sender.startsWith("0x")) return null;
@@ -150,26 +158,6 @@ export type CatalogPlaceTxBuildHit = {
   envelope: ApiEnvelope<TxBuildResponseData>;
 };
 
-const FEED_ACTIVE_PHASES = new Set(["LIVE", "OPEN", "UPCOMING", "SCHEDULED"]);
-
-function normalizeFeedPhase(item: FeedBrowseItemWire): string {
-  const raw =
-    item.round?.phase ?? item.round?.status ?? item.nextRound?.phase ?? item.nextRound?.status;
-  return (raw ?? "").trim().toUpperCase().replace(/-/g, "_");
-}
-
-function segmentFromFeedItem(item: FeedBrowseItemWire, fallback: MarketSegment): MarketSegment {
-  const slug = item.market?.slug;
-  if (slug) {
-    const fromSlug = inferMarketSegmentFromSlug(slug);
-    if (fromSlug) return fromSlug;
-  }
-  const kind = (item.market?.display?.kind ?? item.market?.type ?? "").toLowerCase();
-  if (kind.includes("sport")) return "sport";
-  if (kind.includes("crypto")) return "crypto";
-  return fallback;
-}
-
 function feedItemToCatalogContext(
   item: FeedBrowseItemWire,
   segment: MarketSegment,
@@ -209,6 +197,8 @@ export async function listTradeableCatalogMarkets(
     segments?: readonly MarketSegment[];
     limit?: number;
     includeBrowse?: boolean;
+    includeFeed?: boolean;
+    browseSort?: string;
     failures?: CatalogPlaceFailure[];
   },
 ): Promise<TradeableCatalogMarket[]> {
@@ -245,21 +235,9 @@ export async function listTradeableCatalogMarkets(
   return tradeable;
 }
 
-async function listSegmentFeedCandidates(
-  env: ApiEnvironment,
-  segment: MarketSegment,
-): Promise<FeedBrowseItemWire[]> {
-  const candidates = await listCatalogSlugCandidates(env, {
-    segments: [segment],
-    limit: 50,
-    includeBrowse: false,
-  });
-  return candidates.map((c) => c.item);
-}
-
 /**
- * Probe feed segments for a catalog row whose detail exposes a fillable `trade` side,
- * then POST /predict/bets/place. Tries every reachable slug (not only the first).
+ * Scan GET /predict/feed for tradeable catalog rows, then POST /predict/bets/place.
+ * Tries every reachable slug (not only the first).
  */
 export async function tryCatalogPlaceTxBuild(
   env: ApiEnvironment,
@@ -268,66 +246,43 @@ export async function tryCatalogPlaceTxBuild(
 ): Promise<CatalogPlaceTxBuildHit | null> {
   const failures = options?.failures ?? [];
 
-  for (const segment of ["crypto", "sport"] as const) {
-    const items = await listSegmentFeedCandidates(env, segment);
-    if (items.length === 0) {
-      failures.push({ segment, marketSlug: "(feed)", reason: "no feed items for segment" });
-      continue;
+  const markets = await listTradeableCatalogMarkets(env, {
+    segments: ["crypto", "sport"],
+    limit: 200,
+    includeBrowse: false,
+    includeFeed: true,
+    failures,
+  });
+
+  if (markets.length === 0 && failures.length === 0) {
+    failures.push({
+      segment: "crypto",
+      marketSlug: "(feed)",
+      reason: "no slugs from /predict/feed",
+    });
+  }
+
+  for (const { target, segment, marketSlug } of markets) {
+    const body = buildPlaceBetRequest(
+      creds,
+      target.side,
+      readBrokerFriendlyPlaceOptions({
+        maxSpend: options?.maxSpend ?? readStagingMaxSpend(),
+      }),
+    );
+    const { status, envelope } = await apiPost<TxBuildResponseData>(
+      env,
+      "/predict/bets/place",
+      body,
+    );
+    if (status >= 200 && status < 300 && envelope.success) {
+      return { target, body, status, envelope };
     }
-
-    for (const item of items) {
-      const slug = item.market!.slug!;
-      const catalog = feedItemToCatalogContext(item, segment, slug);
-      const detailPath = marketDetailPath(segment, slug);
-      const { status: detailStatus, envelope: detailEnvelope } = await apiGet<MarketDetailData>(
-        env,
-        detailPath,
-      );
-      if (detailStatus !== 200 || !detailEnvelope.success) {
-        failures.push({
-          segment,
-          marketSlug: slug,
-          reason: `detail HTTP ${detailStatus}`,
-        });
-        continue;
-      }
-
-      const side = pickTradeableSide(detailEnvelope.data);
-      if (!side) {
-        failures.push({
-          segment,
-          marketSlug: slug,
-          reason: "detail has no tradeable side (missing trade / odds / inactive round)",
-        });
-        continue;
-      }
-
-      const body = buildPlaceBetRequest(
-        creds,
-        side,
-        readBrokerFriendlyPlaceOptions({
-          maxSpend: options?.maxSpend ?? readStagingMaxSpend(),
-        }),
-      );
-      const { status, envelope } = await apiPost<TxBuildResponseData>(
-        env,
-        "/predict/bets/place",
-        body,
-      );
-      if (status >= 200 && status < 300 && envelope.success) {
-        return {
-          target: { catalog, side, detail: detailEnvelope.data },
-          body,
-          status,
-          envelope,
-        };
-      }
-      failures.push({
-        segment,
-        marketSlug: slug,
-        reason: formatPlaceError(status, envelope),
-      });
-    }
+    failures.push({
+      segment,
+      marketSlug,
+      reason: formatPlaceError(status, envelope),
+    });
   }
   return null;
 }

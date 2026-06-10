@@ -20,6 +20,10 @@ import {
   assertTxBuildResponse,
   betListIncludesOrderId,
   betListIncludesPositionId,
+  betWireAwaitingBrokerFill,
+  betWireAwaitingBrokerFill,
+  betWireBrokerFilled,
+  betWireBrokerFilled,
   findBetForChainFixture,
   inferMarketSegmentFromSlug,
   parseQueryLimit,
@@ -90,6 +94,16 @@ describe("api-contract shape assertions", () => {
     const bets = [{ positionId: "332" }];
     const hit = findBetForChainFixture(bets, { orderId: 332n, positionId: 126n });
     expect(hit?.positionId).toBe("332");
+  });
+
+  it("betWire lifecycle helpers distinguish pending vs filled", () => {
+    expect(
+      betWireAwaitingBrokerFill({ outcome: "pending", submissionState: "submitting", shares: 0 }),
+    ).toBe(true);
+    expect(betWireBrokerFilled({ outcome: "pending", submissionState: "confirmed" })).toBe(true);
+    expect(betWireAwaitingBrokerFill({ outcome: "pending", submissionState: "confirmed" })).toBe(
+      false,
+    );
   });
 
   it("assertBetsSummary", () => {

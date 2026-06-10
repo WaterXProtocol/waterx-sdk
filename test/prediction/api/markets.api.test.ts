@@ -57,23 +57,25 @@ describe("predict market detail API — shape (phase 2)", () => {
     }
   });
 
-  it("GET /predict/markets/politics/:slug", async (ctx) => {
-    skipIfNoApiEnv(ctx, env);
-    try {
-      const slug = await discoverReachablePoliticsSlug(env!);
-      if (!slug) {
-        ctx.skip(
-          true,
-          "no politics- slug from feed returned HTTP 200 on /predict/markets/politics/:slug",
-        );
-        return;
+  if (process.env.E2E_API_CATALOG_POLITICS === "1") {
+    it("GET /predict/markets/politics/:slug", async (ctx) => {
+      skipIfNoApiEnv(ctx, env);
+      try {
+        const slug = await discoverReachablePoliticsSlug(env!);
+        if (!slug) {
+          ctx.skip(
+            true,
+            "politics catalog not deployed on this host (browse+feed have no politics- slugs)",
+          );
+          return;
+        }
+        await fetchReachableDetail(ctx, env, marketDetailPath("politics", slug), slug);
+      } catch (err) {
+        skipIfUnreachable(ctx, err, env.baseUrl);
+        throw err;
       }
-      await fetchReachableDetail(ctx, env, marketDetailPath("politics", slug), slug);
-    } catch (err) {
-      skipIfUnreachable(ctx, err, env.baseUrl);
-      throw err;
-    }
-  });
+    });
+  }
 
   it("GET /predict/markets/crypto/:slug?epoch=<round.startsAt> when available", async (ctx) => {
     skipIfNoApiEnv(ctx, env);

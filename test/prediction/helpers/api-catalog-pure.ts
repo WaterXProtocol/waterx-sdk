@@ -274,6 +274,11 @@ export function catalogListPaths(
 ): string[] {
   const includeBrowse = options?.includeBrowse ?? true;
   const includeFeed = options?.includeFeed ?? false;
+  if (!includeBrowse && !includeFeed) {
+    throw new Error(
+      "catalogListPaths: includeBrowse and includeFeed are both false — no list endpoints to scan",
+    );
+  }
   const browseSort = options?.browseSort ?? DEFAULT_CATALOG_BROWSE_SORT;
   const paths = new Set<string>();
 

@@ -18,8 +18,8 @@ describe("predict events API — response shape (phase 2)", () => {
       if (!slug) {
         ctx.skip(
           true,
-          "no reachable event slug — feed wire has no event.slug (sport-match is market-level); " +
-            "set E2E_PREDICT_EVENT_SLUG or deploy event catalog on this host",
+          "events catalog not deployed on this host (browse+feed have no event.slug); " +
+            "set E2E_PREDICT_EVENT_SLUG to probe a known slug",
         );
         return;
       }

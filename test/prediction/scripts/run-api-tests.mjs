@@ -58,6 +58,10 @@ const env = {
 if (report) {
   env.E2E_API_REPORT = report;
 }
+// Staging smoke: catalog → POST place txBytes unless explicitly disabled.
+if (envName === "staging" && env.E2E_API_TX_BUILD === undefined) {
+  env.E2E_API_TX_BUILD = "1";
+}
 
 const vitestArgs = ["exec", "vitest", "run", "--project", "predict-api", "--reporter=verbose"];
 

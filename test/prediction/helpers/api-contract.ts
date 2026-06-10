@@ -8,7 +8,10 @@ export {
   betListIncludesOrderId,
   betListIncludesPositionId,
   betOrderId,
+  betWireAwaitingBrokerFill,
+  betWireBrokerFilled,
   betWireId,
+  betWireShares,
   findBetForChainFixture,
 } from "./api-wire.ts";
 

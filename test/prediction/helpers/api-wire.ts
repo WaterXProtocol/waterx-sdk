@@ -47,6 +47,29 @@ export function betListIncludesOrderId(bets: BetWire[], orderId: string | bigint
   return bets.some((b) => betOrderId(b) === want);
 }
 
+/** Resting order on book — broker has not filled yet (`order-state` rule 9). */
+export function betWireAwaitingBrokerFill(bet: BetWire): boolean {
+  if (bet.submissionState === "submitting") return true;
+  return (
+    bet.outcome === "pending" && betWireShares(bet) === 0 && bet.submissionState !== "confirmed"
+  );
+}
+
+/**
+ * Broker/keeper filled — `order-state` rule 8/9: resting `submitting` → `confirmed` + `outcome: pending`.
+ * Wire `Bet` has no `shares` field (only `stake`); do not gate on `shares`.
+ */
+export function betWireBrokerFilled(bet: BetWire): boolean {
+  return bet.submissionState === "confirmed" && bet.outcome === "pending";
+}
+
+export function betWireShares(bet: BetWire): number {
+  const raw = bet.shares;
+  if (raw === undefined) return 0;
+  const n = typeof raw === "string" ? Number(raw) : raw;
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function betListIncludesPositionId(bets: BetWire[], positionId: string | bigint): boolean {
   const want = String(positionId);
   return bets.some((b) => {

@@ -13,7 +13,7 @@ Run from the repo root.
 | `pnpm test:api:staging` | Same against `api/environments/staging.json` |
 | `pnpm test:integration:predict:crosscheck` | **Catalog** place + fill → poll `bets/me` → **hard** OrderFilled ↔ API; skips on indexer lag only |
 | `E2E_HEADLESS_BET=1 pnpm test:integration:predict:headless` | **Full product loop**: catalog → `POST place` → sign `txBytes` → broker/keeper fill → `bets/me` |
-| `pnpm test:integration:predict:journey` | User flow: API + **all PTBs simulate** (no keeper key); needs `pnpm seed:testnet`. On bypass testnet, `fillOrder` step is skipped when only `openPositionId` exists. |
+| `pnpm test:integration:predict:journey` | User flow: API + **all PTBs simulate** + **catalog place → bets/me pending→filled** (same contract as `place-all-markets`); needs `pnpm seed:testnet` + `SUI_PRIVATE_KEY` + staging API. |
 | `pnpm diagnose:bets-api` | **Debug only** — print chain fixtures vs `GET /predict/bets/me` field matrix (`E2E_API_ADDRESS` or JWT; not a CI gate) |
 | `pnpm predict:place-all-markets` | **Staging script** — scan browse, place + fill **$1.11** on **every tradeable side** (both sides per market by default) |
 | `pnpm predict:place-dry-run` | Same scan as above, **no txs** (`E2E_PLACE_ALL_DRY_RUN=1`) |
@@ -170,7 +170,7 @@ Switch targets via JSON environment file + env var overrides:
 | `E2E_PLACE_ALL_FEED_LIMIT` | Browse/feed page size (default **500**) |
 | `E2E_PLACE_ALL_CRYPTO_EPOCHS` | `1` — include crypto upcoming windows (`?epoch=<endsAt>`) |
 | `E2E_PLACE_ALL_CRYPTO_EPOCH_LIMIT` | Max upcoming windows per crypto slug (default **3**) |
-| `E2E_API_TX_BUILD` | `1` — catalog → `POST /predict/bets/place` → `txBytes` closed loop |
+| `E2E_API_TX_BUILD` | Staging API smoke enables tx-build by default; set `0` to opt out. `1` — catalog → `POST /predict/bets/place` → `txBytes` closed loop |
 | `E2E_API_PLACE_ACCOUNT_ID` | wxa registry `accountId` for place tx-build (fallback: `E2E_ACCOUNT_ID`) |
 | `E2E_API_PLACE_SENDER` | wallet `sender` for place tx-build (fallback: `E2E_ACCOUNT_OWNER` / JWT `suiAddress`) |
 

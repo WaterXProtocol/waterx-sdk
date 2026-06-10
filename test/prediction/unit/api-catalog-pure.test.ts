@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   catalogBetKey,
+  catalogListPaths,
   collectCryptoExtraEpochs,
   cryptoEpochEndsAt,
   limitCatalogBetsByMarket,
@@ -35,6 +36,15 @@ const LIVE_ROUND_DETAIL: MarketDetailData = {
 };
 
 describe("api-catalog-pure", () => {
+  it("catalogListPaths requires browse or feed", () => {
+    expect(() =>
+      catalogListPaths(["crypto", "sport"], 50, { includeBrowse: false, includeFeed: false }),
+    ).toThrow(/includeBrowse and includeFeed are both false/);
+    expect(catalogListPaths(["crypto"], 50, { includeBrowse: false, includeFeed: true })).toEqual(
+      expect.arrayContaining(["/predict/feed?limit=50", "/predict/feed?type=crypto&limit=50"]),
+    );
+  });
+
   it("pickTradeableSides returns all tradeable legs", () => {
     const sides = pickTradeableSides(LIVE_ROUND_DETAIL);
     expect(sides.map((s) => s.key)).toEqual(["up", "down"]);

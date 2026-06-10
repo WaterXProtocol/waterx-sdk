@@ -10,7 +10,7 @@ import type { PredictClient } from "~predict/client.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { EVENT_CONTRACT } from "../contract/event-fields.ts";
-import { resolveBetsWalletAddress } from "../helpers/api-bets-path.ts";
+import { limitCatalogBetsByMarket, listTradeableCatalogBets } from "../helpers/api-catalog-pure.ts";
 import { apiGet, assertSuccessEnvelope, isApiUnreachableError } from "../helpers/api-client.ts";
 import type { MarketDetailData, QuotesData } from "../helpers/api-contract.ts";
 import {
@@ -27,12 +27,9 @@ import {
 } from "../helpers/api-tx-build.ts";
 import { createE2eClient, discoverFixtures, type E2eFixtures } from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
-import {
-  fetchBetsSummary,
-  pollBetsMeForChainFixture,
-  resolveIntegrationApiEnv,
-  skipIntegrationApiBets,
-} from "../helpers/integration-api.ts";
+import { hasWriteCredentials } from "../helpers/env.ts";
+import { resolveIntegrationApiEnv, skipIntegrationApiBets } from "../helpers/integration-api.ts";
+import { setupIntegration } from "../helpers/integration-setup.ts";
 import {
   likelyBypassFilledFixtures,
   simulateConfirmClose,
@@ -44,8 +41,6 @@ import {
 } from "../helpers/integration-user-journey.ts";
 import {
   assertAccountIdShape,
-  assertBetsMeContainsFixture,
-  assertBetsSummaryLiveCount,
   assertCatalogApiChain,
   assertCatalogBrowseAndDetail,
   loadAndAssertBettingMarket,
@@ -53,8 +48,8 @@ import {
   loadAndAssertOpenPosition,
   loadAndAssertPendingClosePosition,
 } from "../helpers/journey-assertions.ts";
+import { assertCatalogBetsMePendingThenFilled } from "../helpers/journey-bets-me-lifecycle.ts";
 import {
-  assertBetWireMatchesChainEvent,
   assertCloseConfirmedEventOnChain,
   assertCloseRequestedEventOnChain,
   assertOrderFilledEventOnChain,
@@ -350,68 +345,43 @@ describe("Integration automation: user betting journey", () => {
     void fillEvent;
   }, 120_000);
 
-  it("API: bets/me and summary match seeded chain ids", async (testCtx) => {
-    const wallet =
-      resolveBetsWalletAddress(apiEnv, journey?.ownerAddress) ??
-      (await guard.skipUnlessAccountOwner(testCtx));
+  it("API: catalog place → bets/me pending → filled", async (testCtx) => {
+    if (!apiEnv) {
+      testCtx.skip(true, "E2E_API_ENV / baseUrl not configured");
+      return;
+    }
+    if (!hasWriteCredentials()) {
+      testCtx.skip(true, "SUI_PRIVATE_KEY required for catalog place → bets/me lifecycle");
+      return;
+    }
+
+    const intCtx = await setupIntegration();
+    const wallet = intCtx.ownerAddress;
     skipIntegrationApiBets(testCtx, apiEnv, wallet);
 
+    const catalogBets = await listTradeableCatalogBets(apiEnv, {
+      segments: ["crypto", "sport"],
+      limit: 200,
+      includeFeed: true,
+      bothSides: false,
+    });
+    const market = limitCatalogBetsByMarket(catalogBets, 1)[0];
+    if (!market) {
+      testCtx.skip(true, "no tradeable catalog market for place → bets/me lifecycle");
+      return;
+    }
+
     try {
-      const summary = await fetchBetsSummary(testCtx, apiEnv, "", wallet);
-      assertBetsSummaryLiveCount(summary);
-
-      const orderId = openOrderId();
-      const posId = openPositionId();
-      if (orderId === undefined && posId === undefined) {
-        testCtx.skip(true, "no orderId or positionId to assert in bets/me");
-        return;
-      }
-
-      const polled = await pollBetsMeForChainFixture(
+      const outcome = await assertCatalogBetsMePendingThenFilled(
         testCtx,
+        intCtx,
         apiEnv,
-        {
-          ...(orderId !== undefined ? { orderId } : {}),
-          ...(posId !== undefined ? { positionId: posId } : {}),
-        },
-        { timeoutMs: 60_000, wallet },
+        market,
+        wallet,
       );
-      if (!polled) {
-        testCtx.skip(
-          true,
-          `GET /predict/bets/me returned no rows for wallet ${wallet} — API may resolve bets by wallet, ` +
-            `while chain fixtures use registry accountId ${fx.accountId} (bypass testnet). ` +
-            `Chain + event assertions already passed.`,
-        );
-        return;
-      }
-
-      assertBetsMeContainsFixture(polled.data, {
-        ...(orderId !== undefined ? { orderId } : {}),
-        ...(posId !== undefined ? { positionId: posId } : {}),
-      });
-      const bet = polled.bet;
-
-      if (orderId !== undefined) {
-        try {
-          const { event } = await assertOrderPlacedEventOnChain(client, orderId);
-          assertBetWireMatchesChainEvent(bet, event, { orderId });
-        } catch {
-          /* OrderPlaced may be absent on bypass; bets row can still be position-scoped */
-        }
-      }
-      if (posId !== undefined) {
-        try {
-          const { event } = await assertOrderFilledEventOnChain(
-            client,
-            posId,
-            bypassFill() ? undefined : orderId,
-          );
-          assertBetWireMatchesChainEvent(bet, event, { positionId: posId });
-        } catch {
-          /* indexer/event optional when API row exists */
-        }
-      }
+      expect(outcome.orderId).toBeGreaterThanOrEqual(0n);
+      expect(outcome.positionId).toBeGreaterThanOrEqual(0n);
+      expect(outcome.bet.submissionState).toBe("confirmed");
     } catch (err) {
       if (isApiUnreachableError(err)) {
         testCtx.skip(true, `predict API unreachable at ${apiEnv.baseUrl}`);
@@ -419,5 +389,5 @@ describe("Integration automation: user betting journey", () => {
       }
       throw err;
     }
-  });
+  }, 180_000);
 });

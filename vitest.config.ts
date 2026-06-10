@@ -286,7 +286,14 @@ export default defineConfig({
           name: "predict-api",
           include: ["test/prediction/api/**/*.api.test.ts"],
           environment: "node",
-          exclude: ["**/node_modules/**", "**/dist/**"],
+          exclude: [
+            "**/node_modules/**",
+            "**/dist/**",
+            ...(process.env.E2E_API_REPORT ? [] : ["test/prediction/api/report.api.test.ts"]),
+            ...(process.env.E2E_PREDICT_EVENT_SLUG
+              ? []
+              : ["test/prediction/api/events.api.test.ts"]),
+          ],
           setupFiles: ["./test/prediction/setup-api.ts"],
           testTimeout: 120_000,
           hookTimeout: 30_000,
