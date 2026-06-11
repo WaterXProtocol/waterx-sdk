@@ -12,12 +12,11 @@ Run from the repo root.
 | `pnpm test:api:local`                                       | HTTP API smoke (`test/prediction/api/`; backend must be up)                                                                                                                              |
 | `pnpm test:api:staging`                                     | Same against `api/environments/staging.json`                                                                                                                                             |
 | `pnpm test:integration:predict:crosscheck`                  | **Catalog** place + fill → poll `bets/me` → **hard** OrderFilled ↔ API; skips on indexer lag only                                                                                        |
-| `pnpm predict:scan-claimable`                               | **Read-only** scan: `GET /claimable` `projectedPayoutUsd` ↔ chain (no place/fill; needs `E2E_API_ADDRESS` only)                                                                          |
-| `pnpm test:integration:predict:settlement-crosscheck`       | Same audit as Vitest (`E2E_SETTLEMENT_CROSSCHECK=1`); simulate claim optional with `SUI_PRIVATE_KEY`                                                                                     |
+| `pnpm predict:scan-claimable`                               | **Read-only** — `GET /claimable` `projectedPayoutUsd` ↔ chain claim formula (no place/fill; `E2E_API_ADDRESS` only; `--poll` when chain ahead of API)                                    |
+| `pnpm test:integration:predict:settlement-crosscheck`       | Same audit as Vitest (`E2E_SETTLEMENT_CROSSCHECK=1`); optional `claim_position` simulate with `SUI_PRIVATE_KEY`                                                                          |
 | `E2E_HEADLESS_BET=1 pnpm test:integration:predict:headless` | **Full product loop**: catalog → `POST place` → sign `txBytes` → broker/keeper fill → `bets/me`                                                                                          |
 | `pnpm test:integration:predict:journey`                     | User flow: API + **all PTBs simulate** + **catalog place → bets/me pending→filled** (same contract as `place-all-markets`); needs `pnpm seed:testnet` + `SUI_PRIVATE_KEY` + staging API. |
 | `pnpm diagnose:bets-api`                                    | **Debug only** — print chain fixtures vs `GET /predict/bets/me` field matrix (`E2E_API_ADDRESS` or JWT; not a CI gate)                                                                   |
-| `pnpm predict:scan-claimable`                               | **Read-only** — `GET /claimable` vs chain claim formula; no place/fill (`E2E_API_ADDRESS` only)                                                                                          |
 | `pnpm predict:place-all-markets`                            | **Staging script** — scan browse, place + fill **$1.11** on **every tradeable side** (both sides per market by default)                                                                  |
 | `pnpm predict:place-dry-run`                                | Same scan as above, **no txs** (`E2E_PLACE_ALL_DRY_RUN=1`)                                                                                                                               |
 | `pnpm predict:place-broker-only`                            | Quick probe: 1 market, 1 side, broker-only fill wait                                                                                                                                     |
@@ -41,16 +40,17 @@ Refund / broker-matrix / headless / crosscheck / settlement-crosscheck 都屬 **
 
 ## Layout
 
-| Path                           | Purpose                                                                                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`unit/`](unit/)               | Offline mocks, snapshots, input validation                                                                                                                  |
-| [`e2e/`](e2e/)                 | Testnet simulate (no signer); split by event category                                                                                                       |
-| [`integration/`](integration/) | Signed + executed flows on testnet; one file per event family                                                                                               |
-| [`api/`](api/)                 | HTTP API smoke (catalog, bets, consistency); opt-in manual                                                                                                  |
-| [`helpers/`](helpers/)         | `discoverFixtures`, `integration-user-journey`, `journey-assertions`, `journey-event-assertions`, `query-prediction-events`, `api-wire` / `integration-api` |
-| [`contract/`](contract/)       | Canonical Move event field matrix (`event-fields.ts`) for indexer contract tests                                                                            |
-| [`fixtures/`](fixtures/)       | Test-only IDs + the (git-ignored) `testnet-seeded.json` snapshot                                                                                            |
-| [`COVERAGE.md`](COVERAGE.md)   | 14 indexer event × test file × required-key matrix                                                                                                          |
+| Path                           | Purpose                                                                                                                                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`unit/`](unit/)               | Offline mocks, snapshots, input validation                                                                                                                                                          |
+| [`e2e/`](e2e/)                 | Testnet simulate (no signer); split by event category                                                                                                                                               |
+| [`integration/`](integration/) | Signed + executed flows on testnet; one file per event family                                                                                                                                       |
+| [`api/`](api/)                 | HTTP API smoke (catalog, bets, consistency); opt-in manual                                                                                                                                          |
+| [`helpers/`](helpers/)         | Shared test utilities — see [Settlement claimable helpers](#settlement-claimable-helpers-read-only) plus `discoverFixtures`, `journey-*`, `query-prediction-events`, `api-wire` / `integration-api` |
+| [`scripts/`](scripts/)         | CLI entrypoints — `scan-claimable-crosscheck.ts` (`pnpm predict:scan-claimable`), seed, place-all, broker-matrix, API report runners                                                                |
+| [`contract/`](contract/)       | Canonical Move event field matrix (`event-fields.ts`) for indexer contract tests                                                                                                                    |
+| [`fixtures/`](fixtures/)       | Test-only IDs + the (git-ignored) `testnet-seeded.json` snapshot                                                                                                                                    |
+| [`COVERAGE.md`](COVERAGE.md)   | 14 indexer event × test file × required-key matrix                                                                                                                                                  |
 
 ### E2E files (simulate only)
 
@@ -85,6 +85,18 @@ Refund / broker-matrix / headless / crosscheck / settlement-crosscheck 都屬 **
 | [`user-betting-journey.test.ts`](integration/user-betting-journey.test.ts)                                               | **Automation suite** (7 `it`s): preconditions → API → simulate PTBs → **event↔view↔API** (`journey-event-assertions.ts`)          |
 
 See [`COVERAGE.md`](COVERAGE.md) for the full event ↔ key-tier matrix.
+
+### Settlement claimable helpers (read-only)
+
+Observational cross-check: **`GET /predict/bets/me/claimable`** `projectedPayoutUsd` vs on-chain `(position, market.outcome)` claim formula. Does **not** place orders or execute claims (except optional Vitest simulate with `SUI_PRIVATE_KEY`).
+
+| File                                                                                                                                 | Role                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| [`helpers/settlement-claimable-scan.ts`](helpers/settlement-claimable-scan.ts)                                                       | Core audit + chain cursor scan + CLI report formatter — **no Vitest import** (safe for `tsx`) |
+| [`helpers/settlement-claimable-crosscheck.ts`](helpers/settlement-claimable-crosscheck.ts)                                           | Vitest wrappers: `expect`, skip helpers, optional `simulateClaimForClaimableRows`             |
+| [`scripts/scan-claimable-crosscheck.ts`](scripts/scan-claimable-crosscheck.ts)                                                       | `pnpm predict:scan-claimable` entry                                                           |
+| [`unit/settlement-claimable-crosscheck.test.ts`](unit/settlement-claimable-crosscheck.test.ts)                                       | Offline: payout formula, report formatting, env parsing                                       |
+| [`integration/settlement-claimable-crosscheck.integration.test.ts`](integration/settlement-claimable-crosscheck.integration.test.ts) | Opt-in staging audit (`E2E_SETTLEMENT_CROSSCHECK=1`)                                          |
 
 ### API smoke files (HTTP, opt-in manual)
 
