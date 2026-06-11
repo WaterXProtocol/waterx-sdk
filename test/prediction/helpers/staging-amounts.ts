@@ -87,7 +87,9 @@ const DEFAULT_STRESS_BET_STEP_USD = 0.01;
 function parseStressBetUsdList(): number[] | undefined {
   const raw = optionalEnv("E2E_STRESS_BET_USDS")?.trim();
   if (!raw) return undefined;
-  return raw.split(",").map((part, i) => parsePositiveUsd(part.trim(), `E2E_STRESS_BET_USDS[${i}]`));
+  return raw
+    .split(",")
+    .map((part, i) => parsePositiveUsd(part.trim(), `E2E_STRESS_BET_USDS[${i}]`));
 }
 
 function readStressBetStartUsd(): number {

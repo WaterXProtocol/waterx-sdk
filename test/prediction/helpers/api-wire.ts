@@ -25,6 +25,8 @@ export interface BetWire {
   outcome?: string;
   submissionState?: string;
   payoutUsd?: number | null;
+  /** Resolved-but-unclaimed: what `claim_position` would pay (Claim All display). */
+  projectedPayoutUsd?: number | null;
   cardSnapshot?: Record<string, unknown>;
   marketSlug?: string;
   marketId?: string;

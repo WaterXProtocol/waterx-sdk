@@ -11,8 +11,8 @@
  * The backend DTO (`@IsNumberString`) passes every value below straight through, so
  * these are exactly the payloads `POST /predict/bets/place` can hand the SDK.
  */
-import { fromBase64 } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
+import { fromBase64 } from "@mysten/sui/utils";
 import { placeOrder } from "~predict/prediction.ts";
 import { describe, expect, it } from "vitest";
 

@@ -101,7 +101,8 @@ export const DEFAULT_BROKER_MATRIX: BrokerMatrixScenario[] = [
   },
   {
     id: "min-shares-unfillable",
-    label: "minShares=u64 max with fillable cap — every fill aborts EFillBelowMin(7); order rests until expiry+grace",
+    label:
+      "minShares=u64 max with fillable cap — every fill aborts EFillBelowMin(7); order rests until expiry+grace",
     priceCapMode: "fillable",
     minShares: "18446744073709551615",
     // Documentation only — NO hard expectOutcome. A keeper cancel is gated by

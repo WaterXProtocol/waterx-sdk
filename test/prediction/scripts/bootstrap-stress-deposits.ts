@@ -15,15 +15,12 @@ import { fromBase64 } from "@mysten/bcs";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Ed25519Keypair as Ed25519KeypairClass } from "@mysten/sui/keypairs/ed25519";
 
+import { formatSettlementBase, getAccountSettlementBalance } from "../helpers/account-balance.ts";
 import {
   ensureAccountFunded,
   forceDepositAllAvailable,
   forceDepositToAccount,
 } from "../helpers/account-funding.ts";
-import {
-  formatSettlementBase,
-  getAccountSettlementBalance,
-} from "../helpers/account-balance.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
 import { optionalEnv } from "../helpers/e2e-env.ts";
 import { readSeedDepositAmount } from "../helpers/env.ts";

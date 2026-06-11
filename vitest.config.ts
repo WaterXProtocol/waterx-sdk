@@ -250,6 +250,23 @@ export default defineConfig({
       {
         resolve: { alias: aliases },
         test: {
+          name: "predict-integration-settlement-crosscheck",
+          include: [
+            "test/prediction/integration/settlement-claimable-crosscheck.integration.test.ts",
+          ],
+          environment: "node",
+          exclude: ["**/node_modules/**", "**/dist/**"],
+          setupFiles: ["./test/prediction/setup-integration.ts"],
+          testTimeout: 360_000,
+          hookTimeout: 180_000,
+          maxWorkers: 1,
+          isolate: false,
+          sequence: { concurrent: false },
+        },
+      },
+      {
+        resolve: { alias: aliases },
+        test: {
           name: "predict-integration-keeper",
           include: [
             "test/prediction/integration/**/*.keeper.test.ts",
