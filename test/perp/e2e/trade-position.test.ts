@@ -18,14 +18,17 @@ import {
   posSize,
   type DiscoveredPosition,
 } from "../helpers/e2e/discover-on-chain-position.ts";
-import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
+import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateSuccess,
   skipSimulateIfStateDependent,
 } from "../helpers/e2e/simulate-assertions.ts";
 import { runBuiltTradingTx } from "../helpers/trading/run-trading-scenario.ts";
-import { closeOrDecreaseAcceptablePrice } from "../integration/helpers/integration-market-snapshot.ts";
+import {
+  closeOrDecreaseAcceptablePrice,
+  keeperOpenAcceptablePrice,
+} from "../integration/helpers/integration-market-snapshot.ts";
 
 function assertDiscoveredTradingSim(ctx: { skip: (reason?: string) => void }, sim: unknown): void {
   if (sim === undefined) return;
@@ -48,7 +51,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
     }
     const row = lifecycleTickerRow(d.ticker);
     const collateralType = client.getPoolTokenType(d.collateralPoolTicker);
-    const ap = rawPrice(Math.max(1, Math.ceil(row.approxUsdHint * 4)));
+    const ap = keeperOpenAcceptablePrice(posIsLong(d.position), row);
     const sim = await runBuiltTradingTx({
       client,
       mode: "simulate",

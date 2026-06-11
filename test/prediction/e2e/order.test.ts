@@ -22,6 +22,11 @@ import {
 
 /** `waterx_prediction::fill_order` abort code when the order's expiry has already passed. */
 const E_ORDER_EXPIRED = 18;
+/** `waterx_prediction::place_order` abort code when `receiver_account_id` is not registered. */
+const E_NOT_ACCOUNT_POSITION = 16;
+/** Valid address shape, never registered in the wxa AccountRegistry. */
+const UNREGISTERED_RECEIVER_ID =
+  "0x00000000000000000000000000000000000000000000000000000000000000bb";
 
 /**
  * Order lifecycle PTBs (covers `OrderPlaced` / `OrderCancelled` / `OrderFilled` indexer events
@@ -54,6 +59,34 @@ describe("order PTB simulate (testnet)", () => {
       marketId: marketBytes,
     });
     await expectSimulateSuccess(client, tx, owner);
+  });
+
+  it("placeOrder aborts ENotAccountPosition for an unregistered receiverAccountId (bet-sharing guard)", async (ctx) => {
+    guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
+    guard.skipUnlessAccountReady(ctx);
+    const owner = await guard.skipUnlessAccountOwner(ctx);
+    const marketBytes = fx.openMarketIdBytes ?? fx.marketIdBytes;
+    if (!marketBytes) {
+      guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
+    }
+    const tx = new Transaction();
+    placeOrder(client, tx, {
+      ...minimalPlaceOrderParams(client),
+      accountId: fx.accountId,
+      receiverAccountId: UNREGISTERED_RECEIVER_ID,
+      marketId: marketBytes,
+    });
+    const result = await simulateWithSender(client, tx, owner);
+    if (result.$kind !== "FailedTransaction") {
+      throw new Error("Expected placeOrder with unregistered receiver to abort");
+    }
+    // `has_account(receiver_account_id)` is the first assert in place_order —
+    // the abort must be ENotAccountPosition, not a later permission/payment abort.
+    if (parseMoveAbortCode(simulateErrorMessage(result)) !== E_NOT_ACCOUNT_POSITION) {
+      throw new Error(
+        `Expected abort code ${E_NOT_ACCOUNT_POSITION} (ENotAccountPosition), got: ${simulateErrorMessage(result)}`,
+      );
+    }
   });
 
   it("selfCancelOrder on an expired OPEN order (rescue path)", async (ctx) => {
