@@ -26,11 +26,28 @@ describe("PredictClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() keeps the interface but requires an explicit configUrl", async () => {
-    await expect(PredictClient.mainnet()).rejects.toThrow(/requires opts\.configUrl/);
+  it("mainnet() fetches waterx-config mainnet.json by default", async () => {
+    const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain("mainnet.json");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => mainnetFixture,
+      };
+    });
+
+    const client = await PredictClient.mainnet({
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(client.network).toBe("MAINNET");
+    expect(client.config).toBe(mainnetFixture);
+    expect(client.packageId()).toBe(TESTNET_FIXTURE_IDS.packageId);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() accepts an explicit compatible configUrl", async () => {
+  it("mainnet() still accepts an explicit configUrl override", async () => {
     const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
     const fetchMock = vi.fn(async () => ({
       ok: true,

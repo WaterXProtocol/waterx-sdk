@@ -9,7 +9,7 @@
  *   pnpm exec tsx scripts/run-e2e.ts --testnet
  *   pnpm exec tsx scripts/run-e2e.ts --mainnet --coverage
  *   pnpm exec tsx scripts/run-e2e.ts --testnet test/perp/e2e/read-views.test.ts
- *   pnpm exec tsx scripts/run-e2e.ts --testnet --predict
+ *   pnpm exec tsx scripts/run-e2e.ts --testnet --predict-only
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -21,15 +21,23 @@ loadRepoEnvFiles();
 
 type Network = "testnet" | "mainnet";
 
-function parseArgs(argv: string[]): { network: Network; predict: boolean; forward: string[] } {
+function parseArgs(argv: string[]): {
+  network: Network;
+  predict: boolean;
+  predictOnly: boolean;
+  forward: string[];
+} {
   const forward: string[] = [];
   let cliNetwork: Network | undefined;
   let predict = false;
+  let predictOnly = false;
   for (const arg of argv) {
     if (arg === "--testnet") {
       cliNetwork = "testnet";
     } else if (arg === "--mainnet") {
       cliNetwork = "mainnet";
+    } else if (arg === "--predict-only") {
+      predictOnly = true;
     } else if (arg === "--predict") {
       predict = true;
     } else if (arg !== "--") {
@@ -40,10 +48,10 @@ function parseArgs(argv: string[]): { network: Network; predict: boolean; forwar
   const envNetwork: Network | undefined =
     envRaw === "testnet" || envRaw === "mainnet" ? envRaw : undefined;
   const network: Network = cliNetwork ?? envNetwork ?? "testnet";
-  return { network, predict, forward };
+  return { network, predict, predictOnly, forward };
 }
 
-const { network, predict, forward } = parseArgs(process.argv.slice(2));
+const { network, predict, predictOnly, forward } = parseArgs(process.argv.slice(2));
 
 const vitestBin = path.resolve(
   process.cwd(),
@@ -52,7 +60,7 @@ const vitestBin = path.resolve(
   process.platform === "win32" ? "vitest.cmd" : "vitest",
 );
 
-const projects = predict ? ["e2e", "predict-e2e"] : ["e2e"];
+const projects = predictOnly ? ["predict-e2e"] : predict ? ["e2e", "predict-e2e"] : ["e2e"];
 const vitestArgs = ["run", ...projects.flatMap((name) => ["--project", name]), ...forward];
 
 const child = spawn(vitestBin, vitestArgs, {

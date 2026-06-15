@@ -4,7 +4,12 @@ import { getPosition } from "~predict/fetch.ts";
 import { claim, forceClaim } from "~predict/prediction.ts";
 import { beforeAll, describe, it } from "vitest";
 
-import { createE2eClient, discoverFixtures, type E2eFixtures } from "../helpers/e2e-context.ts";
+import {
+  createE2eClient,
+  discoverFixtures,
+  predictE2eNetwork,
+  type E2eFixtures,
+} from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import { expectSimulateSuccess } from "../helpers/simulate.ts";
 
@@ -12,7 +17,7 @@ import { expectSimulateSuccess } from "../helpers/simulate.ts";
  * Claim PTBs (covers `PositionClaimed` indexer event). The keeper variant `forceClaim` works on
  * positions whose markets have already been resolved — pre-seed via `--preset=with-claim`.
  */
-describe("claim PTB simulate (testnet)", () => {
+describe(`claim PTB simulate (${predictE2eNetwork})`, () => {
   let client: PredictClient;
   let fx: E2eFixtures;
   let guard: ReturnType<typeof fixtureGuards>;

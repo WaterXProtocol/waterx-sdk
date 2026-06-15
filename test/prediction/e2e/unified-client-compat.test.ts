@@ -12,19 +12,25 @@ import {
 } from "../../helpers/unified-dual-path.ts";
 import { assertSimulateReached } from "../../perp/helpers/e2e/simulate-assertions.ts";
 import { minimalPlaceOrderParams } from "../fixtures/ptb-params.ts";
-import { createE2eClient } from "../helpers/e2e-context.ts";
+import {
+  createE2eClient,
+  predictE2eNetwork,
+  predictE2eNetworkKey,
+} from "../helpers/e2e-context.ts";
 import { expectSimulateSuccess } from "../helpers/simulate.ts";
 
-describe("unified Client prediction compat (testnet)", () => {
+describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
   let unified: Client;
   let legacyPredict: PredictClient;
+  const network = predictE2eNetworkKey();
 
   beforeAll(async () => {
-    unified = await Client.create({ network: "TESTNET", cache: true });
+    unified = await Client.create({ network, cache: true });
     legacyPredict = await createE2eClient();
   }, 120_000);
 
-  it("Client.create wires the same prediction deployment as PredictClient.testnet", () => {
+  it("Client.create wires the same prediction deployment as createE2eClient", () => {
+    expect(unified.predictClient.network).toBe(network);
     expect(unified.predictClient.packageId()).toBe(legacyPredict.packageId());
   });
 

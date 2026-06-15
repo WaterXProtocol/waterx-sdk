@@ -9,13 +9,16 @@ export function optionalEnv(key: string): string | undefined {
 }
 
 /** Client options (falls back to waterx-config defaults). */
-export function readTestnetClientOverrides() {
+export function readE2eClientOverrides() {
   return {
     configUrl: optionalEnv("E2E_CONFIG_URL"),
     grpcUrl: optionalEnv("E2E_GRPC_URL"),
     settlement: optionalEnv("E2E_SETTLEMENT_ASSET") === "USD" ? ("USD" as const) : undefined,
   };
 }
+
+/** @deprecated Use {@link readE2eClientOverrides}. */
+export const readTestnetClientOverrides = readE2eClientOverrides;
 
 /** Static fixture overrides (otherwise discovered on-chain). */
 export function readFixtureOverrides() {

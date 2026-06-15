@@ -5,7 +5,7 @@ import { fillOrder, placeOrder } from "~predict/prediction.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { minimalPlaceOrderParams } from "../fixtures/ptb-params.ts";
-import { createE2eClient } from "../helpers/e2e-context.ts";
+import { createE2eClient, predictE2eNetwork } from "../helpers/e2e-context.ts";
 import { expectSimulateFailure } from "../helpers/simulate.ts";
 
 const U64_MAX = (1n << 64n) - 1n;
@@ -32,7 +32,7 @@ async function expectChainReject(promise: Promise<unknown>): Promise<void> {
   });
 }
 
-describe("E2E negative (testnet)", () => {
+describe(`E2E negative (${predictE2eNetwork})`, () => {
   let client: PredictClient;
 
   beforeAll(async () => {

@@ -2,7 +2,12 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 import { optionalEnv } from "./e2e-env.ts";
 
-export { optionalEnv, readFixtureOverrides, readTestnetClientOverrides } from "./e2e-env.ts";
+export {
+  optionalEnv,
+  readE2eClientOverrides,
+  readFixtureOverrides,
+  readTestnetClientOverrides,
+} from "./e2e-env.ts";
 
 /** @deprecated Use `readFixtureOverrides()` — kept for integration helpers. */
 export const e2eEnv = {

@@ -59,7 +59,7 @@
     "test:unit:predict": "vitest run --project predict-unit",
     "test:e2e": "tsx scripts/run-e2e.ts --testnet --predict",
     "test:e2e:perp": "tsx scripts/run-e2e.ts --testnet",
-    "test:e2e:predict": "vitest run --project predict-e2e",
+    "test:e2e:predict": "tsx scripts/run-e2e.ts --testnet --predict-only",
     "test:e2e:testnet": "tsx scripts/run-e2e.ts --testnet --predict",
     "test:e2e:mainnet": "tsx scripts/run-e2e.ts --mainnet --predict",
     "test:integration": "pnpm test:integration:perp && pnpm test:integration:predict",
