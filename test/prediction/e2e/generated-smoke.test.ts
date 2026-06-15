@@ -12,10 +12,10 @@ import {
 } from "~predict/index.ts";
 import { beforeAll, describe, it } from "vitest";
 
-import { createE2eClient } from "../helpers/e2e-context.ts";
+import { createE2eClient, predictE2eNetwork } from "../helpers/e2e-context.ts";
 import { expectSimulateSuccess } from "../helpers/simulate.ts";
 
-describe("generated namespace smoke (simulate)", () => {
+describe(`generated namespace smoke (${predictE2eNetwork} simulate)`, () => {
   let client: PredictClient;
 
   beforeAll(async () => {

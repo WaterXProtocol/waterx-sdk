@@ -2,11 +2,16 @@ import { Transaction } from "@mysten/sui/transactions";
 import type { PredictClient } from "~predict/client.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { createE2eClient, discoverFixtures, type E2eFixtures } from "../helpers/e2e-context.ts";
+import {
+  createE2eClient,
+  discoverFixtures,
+  predictE2eNetwork,
+  type E2eFixtures,
+} from "../helpers/e2e-context.ts";
 import { fixtureSummary } from "../helpers/e2e-skip.ts";
 import { expectSimulateSuccess } from "../helpers/simulate.ts";
 
-describe("PredictClient testnet smoke", () => {
+describe(`PredictClient ${predictE2eNetwork} smoke`, () => {
   let client: PredictClient;
   let fixtures: E2eFixtures;
 
@@ -49,7 +54,7 @@ describe("PredictClient testnet smoke", () => {
     if (!hasMarket && !hasOrderOrPosition) {
       ctx.skip(
         true,
-        `No orders/positions/markets discovered on testnet. Fixtures: ${fixtureSummary(fixtures)}.`,
+        `No orders/positions/markets discovered on ${predictE2eNetwork}. Fixtures: ${fixtureSummary(fixtures)}.`,
       );
     }
     expect(hasMarket || hasOrderOrPosition).toBe(true);

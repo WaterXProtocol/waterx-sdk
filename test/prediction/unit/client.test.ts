@@ -1,8 +1,9 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { PredictClient } from "~predict/client.ts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TESTNET_FIXTURE_CONFIG, TESTNET_FIXTURE_IDS } from "../fixtures/testnet-config.ts";
+import { createMockPredictClient } from "../helpers/mock-client.ts";
 
 describe("PredictClient", () => {
   it("testnet() fetches config and wires gRPC client", async () => {
@@ -25,11 +26,28 @@ describe("PredictClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() keeps the interface but requires an explicit configUrl", async () => {
-    await expect(PredictClient.mainnet()).rejects.toThrow(/requires opts\.configUrl/);
+  it("mainnet() fetches waterx-config mainnet.json by default", async () => {
+    const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain("mainnet.json");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => mainnetFixture,
+      };
+    });
+
+    const client = await PredictClient.mainnet({
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(client.network).toBe("MAINNET");
+    expect(client.config).toBe(mainnetFixture);
+    expect(client.packageId()).toBe(TESTNET_FIXTURE_IDS.packageId);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() accepts an explicit compatible configUrl", async () => {
+  it("mainnet() still accepts an explicit configUrl override", async () => {
     const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -124,5 +142,61 @@ describe("PredictClient", () => {
       transaction: tx,
       include: { effects: true },
     });
+  });
+});
+
+describe("PredictClient.simulate RPC retry", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("retries RESOURCE_EXHAUSTED then succeeds", async () => {
+    vi.useFakeTimers();
+    const client = createMockPredictClient();
+    const rateLimitErr = Object.assign(new Error("too many requests"), {
+      code: "RESOURCE_EXHAUSTED",
+    });
+    const ok = { $kind: "Success" } as unknown as Awaited<ReturnType<PredictClient["simulate"]>>;
+    const grpc = {
+      simulateTransaction: vi
+        .fn()
+        .mockRejectedValueOnce(rateLimitErr)
+        .mockRejectedValueOnce(rateLimitErr)
+        .mockResolvedValueOnce(ok),
+    };
+    (client as unknown as { grpcClient: typeof grpc }).grpcClient = grpc;
+
+    const promise = client.simulate(new Transaction());
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toBe(ok);
+    expect(grpc.simulateTransaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry non-rate-limit errors", async () => {
+    const client = createMockPredictClient();
+    const grpc = {
+      simulateTransaction: vi.fn().mockRejectedValue(new Error("invalid transaction")),
+    };
+    (client as unknown as { grpcClient: typeof grpc }).grpcClient = grpc;
+
+    await expect(client.simulate(new Transaction())).rejects.toThrow(/invalid transaction/);
+    expect(grpc.simulateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows after exhausting rate-limit retries", async () => {
+    vi.useFakeTimers();
+    const client = createMockPredictClient();
+    const rateLimitErr = Object.assign(new Error("rate limit"), { code: "RESOURCE_EXHAUSTED" });
+    const grpc = {
+      simulateTransaction: vi.fn().mockRejectedValue(rateLimitErr),
+    };
+    (client as unknown as { grpcClient: typeof grpc }).grpcClient = grpc;
+
+    const promise = client.simulate(new Transaction());
+    const assertion = expect(promise).rejects.toBe(rateLimitErr);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(grpc.simulateTransaction).toHaveBeenCalledTimes(4);
   });
 });

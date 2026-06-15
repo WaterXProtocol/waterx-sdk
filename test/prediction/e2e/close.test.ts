@@ -4,7 +4,12 @@ import { getPosition } from "~predict/fetch.ts";
 import { cancelClose, confirmClose, requestClose, selfCancelClose } from "~predict/prediction.ts";
 import { beforeAll, describe, it } from "vitest";
 
-import { createE2eClient, discoverFixtures, type E2eFixtures } from "../helpers/e2e-context.ts";
+import {
+  createE2eClient,
+  discoverFixtures,
+  predictE2eNetwork,
+  type E2eFixtures,
+} from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import { expectSimulateSuccess } from "../helpers/simulate.ts";
 
@@ -12,7 +17,7 @@ import { expectSimulateSuccess } from "../helpers/simulate.ts";
  * Close-pipeline PTBs (covers `CloseRequested` / `CloseConfirmed` / `CloseCancelled` indexer
  * events). Each test needs a position in a specific status — pre-seed via `pnpm seed:testnet`.
  */
-describe("close pipeline PTB simulate (testnet)", () => {
+describe(`close pipeline PTB simulate (${predictE2eNetwork})`, () => {
   let client: PredictClient;
   let fx: E2eFixtures;
   let guard: ReturnType<typeof fixtureGuards>;

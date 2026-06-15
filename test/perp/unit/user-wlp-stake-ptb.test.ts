@@ -1,5 +1,6 @@
+import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildCancelRedeemAndStakeWlpTx,
@@ -13,8 +14,13 @@ import { createUnitTestClient } from "../helpers/test-client.ts";
 const client = createUnitTestClient();
 const accountId = PTB_DUMMY_ACCOUNT_ID;
 const rewardType = "0x896e53015216c5034825c056bcde37a694263601df2534ae5c91b8a3d9150c78::sui::SUI";
+const originalFetch = globalThis.fetch;
 
 describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
   it("buildMintAndStakeWlpTx chains mintWlp -> stake with rewarder settlement", async () => {
     const tx = await buildMintAndStakeWlpTx(client, {
       accountId,
@@ -77,5 +83,47 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       skipOraclePriceRefresh: true,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("buildMintAndStakeWlpTx with oracle refresh", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    attachPythGrpcMocks(client);
+    const tx = await buildMintAndStakeWlpTx(client, {
+      accountId,
+      depositTicker: "USDCUSD",
+      depositTokenType: MOCK_USDC_TYPE,
+      depositAmount: 10_000_000n,
+      minLpAmount: 0n,
+      rewarderTypes: [rewardType],
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThan(5);
+  });
+
+  it("buildUnstakeAndRequestRedeemWlpTx with oracle refresh", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    attachPythGrpcMocks(client);
+    const tx = await buildUnstakeAndRequestRedeemWlpTx(client, {
+      accountId,
+      redeemTokenType: MOCK_USDC_TYPE,
+      withdrawalAmount: 500_000n,
+      rewarderTypes: [rewardType],
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
 });
