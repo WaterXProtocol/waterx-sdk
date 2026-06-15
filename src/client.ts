@@ -162,6 +162,28 @@ export class WaterXClient {
   }
 
   /**
+   * True when `ticker` is priced by `waterx_constant_rule` (a constant pin,
+   * e.g. `USDCUSD → $1`) rather than Pyth. Such tickers are fed via
+   * `constant_rule::feed` and need no Pyth update; see {@link refreshOraclePrices}.
+   */
+  isConstantTicker(ticker: string): boolean {
+    return this.config.packages.waterx_constant_rule?.prices?.[ticker] !== undefined;
+  }
+
+  /**
+   * The `supra_rule` config when it is deployed, enabled, and fully wired
+   * (`config` + `oracle_holder`), else `undefined`. When present, callers feed
+   * `supra_rule::feed` as a second weighted rule alongside Pyth on the same
+   * collector; see {@link refreshOraclePrices}. Default-off, so a Pyth-only
+   * deployment returns `undefined` here.
+   */
+  getSupraRule(): { published_at: string; config: string; oracle_holder: string } | undefined {
+    const s = this.config.packages.supra_rule;
+    if (!s?.enabled || !s.published_at || !s.config || !s.oracle_holder) return undefined;
+    return { published_at: s.published_at, config: s.config, oracle_holder: s.oracle_holder };
+  }
+
+  /**
    * Resolve a WLP pool token's fully-qualified Move type.
    *
    * `wlp.pool_tokens` is keyed by **oracle ticker** (e.g. `"USDCUSD"`) — the

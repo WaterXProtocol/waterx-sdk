@@ -17,6 +17,7 @@ export type {
   PythInfraConfig,
   PythRulePackage,
   PythSponsorRulePackage,
+  SupraRulePackage,
   TestnetFaucetPackage,
   TrustedEmitterRow,
   WaterXConfig,
@@ -118,6 +119,7 @@ export * from "./fetch.ts";
 // ======== Pyth oracle utilities ========
 export {
   PythCache,
+  aggregateTickerWithConstant,
   aggregateTickerWithPyth,
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,

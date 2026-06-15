@@ -28,8 +28,10 @@ import {
   reimburse as sponsorReimburse,
   request as sponsorRequest,
 } from "../generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
+import { feed as constantRuleFeed } from "../generated/waterx_constant_rule/constant_rule.ts";
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import { feed as pythRuleFeed } from "../generated/waterx_pyth_rule/pyth_rule.ts";
+import { feed as supraRuleFeed } from "../generated/waterx_supra_rule/supra_rule.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -335,6 +337,12 @@ export function aggregateTickerWithPyth(
     },
   })(tx);
 
+  // Second weighted rule: when supra_rule is deployed + enabled, feed it on the
+  // SAME collector before aggregate. Supra reads the symbol from the collector
+  // and abstains on-chain if it has no pair id for it, so this is safe to add
+  // unconditionally for every Pyth ticker once enabled.
+  maybeFeedSupra(tx, client, collector as unknown as TransactionArgument);
+
   aggregateCall({
     package: client.config.packages.waterx_oracle.published_at,
     arguments: {
@@ -345,9 +353,71 @@ export function aggregateTickerWithPyth(
 }
 
 /**
- * Refresh multiple tickers via Pyth in one PTB. Updates Pyth on-chain
- * first (one accumulator), then runs the collector → feed → aggregate
- * cycle for each ticker.
+ * Append a `supra_rule::feed` on `collector` when the deployment has supra
+ * enabled + wired (see {@link WaterXClient.getSupraRule}). No-op otherwise, so
+ * Pyth-only deployments are unchanged.
+ */
+function maybeFeedSupra(
+  tx: Transaction,
+  client: WaterXClient,
+  collector: TransactionArgument,
+): void {
+  const supra = client.getSupraRule();
+  if (!supra) return;
+  supraRuleFeed({
+    package: supra.published_at,
+    arguments: {
+      collector,
+      config: tx.object(supra.config),
+      oracleHolder: tx.object(supra.oracle_holder),
+    },
+  })(tx);
+}
+
+/**
+ * For a constant-priced ticker (e.g. `USDCUSD → $1`), build the
+ * collector → constant_rule::feed → aggregate chain. No Pyth update is
+ * needed — the price comes from the on-chain `constant_rule::Config`.
+ */
+export function aggregateTickerWithConstant(
+  tx: Transaction,
+  client: WaterXClient,
+  args: { ticker: string },
+): void {
+  const constant = client.config.packages.waterx_constant_rule;
+  if (!constant?.published_at || !constant.config) {
+    throw new Error(
+      `waterx_constant_rule.{published_at,config} missing — cannot feed constant ticker '${args.ticker}'`,
+    );
+  }
+
+  const collector = newCollector({
+    package: client.config.packages.waterx_oracle.published_at,
+    arguments: { symbol: args.ticker },
+  })(tx);
+
+  constantRuleFeed({
+    package: constant.published_at,
+    arguments: {
+      collector: collector as unknown as TransactionArgument,
+      config: tx.object(constant.config),
+    },
+  })(tx);
+
+  aggregateCall({
+    package: client.config.packages.waterx_oracle.published_at,
+    arguments: {
+      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+      collector: collector as unknown as TransactionArgument,
+    },
+  })(tx);
+}
+
+/**
+ * Refresh multiple tickers in one PTB. Constant-priced tickers (see
+ * {@link WaterXClient.isConstantTicker}) are fed from `constant_rule`;
+ * the rest are updated on-chain via Pyth first (one accumulator), then run
+ * the collector → feed → aggregate cycle for each ticker.
  */
 export async function refreshOraclePrices(
   tx: Transaction,
@@ -359,18 +429,29 @@ export async function refreshOraclePrices(
   } = {},
 ): Promise<void> {
   if (tickers.length === 0) return;
-  // tickers are oracle tickers (e.g. "BTCUSD"); look up each one's pyth feed
-  // entry from config — both feed_id (off-chain) and price_info_object
-  // (on-chain) are consumed by the per-ticker aggregate cycle.
-  const entries = tickers.map((t) => client.getPythFeed(t));
-  const feedIds = entries.map((e) => e.feed_id);
-  await updatePythPrices(tx, client, feedIds, opts.cache, opts.sponsorFund);
-  tickers.forEach((ticker, i) => {
-    aggregateTickerWithPyth(tx, client, {
-      ticker,
-      priceInfoObjectId: entries[i]!.price_info_object,
+
+  // Route each ticker to its rule: constant-pinned tickers skip Pyth entirely.
+  const constantTickers = tickers.filter((t) => client.isConstantTicker(t));
+  const pythTickers = tickers.filter((t) => !client.isConstantTicker(t));
+
+  if (pythTickers.length > 0) {
+    // pythTickers are oracle tickers (e.g. "BTCUSD"); look up each one's pyth
+    // feed entry from config — both feed_id (off-chain) and price_info_object
+    // (on-chain) are consumed by the per-ticker aggregate cycle.
+    const entries = pythTickers.map((t) => client.getPythFeed(t));
+    const feedIds = entries.map((e) => e.feed_id);
+    await updatePythPrices(tx, client, feedIds, opts.cache, opts.sponsorFund);
+    pythTickers.forEach((ticker, i) => {
+      aggregateTickerWithPyth(tx, client, {
+        ticker,
+        priceInfoObjectId: entries[i]!.price_info_object,
+      });
     });
-  });
+  }
+
+  for (const ticker of constantTickers) {
+    aggregateTickerWithConstant(tx, client, { ticker });
+  }
 }
 
 /**

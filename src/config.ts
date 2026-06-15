@@ -31,6 +31,33 @@ export interface PythSponsorRulePackage extends BasePackageEntry {
   pyth_sponsor: string;
 }
 
+export interface WaterxConstantRulePackage extends BasePackageEntry {
+  /** Shared `constant_rule::Config` holding the per-ticker constant prices. */
+  config: string;
+  /**
+   * Oracle ticker → constant 1e9-scaled price (decimal string), mirroring the
+   * on-chain `Config.prices` map. A ticker present here is fed via
+   * `constant_rule::feed` instead of `pyth_rule::feed` (e.g. `USDCUSD → "1000000000"`).
+   */
+  prices?: Record<string, string>;
+}
+
+export interface SupraRulePackage extends BasePackageEntry {
+  /** Shared `supra_rule::Config` (per-symbol Supra pair_id + freshness tolerance). */
+  config: string;
+  /** Supra `OracleHolder` shared object id (network-specific). Required to feed. */
+  oracle_holder?: string;
+  /** Oracle ticker → Supra pair id (mirrors the on-chain `Config`; informational). */
+  pairs?: Record<string, number>;
+  /**
+   * When true AND `config` + `oracle_holder` are set, `refreshOraclePrices`
+   * feeds `supra_rule` on the same `PriceCollector` as Pyth before `aggregate`
+   * (a second weighted rule). Defaults to **false** so a Pyth-only deployment
+   * is unaffected — flip on only after `weight_threshold`/feeders are ready.
+   */
+  enabled?: boolean;
+}
+
 export interface WxaAccountPackage extends BasePackageEntry {
   admin_cap: string;
   account_registry: string;
@@ -198,6 +225,8 @@ export interface WaterXPackages {
   waterx_referral?: WaterxReferralPackage;
   pyth_rule: PythRulePackage;
   pyth_sponsor_rule?: PythSponsorRulePackage;
+  waterx_constant_rule?: WaterxConstantRulePackage;
+  supra_rule?: SupraRulePackage;
   waterx_account: WxaAccountPackage;
   waterx_oracle: WaterxOraclePackage;
   waterx_perp: WaterxPerpPackage;

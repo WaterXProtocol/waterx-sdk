@@ -37,6 +37,22 @@ describe("WaterXClient (offline)", () => {
     expect(client.wlpType()).toContain("::wlp::WLP");
   });
 
+  it("isConstantTicker reflects waterx_constant_rule.prices", () => {
+    // Shared fixture has the package but an empty prices map → all Pyth.
+    expect(client.isConstantTicker("USDCUSD")).toBe(false);
+    expect(client.isConstantTicker("BTCUSD")).toBe(false);
+
+    // A ticker listed in prices is constant-routed.
+    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    expect(client.isConstantTicker("USDCUSD")).toBe(true);
+    expect(client.isConstantTicker("BTCUSD")).toBe(false);
+
+    // No package at all → never constant.
+    const bare = createUnitTestClient();
+    delete bare.config.packages.waterx_constant_rule;
+    expect(bare.isConstantTicker("USDCUSD")).toBe(false);
+  });
+
   it("throws for unknown aggregator, pyth feed, pool token, and missing wlp", () => {
     expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
     expect(() => client.getPythFeed("NOPE")).toThrow(/No pyth feed listed/);
