@@ -53,6 +53,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" \"vitest.config.ts\" \"eslint.config.mjs\" \"sui-codegen.config.mjs\"",
     "env:init": "tsx scripts/init-local-env.ts",
     "typecheck": "tsc --noEmit",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:unit",
     "test": "vitest run --project unit --project predict-unit",
     "test:unit": "vitest run --project unit --project predict-unit",
     "test:unit:perp": "vitest run --project unit",
