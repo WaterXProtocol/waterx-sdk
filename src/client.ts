@@ -165,9 +165,18 @@ export class WaterXClient {
    * True when `ticker` is priced by `waterx_constant_rule` (a constant pin,
    * e.g. `USDCUSD → $1`) rather than Pyth. Such tickers are fed via
    * `constant_rule::feed` and need no Pyth update; see {@link refreshOraclePrices}.
+   *
+   * All-or-nothing, mirroring {@link getSupraRule} and the keeper: only routes a
+   * ticker to the constant rule when the rule is FULLY wired (`published_at` +
+   * `config` present). A half-populated block — `prices` listed before the rule
+   * is deployed, a realistic mid-rollout state — would otherwise make this true
+   * while {@link aggregateTickerWithConstant} throws, aborting the whole
+   * price-refresh PTB instead of safely falling back to Pyth.
    */
   isConstantTicker(ticker: string): boolean {
-    return this.config.packages.waterx_constant_rule?.prices?.[ticker] !== undefined;
+    const c = this.config.packages.waterx_constant_rule;
+    if (!c?.published_at || !c.config) return false;
+    return c.prices?.[ticker] !== undefined;
   }
 
   /**

@@ -51,6 +51,19 @@ describe("WaterXClient (offline)", () => {
     const bare = createUnitTestClient();
     delete bare.config.packages.waterx_constant_rule;
     expect(bare.isConstantTicker("USDCUSD")).toBe(false);
+
+    // All-or-nothing: a half-populated block (prices listed before the rule is
+    // deployed) stays on Pyth instead of routing to a constant rule that would
+    // throw at aggregate time and abort the whole refresh PTB.
+    const halfWired = createUnitTestClient();
+    halfWired.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    halfWired.config.packages.waterx_constant_rule!.config = "";
+    expect(halfWired.isConstantTicker("USDCUSD")).toBe(false);
+
+    const noPkgId = createUnitTestClient();
+    noPkgId.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    noPkgId.config.packages.waterx_constant_rule!.published_at = "";
+    expect(noPkgId.isConstantTicker("USDCUSD")).toBe(false);
   });
 
   it("throws for unknown aggregator, pyth feed, pool token, and missing wlp", () => {

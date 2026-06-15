@@ -22,3 +22,12 @@ reference the PR that introduced them.
 - **Route the `USDCUSD` collateral ticker through `constant_rule` ($1) instead of Pyth** —
   `waterx_constant_rule` codegen plus `aggregateTickerWithConstant` wiring in
   client / config / pyth utils. (#43, was #41)
+
+### Fixed
+
+- **`WaterXClient.isConstantTicker()` now requires the constant rule to be fully wired**
+  (`published_at` + `config`) before routing a ticker off Pyth. A half-populated
+  `waterx_constant_rule` block (prices listed mid-rollout, before the rule is deployed)
+  previously made the ticker skip Pyth and then threw in `aggregateTickerWithConstant`,
+  aborting the whole price-refresh PTB; it now falls back to Pyth. Mirrors the keeper's
+  all-or-nothing guard. (#43)
