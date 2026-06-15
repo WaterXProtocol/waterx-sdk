@@ -31,6 +31,7 @@ import {
 import { feed as constantRuleFeed } from "../generated/waterx_constant_rule/constant_rule.ts";
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import { feed as pythRuleFeed } from "../generated/waterx_pyth_rule/pyth_rule.ts";
+import { feed as supraRuleFeed } from "../generated/waterx_supra_rule/supra_rule.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -336,11 +337,39 @@ export function aggregateTickerWithPyth(
     },
   })(tx);
 
+  // Second weighted rule: when supra_rule is deployed + enabled, feed it on the
+  // SAME collector before aggregate. Supra reads the symbol from the collector
+  // and abstains on-chain if it has no pair id for it, so this is safe to add
+  // unconditionally for every Pyth ticker once enabled.
+  maybeFeedSupra(tx, client, collector as unknown as TransactionArgument);
+
   aggregateCall({
     package: client.config.packages.waterx_oracle.published_at,
     arguments: {
       oracle: tx.object(client.config.packages.waterx_oracle.oracle),
       collector: collector as unknown as TransactionArgument,
+    },
+  })(tx);
+}
+
+/**
+ * Append a `supra_rule::feed` on `collector` when the deployment has supra
+ * enabled + wired (see {@link WaterXClient.getSupraRule}). No-op otherwise, so
+ * Pyth-only deployments are unchanged.
+ */
+function maybeFeedSupra(
+  tx: Transaction,
+  client: WaterXClient,
+  collector: TransactionArgument,
+): void {
+  const supra = client.getSupraRule();
+  if (!supra) return;
+  supraRuleFeed({
+    package: supra.published_at,
+    arguments: {
+      collector,
+      config: tx.object(supra.config),
+      oracleHolder: tx.object(supra.oracle_holder),
     },
   })(tx);
 }

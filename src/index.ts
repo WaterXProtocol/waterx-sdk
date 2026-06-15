@@ -17,6 +17,7 @@ export type {
   PythInfraConfig,
   PythRulePackage,
   PythSponsorRulePackage,
+  SupraRulePackage,
   TestnetFaucetPackage,
   TrustedEmitterRow,
   WaterXConfig,
