@@ -118,6 +118,7 @@ export * from "./fetch.ts";
 // ======== Pyth oracle utilities ========
 export {
   PythCache,
+  aggregateTickerWithConstant,
   aggregateTickerWithPyth,
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,

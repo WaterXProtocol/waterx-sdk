@@ -162,6 +162,15 @@ export class WaterXClient {
   }
 
   /**
+   * True when `ticker` is priced by `waterx_constant_rule` (a constant pin,
+   * e.g. `USDCUSD → $1`) rather than Pyth. Such tickers are fed via
+   * `constant_rule::feed` and need no Pyth update; see {@link refreshOraclePrices}.
+   */
+  isConstantTicker(ticker: string): boolean {
+    return this.config.packages.waterx_constant_rule?.prices?.[ticker] !== undefined;
+  }
+
+  /**
    * Resolve a WLP pool token's fully-qualified Move type.
    *
    * `wlp.pool_tokens` is keyed by **oracle ticker** (e.g. `"USDCUSD"`) — the
