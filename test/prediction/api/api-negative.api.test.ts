@@ -68,10 +68,14 @@ describe("predict API — negative inputs (phase 2 gaps)", () => {
     async ([, overrides], ctx: TestContext) => {
       skipIfNoApiEnv(ctx, env);
       try {
-        const { status, envelope } = await apiPost<{ txBytes?: string }>(env!, "/predict/bets/place", {
-          ...VALID_PLACE_BODY,
-          ...overrides,
-        });
+        const { status, envelope } = await apiPost<{ txBytes?: string }>(
+          env!,
+          "/predict/bets/place",
+          {
+            ...VALID_PLACE_BODY,
+            ...overrides,
+          },
+        );
         assertPlaceRejected(status, envelope);
       } catch (err) {
         skipIfUnreachable(ctx, err, env!.baseUrl);
