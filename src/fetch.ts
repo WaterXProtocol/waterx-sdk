@@ -55,6 +55,12 @@ import {
   tryGetRefer as tryGetReferCall,
 } from "./generated/waterx_referral/referral_table.ts";
 import {
+  bridgeFeeAmount as bridgeFeeAmountCall,
+  bridgeFeeRate as bridgeFeeRateCall,
+  bridgeMinFee as bridgeMinFeeCall,
+  wouldExecuteWormhole as wouldExecuteWormholeCall,
+} from "./generated/withdrawal_queue/withdrawal_queue.ts";
+import {
   dailyBurned as dailyBurnedCall,
   dailyBurnLimit as dailyBurnLimitCall,
   dailyMinted as dailyMintedCall,
@@ -766,4 +772,92 @@ export async function getBridgeLimits(
   if (backingIdx >= 0) view.backingMinted = u64At(backingIdx);
   if (personalIdx >= 0) view.personalBurned = u64At(personalIdx);
   return view;
+}
+
+// ============================================================================
+// Withdrawal queue — bridge fee estimate (withdrawal_queue v4)
+// ============================================================================
+
+export interface BridgeFeeView {
+  /** Raw fee charged on a wormhole (Sui → EVM) exit of `amount`:
+   *  `max(ceil(effectiveRate * amount), effectiveMinFee)`. */
+  feeAmount: bigint;
+  /** Whether the exit clears the on-chain net-zero guard — i.e. a strictly
+   *  positive amount remains after the fee. Gate "estimated fee" UI on THIS,
+   *  not `feeAmount` alone: a dust `amount`, or a min-fee floor ≥ `amount`,
+   *  makes `feeAmount >= amount` and the exit would abort (audit L1). */
+  wouldExecute: boolean;
+  /** Effective % rate for the chain (per-chain override → default → 0),
+   *  1e9-scaled (the `Float`-as-`u128` ABI convention). */
+  effectiveRate: bigint;
+  /** Effective minimum-fee floor for the chain (override → default → 0),
+   *  in CREDIT base units. */
+  effectiveMinFee: bigint;
+  /** Net CREDIT the recipient receives after the fee; `0n` when the exit
+   *  wouldn't execute (`wouldExecute === false`). */
+  netAmount: bigint;
+}
+
+function requireWithdrawalQueue(client: WaterXClient): { pkg: string; queue: string } {
+  const wq = client.config.packages.withdrawal_queue;
+  if (!wq?.queue) {
+    throw new Error(
+      "withdrawal_queue is not deployed on this network (no `queue` object id in config)",
+    );
+  }
+  return { pkg: wq.published_at, queue: wq.queue };
+}
+
+/**
+ * Estimate the bridge fee for a wormhole (Sui → EVM) CREDIT exit of `amount`
+ * to `evmDestinationChain`, read in a single simulate from the on-chain
+ * `withdrawal_queue` views. The charged fee is
+ * `max(ceil(effectiveRate * amount), effectiveMinFee)`.
+ *
+ * Surface UI off `wouldExecute`, NOT `feeAmount` alone — `feeAmount` is the raw
+ * fee and can equal/exceed `amount` (ceil rounding on a dust entry, or a min-fee
+ * floor larger than the entry), in which case the on-chain exit aborts its
+ * net-zero guard (audit L1). `netAmount` is `0n` whenever `wouldExecute` is
+ * false.
+ *
+ * @param args.amount             CREDIT base units (the bridged coin's smallest unit).
+ * @param args.evmDestinationChain WORMHOLE chain id of the destination EVM.
+ * @param args.creditType         CREDIT coin type; defaults to `client.creditType()`.
+ */
+export async function getBridgeFee(
+  client: WaterXClient,
+  args: { evmDestinationChain: number; amount: bigint | number; creditType?: string },
+): Promise<BridgeFeeView> {
+  const { pkg, queue } = requireWithdrawalQueue(client);
+  const amount = BigInt(args.amount);
+  const common = {
+    package: pkg,
+    typeArguments: [args.creditType ?? client.creditType()] as [string],
+  };
+  const chain = args.evmDestinationChain;
+
+  const tx = new Transaction();
+  // Fixed-order view calls; indices tracked below.
+  bridgeFeeAmountCall({
+    ...common,
+    arguments: { queue, evmDestinationChain: chain, amount },
+  })(tx); // 0
+  wouldExecuteWormholeCall({
+    ...common,
+    arguments: { queue, evmDestinationChain: chain, amount },
+  })(tx); // 1
+  bridgeFeeRateCall({ ...common, arguments: { queue, evmDestinationChain: chain } })(tx); // 2
+  bridgeMinFeeCall({ ...common, arguments: { queue, evmDestinationChain: chain } })(tx); // 3
+
+  const sim = await simulateRaw(client, tx);
+  const feeAmount = BigInt(bcs.u64().parse(extractAt(sim, 0)));
+  const wouldExecute = bcs.bool().parse(extractAt(sim, 1));
+
+  return {
+    feeAmount,
+    wouldExecute,
+    effectiveRate: BigInt(bcs.u128().parse(extractAt(sim, 2))),
+    effectiveMinFee: BigInt(bcs.u64().parse(extractAt(sim, 3))),
+    netAmount: wouldExecute ? amount - feeAmount : 0n,
+  };
 }
