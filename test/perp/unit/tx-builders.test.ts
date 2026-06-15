@@ -7,6 +7,7 @@ import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
   buildCancelPreOrderTx,
+  buildClaimRewardsToAccountTx,
   buildClosePositionTx,
   buildDecreasePositionTx,
   buildDepositCollateralTx,
@@ -304,5 +305,23 @@ describe("tx-builders (v3)", () => {
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
       }),
     ).toThrow(/withdrawal_queue not configured/);
+  });
+
+  it("buildClaimRewardsToAccountTx throws when no rewarders are configured", () => {
+    expect(() =>
+      buildClaimRewardsToAccountTx(client, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+      }),
+    ).toThrow(/no rewarders configured for stakeAlias=WLP/);
+  });
+
+  it("buildClaimRewardsToAccountTx chains claimReward for each rewarder type", () => {
+    const rewardType =
+      "0x896e53015216c5034825c056bcde37a694263601df2534ae5c91b8a3d9150c78::sui::SUI";
+    const tx = buildClaimRewardsToAccountTx(client, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      rewarderTypes: [rewardType],
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 });

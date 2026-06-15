@@ -58,7 +58,13 @@ describe("unified Client facade", () => {
   it("coverage guard: client-first builders are bound; non-client-first helpers are not", () => {
     // Helpers whose first arg is NOT the line client must not be exposed as bound
     // facade methods (binding would pass the client where a value is expected).
-    const NON_CLIENT_FIRST = ["extractReturnBytes"];
+    const NON_CLIENT_FIRST = [
+      "extractReturnBytes",
+      "openPythSponsorFund",
+      "reimbursePythSponsor",
+      "refreshOraclePrices",
+      "updatePythPrices",
+    ];
     const expected = (ns: object) => fnNames(ns).filter((n) => !NON_CLIENT_FIRST.includes(n));
 
     const perpExpected = expected({ ...perpUser, ...perpTx, ...perpFetch });

@@ -21,6 +21,8 @@ import {
 } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
 
+import { Client, perp, prediction } from "../../../src/sdk.ts";
+
 describe("SDK package wiring (v3)", () => {
   it("exports WaterXClient async factories", () => {
     expect(WaterXClient).toBeDefined();
@@ -57,5 +59,14 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof buildRequestCreditWithdrawTx).toBe("function");
     expect(typeof custodyMint).toBe("function");
     expect(typeof fetchDepositVaa).toBe("function");
+  });
+
+  it("exports unified Client facade from @waterx/sdk", () => {
+    expect(typeof Client).toBe("function");
+    expect(typeof Client.create).toBe("function");
+    expect(typeof Client.fromClients).toBe("function");
+    expect(typeof perp).toBe("object");
+    expect(typeof prediction).toBe("object");
+    expect(perp.WaterXClient).toBe(WaterXClient);
   });
 });
