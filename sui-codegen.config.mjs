@@ -70,6 +70,22 @@ const config = {
       },
     },
     {
+      package: "@waterx/constant-rule",
+      path: resolve(contracts, "waterx_oracle_rule/constant_rule"),
+      generate: {
+        types: true,
+        functions: true,
+      },
+    },
+    {
+      package: "@waterx/supra-rule",
+      path: resolve(contracts, "waterx_oracle_rule/supra_rule"),
+      generate: {
+        types: true,
+        functions: true,
+      },
+    },
+    {
       package: "@bucket/framework",
       path: resolve(contracts, "bucket_framework"),
       generate: {

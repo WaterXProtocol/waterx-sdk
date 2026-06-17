@@ -2,6 +2,10 @@
 
 Guidance for Claude Code when working in `waterx-sdk` (v3).
 
+## Changelog
+
+This repo keeps a [Keep a Changelog](https://keepachangelog.com/)–style [`CHANGELOG.md`](CHANGELOG.md). **Every PR with a user-visible change must add an entry under `## [Unreleased]`** (Added / Changed / Deprecated / Removed / Fixed / Security), referencing the PR number. Release tagging moves `[Unreleased]` into a dated, SemVer-numbered section (also bump `package.json` `version`).
+
 ## Project Overview
 
 WaterX is a perpetual futures DEX on Sui. The v3 contracts live in
