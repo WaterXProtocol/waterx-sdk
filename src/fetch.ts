@@ -745,7 +745,7 @@ export async function getBridgeLimits(
   }
 
   if (params.backing) {
-    backingIdx = nextIdx++;
+    backingIdx = nextIdx;
     mintedForCall({
       package: wormholePkg,
       arguments: {
