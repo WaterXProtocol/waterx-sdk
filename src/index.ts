@@ -120,6 +120,7 @@ export * from "./fetch.ts";
 export {
   PythCache,
   aggregateTickerWithConstant,
+  aggregateTickerWithDual,
   aggregateTickerWithPyth,
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,

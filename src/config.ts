@@ -40,6 +40,14 @@ export interface WaterxConstantRulePackage extends BasePackageEntry {
    * `constant_rule::feed` instead of `pyth_rule::feed` (e.g. `USDCUSD → "1000000000"`).
    */
   prices?: Record<string, string>;
+  /**
+   * Tickers in transition (subset of `prices`): fed via *both* `pyth_rule::feed`
+   * and `constant_rule::feed` into one collector so the aggregator can hold the
+   * `{Pyth, Constant}` weight set without an `EMissingPriceSource` window while
+   * rule weights are flipped. Empty/absent (steady state) → each `prices` ticker
+   * is constant-only. See the USDCUSD migration runbook in `waterx-contract`.
+   */
+  dual_feed?: string[];
 }
 
 export interface SupraRulePackage extends BasePackageEntry {

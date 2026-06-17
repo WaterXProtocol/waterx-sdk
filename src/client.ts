@@ -180,6 +180,32 @@ export class WaterXClient {
   }
 
   /**
+   * True when `ticker` is mid-migration and must be fed by *both* Pyth and the
+   * constant rule into one collector — so the aggregator can hold the
+   * `{Pyth, Constant}` weight set without an `EMissingPriceSource` window while
+   * rule weights are flipped (on-chain `aggregator::remove_outliers` requires
+   * every weighted rule present in the collector). Listed in
+   * `waterx_constant_rule.dual_feed`; clamped to `prices` so a stray entry that
+   * isn't a real constant ticker can't double-feed against no weight. See
+   * {@link aggregateTickerWithDual} and the USDCUSD runbook in `waterx-contract`.
+   */
+  isDualFeedTicker(ticker: string): boolean {
+    const c = this.config.packages.waterx_constant_rule;
+    if (!c?.published_at || !c.config) return false;
+    if (c.prices?.[ticker] === undefined) return false;
+    return c.dual_feed?.includes(ticker) ?? false;
+  }
+
+  /**
+   * True when `ticker` is fed by the constant rule *alone* (steady state): no
+   * Pyth feed call, so it skips the Pyth update. Dual-feed tickers are constant
+   * *and* Pyth, so they are NOT constant-only.
+   */
+  isConstantOnlyTicker(ticker: string): boolean {
+    return this.isConstantTicker(ticker) && !this.isDualFeedTicker(ticker);
+  }
+
+  /**
    * The `supra_rule` config when it is deployed, enabled, and fully wired
    * (`config` + `oracle_holder`), else `undefined`. When present, callers feed
    * `supra_rule::feed` as a second weighted rule alongside Pyth on the same

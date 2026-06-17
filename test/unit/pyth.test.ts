@@ -225,4 +225,56 @@ describe("constant rule oracle routing", () => {
     // Hermes is queried for the Pyth leg only (BTC), not the constant USDC leg.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  it("aggregateTickerWithDual appends pyth_rule::feed + constant_rule::feed + aggregate", async () => {
+    const { aggregateTickerWithDual } = await import("../../src/utils/pyth.ts");
+    const client = createUnitTestClient();
+    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    const tx = new Transaction();
+    aggregateTickerWithDual(tx, client, {
+      ticker: "USDCUSD",
+      priceInfoObjectId: client.getPythFeed("USDCUSD").price_info_object,
+    });
+    const targets = moveTargets(tx);
+    expect(targets).toContain("oracle::new_collector");
+    expect(targets).toContain("pyth_rule::feed");
+    expect(targets).toContain("constant_rule::feed");
+    expect(targets).toContain("oracle::aggregate");
+  });
+
+  it("aggregateTickerWithDual throws when constant rule is not configured", async () => {
+    const { aggregateTickerWithDual } = await import("../../src/utils/pyth.ts");
+    const client = createUnitTestClient();
+    delete client.config.packages.waterx_constant_rule;
+    const tx = new Transaction();
+    expect(() =>
+      aggregateTickerWithDual(tx, client, { ticker: "USDCUSD", priceInfoObjectId: "0x1" }),
+    ).toThrow(/waterx_constant_rule/);
+  });
+
+  it("refreshOraclePrices dual-feed ticker runs the Pyth update AND feeds both rules", async () => {
+    const { refreshOraclePrices } = await import("../../src/utils/pyth.ts");
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ binary: { data: [toHex(mockAccumulatorUpdate())] } }),
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const client = createUnitTestClient();
+    attachPythGrpcMocks(client); // keyed to the BTCUSD feed id
+    // Mark BTCUSD as a transition (dual-feed) constant ticker.
+    client.config.packages.waterx_constant_rule!.prices = { BTCUSD: "65000000000000" };
+    client.config.packages.waterx_constant_rule!.dual_feed = ["BTCUSD"];
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"]);
+
+    const targets = moveTargets(tx);
+    // Both rules feed into the one collector for the dual ticker …
+    expect(targets).toContain("pyth_rule::feed");
+    expect(targets).toContain("constant_rule::feed");
+    // … and the Pyth update still runs (Hermes queried), unlike constant-only.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });
