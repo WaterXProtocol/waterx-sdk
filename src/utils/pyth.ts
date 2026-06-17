@@ -414,10 +414,78 @@ export function aggregateTickerWithConstant(
 }
 
 /**
- * Refresh multiple tickers in one PTB. Constant-priced tickers (see
- * {@link WaterXClient.isConstantTicker}) are fed from `constant_rule`;
- * the rest are updated on-chain via Pyth first (one accumulator), then run
- * the collector → feed → aggregate cycle for each ticker.
+ * For a dual-feed ticker mid-migration (e.g. `USDCUSD`), build one collector
+ * fed by *both* `pyth_rule::feed` (+ `supra_rule::feed` when enabled) *and*
+ * `constant_rule::feed`, then `aggregate`. Used while the aggregator carries the
+ * `{Pyth, Constant}` weight set so neither weighted rule is missing from the
+ * collector (`aggregator::remove_outliers` aborts `EMissingPriceSource`
+ * otherwise). Still needs a fresh Pyth `PriceInfoObject`, so the caller must
+ * have run the Pyth update for this ticker first.
+ *
+ * Stays correct once weights are flipped to `{Constant}` only — the extra Pyth
+ * observation is dropped as a non-weighted rule — so a dual-feed ticker is safe
+ * across the whole transition; drop it from `dual_feed` (→ constant-only) once
+ * `PythRule` weight is 0.
+ */
+export function aggregateTickerWithDual(
+  tx: Transaction,
+  client: WaterXClient,
+  args: { ticker: string; priceInfoObjectId: string },
+): void {
+  const constant = client.config.packages.waterx_constant_rule;
+  if (!constant?.published_at || !constant.config) {
+    throw new Error(
+      `waterx_constant_rule.{published_at,config} missing — cannot dual-feed ticker '${args.ticker}'`,
+    );
+  }
+
+  const collector = newCollector({
+    package: client.config.packages.waterx_oracle.published_at,
+    arguments: { symbol: args.ticker },
+  })(tx);
+
+  pythRuleFeed({
+    package: client.config.packages.pyth_rule.published_at,
+    arguments: {
+      collector: collector as unknown as TransactionArgument,
+      config: tx.object(client.config.packages.pyth_rule.config),
+      pythState: tx.object(client.pyth.state_id),
+      pythPriceInfo: tx.object(args.priceInfoObjectId),
+    },
+  })(tx);
+
+  // Second weighted rule (when enabled) on the same collector, matching the
+  // pure-Pyth path.
+  maybeFeedSupra(tx, client, collector as unknown as TransactionArgument);
+
+  // The constant rule — the leg that lets the aggregator carry a Constant weight.
+  constantRuleFeed({
+    package: constant.published_at,
+    arguments: {
+      collector: collector as unknown as TransactionArgument,
+      config: tx.object(constant.config),
+    },
+  })(tx);
+
+  aggregateCall({
+    package: client.config.packages.waterx_oracle.published_at,
+    arguments: {
+      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+      collector: collector as unknown as TransactionArgument,
+    },
+  })(tx);
+}
+
+/**
+ * Refresh multiple tickers in one PTB. Routing per ticker:
+ * - **constant-only** (see {@link WaterXClient.isConstantOnlyTicker}) — fed from
+ *   `constant_rule`, skips Pyth entirely;
+ * - **dual-feed** ({@link WaterXClient.isDualFeedTicker}) — fed by both Pyth and
+ *   `constant_rule` (needs the Pyth update);
+ * - **Pyth** — the rest.
+ *
+ * Pyth-priced tickers (Pyth-only + dual) are updated on-chain via Pyth first
+ * (one accumulator), then each ticker runs its collector → feed → aggregate.
  */
 export async function refreshOraclePrices(
   tx: Transaction,
@@ -430,26 +498,39 @@ export async function refreshOraclePrices(
 ): Promise<void> {
   if (tickers.length === 0) return;
 
-  // Route each ticker to its rule: constant-pinned tickers skip Pyth entirely.
-  const constantTickers = tickers.filter((t) => client.isConstantTicker(t));
+  // Route each ticker to its rule. Dual-feed tickers are constant *and* Pyth, so
+  // they go through the Pyth update with the Pyth-only tickers but aggregate via
+  // the dual leg; only constant-*only* tickers skip Pyth entirely.
+  const constantOnlyTickers = tickers.filter((t) => client.isConstantOnlyTicker(t));
   const pythTickers = tickers.filter((t) => !client.isConstantTicker(t));
+  const dualTickers = tickers.filter((t) => client.isDualFeedTicker(t));
 
-  if (pythTickers.length > 0) {
-    // pythTickers are oracle tickers (e.g. "BTCUSD"); look up each one's pyth
-    // feed entry from config — both feed_id (off-chain) and price_info_object
-    // (on-chain) are consumed by the per-ticker aggregate cycle.
-    const entries = pythTickers.map((t) => client.getPythFeed(t));
+  // Pyth update covers both Pyth-only and dual-feed tickers.
+  const pythUpdateTickers = [...pythTickers, ...dualTickers];
+  if (pythUpdateTickers.length > 0) {
+    // Oracle tickers (e.g. "BTCUSD") → each one's pyth feed entry: feed_id
+    // (off-chain) drives the accumulator; price_info_object (on-chain) is
+    // consumed by the per-ticker aggregate cycle.
+    const entries = pythUpdateTickers.map((t) => client.getPythFeed(t));
     const feedIds = entries.map((e) => e.feed_id);
     await updatePythPrices(tx, client, feedIds, opts.cache, opts.sponsorFund);
+
     pythTickers.forEach((ticker, i) => {
       aggregateTickerWithPyth(tx, client, {
         ticker,
         priceInfoObjectId: entries[i]!.price_info_object,
       });
     });
+    dualTickers.forEach((ticker, i) => {
+      // dual entries are appended after the pyth-only ones.
+      aggregateTickerWithDual(tx, client, {
+        ticker,
+        priceInfoObjectId: entries[pythTickers.length + i]!.price_info_object,
+      });
+    });
   }
 
-  for (const ticker of constantTickers) {
+  for (const ticker of constantOnlyTickers) {
     aggregateTickerWithConstant(tx, client, { ticker });
   }
 }

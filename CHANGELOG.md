@@ -10,6 +10,14 @@ reference the PR that introduced them.
 
 ### Added
 
+- **Dual-feed transition routing for constant tickers.** A new `waterx_constant_rule.dual_feed`
+  list (subset of `prices`) marks tickers mid-migration: `refreshOraclePrices` feeds them via *both*
+  `pyth_rule::feed` and `constant_rule::feed` into one collector (new `aggregateTickerWithDual`), so
+  the aggregator can hold the `{Pyth, Constant}` weight set without an `EMissingPriceSource` window
+  while rule weights are flipped (on-chain `aggregator::remove_outliers` requires every weighted rule
+  present in the collector). New `WaterXClient.isDualFeedTicker` / `isConstantOnlyTicker`; dual
+  tickers keep the Pyth update, constant-only tickers still skip it. Enables the zero-downtime
+  (path A) rollout in the `waterx-contract` USDCUSD runbook. (#44)
 - **`getBridgeFee(client, { evmDestinationChain, amount, creditType? })`** — one-shot read of the
   v4 `withdrawal_queue` bridge-fee estimate in a single `simulate`, returning a typed
   `BridgeFeeView` (`feeAmount` / `wouldExecute` / `effectiveRate` / `effectiveMinFee` /
