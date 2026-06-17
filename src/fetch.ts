@@ -23,6 +23,10 @@ import {
   accountIds as accountIdsCall,
 } from "./generated/waterx_account/account.ts";
 import {
+  personalBurnCapAmount as personalBurnCapAmountCall,
+  personalBurned as personalBurnedCall,
+} from "./generated/waterx_credit/credit_registry.ts";
+import {
   AccountData,
   accountData as accountDataCall,
   getAccountOrders as getAccountOrdersCall,
@@ -54,6 +58,16 @@ import {
   referralCodeExists as referralCodeExistsCall,
   tryGetRefer as tryGetReferCall,
 } from "./generated/waterx_referral/referral_table.ts";
+import {
+  hourlyBurned as hourlyBurnedCall,
+  hourlyBurnLimit as hourlyBurnLimitCall,
+  hourlyMinted as hourlyMintedCall,
+  hourlyMintLimit as hourlyMintLimitCall,
+  maxBurnPerTx as maxBurnPerTxCall,
+  maxMintPerTx as maxMintPerTxCall,
+  mintedFor as mintedForCall,
+  paused as pausedCall,
+} from "./generated/wormhole_bridge/wormhole_bridge.ts";
 
 // ============================================================================
 // Simulate / decode helpers
@@ -634,4 +648,144 @@ export async function getCustodyAssetData(
   const burnFeeRate = BigInt(bcs.u128().parse(await simulateAndExtract(client, burnTx)));
 
   return { registered: true, mintFeeRate, burnFeeRate };
+}
+
+// ============================================================================
+// Wormhole bridge limits (hourly rate windows on-chain; exposed as daily* for FE parity)
+// ============================================================================
+
+export interface GetBridgeLimitsParams {
+  /** wxa account id — enables per-account `personalBurned`. */
+  accountId?: string;
+  /** Wormhole chain id + 20-byte EVM token — enables `backingMinted`. */
+  backing?: { wormholeChainId: number; token: number[] };
+}
+
+/** On-chain bridge + credit-registry rate-limit snapshot (u64 fields). */
+export interface BridgeLimitsView {
+  paused: boolean;
+  /** Hourly mint window cap (legacy DTO name: dailyMintLimit). */
+  dailyMintLimit: bigint;
+  dailyMinted: bigint;
+  maxMintPerTx: bigint;
+  dailyBurnLimit: bigint;
+  dailyBurned: bigint;
+  maxBurnPerTx: bigint;
+  personalBurnCapAmount: bigint;
+  personalBurned?: bigint;
+  backingMinted?: bigint;
+}
+
+async function simulateAllReturnBytes(
+  client: WaterXClient,
+  tx: Transaction,
+): Promise<(Uint8Array | undefined)[]> {
+  tx.setSender(DRY_RUN_SENDER);
+  const sim = (await client.simulate(tx)) as unknown as SimulationResult;
+  if (sim.$kind === "FailedTransaction") {
+    const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
+    throw new Error(`simulate aborted: ${err}`);
+  }
+  return (sim.commandResults ?? []).map((cmd) => {
+    const ret = cmd?.returnValues?.[0];
+    return toBytes(ret?.bcs) ?? toBytes(ret?.value?.bcs);
+  });
+}
+
+/**
+ * Read wormhole_bridge rate limits + optional credit-registry personal burn +
+ * optional per-(chain, token) backing minted — one devInspect PTB.
+ */
+export async function getBridgeLimits(
+  client: WaterXClient,
+  params: GetBridgeLimitsParams = {},
+): Promise<BridgeLimitsView> {
+  const bridgePkg = client.config.packages.wormhole_bridge;
+  const bridgeId = bridgePkg?.bridge;
+  if (!bridgePkg?.published_at || !bridgeId) {
+    throw new Error("wormhole_bridge not configured for this deployment");
+  }
+
+  const creditPkg = client.config.packages.waterx_credit;
+  const registryId = creditPkg?.credit_registry;
+  const creditType = client.creditType();
+
+  const tx = new Transaction();
+  const bridgeArgs = { bridge: tx.object(bridgeId) };
+  const wormholePkg = bridgePkg.published_at;
+
+  pausedCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+  hourlyMintLimitCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+  hourlyMintedCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+  maxMintPerTxCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+  hourlyBurnLimitCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+  hourlyBurnedCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+  maxBurnPerTxCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
+
+  let personalCapIdx: number | undefined;
+  let personalBurnedIdx: number | undefined;
+  let backingIdx: number | undefined;
+  let nextIdx = 7;
+
+  if (registryId && creditPkg?.published_at) {
+    personalCapIdx = nextIdx++;
+    personalBurnCapAmountCall({
+      package: creditPkg.published_at,
+      arguments: { registry: tx.object(registryId) },
+      typeArguments: [creditType],
+    })(tx);
+    if (params.accountId) {
+      personalBurnedIdx = nextIdx++;
+      personalBurnedCall({
+        package: creditPkg.published_at,
+        arguments: { registry: tx.object(registryId), user: params.accountId },
+        typeArguments: [creditType],
+      })(tx);
+    }
+  }
+
+  if (params.backing) {
+    backingIdx = nextIdx++;
+    mintedForCall({
+      package: wormholePkg,
+      arguments: {
+        bridge: tx.object(bridgeId),
+        chainId: params.backing.wormholeChainId,
+        token: params.backing.token,
+      },
+    })(tx);
+  }
+
+  const results = await simulateAllReturnBytes(client, tx);
+
+  const parseU64 = (idx: number): bigint => {
+    const bytes = results[idx];
+    if (!bytes) throw new Error(`getBridgeLimits: missing simulate result at command ${idx}`);
+    return BigInt(bcs.u64().parse(bytes));
+  };
+  const parseBool = (idx: number): boolean => {
+    const bytes = results[idx];
+    if (!bytes) throw new Error(`getBridgeLimits: missing simulate result at command ${idx}`);
+    return bcs.bool().parse(bytes);
+  };
+
+  const view: BridgeLimitsView = {
+    paused: parseBool(0),
+    dailyMintLimit: parseU64(1),
+    dailyMinted: parseU64(2),
+    maxMintPerTx: parseU64(3),
+    dailyBurnLimit: parseU64(4),
+    dailyBurned: parseU64(5),
+    maxBurnPerTx: parseU64(6),
+    personalBurnCapAmount: personalCapIdx !== undefined ? parseU64(personalCapIdx) : 0n,
+  };
+
+  if (personalBurnedIdx !== undefined) {
+    view.personalBurned = parseU64(personalBurnedIdx);
+  }
+  if (backingIdx !== undefined) {
+    view.backingMinted = parseU64(backingIdx);
+  }
+
+  return view;
 }
