@@ -1,11 +1,11 @@
 /**
  * Pure gift claimable-link crypto helpers (no PredictClient / RPC).
- * Mirrors predict-sdk `gift.ts` KDF + URL + sign paths used by the FE share flow.
+ * Browser-safe — no node:crypto. Used by FE gift share / claim flows.
  */
-import { createHash } from "node:crypto";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { fromBase64, toBase64 } from "@mysten/sui/utils";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 const GIFT_KDF_DOMAIN = new TextEncoder().encode("waterx_prediction_gift/kdf");
 const GIFT_DOMAIN_CLAIM = new TextEncoder().encode("waterx_prediction_gift/claim");
@@ -65,7 +65,7 @@ export function deriveGiftKeypair(seed: Uint8Array): Ed25519Keypair {
   if (seed.length !== GIFT_URL_SEED_BYTES) {
     throw new Error(`Gift URL seed must be ${GIFT_URL_SEED_BYTES} bytes, got ${seed.length}`);
   }
-  const secret = createHash("sha256").update(concatBytes(GIFT_KDF_DOMAIN, seed)).digest();
+  const secret = sha256(concatBytes(GIFT_KDF_DOMAIN, seed));
   return Ed25519Keypair.fromSecretKey(secret);
 }
 
