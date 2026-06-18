@@ -37,6 +37,38 @@ describe("WaterXClient (offline)", () => {
     expect(client.wlpType()).toContain("::wlp::WLP");
   });
 
+  it("getRewarders returns configured rewarders for a stake alias", () => {
+    const withRewarders = createUnitTestClient();
+    withRewarders.config = {
+      ...withRewarders.config,
+      packages: {
+        ...withRewarders.config.packages,
+        waterx_staking: {
+          ...withRewarders.config.packages.waterx_staking!,
+          rewarders: {
+            WLP: {
+              SUI: {
+                rewarder_id: "0xrewarder",
+                coin_type: "0x2::sui::SUI",
+                decimals: 9,
+              },
+            },
+          },
+        },
+      },
+    };
+    expect(withRewarders.getRewarders("WLP")).toEqual([
+      {
+        alias: "SUI",
+        rewarder_id: "0xrewarder",
+        coin_type: "0x2::sui::SUI",
+        decimals: 9,
+      },
+    ]);
+    expect(withRewarders.getRewarderTypes("WLP")).toEqual(["0x2::sui::SUI"]);
+    expect(client.getRewarders("UNKNOWN")).toEqual([]);
+  });
+
   it("throws for unknown aggregator, pyth feed, pool token, and missing wlp", () => {
     expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
     expect(() => client.getPythFeed("NOPE")).toThrow(/No pyth feed listed/);

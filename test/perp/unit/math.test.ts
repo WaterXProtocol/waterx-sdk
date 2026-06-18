@@ -271,6 +271,21 @@ describe("impact and trading fee rate", () => {
     expect(calcImpactFeeRate({ ...base, allocatedLpExposureBps: 10_000, poolTvlUsd: 0 })).toBe(0);
   });
 
+  it("calcImpactFeeRate returns 0 when allocated exposure underflows to zero", () => {
+    expect(
+      calcImpactFeeRate({
+        longOi: 2,
+        shortOi: 10,
+        orderIsLong: false,
+        orderSize: 5,
+        executionPrice: 100,
+        maxImpactFee: 0.001,
+        allocatedLpExposureBps: 1,
+        poolTvlUsd: Number.MIN_VALUE,
+      }),
+    ).toBe(0);
+  });
+
   it("calcImpactFeeRate handles long-heavy OI (lpOriginalSide false)", () => {
     const rate = calcImpactFeeRate({
       longOi: 20,
@@ -461,7 +476,7 @@ describe("WLP math", () => {
     expect(fee).toBeGreaterThanOrEqual(base);
   });
 
-  it("calcDynamicFeeBps returns base when average target value is zero", () => {
-    expect(calcDynamicFeeBps(1, 0, 1_000_000, 5000, 25, true)).toBe(25);
+  it("calcDynamicFeeBps returns base when average target value underflows to zero", () => {
+    expect(calcDynamicFeeBps(0, 5e-324, 5e-324, 1, 25, true)).toBe(25);
   });
 });

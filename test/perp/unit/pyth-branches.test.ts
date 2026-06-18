@@ -226,6 +226,22 @@ describe("pyth on-chain helper branches", () => {
     expect(ids[0]).toMatch(/^0x/);
   });
 
+  it("resolves price table via valueType and objectId when childId is absent", async () => {
+    const client = createUnitTestClient();
+    wirePythGrpc(client, {
+      dynamicFields: [{ objectId: PRICE_TABLE_CHILD, valueType: DEFAULT_MOCK_PYTH_ROW_TYPE }],
+    });
+    const cache = new PythCache();
+    await buildPythPriceUpdateCalls(
+      txFor(),
+      client,
+      [mockAccumulatorUpdate()],
+      ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
+      cache,
+    );
+    expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
+  });
+
   it("resolves price table via valueType and childId fields", async () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, {
