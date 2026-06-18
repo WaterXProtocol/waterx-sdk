@@ -72,6 +72,20 @@ describe("api-contract shape assertions", () => {
     expect(betListIncludesOrderId(BETS_ME_FIXTURE.bets, 99n)).toBe(false);
   });
 
+  it("assertBetsMeList accepts broker-unfilled outcome wire", () => {
+    assertBetsMeList({
+      bets: [
+        {
+          betId: "0xabc:order:1",
+          orderId: "1",
+          outcome: "unfilled",
+          submissionState: "confirmed",
+          placedAt: 1_706_200_000_000,
+        },
+      ],
+    });
+  });
+
   it("betListIncludesPositionId", () => {
     expect(betListIncludesPositionId([{ positionId: "7" }], 7n)).toBe(true);
     expect(betListIncludesPositionId([{ order_id: "42" }], 7n)).toBe(false);
