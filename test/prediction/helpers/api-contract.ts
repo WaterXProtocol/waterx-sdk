@@ -19,6 +19,10 @@ export {
  * Wire contract aligned with bucket-backend-mono Bruno docs:
  * `docs/bruno/waterx/predict/` (feed, browse, detail, bets).
  * Staging may serialize round lifecycle as `phase` or `status` — both accepted.
+ *
+ * `unfilled` — bucket-backend-mono #689 (`order-state` Rule 1 / 7a): order never
+ * matched (cancel before fill, or market resolved with zero fill). Distinct from
+ * `refund` (round voided after a filled bet).
  */
 
 export const KNOWN_ROUND_PHASES = new Set([
@@ -42,7 +46,8 @@ export const KNOWN_BET_SIDE_KEYS = new Set(["up", "down", "teamA", "teamB", "dra
 
 export const KNOWN_CHART_KINDS = new Set(["price", "probability"]);
 
-export const KNOWN_BET_OUTCOMES = new Set(["pending", "won", "lost", "refund"]);
+/** `pending` | `unfilled` | `won` | `lost` | `refund` — mirrors backend `BetOutcome`. */
+export const KNOWN_BET_OUTCOMES = new Set(["pending", "unfilled", "won", "lost", "refund"]);
 
 export const KNOWN_SUBMISSION_STATES = new Set(["confirmed", "submitting"]);
 
