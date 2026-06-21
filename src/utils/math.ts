@@ -154,9 +154,13 @@ export function calcEffectiveCollateralUsd(params: {
  *   liqRemaining  = grossCollateralUsd + signedPnl − borrow − trading − closingFee ∓ funding
  *                   (the contract's `is_liquidatable` boundary; funding income is added back)
  *
- * The result is a USD figure (matching the "$X" the UI shows). To build the
- * `withdrawCollateralRequest` `amount`, convert to raw collateral units:
+ * The result is a USD figure (matching the "$X" the UI shows), already aligned so that
+ * converting it to raw collateral units with floor is abort-safe:
  *   `rawAmount = floor((maxReducibleUsd / collateralPriceUsd) * 10 ** collateralDecimal)`.
+ * The liquidation leg backs off one raw collateral unit because `is_liquidatable` aborts
+ * on `remaining <= maintenance` (inclusive) — the safe withdrawal must leave remaining
+ * *strictly* above maintenance. The leverage (`> max`) and min-collateral (`>=`) checks
+ * are equality-safe on their own and floor-rounding only adds margin, so they need no offset.
  *
  * Funding handling is signed (income added, expense subtracted) — a close approximation
  * of the contract's deficit-aware sequencing, exact whenever the position is solvent
@@ -166,6 +170,8 @@ export function calcEffectiveCollateralUsd(params: {
  * @param maintenanceMarginRate   `maintenance_margin` as a fraction (e.g. 0.01 for 1%).
  * @param minCollValueUsd         `min_coll_value` in USD (raw scaled value ÷ 1e9).
  * @param closingFeeUsd           Full closing fee in USD (`close_fee` → USD).
+ * @param collateralPriceUsd      Oracle price of the collateral token (USD per token).
+ * @param collateralDecimal       Collateral token decimals — sets the smallest withdraw step.
  */
 export function calcMaxReducibleCollateralUsd(params: {
   grossCollateralUsd: number;
@@ -181,6 +187,8 @@ export function calcMaxReducibleCollateralUsd(params: {
   closingFeeUsd: number;
   fundingSign: boolean;
   fundingFeeUsd: number;
+  collateralPriceUsd: number;
+  collateralDecimal: number;
 }): number {
   const {
     grossCollateralUsd,
@@ -196,6 +204,8 @@ export function calcMaxReducibleCollateralUsd(params: {
     closingFeeUsd,
     fundingSign,
     fundingFeeUsd,
+    collateralPriceUsd,
+    collateralDecimal,
   } = params;
 
   const notional = sizeInAsset * spotPrice;
@@ -209,12 +219,14 @@ export function calcMaxReducibleCollateralUsd(params: {
     tradingFeeUsd,
   });
 
-  // (A) max leverage and (B) min collateral, both bounded by effLeverage.
-  const leverageHeadroom =
-    maxLeverage > 0 ? effLeverage - notional / maxLeverage : effLeverage;
+  // (A) max leverage and (B) min collateral, both bounded by effLeverage. Both checks
+  // pass at equality (`leverage_bps > max` / `collateral >= min`), so no offset needed.
+  const leverageHeadroom = maxLeverage > 0 ? effLeverage - notional / maxLeverage : effLeverage;
   const minCollHeadroom = effLeverage - minCollValueUsd;
 
-  // (C) is_liquidatable boundary: remaining must stay strictly above maintenance margin.
+  // (C) is_liquidatable: aborts on `remaining <= maintenance`, so the post-withdrawal
+  // remaining must stay STRICTLY above maintenance. Back off one raw collateral unit (the
+  // smallest withdrawable step) so the floored raw amount can never land on equality.
   const signedPnl = calcUnrealizedPnl(isLong, entryPrice, spotPrice, sizeInAsset);
   const liqRemaining =
     grossCollateralUsd +
@@ -224,7 +236,8 @@ export function calcMaxReducibleCollateralUsd(params: {
     closingFeeUsd -
     (fundingSign ? fundingFeeUsd : -fundingFeeUsd);
   const maintenanceUsd = maintenanceMarginRate * notional;
-  const liquidationHeadroom = liqRemaining - maintenanceUsd;
+  const oneRawUnitUsd = collateralPriceUsd > 0 ? collateralPriceUsd / 10 ** collateralDecimal : 0;
+  const liquidationHeadroom = liqRemaining - maintenanceUsd - oneRawUnitUsd;
 
   return Math.max(0, Math.min(leverageHeadroom, minCollHeadroom, liquidationHeadroom));
 }

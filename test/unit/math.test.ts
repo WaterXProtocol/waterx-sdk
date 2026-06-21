@@ -240,16 +240,21 @@ describe("calcMaxReducibleCollateralUsd", () => {
       closingFeeUsd: 0.2,
       fundingSign: true,
       fundingFeeUsd: 0,
+      collateralPriceUsd: 1,
+      collateralDecimal: 6,
     });
     // effLeverage = 14.96 - 0.6 - 0.34 = 14.02; floor = 348.6/25 = 13.944.
+    // Leverage (A) binds here, not liquidation, so no one-raw-unit offset applies.
     expect(max).toBeCloseTo(14.02 - 348.6 / 25, 5); // ≈ 0.076
     expect(max).toBeGreaterThan(0);
     expect(max).toBeLessThan(0.1);
   });
 
-  it("liquidation constraint binds for a near-liquidation position", () => {
+  it("liquidation constraint binds and leaves remaining strictly above maintenance", () => {
     // Long deep in loss: spot just above liq, so (C) is the smallest headroom.
-    const max = calcMaxReducibleCollateralUsd({
+    const collateralDecimal = 6;
+    const collateralPriceUsd = 1;
+    const params = {
       grossCollateralUsd: 15,
       sizeInAsset: 5,
       spotPrice: 66,
@@ -263,10 +268,24 @@ describe("calcMaxReducibleCollateralUsd", () => {
       closingFeeUsd: 0.1,
       fundingSign: false,
       fundingFeeUsd: 0,
-    });
+      collateralPriceUsd,
+      collateralDecimal,
+    };
+    const max = calcMaxReducibleCollateralUsd(params);
     // liqRemaining = 15 - 10 - 0.1 = 4.9; maintenance = 0.01 * 330 = 3.3.
-    // headroom_C = 1.6; leverage headroom = 15 - 330/25 = 1.8 → C binds.
-    expect(max).toBeCloseTo(1.6, 5);
+    // inclusive headroom_C = 1.6; leverage headroom = 15 - 330/25 = 1.8 → C binds.
+    // The helper backs off one raw unit (1e-6) so the value is just under 1.6.
+    const oneRawUnitUsd = collateralPriceUsd / 10 ** collateralDecimal;
+    expect(max).toBeCloseTo(1.6 - oneRawUnitUsd, 9);
+    expect(max).toBeLessThan(1.6);
+
+    // Converting to a raw tx amount with floor must keep remaining strictly above
+    // maintenance (the contract aborts on equality).
+    const rawAmount = Math.floor((max / collateralPriceUsd) * 10 ** collateralDecimal);
+    const withdrawnUsd = (rawAmount / 10 ** collateralDecimal) * collateralPriceUsd;
+    const remainingAfter = 4.9 - withdrawnUsd;
+    const maintenanceUsd = 0.01 * 330;
+    expect(remainingAfter).toBeGreaterThan(maintenanceUsd);
   });
 
   it("clamps to 0 when the position is already over the limit", () => {
@@ -284,6 +303,8 @@ describe("calcMaxReducibleCollateralUsd", () => {
       closingFeeUsd: 0,
       fundingSign: false,
       fundingFeeUsd: 0,
+      collateralPriceUsd: 1,
+      collateralDecimal: 6,
     });
     // notional 335, floor 335/25 = 13.4 > collateral 10 → already over 25x.
     expect(max).toBe(0);
@@ -304,6 +325,8 @@ describe("calcMaxReducibleCollateralUsd", () => {
       closingFeeUsd: 0,
       fundingSign: false,
       fundingFeeUsd: 0,
+      collateralPriceUsd: 1,
+      collateralDecimal: 6,
     });
     expect(max).toBeCloseTo(5, 5);
   });
