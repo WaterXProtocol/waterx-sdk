@@ -88,6 +88,13 @@ function annotateMoveStructFactory(source: string, functionName: string): string
   return source.replace(pattern, "$1: MoveStruct<any, any> {");
 }
 
+function trimTrailingWhitespace(source: string): string {
+  return source
+    .split("\n")
+    .map((line) => line.replace(/\s+$/, ""))
+    .join("\n");
+}
+
 function rewritePortableTypes(source: string, filePath: string): string {
   const normalizedPath = toPosix(filePath);
 
@@ -105,7 +112,9 @@ function rewritePortableTypes(source: string, filePath: string): string {
 let changedFiles = 0;
 for (const filePath of walk(generatedRoot)) {
   const original = readFileSync(filePath, "utf8");
-  const rewritten = rewritePortableTypes(rewriteImports(original, filePath), filePath);
+  const rewritten = trimTrailingWhitespace(
+    rewritePortableTypes(rewriteImports(original, filePath), filePath),
+  );
 
   if (rewritten !== original) {
     writeFileSync(filePath, rewritten, "utf8");

@@ -5,12 +5,12 @@
 
 /**
  * Supra oracle rule for `waterx_oracle`.
- * 
+ *
  * Reads a price from Supra's push oracle (`OracleHolder`) and contributes it to a
  * `waterx_oracle::collector::PriceCollector` keyed by oracle `symbol`. Mirrors
  * `waterx_pyth_rule::pyth_rule`'s shape: a per-symbol id map (`pair_id`) plus a
  * per-symbol freshness tolerance, falling back to `DEFAULT_TOLERANCE_MS`.
- * 
+ *
  * Like the other rules in this umbrella, `feed` _abstains_ (records `none`)
  * instead of aborting when the symbol is unconfigured or the Supra timestamp is
  * stale, so the aggregator can still reach `weight_threshold` from other rules.

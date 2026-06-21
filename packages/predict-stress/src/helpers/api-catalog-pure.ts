@@ -312,11 +312,11 @@ async function listAllFeedBrowseItems(
 
   for (let page = 0; page < maxPages; page += 1) {
     const sep = listPath.includes("?") ? "&" : "?";
-    const path =
+    const requestPath: string =
       cursor != null && cursor !== ""
         ? `${listPath}${sep}cursor=${encodeURIComponent(cursor)}`
         : listPath;
-    const { status, envelope } = await apiGet<FeedBrowseListData>(env, path);
+    const { status, envelope } = await apiGet<FeedBrowseListData>(env, requestPath);
     if (status !== 200 || !envelope.success) break;
     items.push(...envelope.data.items);
     cursor = envelope.data.nextCursor ?? null;
