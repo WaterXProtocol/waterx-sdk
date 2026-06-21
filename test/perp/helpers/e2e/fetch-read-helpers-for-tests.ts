@@ -8,7 +8,12 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../../../../src/client.ts";
 import { getAccountsByOwner } from "../../../../src/fetch.ts";
-import { accountBalance, accountOwner } from "../../../../src/generated/waterx_account/account.ts";
+import {
+  accountBalance,
+  accountOwner,
+  isDepositPolicyRegistered,
+  isProtocolAssetAllowed,
+} from "../../../../src/generated/waterx_account/account.ts";
 import {
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
@@ -122,6 +127,46 @@ export async function getAccountOwnerByAccountId(
       { cause: e },
     );
   }
+}
+
+function parseSimulateBoolReturn(result: unknown, commandIndex = 0): boolean {
+  const bytes = extractSimulateReturnBytesSync(result, commandIndex);
+  return bcs.bool().parse(bytes);
+}
+
+/** Registry-level: at least one deposit policy registered for `coinType`. */
+export async function isRegistryDepositPolicyRegistered(
+  client: WaterXClient,
+  coinType: string,
+): Promise<boolean> {
+  const pkg = client.config.packages.waterx_account.published_at;
+  const reg = client.config.packages.waterx_account.account_registry;
+  const tx = new Transaction();
+  isDepositPolicyRegistered({
+    package: pkg,
+    arguments: { registry: tx.object(reg) },
+    typeArguments: [coinType],
+  })(tx);
+  const result = await client.simulate(tx);
+  return parseSimulateBoolReturn(result);
+}
+
+/** `WaterXPerp` may `take<coinType>` from wxa stored balance (mint_wlp / trading gate). */
+export async function isWaterXPerpProtocolAssetAllowed(
+  client: WaterXClient,
+  coinType: string,
+): Promise<boolean> {
+  const perpWitness = `${client.config.packages.waterx_perp.original_id}::account_data::WaterXPerp`;
+  const pkg = client.config.packages.waterx_account.published_at;
+  const reg = client.config.packages.waterx_account.account_registry;
+  const tx = new Transaction();
+  isProtocolAssetAllowed({
+    package: pkg,
+    arguments: { registry: tx.object(reg) },
+    typeArguments: [perpWitness, coinType],
+  })(tx);
+  const result = await client.simulate(tx);
+  return parseSimulateBoolReturn(result);
 }
 
 /** Stored balance for `coinType` on wxa account `accountId`. */

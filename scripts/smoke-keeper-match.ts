@@ -45,9 +45,6 @@
  *   WATERX_SKIP_MATCH=1           skip keeper match_orders
  *   WATERX_SKIP_CLOSE=1           skip close step
  */
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
@@ -74,27 +71,9 @@ import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadActiveKeypair } from "./load-signer.ts";
 
-const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
-const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 const BTC = "BTCUSD";
-
-function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
-  const yaml = readFileSync(CLIENT_YAML, "utf8");
-  const m = /active_address:\s*"?(0x[a-f0-9]+)"?/i.exec(yaml);
-  if (!m) throw new Error("could not parse active_address from client.yaml");
-  const activeAddress = m[1]!.toLowerCase();
-  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
-  for (const encoded of keystore) {
-    const raw = fromBase64(encoded);
-    if (raw.length !== 33 || raw[0] !== 0x00) continue;
-    const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === activeAddress) {
-      return { keypair: kp, address: kp.toSuiAddress() };
-    }
-  }
-  throw new Error(`no ED25519 key in keystore matches active address ${activeAddress}`);
-}
 
 interface SimResult {
   $kind?: string;
@@ -307,6 +286,9 @@ async function main(): Promise<void> {
     process.env.WATERX_POSITION_ID !== undefined
       ? BigInt(process.env.WATERX_POSITION_ID)
       : undefined;
+  // Track whether this run freshly opened the position via match — only then
+  // must we wait out the market cooldown before the close step.
+  let justOpened = false;
 
   if (process.env.WATERX_SKIP_MATCH !== "1" && positionId === undefined) {
     console.log("\n=== Keeper match_orders (LIMIT_BUY book, from tick 0) ===");
@@ -333,6 +315,7 @@ async function main(): Promise<void> {
     if (!(await sim(client, keypair, matchTx, "matchOrders (sim)"))) process.exit(2);
     const matchRes = await execute(client, keypair, matchTx, "matchOrders (execute)");
     if (!matchRes.success) process.exit(1);
+    justOpened = true;
 
     const events = await fetchTxEvents(matchRes.digest);
     const ev = findEvent(events, "::events::PositionOpened");
@@ -366,6 +349,20 @@ async function main(): Promise<void> {
   if (positionId === undefined) {
     console.warn("no positionId — set WATERX_POSITION_ID to close an existing position");
     return;
+  }
+
+  // The position just opened by match carries an update_timestamp ≈ now;
+  // `close_position_request` aborts ECooldownNotElapsed until the market's
+  // cooldown_ms elapses. Wait it out (plus a small buffer) when we opened
+  // fresh this run. Positions passed in via WATERX_POSITION_ID are assumed
+  // past cooldown already, so we skip the wait for them.
+  if (justOpened) {
+    const cooldownMs = Number(market2.cooldown_ms ?? 0n);
+    if (cooldownMs > 0) {
+      const waitMs = cooldownMs + 1500;
+      console.log(`\n=== Cooldown wait ${waitMs}ms (market cooldown_ms=${cooldownMs}) ===`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
   }
 
   const positionsForClose = await getAccountPositions(client, {

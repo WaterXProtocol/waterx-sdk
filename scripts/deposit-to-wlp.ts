@@ -17,12 +17,8 @@
  *   WATERX_SMOKE_ACCOUNT_ID=0x… pnpm exec tsx scripts/deposit-to-wlp.ts
  *   WATERX_SMOKE_ACCOUNT_ID=0x… EXECUTE=1 pnpm exec tsx scripts/deposit-to-wlp.ts
  */
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
@@ -36,26 +32,7 @@ import { setPriceRefreshThresholdMs } from "../src/generated/waterx_perp/global_
 import { mintWlp, updateTokenValue } from "../src/user/wlp.ts";
 import { aggregateTickerWithPyth, refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
-
-const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
-const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
-
-function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
-  const yaml = readFileSync(CLIENT_YAML, "utf8");
-  const m = /active_address:\s*"?(0x[a-f0-9]+)"?/i.exec(yaml);
-  if (!m) throw new Error("could not parse active_address from client.yaml");
-  const activeAddress = m[1]!.toLowerCase();
-  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
-  for (const encoded of keystore) {
-    const raw = fromBase64(encoded);
-    if (raw.length !== 33 || raw[0] !== 0x00) continue;
-    const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === activeAddress) {
-      return { keypair: kp, address: kp.toSuiAddress() };
-    }
-  }
-  throw new Error(`no ED25519 key in keystore matches active address ${activeAddress}`);
-}
+import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 async function isUsdAllowed(
   client: WaterXClient,
@@ -121,7 +98,7 @@ async function getPriceRefreshThresholdMs(
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const { keypair, address } = loadActiveKeypair();
+  const address = resolveActiveAddress();
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   if (!accountId) {
@@ -133,6 +110,8 @@ async function main(): Promise<void> {
   const depositAmount = BigInt(process.env.DEPOSIT_AMOUNT ?? "1000000");
   const minLpAmount = BigInt(process.env.MIN_LP_AMOUNT ?? "0");
   const doExecute = process.env.EXECUTE === "1";
+  // Keystore (secret) only needed to broadcast — dry runs stay address-only.
+  const keypair = doExecute ? loadActiveKeypair().keypair : null;
   // SKIP_PRICE_UPDATE=1 mints without refreshing the oracle / bumping
   // TokenPoolInfo.value_usd — relies on the pool prices already being fresh
   // within price_refresh_threshold_ms. Mirrors buildMintWlpTx's
@@ -161,7 +140,7 @@ async function main(): Promise<void> {
   if (usdBalance < depositAmount) {
     throw new Error(
       `deposit-to-wlp: wxa USD balance ${usdBalance} < deposit ${depositAmount}. ` +
-        `Run scripts/mint-usd-from-mock-usdc.ts first (or lower DEPOSIT_AMOUNT).`,
+        `Run scripts/mint-usd-from-collateral.ts first (or lower DEPOSIT_AMOUNT).`,
     );
   }
 
@@ -202,7 +181,7 @@ async function main(): Promise<void> {
       console.log("  ✓ grant simulate ok (will be executed when EXECUTE=1)");
     } else {
       const gr = (await client.signAndExecuteTransaction({
-        signer: keypair,
+        signer: keypair!,
         transaction: grantTx,
       })) as {
         Transaction?: { digest?: string; status?: { success?: boolean; error?: string | null } };
@@ -258,7 +237,7 @@ async function main(): Promise<void> {
       console.log("  ✓ bump simulate ok (will execute when EXECUTE=1)");
     } else {
       const br = (await client.signAndExecuteTransaction({
-        signer: keypair,
+        signer: keypair!,
         transaction: bumpTx,
       })) as {
         Transaction?: { digest?: string; status?: { success?: boolean; error?: string | null } };
@@ -316,7 +295,7 @@ async function main(): Promise<void> {
 
   console.log("\nexecuting…");
   const r = (await client.signAndExecuteTransaction({
-    signer: keypair,
+    signer: keypair!,
     transaction: tx,
   })) as {
     Transaction?: { digest?: string; status?: { success?: boolean; error?: string | null } };

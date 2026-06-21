@@ -23,10 +23,6 @@ import {
   accountIds as accountIdsCall,
 } from "./generated/waterx_account/account.ts";
 import {
-  personalBurnCapAmount as personalBurnCapAmountCall,
-  personalBurned as personalBurnedCall,
-} from "./generated/waterx_credit/credit_registry.ts";
-import {
   AccountData,
   accountData as accountDataCall,
   getAccountOrders as getAccountOrdersCall,
@@ -59,14 +55,22 @@ import {
   tryGetRefer as tryGetReferCall,
 } from "./generated/waterx_referral/referral_table.ts";
 import {
-  hourlyBurned as hourlyBurnedCall,
-  hourlyBurnLimit as hourlyBurnLimitCall,
-  hourlyMinted as hourlyMintedCall,
-  hourlyMintLimit as hourlyMintLimitCall,
+  bridgeFeeAmount as bridgeFeeAmountCall,
+  bridgeFeeRate as bridgeFeeRateCall,
+  bridgeMinFee as bridgeMinFeeCall,
+  wouldExecuteWormhole as wouldExecuteWormholeCall,
+} from "./generated/withdrawal_queue/withdrawal_queue.ts";
+import {
+  dailyBurned as dailyBurnedCall,
+  dailyBurnLimit as dailyBurnLimitCall,
+  dailyMinted as dailyMintedCall,
+  dailyMintLimit as dailyMintLimitCall,
   maxBurnPerTx as maxBurnPerTxCall,
   maxMintPerTx as maxMintPerTxCall,
   mintedFor as mintedForCall,
   paused as pausedCall,
+  personalBurnCapAmount as personalBurnCapAmountCall,
+  personalBurned as personalBurnedCall,
 } from "./generated/wormhole_bridge/wormhole_bridge.ts";
 
 // ============================================================================
@@ -94,20 +98,18 @@ function toBytes(b: Uint8Array | string | undefined): Uint8Array | undefined {
   return new Uint8Array(Object.values(b as Record<string, number>));
 }
 
-async function simulateAndExtract(
-  client: WaterXClient,
-  tx: Transaction,
-  commandIndex = 0,
-  returnIndex = 0,
-): Promise<Uint8Array> {
+async function simulateRaw(client: WaterXClient, tx: Transaction): Promise<SimulationResult> {
   tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   if (sim.$kind === "FailedTransaction") {
     const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
     throw new Error(`simulate aborted: ${err}`);
   }
-  const cmd = sim.commandResults?.[commandIndex];
-  const ret = cmd?.returnValues?.[returnIndex];
+  return sim;
+}
+
+function extractAt(sim: SimulationResult, commandIndex: number, returnIndex = 0): Uint8Array {
+  const ret = sim.commandResults?.[commandIndex]?.returnValues?.[returnIndex];
   const bytes = toBytes(ret?.bcs) ?? toBytes(ret?.value?.bcs);
   if (!bytes) {
     throw new Error(
@@ -115,6 +117,16 @@ async function simulateAndExtract(
     );
   }
   return bytes;
+}
+
+async function simulateAndExtract(
+  client: WaterXClient,
+  tx: Transaction,
+  commandIndex = 0,
+  returnIndex = 0,
+): Promise<Uint8Array> {
+  const sim = await simulateRaw(client, tx);
+  return extractAt(sim, commandIndex, returnIndex);
 }
 
 function withLp(client: WaterXClient, lpType?: string): string {
@@ -651,141 +663,201 @@ export async function getCustodyAssetData(
 }
 
 // ============================================================================
-// Wormhole bridge limits (hourly rate windows on-chain; exposed as daily* for FE parity)
+// Wormhole bridge (rate-limit / cap reads)
 // ============================================================================
 
-export interface GetBridgeLimitsParams {
-  /** wxa account id — enables per-account `personalBurned`. */
-  accountId?: string;
-  /** Wormhole chain id + 20-byte EVM token — enables `backingMinted`. */
-  backing?: { wormholeChainId: number; token: number[] };
-}
-
-/** On-chain bridge + credit-registry rate-limit snapshot (u64 fields). */
+/**
+ * Live rate-limit / cap snapshot read from the `wormhole_bridge::Bridge`
+ * shared object. All amounts are raw base units of the bridged credit coin.
+ *
+ * `dailyMinted` / `dailyBurned` are the sliding-window sums as the on-chain
+ * `daily_minted` / `daily_burned` views report them — buckets that rotated
+ * out of the trailing window are evicted lazily on the next mint/burn, so
+ * these can read slightly high until then (conservative).
+ */
 export interface BridgeLimitsView {
   paused: boolean;
-  /** Hourly mint window cap (legacy DTO name: dailyMintLimit). */
   dailyMintLimit: bigint;
   dailyMinted: bigint;
   maxMintPerTx: bigint;
   dailyBurnLimit: bigint;
   dailyBurned: bigint;
   maxBurnPerTx: bigint;
+  /** Per-account 24h burn cap; 0n means the gate is disabled. */
   personalBurnCapAmount: bigint;
+  /** Present only when `accountId` is supplied — burn counted in that
+   *  account's current window (the per-account cap key is the account id). */
   personalBurned?: bigint;
+  /** Present only when `backing` is supplied — `minted_for(chainId, token)`,
+   *  the amount currently withdrawable to that EVM (chain, token). */
   backingMinted?: bigint;
 }
 
-async function simulateAllReturnBytes(
-  client: WaterXClient,
-  tx: Transaction,
-): Promise<(Uint8Array | undefined)[]> {
-  tx.setSender(DRY_RUN_SENDER);
-  const sim = (await client.simulate(tx)) as unknown as SimulationResult;
-  if (sim.$kind === "FailedTransaction") {
-    const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
-    throw new Error(`simulate aborted: ${err}`);
-  }
-  return (sim.commandResults ?? []).map((cmd) => {
-    const ret = cmd?.returnValues?.[0];
-    return toBytes(ret?.bcs) ?? toBytes(ret?.value?.bcs);
-  });
+export interface BridgeLimitsArgs {
+  /** wxa trading account id — enables the per-account `personalBurned` read. */
+  accountId?: string;
+  /** Wormhole destination chain id + 20-byte EVM token — enables the
+   *  `mintedFor` backing read. */
+  backing?: { wormholeChainId: number; token: Uint8Array | number[] };
 }
 
 /**
- * Read wormhole_bridge rate limits + optional credit-registry personal burn +
- * optional per-(chain, token) backing minted — one devInspect PTB.
+ * Batched read of the bridge's rate-limit / cap state in a single simulate.
+ * Pass `accountId` to also fetch the per-account burn usage, and `backing`
+ * to also fetch the destination-chain backing (`minted_for`).
+ *
+ * Throws if `wormhole_bridge` (or its `Bridge` object id) is absent from the
+ * canonical config — e.g. on a network where the Sui bridge isn't published.
  */
 export async function getBridgeLimits(
   client: WaterXClient,
-  params: GetBridgeLimitsParams = {},
+  args: BridgeLimitsArgs = {},
 ): Promise<BridgeLimitsView> {
-  const bridgePkg = client.config.packages.wormhole_bridge;
-  const bridgeId = bridgePkg?.bridge;
-  if (!bridgePkg?.published_at || !bridgeId) {
-    throw new Error("wormhole_bridge not configured for this deployment");
+  const pkg = client.config.packages.wormhole_bridge;
+  if (!pkg?.bridge) {
+    throw new Error(
+      "wormhole_bridge is not deployed on this network (no `bridge` object id in config)",
+    );
   }
-
-  const creditPkg = client.config.packages.waterx_credit;
-  const registryId = creditPkg?.credit_registry;
-  const creditType = client.creditType();
+  const packageId = pkg.published_at;
+  const bridge = pkg.bridge;
 
   const tx = new Transaction();
-  const bridgeArgs = { bridge: tx.object(bridgeId) };
-  const wormholePkg = bridgePkg.published_at;
+  // Fixed-order view calls; indices tracked below.
+  pausedCall({ package: packageId, arguments: { bridge } })(tx); // 0
+  dailyMintLimitCall({ package: packageId, arguments: { bridge } })(tx); // 1
+  dailyMintedCall({ package: packageId, arguments: { bridge } })(tx); // 2
+  maxMintPerTxCall({ package: packageId, arguments: { bridge } })(tx); // 3
+  dailyBurnLimitCall({ package: packageId, arguments: { bridge } })(tx); // 4
+  dailyBurnedCall({ package: packageId, arguments: { bridge } })(tx); // 5
+  maxBurnPerTxCall({ package: packageId, arguments: { bridge } })(tx); // 6
+  personalBurnCapAmountCall({ package: packageId, arguments: { bridge } })(tx); // 7
 
-  pausedCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-  hourlyMintLimitCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-  hourlyMintedCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-  maxMintPerTxCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-  hourlyBurnLimitCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-  hourlyBurnedCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-  maxBurnPerTxCall({ package: wormholePkg, arguments: bridgeArgs })(tx);
-
-  let personalCapIdx: number | undefined;
-  let personalBurnedIdx: number | undefined;
-  let backingIdx: number | undefined;
-  let nextIdx = 7;
-
-  if (registryId && creditPkg?.published_at) {
-    personalCapIdx = nextIdx++;
-    personalBurnCapAmountCall({
-      package: creditPkg.published_at,
-      arguments: { registry: tx.object(registryId) },
-      typeArguments: [creditType],
-    })(tx);
-    if (params.accountId) {
-      personalBurnedIdx = nextIdx++;
-      personalBurnedCall({
-        package: creditPkg.published_at,
-        arguments: { registry: tx.object(registryId), user: params.accountId },
-        typeArguments: [creditType],
-      })(tx);
-    }
-  }
-
-  if (params.backing) {
-    backingIdx = nextIdx;
+  let backingIdx = -1;
+  if (args.backing) {
+    backingIdx = 8;
     mintedForCall({
-      package: wormholePkg,
+      package: packageId,
       arguments: {
-        bridge: tx.object(bridgeId),
-        chainId: params.backing.wormholeChainId,
-        token: params.backing.token,
+        bridge,
+        chainId: args.backing.wormholeChainId,
+        token: Array.from(args.backing.token),
       },
     })(tx);
   }
 
-  const results = await simulateAllReturnBytes(client, tx);
+  let personalIdx = -1;
+  if (args.accountId) {
+    personalIdx = backingIdx === -1 ? 8 : 9;
+    // Clock (0x6) is auto-injected by the generated wrapper.
+    personalBurnedCall({
+      package: packageId,
+      arguments: { bridge, user: args.accountId },
+    })(tx);
+  }
 
-  const parseU64 = (idx: number): bigint => {
-    const bytes = results[idx];
-    if (!bytes) throw new Error(`getBridgeLimits: missing simulate result at command ${idx}`);
-    return BigInt(bcs.u64().parse(bytes));
-  };
-  const parseBool = (idx: number): boolean => {
-    const bytes = results[idx];
-    if (!bytes) throw new Error(`getBridgeLimits: missing simulate result at command ${idx}`);
-    return bcs.bool().parse(bytes);
-  };
+  const sim = await simulateRaw(client, tx);
+  const u64At = (i: number): bigint => BigInt(bcs.u64().parse(extractAt(sim, i)));
 
   const view: BridgeLimitsView = {
-    paused: parseBool(0),
-    dailyMintLimit: parseU64(1),
-    dailyMinted: parseU64(2),
-    maxMintPerTx: parseU64(3),
-    dailyBurnLimit: parseU64(4),
-    dailyBurned: parseU64(5),
-    maxBurnPerTx: parseU64(6),
-    personalBurnCapAmount: personalCapIdx !== undefined ? parseU64(personalCapIdx) : 0n,
+    paused: bcs.bool().parse(extractAt(sim, 0)),
+    dailyMintLimit: u64At(1),
+    dailyMinted: u64At(2),
+    maxMintPerTx: u64At(3),
+    dailyBurnLimit: u64At(4),
+    dailyBurned: u64At(5),
+    maxBurnPerTx: u64At(6),
+    personalBurnCapAmount: u64At(7),
   };
-
-  if (personalBurnedIdx !== undefined) {
-    view.personalBurned = parseU64(personalBurnedIdx);
-  }
-  if (backingIdx !== undefined) {
-    view.backingMinted = parseU64(backingIdx);
-  }
-
+  if (backingIdx >= 0) view.backingMinted = u64At(backingIdx);
+  if (personalIdx >= 0) view.personalBurned = u64At(personalIdx);
   return view;
+}
+
+// ============================================================================
+// Withdrawal queue — bridge fee estimate (withdrawal_queue v4)
+// ============================================================================
+
+export interface BridgeFeeView {
+  /** Raw fee charged on a wormhole (Sui → EVM) exit of `amount`:
+   *  `max(ceil(effectiveRate * amount), effectiveMinFee)`. */
+  feeAmount: bigint;
+  /** Whether the exit clears the on-chain net-zero guard — i.e. a strictly
+   *  positive amount remains after the fee. Gate "estimated fee" UI on THIS,
+   *  not `feeAmount` alone: a dust `amount`, or a min-fee floor ≥ `amount`,
+   *  makes `feeAmount >= amount` and the exit would abort (audit L1). */
+  wouldExecute: boolean;
+  /** Effective % rate for the chain (per-chain override → default → 0),
+   *  1e9-scaled (the `Float`-as-`u128` ABI convention). */
+  effectiveRate: bigint;
+  /** Effective minimum-fee floor for the chain (override → default → 0),
+   *  in CREDIT base units. */
+  effectiveMinFee: bigint;
+  /** Net CREDIT the recipient receives after the fee; `0n` when the exit
+   *  wouldn't execute (`wouldExecute === false`). */
+  netAmount: bigint;
+}
+
+function requireWithdrawalQueue(client: WaterXClient): { pkg: string; queue: string } {
+  const wq = client.config.packages.withdrawal_queue;
+  if (!wq?.queue) {
+    throw new Error(
+      "withdrawal_queue is not deployed on this network (no `queue` object id in config)",
+    );
+  }
+  return { pkg: wq.published_at, queue: wq.queue };
+}
+
+/**
+ * Estimate the bridge fee for a wormhole (Sui → EVM) CREDIT exit of `amount`
+ * to `evmDestinationChain`, read in a single simulate from the on-chain
+ * `withdrawal_queue` views. The charged fee is
+ * `max(ceil(effectiveRate * amount), effectiveMinFee)`.
+ *
+ * Surface UI off `wouldExecute`, NOT `feeAmount` alone — `feeAmount` is the raw
+ * fee and can equal/exceed `amount` (ceil rounding on a dust entry, or a min-fee
+ * floor larger than the entry), in which case the on-chain exit aborts its
+ * net-zero guard (audit L1). `netAmount` is `0n` whenever `wouldExecute` is
+ * false.
+ *
+ * @param args.amount             CREDIT base units (the bridged coin's smallest unit).
+ * @param args.evmDestinationChain WORMHOLE chain id of the destination EVM.
+ * @param args.creditType         CREDIT coin type; defaults to `client.creditType()`.
+ */
+export async function getBridgeFee(
+  client: WaterXClient,
+  args: { evmDestinationChain: number; amount: bigint | number; creditType?: string },
+): Promise<BridgeFeeView> {
+  const { pkg, queue } = requireWithdrawalQueue(client);
+  const amount = BigInt(args.amount);
+  const common = {
+    package: pkg,
+    typeArguments: [args.creditType ?? client.creditType()] as [string],
+  };
+  const chain = args.evmDestinationChain;
+
+  const tx = new Transaction();
+  // Fixed-order view calls; indices tracked below.
+  bridgeFeeAmountCall({
+    ...common,
+    arguments: { queue, evmDestinationChain: chain, amount },
+  })(tx); // 0
+  wouldExecuteWormholeCall({
+    ...common,
+    arguments: { queue, evmDestinationChain: chain, amount },
+  })(tx); // 1
+  bridgeFeeRateCall({ ...common, arguments: { queue, evmDestinationChain: chain } })(tx); // 2
+  bridgeMinFeeCall({ ...common, arguments: { queue, evmDestinationChain: chain } })(tx); // 3
+
+  const sim = await simulateRaw(client, tx);
+  const feeAmount = BigInt(bcs.u64().parse(extractAt(sim, 0)));
+  const wouldExecute = bcs.bool().parse(extractAt(sim, 1));
+
+  return {
+    feeAmount,
+    wouldExecute,
+    effectiveRate: BigInt(bcs.u128().parse(extractAt(sim, 2))),
+    effectiveMinFee: BigInt(bcs.u64().parse(extractAt(sim, 3))),
+    netAmount: wouldExecute ? amount - feeAmount : 0n,
+  };
 }

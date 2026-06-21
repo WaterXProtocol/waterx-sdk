@@ -11,6 +11,8 @@ import { resolveDefaultUsdcCoinProbeAttempts } from "./e2e-discovery-caps.ts";
 import {
   getAccountOwnerByAccountId,
   getWxaAccountBalance,
+  isRegistryDepositPolicyRegistered,
+  isWaterXPerpProtocolAssetAllowed,
 } from "./fetch-read-helpers-for-tests.ts";
 import { activeLifecycleTickersForClient, lifecycleTickerRow } from "./lifecycle-test-markets.ts";
 import { runWithConcurrency } from "./run-with-concurrency.ts";
@@ -793,10 +795,28 @@ export async function collectWxaAccountIdCandidates(client: WaterXClient): Promi
   return out;
 }
 
+export type DiscoverWxaStoredBalanceOpts = {
+  coinType: string;
+  minBalance: bigint;
+  /** Skip when registry has no deposit policy for `coinType` (`mint_wlp` take gate). */
+  requireDepositPolicy?: boolean;
+  /** Skip when `WaterXPerp` cannot take `coinType` from wxa (WLP mint gate). */
+  requireWaterXPerpProtocolAsset?: boolean;
+};
+
 export async function discoverWxaAccountWithStoredBalance(
   client: WaterXClient,
-  opts: { coinType: string; minBalance: bigint },
+  opts: DiscoverWxaStoredBalanceOpts,
 ): Promise<DiscoveredWxaAccount | null> {
+  if (opts.requireDepositPolicy) {
+    const ok = await isRegistryDepositPolicyRegistered(client, opts.coinType);
+    if (!ok) return null;
+  }
+  if (opts.requireWaterXPerpProtocolAsset) {
+    const ok = await isWaterXPerpProtocolAssetAllowed(client, opts.coinType);
+    if (!ok) return null;
+  }
+
   for (const accountId of await collectWxaAccountIdCandidates(client)) {
     try {
       const bal = await getWxaAccountBalance(client, accountId, opts.coinType);
@@ -830,7 +850,12 @@ export async function discoverWxaAccountWithUsdcForWlpMint(
   } catch {
     return null;
   }
-  return discoverWxaAccountWithStoredBalance(client, { coinType: usdcType, minBalance: minUsdc });
+  return discoverWxaAccountWithStoredBalance(client, {
+    coinType: usdcType,
+    minBalance: minUsdc,
+    requireDepositPolicy: true,
+    requireWaterXPerpProtocolAsset: true,
+  });
 }
 
 function redeemRequestIdBigInt(r: RedeemRequestDataView): bigint {

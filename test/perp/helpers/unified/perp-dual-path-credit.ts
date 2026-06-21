@@ -1,6 +1,5 @@
 import {
   consumeCreditDeposit,
-  custodyBurn,
   custodyMint,
   enqueueWithdrawal,
   executeWithdrawalNative,
@@ -170,23 +169,6 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       p.custodyMint(tx, {
         accountId: ACCOUNT_ID,
         assetCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-      });
-    },
-  ),
-  caseMutate(
-    "custodyBurn",
-    (c, tx) => {
-      custodyBurn(c, tx, {
-        accountId: ACCOUNT_ID,
-        creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-      });
-    },
-    (p, tx) => {
-      p.custodyBurn(tx, {
-        accountId: ACCOUNT_ID,
-        creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,
       });
     },

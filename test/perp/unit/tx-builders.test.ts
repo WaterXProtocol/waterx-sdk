@@ -47,6 +47,8 @@ const common = {
   collateralType: MOCK_USDC_TYPE,
   skipOraclePriceRefresh: true,
   useSponsor: false,
+  // Offline unit-test client has no working gRPC — skip the async sweep.
+  consolidateToUsd: false,
 } as const;
 
 describe("tx-builders (v3)", () => {
@@ -71,6 +73,7 @@ describe("tx-builders (v3)", () => {
       main: baseOrder,
       skipOraclePriceRefresh: true,
       useSponsor: false,
+      consolidateToUsd: false,
     });
     const defaultSponsor = await buildPlaceOrderTx(client, {
       ticker: common.ticker,
@@ -78,6 +81,7 @@ describe("tx-builders (v3)", () => {
       collateralType: common.collateralType,
       main: baseOrder,
       skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
     });
     expect(defaultSponsor.getData().commands!.length).toBeGreaterThan(
       withoutSponsor.getData().commands!.length,
@@ -173,6 +177,7 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
@@ -214,6 +219,7 @@ describe("tx-builders (v3)", () => {
       depositTicker: "USDCUSD",
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });

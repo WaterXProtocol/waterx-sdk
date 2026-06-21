@@ -1,5 +1,4 @@
 import {
-  burnCredit,
   mintCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
@@ -54,23 +53,6 @@ export const perpCustodyDualPathCases: PerpDualPathCase[] = [
       p.mintCreditToAccount(tx, {
         accountId: ACCOUNT_ID,
         assetCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-      });
-    },
-  ),
-  caseMutate(
-    "burnCredit",
-    (c, tx) => {
-      burnCredit(c, tx, {
-        accountId: ACCOUNT_ID,
-        creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-      });
-    },
-    (p, tx) => {
-      p.burnCredit(tx, {
-        accountId: ACCOUNT_ID,
-        creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,
       });
     },

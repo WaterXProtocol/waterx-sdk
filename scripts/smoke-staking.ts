@@ -12,8 +12,11 @@
  *   - `stake_exists(pool, account) → bool`  (raw simulate + bcs.bool parse)
  *
  * The wxa account must already hold WLP (run smoke-happy-path's mintWlp
- * step first if not). Staking has no rewarders configured for the WLP
- * pool on testnet, so the `claim` path is skipped here.
+ * step first if not). Rewarder settle calls are auto-derived from
+ * `config.packages.waterx_staking.rewarders[stakeAlias]` via
+ * `client.getRewarderTypes(stakeAlias)`, so every registered rewarder on
+ * the pool gets settled in the same PTB (the on-chain checker is
+ * all-or-nothing). The `claim` path is covered by smoke-staking-claim.
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID    wxa account id you own with WLP balance
@@ -22,10 +25,12 @@
  *   WATERX_STAKE_AMOUNT        raw u64 to stake/unstake, default 1_000_000
  *   WATERX_SKIP_STAKE=1        skip stake step
  *   WATERX_SKIP_UNSTAKE=1      skip unstake step
+ *   EXECUTE=1                  broadcast stake/unstake (otherwise simulate only)
+ *
+ * In simulate-only mode, the stake tx does not create live staked balance. The
+ * unstake tx is therefore skipped unless WATERX_SKIP_STAKE=1, which lets you
+ * explicitly simulate unstake against a pre-existing stake.
  */
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
@@ -41,26 +46,7 @@ import {
 } from "../src/generated/waterx_staking/waterx_staking.ts";
 import { stake, unstake } from "../src/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
-
-const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
-const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
-
-function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
-  const yaml = readFileSync(CLIENT_YAML, "utf8");
-  const m = /active_address:\s*"?(0x[a-f0-9]+)"?/i.exec(yaml);
-  if (!m) throw new Error("could not parse active_address from client.yaml");
-  const activeAddress = m[1]!.toLowerCase();
-  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
-  for (const encoded of keystore) {
-    const raw = fromBase64(encoded);
-    if (raw.length !== 33 || raw[0] !== 0x00) continue;
-    const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === activeAddress) {
-      return { keypair: kp, address: kp.toSuiAddress() };
-    }
-  }
-  throw new Error(`no ED25519 key in keystore matches active address ${activeAddress}`);
-}
+import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 interface SimResult {
   $kind?: string;
@@ -70,11 +56,11 @@ interface SimResult {
 
 async function sim(
   client: WaterXClient,
-  signer: Ed25519Keypair,
+  address: string,
   tx: Transaction,
   label: string,
 ): Promise<boolean> {
-  tx.setSender(signer.toSuiAddress());
+  tx.setSender(address);
   const r = (await client.simulate(tx)) as unknown as SimResult;
   if (r.$kind === "FailedTransaction") {
     const msg = r.FailedTransaction?.status?.error?.message?.slice(0, 240) ?? "(no msg)";
@@ -193,13 +179,18 @@ async function main(): Promise<void> {
     );
   }
 
-  const { keypair, address } = loadActiveKeypair();
+  const address = resolveActiveAddress();
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
   const client = await WaterXClient.create("TESTNET", { cache: true });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
+  const doExecute = process.env.EXECUTE === "1";
+  // Keystore (secret) only needed to broadcast — dry runs stay address-only.
+  const keypair = doExecute ? loadActiveKeypair().keypair : null;
+  const skipStake = process.env.WATERX_SKIP_STAKE === "1";
+  const skipUnstake = process.env.WATERX_SKIP_UNSTAKE === "1";
 
   // Preflight: wxa must hold enough WLP to stake.
   const wlpBalance = await getAccountBalance(client, accountId, client.wlpType());
@@ -245,7 +236,7 @@ async function main(): Promise<void> {
   // ============================================================================
   // 2. Stake
   // ============================================================================
-  if (process.env.WATERX_SKIP_STAKE !== "1") {
+  if (!skipStake) {
     console.log(`\n=== Stake ${stakeAmount} WLP ===`);
     const tx = new Transaction();
     stake(client, tx, {
@@ -253,17 +244,25 @@ async function main(): Promise<void> {
       stakeAlias,
       stakeType: client.wlpType(),
       stakeAmount,
-      rewarderTypes: [], // WLP pool has no rewarders configured on testnet
+      rewarderTypes: client.getRewarderTypes(stakeAlias),
     });
-    if (!(await sim(client, keypair, tx, "stake (sim)"))) process.exit(2);
-    if (!(await execute(client, keypair, tx, "stake (execute)"))) process.exit(1);
-    await snapshot(client, accountId, "post-stake");
+    if (!(await sim(client, address, tx, "stake (sim)"))) process.exit(2);
+    if (doExecute) {
+      if (!(await execute(client, keypair!, tx, "stake (execute)"))) process.exit(1);
+      await snapshot(client, accountId, "post-stake");
+    } else {
+      console.log("  EXECUTE != 1 — simulate only, skipping broadcast");
+    }
   }
 
   // ============================================================================
   // 3. Unstake
   // ============================================================================
-  if (process.env.WATERX_SKIP_UNSTAKE !== "1") {
+  if (!skipUnstake && !doExecute && !skipStake) {
+    console.log(
+      "\n=== Unstake skipped (simulate-only after non-executed stake; set WATERX_SKIP_STAKE=1 to test pre-existing stake) ===",
+    );
+  } else if (!skipUnstake) {
     console.log(`\n=== Unstake ${stakeAmount} WLP ===`);
     const tx = new Transaction();
     unstake(client, tx, {
@@ -271,11 +270,15 @@ async function main(): Promise<void> {
       stakeAlias,
       stakeType: client.wlpType(),
       withdrawalAmount: stakeAmount,
-      rewarderTypes: [],
+      rewarderTypes: client.getRewarderTypes(stakeAlias),
     });
-    if (!(await sim(client, keypair, tx, "unstake (sim)"))) process.exit(2);
-    if (!(await execute(client, keypair, tx, "unstake (execute)"))) process.exit(1);
-    await snapshot(client, accountId, "post-unstake");
+    if (!(await sim(client, address, tx, "unstake (sim)"))) process.exit(2);
+    if (doExecute) {
+      if (!(await execute(client, keypair!, tx, "unstake (execute)"))) process.exit(1);
+      await snapshot(client, accountId, "post-unstake");
+    } else {
+      console.log("  EXECUTE != 1 — simulate only, skipping broadcast");
+    }
   }
 
   console.log("\nDone.");

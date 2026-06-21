@@ -2,12 +2,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
 import { WaterXClient } from "../../../src/client.ts";
-import {
-  burnCredit,
-  mintCredit,
-  mintCreditFromRequest,
-  mintCreditToAccount,
-} from "../../../src/user/custody.ts";
+import { mintCredit, mintCreditFromRequest, mintCreditToAccount } from "../../../src/user/custody.ts";
 import {
   MOCK_CREDIT_TYPE,
   MOCK_CUSTODY_ASSET_TYPE,
@@ -77,17 +72,6 @@ describe("user/custody PTB builders (native_custody)", () => {
     expect(tx.getData().commands?.length).toBe(2);
   });
 
-  it("burnCredit emits one moveCall and returns the redeemed coin", () => {
-    const tx = new Transaction();
-    const coin = burnCredit(client, tx, {
-      accountId,
-      creditCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
-      assetType: MOCK_CUSTODY_ASSET_TYPE,
-    });
-    expect(coin).toBeDefined();
-    expect(tx.getData().commands?.length).toBe(1);
-  });
-
   it("throws a clear error when the credit pipeline is not configured", () => {
     const noCredit = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCredit.packages.waterx_credit;
@@ -112,10 +96,11 @@ describe("user/custody PTB builders (native_custody)", () => {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
-      burnCredit(clientNoCustody, new Transaction(), {
+      mintCredit(clientNoCustody, new Transaction(), {
         accountId,
-        creditCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
+        assetCoin: new Transaction().object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,
+        creditType: MOCK_CREDIT_TYPE,
       }),
     ).toThrow(/native_custody is not configured/);
   });

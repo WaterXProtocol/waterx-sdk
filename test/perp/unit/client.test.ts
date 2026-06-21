@@ -37,6 +37,61 @@ describe("WaterXClient (offline)", () => {
     expect(client.wlpType()).toContain("::wlp::WLP");
   });
 
+  it("isConstantTicker reflects waterx_constant_rule.prices", () => {
+    // Shared fixture has the package but an empty prices map → all Pyth.
+    expect(client.isConstantTicker("USDCUSD")).toBe(false);
+    expect(client.isConstantTicker("BTCUSD")).toBe(false);
+
+    // A ticker listed in prices is constant-routed.
+    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    expect(client.isConstantTicker("USDCUSD")).toBe(true);
+    expect(client.isConstantTicker("BTCUSD")).toBe(false);
+
+    // No package at all → never constant.
+    const bare = createUnitTestClient();
+    delete bare.config.packages.waterx_constant_rule;
+    expect(bare.isConstantTicker("USDCUSD")).toBe(false);
+
+    // All-or-nothing: a half-populated block (prices listed before the rule is
+    // deployed) stays on Pyth instead of routing to a constant rule that would
+    // throw at aggregate time and abort the whole refresh PTB.
+    const halfWired = createUnitTestClient();
+    halfWired.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    halfWired.config.packages.waterx_constant_rule!.config = "";
+    expect(halfWired.isConstantTicker("USDCUSD")).toBe(false);
+
+    const noPkgId = createUnitTestClient();
+    noPkgId.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    noPkgId.config.packages.waterx_constant_rule!.published_at = "";
+    expect(noPkgId.isConstantTicker("USDCUSD")).toBe(false);
+  });
+
+  it("isDualFeedTicker / isConstantOnlyTicker reflect waterx_constant_rule.dual_feed", () => {
+    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+
+    // No dual_feed → constant-only, not dual.
+    expect(client.isDualFeedTicker("USDCUSD")).toBe(false);
+    expect(client.isConstantOnlyTicker("USDCUSD")).toBe(true);
+
+    // Marked dual → constant AND dual, but NOT constant-only.
+    client.config.packages.waterx_constant_rule!.dual_feed = ["USDCUSD"];
+    expect(client.isConstantTicker("USDCUSD")).toBe(true);
+    expect(client.isDualFeedTicker("USDCUSD")).toBe(true);
+    expect(client.isConstantOnlyTicker("USDCUSD")).toBe(false);
+
+    // A dual_feed entry not in prices is clamped out (can't double-feed vs no weight).
+    client.config.packages.waterx_constant_rule!.dual_feed = ["BTCUSD"];
+    expect(client.isDualFeedTicker("BTCUSD")).toBe(false);
+    expect(client.isConstantTicker("BTCUSD")).toBe(false);
+
+    // Half-wired rule → never dual either.
+    const halfWired = createUnitTestClient();
+    halfWired.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    halfWired.config.packages.waterx_constant_rule!.dual_feed = ["USDCUSD"];
+    halfWired.config.packages.waterx_constant_rule!.config = "";
+    expect(halfWired.isDualFeedTicker("USDCUSD")).toBe(false);
+  });
+
   it("throws for unknown aggregator, pyth feed, pool token, and missing wlp", () => {
     expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
     expect(() => client.getPythFeed("NOPE")).toThrow(/No pyth feed listed/);

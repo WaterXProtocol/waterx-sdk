@@ -2,8 +2,9 @@
  * THIS FILE IS GENERATED AND SHOULD NOT BE MANUALLY MODIFIED *
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
-import { bcs } from '@mysten/sui/bcs';
+import { bcs, type BcsType } from '@mysten/sui/bcs';
 import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
+import * as table from './deps/sui/table.ts';
 import * as emitter from './deps/wormhole_sdk/emitter.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as consumed_vaas from './deps/wormhole_sdk/consumed_vaas.ts';
@@ -16,6 +17,15 @@ export const ChainTokenKey = new MoveStruct({ name: `${$moduleName}::ChainTokenK
         chain_id: bcs.u16(),
         token: bcs.vector(bcs.u8())
     } });
+export const BurnWindow = new MoveStruct({ name: `${$moduleName}::BurnWindow`, fields: {
+        burned: bcs.u64(),
+        window_start_ms: bcs.u64()
+    } });
+export const PersonalBurnCap = new MoveStruct({ name: `${$moduleName}::PersonalBurnCap`, fields: {
+        cap_amount: bcs.u64(),
+        window_ms: bcs.u64(),
+        user_burns: table.Table
+    } });
 export const Bridge = new MoveStruct({ name: `${$moduleName}::Bridge`, fields: {
         id: bcs.Address,
         emitter_cap: emitter.EmitterCap,
@@ -23,14 +33,30 @@ export const Bridge = new MoveStruct({ name: `${$moduleName}::Bridge`, fields: {
         minted_per_token: vec_map.VecMap(ChainTokenKey, bcs.u64()),
         consumed_vaas: consumed_vaas.ConsumedVAAs,
         keepers: vec_set.VecSet(bcs.Address),
-        hourly_mint_limit: bcs.u64(),
-        hourly_minted: bcs.u64(),
-        window_start_ms: bcs.u64(),
+        daily_mint_limit: bcs.u64(),
+        /**
+         * True sliding-window mint accounting: a ring of `RL_BUCKETS` one-hour buckets. On
+         * each mint, buckets that rotated out of the trailing window are zeroed, then the
+         * sum of the remaining buckets plus `amount` is checked against
+         * `daily_mint_limit`. Because the ring always covers at least a full rolling day,
+         * no rolling 24-hour interval can exceed the limit. `mint_last_bucket` is the
+         * absolute index (now/RL_BUCKET_MS) of the most recent mint.
+         */
+        mint_buckets: bcs.vector(bcs.u64()),
+        mint_last_bucket: bcs.u64(),
         max_mint_per_tx: bcs.u64(),
-        hourly_burn_limit: bcs.u64(),
-        hourly_burned: bcs.u64(),
-        window_start_ms_burn: bcs.u64(),
+        daily_burn_limit: bcs.u64(),
+        /** True sliding-window burn accounting — see `mint_buckets`. */
+        burn_buckets: bcs.vector(bcs.u64()),
+        burn_last_bucket: bcs.u64(),
         max_burn_per_tx: bcs.u64(),
+        /**
+         * Bridge-local per-account daily burn cap on `burn_for_withdrawal_authorized`.
+         * Enforced _in addition to_ the CreditRegistry-side `personal_burn_cap` (which
+         * covers all burn-authorizing modules), so the bridge can apply a stricter
+         * per-account ceiling specifically for EVM-route exits.
+         */
+        personal_burn_cap: PersonalBurnCap,
         paused: bcs.bool(),
         burn_nonce: bcs.u64(),
         /**
@@ -59,20 +85,24 @@ export function packageVersion(options: PackageVersionOptions = {}) {
 export interface InitBridgeArguments {
     _: RawTransactionArgument<string>;
     wormholeState: RawTransactionArgument<string>;
-    hourlyMintLimit: RawTransactionArgument<number | bigint>;
+    dailyMintLimit: RawTransactionArgument<number | bigint>;
     maxMintPerTx: RawTransactionArgument<number | bigint>;
-    hourlyBurnLimit: RawTransactionArgument<number | bigint>;
+    dailyBurnLimit: RawTransactionArgument<number | bigint>;
     maxBurnPerTx: RawTransactionArgument<number | bigint>;
+    personalBurnCapAmount: RawTransactionArgument<number | bigint>;
+    personalBurnCapWindowMs: RawTransactionArgument<number | bigint>;
 }
 export interface InitBridgeOptions {
     package?: string;
     arguments: InitBridgeArguments | [
         _: RawTransactionArgument<string>,
         wormholeState: RawTransactionArgument<string>,
-        hourlyMintLimit: RawTransactionArgument<number | bigint>,
+        dailyMintLimit: RawTransactionArgument<number | bigint>,
         maxMintPerTx: RawTransactionArgument<number | bigint>,
-        hourlyBurnLimit: RawTransactionArgument<number | bigint>,
-        maxBurnPerTx: RawTransactionArgument<number | bigint>
+        dailyBurnLimit: RawTransactionArgument<number | bigint>,
+        maxBurnPerTx: RawTransactionArgument<number | bigint>,
+        personalBurnCapAmount: RawTransactionArgument<number | bigint>,
+        personalBurnCapWindowMs: RawTransactionArgument<number | bigint>
     ];
 }
 export function initBridge(options: InitBridgeOptions) {
@@ -84,9 +114,11 @@ export function initBridge(options: InitBridgeOptions) {
         'u64',
         'u64',
         'u64',
+        'u64',
+        'u64',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "wormholeState", "hourlyMintLimit", "maxMintPerTx", "hourlyBurnLimit", "maxBurnPerTx"];
+    const parameterNames = ["_", "wormholeState", "dailyMintLimit", "maxMintPerTx", "dailyBurnLimit", "maxBurnPerTx", "personalBurnCapAmount", "personalBurnCapWindowMs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
@@ -140,9 +172,11 @@ export function redeemVaa(options: RedeemVaaOptions) {
         typeArguments: options.typeArguments
     });
 }
-export interface BurnForWithdrawalArguments {
+export interface BurnForWithdrawalAuthorizedArguments<M extends BcsType<any>> {
     bridge: RawTransactionArgument<string>;
     registry: RawTransactionArgument<string>;
+    Witness: RawTransactionArgument<M>;
+    version: RawTransactionArgument<number>;
     accountId: RawTransactionArgument<string>;
     wormholeState: RawTransactionArgument<string>;
     coin: RawTransactionArgument<string>;
@@ -151,11 +185,13 @@ export interface BurnForWithdrawalArguments {
     evmRecipient: RawTransactionArgument<Array<number>>;
     evmToken: RawTransactionArgument<Array<number>>;
 }
-export interface BurnForWithdrawalOptions {
+export interface BurnForWithdrawalAuthorizedOptions<M extends BcsType<any>> {
     package?: string;
-    arguments: BurnForWithdrawalArguments | [
+    arguments: BurnForWithdrawalAuthorizedArguments<M> | [
         bridge: RawTransactionArgument<string>,
         registry: RawTransactionArgument<string>,
+        Witness: RawTransactionArgument<M>,
+        version: RawTransactionArgument<number>,
         accountId: RawTransactionArgument<string>,
         wormholeState: RawTransactionArgument<string>,
         coin: RawTransactionArgument<string>,
@@ -165,22 +201,30 @@ export interface BurnForWithdrawalOptions {
         evmToken: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
+        string,
         string
     ];
 }
 /**
- * `account_id` identifies the wxa Account whose stored `Balance<CREDIT>` produced
- * this coin. Used as the `burner` identity that lands in `compute_withdrawal_id`,
- * the `WithdrawalInitiated.burner` event field, and the credit registry's
- * personal-burn-cap key — so the EVM-side withdrawal id and Sui-side cap
- * accounting both bind to the originating account, not whoever executes the queue
- * entry (fixes audit finding #3).
+ * Account-authorized cross-chain burn. Only callable by a
+ * `CreditRegistry`-registered module witness `M` (production: `WithdrawQueue`, via
+ * `withdrawal_queue::execute_wormhole`), which vouches that `account_id` is the
+ * genuine originating wxa Account. `account_id` is the `burner` identity baked
+ * into `compute_withdrawal_id`, the `WithdrawalInitiated.burner` event field, and
+ * the credit registry's personal-burn-cap key — so the EVM-side withdrawal id and
+ * Sui-side cap accounting both bind to the source account, not whoever executes
+ * the queue entry (audit findings #3 / L03 / M14).
+ *
+ * There is intentionally no unauthenticated public burn: a raw `Coin<CREDIT>`
+ * holder cannot burn against a spoofed `account_id`.
  */
-export function burnForWithdrawal(options: BurnForWithdrawalOptions) {
+export function burnForWithdrawalAuthorized<M extends BcsType<any>>(options: BurnForWithdrawalAuthorizedOptions<M>) {
     const packageAddress = options.package ?? '@waterx/wormhole-bridge';
     const argumentsTypes = [
         null,
         null,
+        `${options.typeArguments[1]}`,
+        'u16',
         '0x2::object::ID',
         null,
         null,
@@ -190,11 +234,11 @@ export function burnForWithdrawal(options: BurnForWithdrawalOptions) {
         'vector<u8>',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["bridge", "registry", "accountId", "wormholeState", "coin", "wormholeFee", "evmDestinationChain", "evmRecipient", "evmToken"];
+    const parameterNames = ["bridge", "registry", "Witness", "version", "accountId", "wormholeState", "coin", "wormholeFee", "evmDestinationChain", "evmRecipient", "evmToken"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
-        function: 'burn_for_withdrawal',
+        function: 'burn_for_withdrawal_authorized',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -329,9 +373,9 @@ export function removeSupportedEvmToken(options: RemoveSupportedEvmTokenOptions)
 export interface SetRateLimitsArguments {
     _: RawTransactionArgument<string>;
     bridge: RawTransactionArgument<string>;
-    newHourlyMint: RawTransactionArgument<number | bigint>;
+    newDailyMint: RawTransactionArgument<number | bigint>;
     newMaxMintPerTx: RawTransactionArgument<number | bigint>;
-    newHourlyBurn: RawTransactionArgument<number | bigint>;
+    newDailyBurn: RawTransactionArgument<number | bigint>;
     newMaxBurnPerTx: RawTransactionArgument<number | bigint>;
 }
 export interface SetRateLimitsOptions {
@@ -339,9 +383,9 @@ export interface SetRateLimitsOptions {
     arguments: SetRateLimitsArguments | [
         _: RawTransactionArgument<string>,
         bridge: RawTransactionArgument<string>,
-        newHourlyMint: RawTransactionArgument<number | bigint>,
+        newDailyMint: RawTransactionArgument<number | bigint>,
         newMaxMintPerTx: RawTransactionArgument<number | bigint>,
-        newHourlyBurn: RawTransactionArgument<number | bigint>,
+        newDailyBurn: RawTransactionArgument<number | bigint>,
         newMaxBurnPerTx: RawTransactionArgument<number | bigint>
     ];
 }
@@ -355,11 +399,82 @@ export function setRateLimits(options: SetRateLimitsOptions) {
         'u64',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["_", "bridge", "newHourlyMint", "newMaxMintPerTx", "newHourlyBurn", "newMaxBurnPerTx"];
+    const parameterNames = ["_", "bridge", "newDailyMint", "newMaxMintPerTx", "newDailyBurn", "newMaxBurnPerTx"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
         function: 'set_rate_limits',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface SetPersonalBurnCapArguments {
+    bridge: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    capAmount: RawTransactionArgument<number | bigint>;
+    windowMs: RawTransactionArgument<number | bigint>;
+}
+export interface SetPersonalBurnCapOptions {
+    package?: string;
+    arguments: SetPersonalBurnCapArguments | [
+        bridge: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        capAmount: RawTransactionArgument<number | bigint>,
+        windowMs: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * Admin: configure the bridge-local per-account daily burn cap. `cap_amount = 0`
+ * disables (default). `window_ms` must be > 0 even when disabled — `window_ms = 0`
+ * would reset the accumulator on every burn and silently degrade the cap to a
+ * per-tx ceiling. Mirrors `credit_registry::set_personal_burn_cap` but acts on
+ * this bridge only.
+ */
+export function setPersonalBurnCap(options: SetPersonalBurnCapOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null,
+        null,
+        'u64',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge", "_", "capAmount", "windowMs"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'set_personal_burn_cap',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface ResetPersonalBurnWindowArguments {
+    bridge: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+    user: RawTransactionArgument<string>;
+}
+export interface ResetPersonalBurnWindowOptions {
+    package?: string;
+    arguments: ResetPersonalBurnWindowArguments | [
+        bridge: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>,
+        user: RawTransactionArgument<string>
+    ];
+}
+/**
+ * Admin: wipe a single user's bridge-local burn-window accumulator. Use to clear a
+ * stale entry after a long inactivity period or to forgive the in-window balance
+ * manually. Idempotent on absent users.
+ */
+export function resetPersonalBurnWindow(options: ResetPersonalBurnWindowOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null,
+        null,
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge", "_", "user"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'reset_personal_burn_window',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -562,16 +677,16 @@ export function paused(options: PausedOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface HourlyMintLimitArguments {
+export interface DailyMintLimitArguments {
     bridge: RawTransactionArgument<string>;
 }
-export interface HourlyMintLimitOptions {
+export interface DailyMintLimitOptions {
     package?: string;
-    arguments: HourlyMintLimitArguments | [
+    arguments: DailyMintLimitArguments | [
         bridge: RawTransactionArgument<string>
     ];
 }
-export function hourlyMintLimit(options: HourlyMintLimitOptions) {
+export function dailyMintLimit(options: DailyMintLimitOptions) {
     const packageAddress = options.package ?? '@waterx/wormhole-bridge';
     const argumentsTypes = [
         null
@@ -580,20 +695,25 @@ export function hourlyMintLimit(options: HourlyMintLimitOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
-        function: 'hourly_mint_limit',
+        function: 'daily_mint_limit',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface HourlyMintedArguments {
+export interface DailyMintedArguments {
     bridge: RawTransactionArgument<string>;
 }
-export interface HourlyMintedOptions {
+export interface DailyMintedOptions {
     package?: string;
-    arguments: HourlyMintedArguments | [
+    arguments: DailyMintedArguments | [
         bridge: RawTransactionArgument<string>
     ];
 }
-export function hourlyMinted(options: HourlyMintedOptions) {
+/**
+ * Tracked mint usage in the current sliding window (sum of all buckets). Stale
+ * buckets are evicted lazily on the next mint, so this can include
+ * not-yet-rotated-out buckets until the next `check_rate_limit`.
+ */
+export function dailyMinted(options: DailyMintedOptions) {
     const packageAddress = options.package ?? '@waterx/wormhole-bridge';
     const argumentsTypes = [
         null
@@ -602,7 +722,7 @@ export function hourlyMinted(options: HourlyMintedOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
-        function: 'hourly_minted',
+        function: 'daily_minted',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -628,16 +748,16 @@ export function maxMintPerTx(options: MaxMintPerTxOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface HourlyBurnLimitArguments {
+export interface DailyBurnLimitArguments {
     bridge: RawTransactionArgument<string>;
 }
-export interface HourlyBurnLimitOptions {
+export interface DailyBurnLimitOptions {
     package?: string;
-    arguments: HourlyBurnLimitArguments | [
+    arguments: DailyBurnLimitArguments | [
         bridge: RawTransactionArgument<string>
     ];
 }
-export function hourlyBurnLimit(options: HourlyBurnLimitOptions) {
+export function dailyBurnLimit(options: DailyBurnLimitOptions) {
     const packageAddress = options.package ?? '@waterx/wormhole-bridge';
     const argumentsTypes = [
         null
@@ -646,20 +766,21 @@ export function hourlyBurnLimit(options: HourlyBurnLimitOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
-        function: 'hourly_burn_limit',
+        function: 'daily_burn_limit',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
-export interface HourlyBurnedArguments {
+export interface DailyBurnedArguments {
     bridge: RawTransactionArgument<string>;
 }
-export interface HourlyBurnedOptions {
+export interface DailyBurnedOptions {
     package?: string;
-    arguments: HourlyBurnedArguments | [
+    arguments: DailyBurnedArguments | [
         bridge: RawTransactionArgument<string>
     ];
 }
-export function hourlyBurned(options: HourlyBurnedOptions) {
+/** Tracked burn usage in the current sliding window — see `daily_minted`. */
+export function dailyBurned(options: DailyBurnedOptions) {
     const packageAddress = options.package ?? '@waterx/wormhole-bridge';
     const argumentsTypes = [
         null
@@ -668,7 +789,7 @@ export function hourlyBurned(options: HourlyBurnedOptions) {
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'wormhole_bridge',
-        function: 'hourly_burned',
+        function: 'daily_burned',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -691,6 +812,82 @@ export function maxBurnPerTx(options: MaxBurnPerTxOptions) {
         package: packageAddress,
         module: 'wormhole_bridge',
         function: 'max_burn_per_tx',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PersonalBurnCapAmountArguments {
+    bridge: RawTransactionArgument<string>;
+}
+export interface PersonalBurnCapAmountOptions {
+    package?: string;
+    arguments: PersonalBurnCapAmountArguments | [
+        bridge: RawTransactionArgument<string>
+    ];
+}
+export function personalBurnCapAmount(options: PersonalBurnCapAmountOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'personal_burn_cap_amount',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PersonalBurnCapWindowMsArguments {
+    bridge: RawTransactionArgument<string>;
+}
+export interface PersonalBurnCapWindowMsOptions {
+    package?: string;
+    arguments: PersonalBurnCapWindowMsArguments | [
+        bridge: RawTransactionArgument<string>
+    ];
+}
+export function personalBurnCapWindowMs(options: PersonalBurnCapWindowMsOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'personal_burn_cap_window_ms',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface PersonalBurnedArguments {
+    bridge: RawTransactionArgument<string>;
+    user: RawTransactionArgument<string>;
+}
+export interface PersonalBurnedOptions {
+    package?: string;
+    arguments: PersonalBurnedArguments | [
+        bridge: RawTransactionArgument<string>,
+        user: RawTransactionArgument<string>
+    ];
+}
+/**
+ * Burn already counted in the user's current window. Returns 0 for unknown users,
+ * for users whose window has not been touched yet, AND for users whose stored
+ * window has expired (lazily — the on-burn path resets it; this view computes the
+ * same answer without mutating).
+ */
+export function personalBurned(options: PersonalBurnedOptions) {
+    const packageAddress = options.package ?? '@waterx/wormhole-bridge';
+    const argumentsTypes = [
+        null,
+        'address',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["bridge", "user"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'wormhole_bridge',
+        function: 'personal_burned',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

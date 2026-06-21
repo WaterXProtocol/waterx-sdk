@@ -31,6 +31,41 @@ export interface PythSponsorRulePackage extends BasePackageEntry {
   pyth_sponsor: string;
 }
 
+export interface WaterxConstantRulePackage extends BasePackageEntry {
+  /** Shared `constant_rule::Config` holding the per-ticker constant prices. */
+  config: string;
+  /**
+   * Oracle ticker → constant 1e9-scaled price (decimal string), mirroring the
+   * on-chain `Config.prices` map. A ticker present here is fed via
+   * `constant_rule::feed` instead of `pyth_rule::feed` (e.g. `USDCUSD → "1000000000"`).
+   */
+  prices?: Record<string, string>;
+  /**
+   * Tickers in transition (subset of `prices`): fed via *both* `pyth_rule::feed`
+   * and `constant_rule::feed` into one collector so the aggregator can hold the
+   * `{Pyth, Constant}` weight set without an `EMissingPriceSource` window while
+   * rule weights are flipped. Empty/absent (steady state) → each `prices` ticker
+   * is constant-only. See the USDCUSD migration runbook in `waterx-contract`.
+   */
+  dual_feed?: string[];
+}
+
+export interface SupraRulePackage extends BasePackageEntry {
+  /** Shared `supra_rule::Config` (per-symbol Supra pair_id + freshness tolerance). */
+  config: string;
+  /** Supra `OracleHolder` shared object id (network-specific). Required to feed. */
+  oracle_holder?: string;
+  /** Oracle ticker → Supra pair id (mirrors the on-chain `Config`; informational). */
+  pairs?: Record<string, number>;
+  /**
+   * When true AND `config` + `oracle_holder` are set, `refreshOraclePrices`
+   * feeds `supra_rule` on the same `PriceCollector` as Pyth before `aggregate`
+   * (a second weighted rule). Defaults to **false** so a Pyth-only deployment
+   * is unaffected — flip on only after `weight_threshold`/feeders are ready.
+   */
+  enabled?: boolean;
+}
+
 export interface WxaAccountPackage extends BasePackageEntry {
   admin_cap: string;
   account_registry: string;
@@ -121,6 +156,8 @@ export interface WaterxCreditPackage {
 
 /** One backing-asset row on the native custody vault (PSM). */
 export interface NativeCustodyAsset {
+  /** Human-readable asset label, e.g. `"MOCK_USDC"` / `"USDC"` (from `add_asset`). */
+  name?: string;
   /** Fully-qualified backing asset Move type `T`. */
   type: string;
   decimal: number;
@@ -154,7 +191,12 @@ export interface WormholeBridgePackage {
   max_mint_per_tx?: string;
   hourly_burn_limit?: string;
   max_burn_per_tx?: string;
-  trusted_emitters: TrustedEmitterRow[];
+  /**
+   * @deprecated EVM emitter↔token config now lives solely under `evm.bridge.chains`
+   * (deposit_vault = emitter, wormhole_chain_id = chain key). The runtime allowlist is
+   * read from the on-chain `Bridge` object, not from config. Kept optional for back-compat.
+   */
+  trusted_emitters?: TrustedEmitterRow[];
   /** Shared `Bridge` (phase-5 output). */
   bridge?: string;
   /**
@@ -191,6 +233,8 @@ export interface WaterXPackages {
   waterx_referral?: WaterxReferralPackage;
   pyth_rule: PythRulePackage;
   pyth_sponsor_rule?: PythSponsorRulePackage;
+  waterx_constant_rule?: WaterxConstantRulePackage;
+  supra_rule?: SupraRulePackage;
   waterx_account: WxaAccountPackage;
   waterx_oracle: WaterxOraclePackage;
   waterx_perp: WaterxPerpPackage;

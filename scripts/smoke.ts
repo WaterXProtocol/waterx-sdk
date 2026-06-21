@@ -12,7 +12,7 @@
  * that fails *before* dispatch (BCS encode, schema mismatch, builder crash) is
  * RED and points to an SDK bug.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Transaction } from "@mysten/sui/transactions";
 
@@ -131,9 +131,20 @@ async function runCase(
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  console.log(`Loading config from ${CONFIG_PATH}`);
-  const config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
-  const client = new WaterXClient("TESTNET", config);
+  // Prefer the sibling `../waterx-config/testnet.json` checkout when present
+  // (local dev), but fall back to fetching the canonical config over HTTP so
+  // this works in CI, where the config repo isn't checked out alongside.
+  let config: WaterXConfig;
+  let client: WaterXClient;
+  if (existsSync(CONFIG_PATH)) {
+    console.log(`Loading config from ${CONFIG_PATH}`);
+    config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
+    client = new WaterXClient("TESTNET", config);
+  } else {
+    console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
+    client = await WaterXClient.create("TESTNET", { cache: true });
+    config = client.config;
+  }
 
   console.log("\n=== Config sanity ===");
   console.log(`  network               ${config.network} / ${config.chain_id}`);

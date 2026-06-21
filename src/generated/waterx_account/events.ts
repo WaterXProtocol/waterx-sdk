@@ -50,6 +50,12 @@ export const ProtocolWhitelisted = new MoveStruct({ name: `${$moduleName}::Proto
 export const ProtocolDelisted = new MoveStruct({ name: `${$moduleName}::ProtocolDelisted`, fields: {
         protocol: type_name.TypeName
     } });
+export const ProtocolPaused = new MoveStruct({ name: `${$moduleName}::ProtocolPaused`, fields: {
+        protocol: type_name.TypeName
+    } });
+export const ProtocolUnpaused = new MoveStruct({ name: `${$moduleName}::ProtocolUnpaused`, fields: {
+        protocol: type_name.TypeName
+    } });
 export const ProtocolAssetAllowed = new MoveStruct({ name: `${$moduleName}::ProtocolAssetAllowed`, fields: {
         protocol: type_name.TypeName,
         asset: type_name.TypeName

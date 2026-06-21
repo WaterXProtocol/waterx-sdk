@@ -7,36 +7,12 @@
  * Optional env:
  *   EXECUTE=1   actually broadcast (default: simulate only).
  */
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
-import { fromBase64 } from "@mysten/bcs";
-import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { WaterXClient } from "../src/client.ts";
 import { createAccount } from "../src/user/account.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
-
-const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
-const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
-
-function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
-  const yaml = readFileSync(CLIENT_YAML, "utf8");
-  const m = /active_address:\s*"?(0x[a-f0-9]+)"?/i.exec(yaml);
-  if (!m) throw new Error("could not parse active_address from client.yaml");
-  const activeAddress = m[1]!.toLowerCase();
-  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
-  for (const encoded of keystore) {
-    const raw = fromBase64(encoded);
-    if (raw.length !== 33 || raw[0] !== 0x00) continue;
-    const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === activeAddress) {
-      return { keypair: kp, address: kp.toSuiAddress() };
-    }
-  }
-  throw new Error(`no ED25519 key in keystore matches active address ${activeAddress}`);
-}
+import { loadActiveKeypair } from "./load-signer.ts";
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
