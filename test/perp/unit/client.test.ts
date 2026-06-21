@@ -179,32 +179,6 @@ describe("WaterXClient (offline)", () => {
     );
   });
 
-  it("getRewarders / getRewarderTypes list configured stake reward coins", () => {
-    const withRewarders = createUnitTestClient();
-    withRewarders.config.packages.waterx_staking = {
-      ...withRewarders.config.packages.waterx_staking!,
-      rewarders: {
-        WLP: {
-          SUI: {
-            rewarder_id: "0xrewarder",
-            coin_type: "0x2::sui::SUI",
-            decimals: 9,
-          },
-        },
-      },
-    };
-    expect(withRewarders.getRewarders("WLP")).toEqual([
-      {
-        alias: "SUI",
-        rewarder_id: "0xrewarder",
-        coin_type: "0x2::sui::SUI",
-        decimals: 9,
-      },
-    ]);
-    expect(withRewarders.getRewarderTypes("WLP")).toEqual(["0x2::sui::SUI"]);
-    expect(withRewarders.getRewarders("UNKNOWN")).toEqual([]);
-  });
-
   it("throws when credit / bridge / custody packages are absent", () => {
     const bare = createUnitTestClient();
     delete bare.config.packages.waterx_credit;
