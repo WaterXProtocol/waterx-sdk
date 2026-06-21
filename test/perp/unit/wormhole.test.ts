@@ -146,7 +146,58 @@ describe("wormhole — REST (mocked fetch)", () => {
 
 describe("wormhole — waitForVaa polling", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("invokes onTick for each poll attempt", async () => {
+    const vaa = toBase64(new Uint8Array([1]));
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("", { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { vaa, sequence: 1 } }), { status: 200 }),
+      );
+    const ticks: number[] = [];
+    await waitForVaa(API, 2, EMITTER, 1, {
+      fetchImpl,
+      intervalMs: 1,
+      timeoutMs: 500,
+      onTick: (attempt) => ticks.push(attempt),
+    });
+    expect(ticks).toEqual([1, 2]);
+  });
+
+  it("uses default interval and timeout when opts omit them", async () => {
+    vi.useFakeTimers();
+    try {
+      const vaa = toBase64(new Uint8Array([1]));
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(new Response("", { status: 404 }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: { vaa, sequence: 1 } }), { status: 200 }),
+        );
+      const pending = waitForVaa(API, 2, EMITTER, 1, { fetchImpl });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await expect(pending).resolves.toMatchObject({ vaa });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("polls through sleep intervals before timing out with an active signal", async () => {
+    const fetchImpl = vi.fn(async () => new Response("", { status: 404 }));
+    const ac = new AbortController();
+    await expect(
+      waitForVaa(API, 2, EMITTER, 1, {
+        fetchImpl,
+        intervalMs: 1,
+        timeoutMs: 50,
+        signal: ac.signal,
+      }),
+    ).rejects.toThrow(/timeout/);
+    expect(fetchImpl.mock.calls.length).toBeGreaterThan(1);
   });
 
   it("returns when fetchVaa succeeds on first tick", async () => {

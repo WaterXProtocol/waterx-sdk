@@ -2,6 +2,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import {
   addDelegate,
   allowPredictionProtocolAsset,
+  consumeDepositDirect,
+  consumeWithdrawDirect,
   createAccount,
   deposit,
   disallowPredictionProtocolAsset,
@@ -12,6 +14,7 @@ import {
   setDelegatePredictionPermission,
   transferCoinToAccount,
   whitelistPredictionProtocol,
+  withdraw,
 } from "~predict/account.ts";
 import { describe, expect, it } from "vitest";
 
@@ -109,6 +112,35 @@ describe("account PTB builders", () => {
     const tx = new Transaction();
     whitelistPredictionProtocol(client, tx, { adminCap: PTB_DUMMY.adminCap });
     expect(listMoveCalls(tx)).toMatchSnapshot();
+  });
+
+  it("consumeDepositDirect", () => {
+    const tx = new Transaction();
+    const depReq = tx.object(PTB_DUMMY.coin);
+    consumeDepositDirect(client, tx, { depositRequest: depReq });
+    expect(listMoveCalls(tx)).toMatchSnapshot();
+  });
+
+  it("consumeWithdrawDirect", () => {
+    const tx = new Transaction();
+    const wdReq = requestWithdraw(client, tx, {
+      accountId: baseAcc.accountId,
+      amount: 50n,
+      recipient: PTB_DUMMY.recipient,
+    });
+    consumeWithdrawDirect(client, tx, { withdrawRequest: wdReq });
+    expect(listMoveCalls(tx).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("withdraw chains request_withdraw + consume_withdraw_direct", () => {
+    const tx = new Transaction();
+    withdraw(client, tx, {
+      accountId: baseAcc.accountId,
+      amount: 25n,
+      recipient: PTB_DUMMY.recipient,
+      extraData: new Uint8Array([1]),
+    });
+    expect(listMoveCalls(tx).length).toBeGreaterThanOrEqual(2);
   });
 
   it("allow / disallow prediction protocol settlement asset", () => {

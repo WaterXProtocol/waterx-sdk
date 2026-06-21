@@ -69,6 +69,7 @@ const coverageBlock = {
     "dist/**",
     /** Pure TypeScript interfaces — no executable statements after emit. */
     "src/view-types.ts",
+    "src/prediction/types.ts",
   ],
 };
 

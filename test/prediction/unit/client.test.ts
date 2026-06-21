@@ -6,6 +6,10 @@ import { TESTNET_FIXTURE_CONFIG, TESTNET_FIXTURE_IDS } from "../fixtures/testnet
 import { createMockPredictClient } from "../helpers/mock-client.ts";
 
 describe("PredictClient", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("testnet() fetches config and wires gRPC client", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -142,6 +146,72 @@ describe("PredictClient", () => {
       transaction: tx,
       include: { effects: true },
     });
+  });
+
+  it("simulate retries on RESOURCE_EXHAUSTED then succeeds", async () => {
+    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const ok = { $kind: "Success" as const };
+    const rateLimitErr = Object.assign(new Error("too many requests"), {
+      code: "RESOURCE_EXHAUSTED",
+    });
+    const simulateTransaction = vi
+      .fn()
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockRejectedValueOnce(rateLimitErr)
+      .mockResolvedValueOnce(ok);
+    (
+      client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }
+    ).grpcClient = { simulateTransaction };
+
+    const tx = new Transaction();
+    await expect(client.simulate(tx)).resolves.toEqual(ok);
+    expect(simulateTransaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("simulate retries when rate-limit message is a plain string", async () => {
+    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const ok = { $kind: "Success" as const };
+    const simulateTransaction = vi
+      .fn()
+      .mockRejectedValueOnce("rate limit hit")
+      .mockResolvedValueOnce(ok);
+    (
+      client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }
+    ).grpcClient = { simulateTransaction };
+
+    const tx = new Transaction();
+    await expect(client.simulate(tx)).resolves.toEqual(ok);
+    expect(simulateTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("simulate gives up after max rate-limit attempts", async () => {
+    vi.useFakeTimers();
+    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const rateLimitErr = Object.assign(new Error("too many requests"), {
+      code: "RESOURCE_EXHAUSTED",
+    });
+    const simulateTransaction = vi.fn().mockRejectedValue(rateLimitErr);
+    (
+      client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }
+    ).grpcClient = { simulateTransaction };
+
+    const tx = new Transaction();
+    const pending = expect(client.simulate(tx)).rejects.toBe(rateLimitErr);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(simulateTransaction).toHaveBeenCalledTimes(4);
+  });
+
+  it("simulate rethrows non-rate-limit errors immediately", async () => {
+    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const simulateTransaction = vi.fn().mockRejectedValue(new Error("invalid transaction"));
+    (
+      client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }
+    ).grpcClient = { simulateTransaction };
+
+    const tx = new Transaction();
+    await expect(client.simulate(tx)).rejects.toThrow(/invalid transaction/);
+    expect(simulateTransaction).toHaveBeenCalledTimes(1);
   });
 });
 

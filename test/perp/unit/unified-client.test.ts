@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as perpFetch from "../../../src/fetch.ts";
 import * as predAccount from "../../../src/prediction/account.ts";
 import * as predAdmin from "../../../src/prediction/admin.ts";
+import { PredictClient } from "../../../src/prediction/client.ts";
 import * as predFetch from "../../../src/prediction/fetch.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
 import { Client, perp, prediction, WaterXClient } from "../../../src/sdk.ts";
@@ -20,6 +21,10 @@ const fnNames = (ns: object): string[] =>
     .map(([k]) => k);
 
 describe("unified Client facade", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const client = Client.fromClients(perpClient, predictClient);
 
   it("exposes both line namespaces and the raw line clients", () => {
@@ -88,5 +93,64 @@ describe("unified Client facade", () => {
     // Sanity: the surfaces are non-trivial (guards against an empty-spread regression).
     expect(perpExpected.length).toBeGreaterThan(20);
     expect(predExpected.length).toBeGreaterThan(20);
+  });
+
+  it("Client.create loads perp + predict configs and wires both lines", async () => {
+    const perpSpy = vi.spyOn(WaterXClient, "create").mockResolvedValue(perpClient);
+    const predictSpy = vi
+      .spyOn(PredictClient, "create")
+      .mockResolvedValue(predictClient as unknown as PredictClient);
+
+    const unified = await Client.create({
+      network: "TESTNET",
+      configUrl: "https://waterx.test/testnet.json",
+      perp: { cache: true },
+      predict: { grpcUrl: "https://rpc.test:443" },
+    });
+
+    expect(unified.perpClient).toBe(perpClient);
+    expect(unified.predictClient).toBe(predictClient);
+    expect(perpSpy).toHaveBeenCalledWith(
+      "TESTNET",
+      expect.objectContaining({ configUrl: "https://waterx.test/testnet.json", cache: true }),
+    );
+    expect(predictSpy).toHaveBeenCalledWith(
+      "TESTNET",
+      expect.objectContaining({
+        configUrl: "https://waterx.test/testnet.json",
+        grpcUrl: "https://rpc.test:443",
+      }),
+    );
+  });
+
+  it("Client.create defaults both lines to TESTNET when called with no args", async () => {
+    const perpSpy = vi.spyOn(WaterXClient, "create").mockResolvedValue(perpClient);
+    const predictSpy = vi
+      .spyOn(PredictClient, "create")
+      .mockResolvedValue(predictClient as unknown as PredictClient);
+
+    await Client.create();
+
+    expect(perpSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
+    expect(predictSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
+  });
+
+  it("Client.create honors per-line network overrides", async () => {
+    const perpSpy = vi.spyOn(WaterXClient, "create").mockResolvedValue(perpClient);
+    const predictSpy = vi
+      .spyOn(PredictClient, "create")
+      .mockResolvedValue(predictClient as unknown as PredictClient);
+
+    await Client.create({
+      network: "TESTNET",
+      perp: { network: "MAINNET" },
+      predict: { network: "TESTNET", grpcUrl: "https://predict.rpc:443" },
+    });
+
+    expect(perpSpy).toHaveBeenCalledWith("MAINNET", expect.any(Object));
+    expect(predictSpy).toHaveBeenCalledWith(
+      "TESTNET",
+      expect.objectContaining({ grpcUrl: "https://predict.rpc:443" }),
+    );
   });
 });
