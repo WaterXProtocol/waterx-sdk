@@ -17,6 +17,9 @@ const NON_CLIENT_FIRST = new Set([
   "reimbursePythSponsor",
   "refreshOraclePrices",
   "updatePythPrices",
+  // Async gRPC sweep helpers — covered in tx-builders.test.ts with mocked getBalance/listCoins.
+  "appendConsolidateToUsd",
+  "buildConsolidateToUsdTx",
 ]);
 
 const fnNames = (ns: object): string[] =>

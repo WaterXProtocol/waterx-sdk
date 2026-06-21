@@ -107,6 +107,7 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       rewarderTypes: [rewardType],
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
@@ -127,6 +128,7 @@ describe("WLP atomic mint+stake / unstake+redeem / cancel+restake builders (v3)"
       redeemTokenType: MOCK_USDC_TYPE,
       withdrawalAmount: 500_000n,
       rewarderTypes: [rewardType],
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });

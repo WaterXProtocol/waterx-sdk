@@ -279,7 +279,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         depositTicker: "USDCUSD",
         depositAmount: 10_000_000n,
         minLpAmount: 0n,
-        skipOraclePriceRefresh: true,
+        ...commonTxOpts,
       }),
     (p) =>
       p.buildMintWlpTx({
@@ -288,7 +288,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         depositTicker: "USDCUSD",
         depositAmount: 10_000_000n,
         minLpAmount: 0n,
-        skipOraclePriceRefresh: true,
+        ...commonTxOpts,
       }),
   ),
   caseAsyncTx(
@@ -301,7 +301,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         depositAmount: 10_000_000n,
         minLpAmount: 0n,
         rewarderTypes: [REWARD_TYPE],
-        skipOraclePriceRefresh: true,
+        ...commonTxOpts,
       }),
     (p) =>
       p.buildMintAndStakeWlpTx({
@@ -311,7 +311,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         depositAmount: 10_000_000n,
         minLpAmount: 0n,
         rewarderTypes: [REWARD_TYPE],
-        skipOraclePriceRefresh: true,
+        ...commonTxOpts,
       }),
   ),
   caseAsyncTx(
@@ -322,7 +322,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         redeemTokenType: COLLATERAL_TYPE,
         withdrawalAmount: 500_000n,
         rewarderTypes: [REWARD_TYPE],
-        skipOraclePriceRefresh: true,
+        ...commonTxOpts,
       }),
     (p) =>
       p.buildUnstakeAndRequestRedeemWlpTx({
@@ -330,7 +330,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         redeemTokenType: COLLATERAL_TYPE,
         withdrawalAmount: 500_000n,
         rewarderTypes: [REWARD_TYPE],
-        skipOraclePriceRefresh: true,
+        ...commonTxOpts,
       }),
   ),
   caseFactory(

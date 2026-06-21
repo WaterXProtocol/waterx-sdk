@@ -25,6 +25,7 @@ export const WLP_TYPE = `${MOCK_TESTNET_CONFIG.packages.wlp.original_id}::wlp::W
 export const commonTxOpts = {
   skipOraclePriceRefresh: true,
   useSponsor: false,
+  consolidateToUsd: false,
 } as const;
 
 export const baseOrderMain = {

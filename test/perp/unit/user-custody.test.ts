@@ -2,7 +2,11 @@ import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
 import { WaterXClient } from "../../../src/client.ts";
-import { mintCredit, mintCreditFromRequest, mintCreditToAccount } from "../../../src/user/custody.ts";
+import {
+  mintCredit,
+  mintCreditFromRequest,
+  mintCreditToAccount,
+} from "../../../src/user/custody.ts";
 import {
   MOCK_CREDIT_TYPE,
   MOCK_CUSTODY_ASSET_TYPE,
