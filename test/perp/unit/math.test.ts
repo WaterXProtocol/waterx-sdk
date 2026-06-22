@@ -7,12 +7,14 @@ import {
   calcBorrowRate,
   calcBorrowRateAccrual,
   calcDynamicFeeBps,
+  calcEffectiveCollateralUsd,
   calcEstLiqPrice,
   calcFee,
   calcFundingFeeUsd,
   calcFundingRate,
   calcImpactFeeRate,
   calcLeverage,
+  calcMaxReducibleCollateralUsd,
   calcNotional,
   calcPositionBorrowFee,
   calcTokenUtilizationBps,
@@ -160,6 +162,173 @@ describe("calcEstLiqPrice", () => {
       totalFeesUsd: 40,
     });
     expect(withFees).toBeGreaterThan(withoutFees);
+  });
+});
+
+describe("calcEffectiveCollateralUsd", () => {
+  it("subtracts borrow + trading fees and funding only when owed", () => {
+    // Owes funding: all fees subtracted.
+    expect(
+      calcEffectiveCollateralUsd({
+        grossCollateralUsd: 100,
+        borrowFeeUsd: 2,
+        fundingSign: true,
+        fundingFeeUsd: 3,
+        tradingFeeUsd: 1,
+      }),
+    ).toBeCloseTo(94, 9);
+
+    // Receives funding: funding income is NOT added (matches saturating-subtract path).
+    expect(
+      calcEffectiveCollateralUsd({
+        grossCollateralUsd: 100,
+        borrowFeeUsd: 2,
+        fundingSign: false,
+        fundingFeeUsd: 3,
+        tradingFeeUsd: 1,
+      }),
+    ).toBeCloseTo(97, 9);
+  });
+
+  it("subtracts the projected closing fee when reserved and clamps at 0", () => {
+    expect(
+      calcEffectiveCollateralUsd({
+        grossCollateralUsd: 100,
+        borrowFeeUsd: 0,
+        fundingSign: false,
+        fundingFeeUsd: 0,
+        tradingFeeUsd: 0,
+        projectedTradingFeeUsd: 5,
+      }),
+    ).toBeCloseTo(95, 9);
+
+    expect(
+      calcEffectiveCollateralUsd({
+        grossCollateralUsd: 10,
+        borrowFeeUsd: 20,
+        fundingSign: true,
+        fundingFeeUsd: 5,
+        tradingFeeUsd: 0,
+      }),
+    ).toBe(0);
+  });
+});
+
+describe("calcMaxReducibleCollateralUsd", () => {
+  // HYPE/USD long regression: gross $14.96, ~23.3x on gross but the contract sees
+  // ~24.9x on effective collateral, so only ~$0.075 is withdrawable before hitting
+  // the 25x cap — not the ~$8 a gross-based UI would show. Reproduces the reported
+  // 0.0749 limit (current price ~$2 above the $65.877 liq price, so leverage binds,
+  // not liquidation). collateralPrice = 1 (USD), so USD == raw amount here.
+  it("reproduces the HYPE 25x-leverage-bound limit (~0.0749)", () => {
+    // notional 348.6 = size * spot; pick spot $67.88 (~$2 above liq), size 5.135.
+    const grossCollateralUsd = 14.96;
+    const spotPrice = 67.88;
+    const sizeInAsset = 348.6 / spotPrice;
+    // ~$0.94 of accrued fees push effective collateral to ~$14.02 (≈24.86x).
+    const max = calcMaxReducibleCollateralUsd({
+      grossCollateralUsd,
+      sizeInAsset,
+      spotPrice,
+      isLong: true,
+      entryPrice: 64, // below spot → position in profit, so liquidation is not the binding wall
+      maxLeverage: 25,
+      maintenanceMarginRate: 0.01,
+      minCollValueUsd: 0,
+      borrowFeeUsd: 0.6,
+      tradingFeeUsd: 0.34,
+      closingFeeUsd: 0.2,
+      fundingSign: true,
+      fundingFeeUsd: 0,
+      collateralPriceUsd: 1,
+      collateralDecimal: 6,
+    });
+    // effLeverage = 14.96 - 0.6 - 0.34 = 14.02; floor = 348.6/25 = 13.944.
+    // Leverage (A) binds here, not liquidation, so no one-raw-unit offset applies.
+    expect(max).toBeCloseTo(14.02 - 348.6 / 25, 5); // ≈ 0.076
+    expect(max).toBeGreaterThan(0);
+    expect(max).toBeLessThan(0.1);
+  });
+
+  it("liquidation constraint binds and leaves remaining strictly above maintenance", () => {
+    // Long deep in loss: spot just above liq, so (C) is the smallest headroom.
+    const collateralDecimal = 6;
+    const collateralPriceUsd = 1;
+    const params = {
+      grossCollateralUsd: 15,
+      sizeInAsset: 5,
+      spotPrice: 66,
+      isLong: true,
+      entryPrice: 68, // loss of 5 * 2 = $10
+      maxLeverage: 25,
+      maintenanceMarginRate: 0.01,
+      minCollValueUsd: 0,
+      borrowFeeUsd: 0,
+      tradingFeeUsd: 0,
+      closingFeeUsd: 0.1,
+      fundingSign: false,
+      fundingFeeUsd: 0,
+      collateralPriceUsd,
+      collateralDecimal,
+    };
+    const max = calcMaxReducibleCollateralUsd(params);
+    // liqRemaining = 15 - 10 - 0.1 = 4.9; maintenance = 0.01 * 330 = 3.3.
+    // inclusive headroom_C = 1.6; leverage headroom = 15 - 330/25 = 1.8 → C binds.
+    // The helper backs off one raw unit (1e-6) so the value is just under 1.6.
+    const oneRawUnitUsd = collateralPriceUsd / 10 ** collateralDecimal;
+    expect(max).toBeCloseTo(1.6 - oneRawUnitUsd, 9);
+    expect(max).toBeLessThan(1.6);
+
+    // Converting to a raw tx amount with floor must keep remaining strictly above
+    // maintenance (the contract aborts on equality).
+    const rawAmount = Math.floor((max / collateralPriceUsd) * 10 ** collateralDecimal);
+    const withdrawnUsd = (rawAmount / 10 ** collateralDecimal) * collateralPriceUsd;
+    const remainingAfter = 4.9 - withdrawnUsd;
+    const maintenanceUsd = 0.01 * 330;
+    expect(remainingAfter).toBeGreaterThan(maintenanceUsd);
+  });
+
+  it("clamps to 0 when the position is already over the limit", () => {
+    const max = calcMaxReducibleCollateralUsd({
+      grossCollateralUsd: 10,
+      sizeInAsset: 5,
+      spotPrice: 67,
+      isLong: true,
+      entryPrice: 67,
+      maxLeverage: 25,
+      maintenanceMarginRate: 0.01,
+      minCollValueUsd: 0,
+      borrowFeeUsd: 0,
+      tradingFeeUsd: 0,
+      closingFeeUsd: 0,
+      fundingSign: false,
+      fundingFeeUsd: 0,
+      collateralPriceUsd: 1,
+      collateralDecimal: 6,
+    });
+    // notional 335, floor 335/25 = 13.4 > collateral 10 → already over 25x.
+    expect(max).toBe(0);
+  });
+
+  it("min collateral value can be the binding constraint", () => {
+    const max = calcMaxReducibleCollateralUsd({
+      grossCollateralUsd: 100,
+      sizeInAsset: 1,
+      spotPrice: 100, // notional 100, leverage 1x — lots of leverage headroom
+      isLong: true,
+      entryPrice: 100,
+      maxLeverage: 25,
+      maintenanceMarginRate: 0.01,
+      minCollValueUsd: 95, // can't drop effective collateral below $95
+      borrowFeeUsd: 0,
+      tradingFeeUsd: 0,
+      closingFeeUsd: 0,
+      fundingSign: false,
+      fundingFeeUsd: 0,
+      collateralPriceUsd: 1,
+      collateralDecimal: 6,
+    });
+    expect(max).toBeCloseTo(5, 5);
   });
 });
 

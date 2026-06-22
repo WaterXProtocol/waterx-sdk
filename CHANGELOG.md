@@ -8,6 +8,22 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Added
+
+- **Effective-collateral margin math.** Two offline helpers in `utils/math`:
+  - `calcEffectiveCollateralUsd(...)` — mirrors `calculate_effective_collateral_amount`
+    in `trading.move` (gross − borrow − trading fees − funding-when-owed − optional
+    closing fee). This is the collateral the contract actually uses for leverage /
+    min-collateral checks; displaying leverage or max-reducible off **gross**
+    `collateral_amount` is the long-standing UI bug (a position reads e.g. 23.3x on
+    gross while the contract sees ~24.9x on effective).
+  - `calcMaxReducibleCollateralUsd(...)` — the true "最大可减少" for an adjust-margin
+    UI, taking the min of all three post-withdrawal checks in
+    `execute_withdraw_collateral` (max leverage, min collateral, not-liquidatable),
+    all on effective collateral. Returns a USD figure; convert to the
+    `withdrawCollateralRequest` `amount` via
+    `floor((usd / collateralPriceUsd) * 10 ** collateralDecimal)`.
+
 ## [2.3.0] - 2026-06-17
 
 ### Added
