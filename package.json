@@ -28,6 +28,22 @@
       "types": "./dist/src/prediction/index.d.ts",
       "import": "./dist/src/prediction/index.js"
     },
+    "./prediction/user": {
+      "types": "./dist/src/prediction/user/index.d.ts",
+      "import": "./dist/src/prediction/user/index.js"
+    },
+    "./prediction/user/*": {
+      "types": "./dist/src/prediction/user/*.d.ts",
+      "import": "./dist/src/prediction/user/*.js"
+    },
+    "./prediction/utils": {
+      "types": "./dist/src/prediction/utils/index.d.ts",
+      "import": "./dist/src/prediction/utils/index.js"
+    },
+    "./prediction/utils/*": {
+      "types": "./dist/src/prediction/utils/*.d.ts",
+      "import": "./dist/src/prediction/utils/*.js"
+    },
     "./prediction/*": {
       "types": "./dist/src/prediction/*.d.ts",
       "import": "./dist/src/prediction/*.js"

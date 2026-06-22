@@ -19,6 +19,8 @@ reference the PR that introduced them.
   `@waterx/sdk/prediction`; unified `Client` facade (`client.perp.*` / `client.predict.*`).
   Includes full `waterx_prediction_gift` / claimable-link runtime (`createGift`,
   `claimShare`, `buildCreateGiftFlow`, `getGift`, …) ported from `@waterx/predict-sdk`.
+  Explicit `./prediction/user` and `./prediction/utils` package exports match the
+  old `@waterx/predict-sdk/user` and `/utils` subpath contract.
 - **Effective-collateral margin math.** Two offline helpers in `utils/math`:
   - `calcEffectiveCollateralUsd(...)` — mirrors `calculate_effective_collateral_amount`
     in `trading.move` (gross − borrow − trading fees − funding-when-owed − optional
