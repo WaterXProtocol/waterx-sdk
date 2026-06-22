@@ -29,6 +29,7 @@ import {
   type CreateClientOptions as PredictCreateOptions,
 } from "./prediction/client.ts";
 import * as predFetch from "./prediction/fetch.ts";
+import * as predGift from "./prediction/gift.ts";
 import * as predOps from "./prediction/prediction.ts";
 import * as perpTx from "./tx-builders.ts";
 import * as perpUser from "./user/index.ts";
@@ -40,7 +41,18 @@ import * as perpUser from "./user/index.ts";
  * single source of truth shared by the runtime (skip) and the type (`Omit`).
  * Keep in sync by auditing `export function` first-params across the spread modules.
  */
-const NON_CLIENT_FIRST = ["extractReturnBytes"] as const;
+const NON_CLIENT_FIRST = [
+  "extractReturnBytes",
+  // gift.ts — pure crypto / URL helpers (first arg is not PredictClient)
+  "base64UrlNoPadEncode",
+  "base64UrlNoPadDecode",
+  "generateGiftSeed",
+  "encodeGiftUrl",
+  "parseGiftUrl",
+  "deriveGiftKeypair",
+  "buildGiftClaimMessage",
+  "signGiftClaim",
+] as const;
 type NonClientFirstKey = (typeof NON_CLIENT_FIRST)[number];
 const NON_CLIENT_FIRST_SET: ReadonlySet<string> = new Set(NON_CLIENT_FIRST);
 
@@ -70,7 +82,7 @@ function bindClient<C, NS extends object>(client: C, ns: NS): ClientBound<NS, C>
 
 // Frozen, reused for both the runtime binding and the public module types.
 const perpOps = { ...perpUser, ...perpTx, ...perpFetch };
-const predictOps = { ...predAccount, ...predAdmin, ...predOps, ...predFetch };
+const predictOps = { ...predAccount, ...predAdmin, ...predOps, ...predFetch, ...predGift };
 
 /** Perp namespace exposed as `client.perp` — builder/view methods, client pre-bound. */
 export type PerpModule = ClientBound<typeof perpOps, WaterXClient>;

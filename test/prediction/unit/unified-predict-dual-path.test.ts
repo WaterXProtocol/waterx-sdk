@@ -12,7 +12,17 @@ import {
   predictDualPathCaseNames,
 } from "../helpers/unified/predict-dual-path-cases.ts";
 
-const NON_CLIENT_FIRST = new Set(["extractReturnBytes"]);
+const NON_CLIENT_FIRST = new Set([
+  "extractReturnBytes",
+  "base64UrlNoPadEncode",
+  "base64UrlNoPadDecode",
+  "generateGiftSeed",
+  "encodeGiftUrl",
+  "parseGiftUrl",
+  "deriveGiftKeypair",
+  "buildGiftClaimMessage",
+  "signGiftClaim",
+]);
 
 const fnNames = (ns: object): string[] =>
   Object.entries(ns)

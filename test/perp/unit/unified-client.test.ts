@@ -5,6 +5,7 @@ import * as predAccount from "../../../src/prediction/account.ts";
 import * as predAdmin from "../../../src/prediction/admin.ts";
 import { PredictClient } from "../../../src/prediction/client.ts";
 import * as predFetch from "../../../src/prediction/fetch.ts";
+import * as predGift from "../../../src/prediction/gift.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
 import { Client, perp, prediction, WaterXClient } from "../../../src/sdk.ts";
 import * as perpTx from "../../../src/tx-builders.ts";
@@ -69,6 +70,14 @@ describe("unified Client facade", () => {
       "reimbursePythSponsor",
       "refreshOraclePrices",
       "updatePythPrices",
+      "base64UrlNoPadEncode",
+      "base64UrlNoPadDecode",
+      "generateGiftSeed",
+      "encodeGiftUrl",
+      "parseGiftUrl",
+      "deriveGiftKeypair",
+      "buildGiftClaimMessage",
+      "signGiftClaim",
     ];
     const expected = (ns: object) => fnNames(ns).filter((n) => !NON_CLIENT_FIRST.includes(n));
 
@@ -78,7 +87,13 @@ describe("unified Client facade", () => {
         "function",
       );
     }
-    const predExpected = expected({ ...predAccount, ...predAdmin, ...predOps, ...predFetch });
+    const predExpected = expected({
+      ...predAccount,
+      ...predAdmin,
+      ...predOps,
+      ...predFetch,
+      ...predGift,
+    });
     for (const name of predExpected) {
       expect(
         (client.predict as Record<string, unknown>)[name],
@@ -89,6 +104,7 @@ describe("unified Client facade", () => {
     // Regression guard (bot-reported): a non-client-first helper exported from
     // fetch.ts must NOT be bound onto the facade.
     expect((client.predict as Record<string, unknown>).extractReturnBytes).toBeUndefined();
+    expect((client.predict as Record<string, unknown>).encodeGiftUrl).toBeUndefined();
 
     // Sanity: the surfaces are non-trivial (guards against an empty-spread regression).
     expect(perpExpected.length).toBeGreaterThan(20);
