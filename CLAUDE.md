@@ -52,7 +52,7 @@ and is exposed on `client.pyth`. Override per-deployment by setting
 The client is **async**:
 
 ```ts
-import { WaterXClient } from "@waterx/perp-sdk";
+import { WaterXClient } from "@waterx/sdk";
 
 const client = await WaterXClient.create("TESTNET");
 // override URL / gRPC:

@@ -17,7 +17,7 @@ import {
   placeOrderRequest,
   stake,
   WaterXClient,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { Client, perp, prediction } from "../../../src/sdk.ts";

@@ -1,4 +1,4 @@
-import { decodeEnumVariant } from "@waterx/perp-sdk/prediction/bcs";
+import { decodeEnumVariant } from "@waterx/sdk/prediction/bcs";
 import { expect } from "vitest";
 
 import type { EventFieldContract, JsonFieldKind } from "../contract/event-fields.ts";

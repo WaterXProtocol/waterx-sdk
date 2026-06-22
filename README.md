@@ -1,15 +1,15 @@
-# @waterx/perp-sdk
+# @waterx/sdk
 
 TypeScript SDK for the WaterX protocol on Sui — **two product lines in one package**: **perpetuals** and **prediction markets**. Build PTBs with **gRPC** (`@mysten/sui`), run read-only **simulateTransaction** queries, and optional **Pyth** helpers.
 
-> Package name & version are set at publish time — this repo keeps the inherited `name`/`version`.
+> Package name is `@waterx/sdk` (renamed from `@waterx/perp-sdk` in 2.3.0).
 
 ## Two lines, one package
 
 The perp and prediction lines expose builder functions with **colliding names** (`placeOrder`, `createAccount`, `deposit`, …), so they are kept in separate namespaces:
 
 ```ts
-import { Client } from "@waterx/perp-sdk";
+import { Client } from "@waterx/sdk";
 
 const client = await Client.create({ network: "TESTNET" });
 client.perp.buildPlaceOrderTx(params);   // perpetuals
@@ -22,9 +22,9 @@ Import surfaces:
 
 | Import | What |
 |--------|------|
-| `@waterx/perp-sdk` | `Client` (unified) + `perp` / `prediction` namespaces. Perp's API is also re-exported flat here (**deprecated** — prefer `client.perp` or the `perp` namespace; removed next major). |
-| `@waterx/perp-sdk/perp` | Perp line: `WaterXClient`, builders, fetch, Pyth/Wormhole utils. |
-| `@waterx/perp-sdk/prediction` | Prediction line: `PredictClient`, builders, fetch, utils. |
+| `@waterx/sdk` | `Client` (unified) + `perp` / `prediction` namespaces. Perp's API is also re-exported flat here (**deprecated** — prefer `client.perp` or the `perp` namespace; removed next major). |
+| `@waterx/sdk/perp` | Perp line: `WaterXClient`, builders, fetch, Pyth/Wormhole utils. |
+| `@waterx/sdk/prediction` | Prediction line: `PredictClient`, builders, fetch, utils. |
 
 ## Install
 
@@ -33,14 +33,14 @@ pnpm install
 pnpm build
 ```
 
-Consumers: `pnpm add @waterx/perp-sdk @mysten/sui`
+Consumers: `pnpm add @waterx/sdk @mysten/sui`
 
 ## Quickstart (unified client)
 
 `Client.create()` loads each line's deployment config from the canonical `waterx-config` JSON and returns a ready client. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (the line client, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
 
 ```ts
-import { Client, rawPrice } from "@waterx/perp-sdk";
+import { Client, rawPrice } from "@waterx/sdk";
 import { Transaction } from "@mysten/sui/transactions";
 
 const client = await Client.create({ network: "TESTNET" });
@@ -76,8 +76,8 @@ await client.predictClient.signAndExecuteTransaction({ transaction: ptx, signer 
 If you only need one line, construct it directly (both factories are **async** — they fetch deployment config):
 
 ```ts
-import { WaterXClient } from "@waterx/perp-sdk/perp";
-import { PredictClient } from "@waterx/perp-sdk/prediction";
+import { WaterXClient } from "@waterx/sdk/perp";
+import { PredictClient } from "@waterx/sdk/prediction";
 
 const perp = await WaterXClient.create("TESTNET"); // or WaterXClient.testnet()
 const predict = await PredictClient.create("TESTNET"); // or PredictClient.testnet()

@@ -1,7 +1,7 @@
 /**
  * E2E: single position / order reads (`positionExists`, `getPosition`, `getOrder`).
  */
-import { getOrder, getPosition, ORDER_LIMIT_BUY, positionExists } from "@waterx/perp-sdk";
+import { getOrder, getPosition, ORDER_LIMIT_BUY, positionExists } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

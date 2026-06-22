@@ -1,8 +1,8 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { consumeDepositDirect, deposit } from "@waterx/perp-sdk/prediction/account";
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
-import { getAccountData, getAccountIds } from "@waterx/perp-sdk/prediction/fetch";
+import { consumeDepositDirect, deposit } from "@waterx/sdk/prediction/account";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
+import { getAccountData, getAccountIds } from "@waterx/sdk/prediction/fetch";
 
 import { getAccountSettlementBalance } from "./account-balance.ts";
 import { assertSuccessfulExecution } from "./tx-result.ts";

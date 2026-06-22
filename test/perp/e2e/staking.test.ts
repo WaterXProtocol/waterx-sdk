@@ -2,7 +2,7 @@
  * E2E: staking deposit checker PTB (discovered wxa WLP balance; skipped when pool missing).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { stake } from "@waterx/perp-sdk";
+import { stake } from "@waterx/sdk";
 import { beforeAll, describe, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

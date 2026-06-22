@@ -102,7 +102,7 @@ E2E_GRPC_URL=https://your-node pnpm ramp
 cd packages/predict-stress
 pnpm install
 cd ../..
-pnpm build    # 建置 @waterx/perp-sdk（本地 file: 依賴需要 dist/）
+pnpm build    # 建置 @waterx/sdk（本地 file: 依賴需要 dist/）
 tar -czvf predict-stress.tar.gz \
   --exclude=node_modules \
   --exclude=config/wallets.json \
@@ -116,7 +116,7 @@ cd predict-stress
 # 若 tarball 不含 node_modules：
 pnpm install
 # 若無法 file: 依賴 SDK，改 package.json：
-#   "@waterx/perp-sdk": "^2.1.2"
+#   "@waterx/sdk": "^2.1.2"
 pnpm init && …
 ```
 
@@ -142,7 +142,7 @@ pnpm sync    # 從 ../../test/prediction 複製並改 import
 - Node.js ≥ 20
 - 各錢包 testnet **SUI**（gas）+ **MOCK_USDC**（deposit）
 - staging API 可連線
-- `@waterx/perp-sdk` 已安裝且含 `dist/`（或從 npm 安裝正式版）
+- `@waterx/sdk` 已安裝且含 `dist/`（或從 npm 安裝正式版）
 
 ## 疑難排解
 

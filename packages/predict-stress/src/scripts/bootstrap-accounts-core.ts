@@ -10,8 +10,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { createAccount } from "@waterx/perp-sdk/prediction/account";
-import { getAccountIds } from "@waterx/perp-sdk/prediction/fetch";
+import { createAccount } from "@waterx/sdk/prediction/account";
+import { getAccountIds } from "@waterx/sdk/prediction/fetch";
 
 import { resolveOwnerRegistryAccountId } from "../helpers/account-funding.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";

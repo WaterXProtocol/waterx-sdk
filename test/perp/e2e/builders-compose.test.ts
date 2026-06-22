@@ -2,7 +2,7 @@
  * E2E: low-level user builders composed into single PTB shapes (simulate-only).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { createAccount, executeTrading, increasePositionRequest } from "@waterx/perp-sdk";
+import { createAccount, executeTrading, increasePositionRequest } from "@waterx/sdk";
 import { beforeAll, describe, it } from "vitest";
 
 import {

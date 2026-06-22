@@ -2,9 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import { createAccount } from "@waterx/perp-sdk/prediction/account";
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
-import { getAccountIds, isKeeper } from "@waterx/perp-sdk/prediction/fetch";
+import { createAccount } from "@waterx/sdk/prediction/account";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
+import { getAccountIds, isKeeper } from "@waterx/sdk/prediction/fetch";
 import type { TestContext } from "vitest";
 
 import { ensureAccountFunded, resolveOwnerRegistryAccountId } from "./account-funding.ts";

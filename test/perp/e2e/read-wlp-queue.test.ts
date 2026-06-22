@@ -1,7 +1,7 @@
 /**
  * E2E: paginated WLP redeem queue.
  */
-import { getRedeemRequests } from "@waterx/perp-sdk";
+import { getRedeemRequests } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

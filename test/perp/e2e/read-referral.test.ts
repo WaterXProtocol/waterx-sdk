@@ -1,7 +1,7 @@
 /**
  * E2E: optional `waterx_referral` package (skipped when not configured).
  */
-import { getRefererFor, isValidReferralCode, referralCodeExists } from "@waterx/perp-sdk";
+import { getRefererFor, isValidReferralCode, referralCodeExists } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

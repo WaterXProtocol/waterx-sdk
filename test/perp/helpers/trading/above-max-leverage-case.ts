@@ -15,8 +15,8 @@
  * Keep the "skip on 202" logic here; duplicating it in callers caused drift.
  */
 import type { Transaction } from "@mysten/sui/transactions";
-import { buildOpenPositionTx, getMarketSummary } from "@waterx/perp-sdk";
-import type { BaseAsset, WaterXClient } from "@waterx/perp-sdk";
+import { buildOpenPositionTx, getMarketSummary } from "@waterx/sdk";
+import type { BaseAsset, WaterXClient } from "@waterx/sdk";
 
 import { lifecycleRow } from "../e2e/lifecycle-test-markets.ts";
 import {

@@ -51,8 +51,8 @@ const OTHER_FILES = [
 
 function rewriteSdkImports(content) {
   return content
-    .replace(/from "~predict\/([^"]+)\.ts"/g, 'from "@waterx/perp-sdk/prediction/$1"')
-    .replace(/from '\~predict\/([^']+)\.ts'/g, "from '@waterx/perp-sdk/prediction/$1'");
+    .replace(/from "~predict\/([^"]+)\.ts"/g, 'from "@waterx/sdk/prediction/$1"')
+    .replace(/from '\~predict\/([^']+)\.ts'/g, "from '@waterx/sdk/prediction/$1'");
 }
 
 function rewritePaths(content) {
@@ -137,7 +137,7 @@ writeFileSync(
   `/**
  * Minimal testnet client factory for stress harness (no fixture discovery).
  */
-import { PredictClient } from "@waterx/perp-sdk/prediction/client";
+import { PredictClient } from "@waterx/sdk/prediction/client";
 
 import { readTestnetClientOverrides } from "./e2e-env.ts";
 

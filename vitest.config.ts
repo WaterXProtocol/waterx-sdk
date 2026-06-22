@@ -3,13 +3,13 @@ import { defineConfig } from "vitest/config";
 
 /**
  * Aliases must resolve per Vitest project (multi-project mode):
- * - `@waterx/perp-sdk` → perp barrel (legacy/internal).
+ * - `@waterx/sdk` → perp barrel (legacy/internal).
  * - `~predict/*` / `~predict-scripts/*` → prediction sources/scripts (used by the
  *   merged prediction test suite). Regex form keeps `~predict-scripts` from being
  *   swallowed by the `~predict` prefix.
  */
 const aliases = [
-  { find: "@waterx/perp-sdk", replacement: path.resolve(__dirname, "./src/index.ts") },
+  { find: "@waterx/sdk", replacement: path.resolve(__dirname, "./src/index.ts") },
   {
     find: /^~predict-scripts\//,
     replacement: path.resolve(__dirname, "./test/prediction/scripts") + "/",

@@ -4,7 +4,7 @@
  * vault asset (USDC + USDSUI on testnet, the real coins on mainnet).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { buildMintAndStakeWlpTx, buildPlaceOrderTx } from "@waterx/perp-sdk";
+import { buildMintAndStakeWlpTx, buildPlaceOrderTx } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { mintCreditToAccount } from "../../../src/user/custody.ts";

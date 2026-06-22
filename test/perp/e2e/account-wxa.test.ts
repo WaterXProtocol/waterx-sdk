@@ -2,7 +2,7 @@
  * E2E: wxa account creation simulate (no signing).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { createAccount } from "@waterx/perp-sdk";
+import { createAccount } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

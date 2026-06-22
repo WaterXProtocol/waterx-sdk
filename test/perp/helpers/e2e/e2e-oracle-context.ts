@@ -1,5 +1,5 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { PythCache, updatePythPrices, type WaterXClient } from "@waterx/perp-sdk";
+import { PythCache, updatePythPrices, type WaterXClient } from "@waterx/sdk";
 
 import { DUMMY_SENDER } from "./e2e-client.ts";
 import { activeLifecycleTickersForClient } from "./lifecycle-test-markets.ts";

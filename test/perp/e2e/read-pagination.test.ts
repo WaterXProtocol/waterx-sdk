@@ -1,7 +1,7 @@
 /**
  * E2E: paginated market orders / positions (`cursor` + `pageSize`).
  */
-import { getMarketOrders, getMarketPositions } from "@waterx/perp-sdk";
+import { getMarketOrders, getMarketPositions } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";

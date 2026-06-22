@@ -125,7 +125,7 @@ jobs:
               import { readFileSync } from "node:fs";
               const c = JSON.parse(readFileSync(process.argv[1], "utf8")).total;
               const f = (v) => v.pct + "%";
-              console.log("## @waterx/perp-sdk — Test coverage\n");
+              console.log("## @waterx/sdk — Test coverage\n");
               console.log("| Metric | Coverage |");
               console.log("|--------|----------|");
               console.log("| Statements | " + f(c.statements) + " |");

@@ -15,7 +15,7 @@ import {
   PERM_PLACE_ORDER,
   PERM_WITHDRAW_COLLATERAL,
   rawPrice,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 describe("permission bitmasks", () => {

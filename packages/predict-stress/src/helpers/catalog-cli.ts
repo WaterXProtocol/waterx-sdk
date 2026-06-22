@@ -3,9 +3,9 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
-import { getOrder } from "@waterx/perp-sdk/prediction/fetch";
-import { fillOrder, placeOrder } from "@waterx/perp-sdk/prediction/prediction";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
+import { getOrder } from "@waterx/sdk/prediction/fetch";
+import { fillOrder, placeOrder } from "@waterx/sdk/prediction/prediction";
 
 import { EVENT_CONTRACT } from "../contract/event-fields.ts";
 import { INTEGRATION_MIN_FILL } from "../fixtures/ptb-params.ts";

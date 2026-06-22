@@ -81,10 +81,10 @@ jobs:
   #       with:
   #         node-version: 24
   #     - name: Bump version
-  #       run: pnpm add @waterx/perp-sdk@${{ needs.publish.outputs.latest-version }} --save-exact
+  #       run: pnpm add @waterx/sdk@${{ needs.publish.outputs.latest-version }} --save-exact
   #     - name: Create PR
   #       uses: peter-evans/create-pull-request@v7
   #       with:
   #         branch: bump-waterx-perp-sdk-v${{ needs.publish.outputs.latest-version }}
-  #         title: 'chore: bump @waterx/perp-sdk to v${{ needs.publish.outputs.latest-version }}'
+  #         title: 'chore: bump @waterx/sdk to v${{ needs.publish.outputs.latest-version }}'
   #         token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}

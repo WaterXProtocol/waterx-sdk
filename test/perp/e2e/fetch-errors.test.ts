@@ -1,7 +1,7 @@
 /**
  * E2E: negative fetch paths (simulate abort / decode failures).
  */
-import { getPosition } from "@waterx/perp-sdk";
+import { getPosition } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

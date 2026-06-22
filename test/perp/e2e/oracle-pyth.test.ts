@@ -2,7 +2,7 @@
  * E2E: Hermes + Pyth accumulator + per-ticker oracle aggregate (no trading).
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { refreshOraclePrices } from "@waterx/perp-sdk";
+import { refreshOraclePrices } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

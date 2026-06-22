@@ -1,6 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
-import { getKeeperAddresses } from "@waterx/perp-sdk/prediction/fetch";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
+import { getKeeperAddresses } from "@waterx/sdk/prediction/fetch";
 
 import { resolveAccountOwner } from "./account-owner.ts";
 

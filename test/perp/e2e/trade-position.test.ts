@@ -7,7 +7,7 @@ import {
   buildDepositCollateralTx,
   buildIncreasePositionTx,
   buildWithdrawCollateralTx,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { beforeAll, describe, it } from "vitest";
 
 import {

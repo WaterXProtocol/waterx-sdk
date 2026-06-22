@@ -9,7 +9,7 @@ import {
   mintCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
-} from "@waterx/perp-sdk";
+} from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";

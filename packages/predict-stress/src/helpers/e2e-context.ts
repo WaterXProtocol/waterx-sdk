@@ -1,7 +1,7 @@
 /**
  * Minimal testnet client factory for stress harness (no fixture discovery).
  */
-import { PredictClient } from "@waterx/perp-sdk/prediction/client";
+import { PredictClient } from "@waterx/sdk/prediction/client";
 
 import { readTestnetClientOverrides } from "./e2e-env.ts";
 

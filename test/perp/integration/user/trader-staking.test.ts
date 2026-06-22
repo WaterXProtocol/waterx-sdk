@@ -2,7 +2,7 @@
  * Integration: stake then unstake 1 WLP on the integration wxa account.
  */
 import { Transaction } from "@mysten/sui/transactions";
-import { stake, unstake } from "@waterx/perp-sdk";
+import { stake, unstake } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { getAccountBalance } from "../../../../src/fetch.ts";

@@ -1,6 +1,6 @@
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
-import { getAccountIds } from "@waterx/perp-sdk/prediction/fetch";
-import { resolveAccountPackageId } from "@waterx/perp-sdk/prediction/utils";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
+import { getAccountIds } from "@waterx/sdk/prediction/fetch";
+import { resolveAccountPackageId } from "@waterx/sdk/prediction/utils";
 
 import { readFixtureOverrides } from "./e2e-env.ts";
 import { hasWriteCredentials, loadSigner } from "./env.ts";

@@ -1,4 +1,4 @@
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
 
 import type { EventFieldContract } from "../contract/event-fields.ts";
 import type { SuiEventEnvelope } from "./events.ts";

@@ -1,5 +1,5 @@
-import type { PredictClient } from "@waterx/perp-sdk/prediction/client";
-import type { IdArgument, MarketIdInput } from "@waterx/perp-sdk/prediction/types";
+import type { PredictClient } from "@waterx/sdk/prediction/client";
+import type { IdArgument, MarketIdInput } from "@waterx/sdk/prediction/types";
 
 /** Shared dummy IDs — valid-length hex IDs for PTB shape / simulate tests. */
 export const PTB_DUMMY = {

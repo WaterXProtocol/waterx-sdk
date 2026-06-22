@@ -1,7 +1,7 @@
 /**
  * E2E: standalone `add_pre_order` / `cancel_pre_order` **tx-builders** (ghost IDs — PTB still reaches simulate).
  */
-import { buildAddPreOrderTx, buildCancelPreOrderTx } from "@waterx/perp-sdk";
+import { buildAddPreOrderTx, buildCancelPreOrderTx } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
