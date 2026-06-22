@@ -320,6 +320,17 @@ export default defineConfig({
           sequence: { concurrent: false },
         },
       },
+      {
+        resolve: { alias: aliases },
+        test: {
+          name: "post-build",
+          include: ["test/post-build/**/*.test.ts"],
+          environment: "node",
+          exclude: ["**/node_modules/**"],
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
+        },
+      },
     ],
   },
 });

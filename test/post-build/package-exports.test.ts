@@ -1,10 +1,14 @@
+/**
+ * Post-build smoke: package.json `exports` resolve to emitted dist files.
+ * Run via `pnpm test:post-build` after `pnpm build` — not part of unit projects (no dist in CI unit job).
+ */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as {
   exports: Record<string, { import: string }>;
 };

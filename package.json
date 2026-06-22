@@ -74,6 +74,7 @@
     "test:unit": "vitest run --project unit --project predict-unit",
     "test:unit:perp": "vitest run --project unit",
     "test:unit:predict": "vitest run --project predict-unit",
+    "test:post-build": "vitest run --project post-build",
     "test:e2e": "tsx scripts/run-e2e.ts --testnet --predict",
     "test:e2e:perp": "tsx scripts/run-e2e.ts --testnet",
     "test:e2e:predict": "tsx scripts/run-e2e.ts --testnet --predict-only",

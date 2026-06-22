@@ -91,6 +91,8 @@ jobs:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm build
+      - name: Vitest — post-build package exports smoke
+        run: pnpm exec vitest run --project post-build --reporter=dot
 
   # Unit tests (coverage + JUnit). E2E simulate runs in separate `test-e2e` job.
   test:
