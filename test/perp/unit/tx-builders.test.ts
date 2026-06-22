@@ -7,6 +7,7 @@ import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
   buildCancelPreOrderTx,
+  buildClaimRewardsToAccountTx,
   buildClosePositionTx,
   buildDecreasePositionTx,
   buildDepositCollateralTx,
@@ -46,6 +47,8 @@ const common = {
   collateralType: MOCK_USDC_TYPE,
   skipOraclePriceRefresh: true,
   useSponsor: false,
+  // Offline unit-test client has no working gRPC — skip the async sweep.
+  consolidateToUsd: false,
 } as const;
 
 describe("tx-builders (v3)", () => {
@@ -70,6 +73,7 @@ describe("tx-builders (v3)", () => {
       main: baseOrder,
       skipOraclePriceRefresh: true,
       useSponsor: false,
+      consolidateToUsd: false,
     });
     const defaultSponsor = await buildPlaceOrderTx(client, {
       ticker: common.ticker,
@@ -77,6 +81,7 @@ describe("tx-builders (v3)", () => {
       collateralType: common.collateralType,
       main: baseOrder,
       skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
     });
     expect(defaultSponsor.getData().commands!.length).toBeGreaterThan(
       withoutSponsor.getData().commands!.length,
@@ -172,6 +177,7 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
@@ -213,6 +219,7 @@ describe("tx-builders (v3)", () => {
       depositTicker: "USDCUSD",
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
+      consolidateToUsd: false,
     });
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
@@ -304,5 +311,23 @@ describe("tx-builders (v3)", () => {
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
       }),
     ).toThrow(/withdrawal_queue not configured/);
+  });
+
+  it("buildClaimRewardsToAccountTx throws when no rewarders are configured", () => {
+    expect(() =>
+      buildClaimRewardsToAccountTx(client, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+      }),
+    ).toThrow(/no rewarders configured for stakeAlias=WLP/);
+  });
+
+  it("buildClaimRewardsToAccountTx chains claimReward for each rewarder type", () => {
+    const rewardType =
+      "0x896e53015216c5034825c056bcde37a694263601df2534ae5c91b8a3d9150c78::sui::SUI";
+    const tx = buildClaimRewardsToAccountTx(client, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      rewarderTypes: [rewardType],
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 });

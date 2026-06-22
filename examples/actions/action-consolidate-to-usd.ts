@@ -17,17 +17,16 @@
  * account by `direct_rule::consume_deposit_direct<USD>`. Net effect: scattered
  * USDC / USDSUI → a single USD balance under the account.
  *
- * Per backing asset registered on the custody vault, this example adds a
- * funds-drain leg when the accumulator holds a balance and a receivings-drain
- * leg when TTO'd coins sit at the account address — all in one PTB. (`mint`
- * rejects zero-amount deposits, so empty legs are skipped.)
+ * `buildConsolidateToUsdTx` does the per-asset funds + receivings scan and
+ * appends one drain leg per non-empty bucket. The same sweep runs implicitly
+ * before every accountId-bearing tx-builder (`consolidateToUsd: true` by
+ * default on `CommonBuildOpts`), so this script is mostly useful for ad-hoc
+ * cleanup or to surface what's actually parked.
  *
  *   WATERX_ACCOUNT_ID=0x... \
  *     pnpm exec tsx examples/actions/action-consolidate-to-usd.ts
  *   # add WATERX_EXECUTE=1 to sign and send.
  */
-import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
-
 import {
   buildClient,
   loadActiveKeypair,
@@ -35,104 +34,21 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import type { WaterXClient } from "../../src/client.ts";
-import { consumeDepositDirect } from "../../src/generated/waterx_account/direct_rule.ts";
-import {
-  mintCreditFromRequest,
-  requestDepositFromFunds,
-  requestDepositFromReceivings,
-} from "../../src/index.ts";
-
-/** Fold a `DepositRequest<T>` into USD credit settled inside the account. */
-function foldRequestToUsd(
-  client: WaterXClient,
-  tx: Transaction,
-  depositRequest: TransactionArgument,
-  assetType: string,
-  usdType: string,
-): void {
-  const usdReq = mintCreditFromRequest(client, tx, {
-    depositRequest,
-    assetType,
-    creditType: usdType,
-  });
-  consumeDepositDirect({
-    package: client.config.packages.waterx_account.published_at,
-    arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
-      req: usdReq as unknown as TransactionArgument,
-    },
-    typeArguments: [usdType],
-  })(tx);
-}
+import { buildConsolidateToUsdTx } from "../../src/index.ts";
 
 run(async () => {
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
   const accountId = requireEnv("WATERX_ACCOUNT_ID");
-  const usdType = client.creditType();
-  // A wxa account ID is also its fundable address.
-  const accountAddress = accountId;
 
-  const assets = client.getNativeAssets();
-  if (assets.length === 0) throw new Error("no native-custody backing assets configured");
+  const tx = await buildConsolidateToUsdTx(client, accountId);
 
-  const tx = new Transaction();
-  let legs = 0;
-
-  for (const asset of assets) {
-    const tags: string[] = [];
-
-    // --- Funds-accumulator leg (transfer_coin / send_funds path). ---
-    // `mint` rejects a zero-amount deposit, so only add this leg when the
-    // accumulator actually holds something. `addressBalance` is the parked
-    // funds balance (as of the last commit), distinct from owned coins.
-    const bal = (await client.grpcClient.getBalance({
-      owner: accountAddress,
-      coinType: asset.type,
-    })) as { balance?: { addressBalance?: string } };
-    if (BigInt(bal.balance?.addressBalance ?? "0") > 0n) {
-      const fromFunds = requestDepositFromFunds(client, tx, {
-        accountId,
-        coinType: asset.type,
-      });
-      foldRequestToUsd(client, tx, fromFunds, asset.type, usdType);
-      legs += 1;
-      tags.push(`funds ${bal.balance!.addressBalance}`);
-    }
-
-    // --- Receivings leg (TTO'd Coin<T> path). ---
-    // Only add when raw coins were published onto the account address.
-    const coins = (await client.grpcClient.listCoins({
-      owner: accountAddress,
-      coinType: asset.type,
-    })) as {
-      objects?: { objectId?: string; version?: string; digest?: string }[];
-    };
-    const refs = (coins.objects ?? []).filter((c) => c.objectId && c.version && c.digest);
-    if (refs.length > 0) {
-      const receivings = refs.map((c) =>
-        tx.receivingRef({ objectId: c.objectId!, version: c.version!, digest: c.digest! }),
-      ) as unknown as TransactionArgument[];
-      const fromReceivings = requestDepositFromReceivings(client, tx, {
-        accountId,
-        coinType: asset.type,
-        receivings,
-      });
-      foldRequestToUsd(client, tx, fromReceivings, asset.type, usdType);
-      legs += 1;
-      tags.push(`${refs.length} TTO'd coin(s)`);
-    }
-
-    console.log(
-      `  • ${asset.type}: ${tags.length ? tags.join(" + ") + " → USD" : "nothing parked"}`,
-    );
-  }
-
+  const legs = tx.getData().commands?.length ?? 0;
   if (legs === 0) {
     console.log("  nothing to consolidate — no funds or coins parked at the account address");
     return;
   }
-  console.log(`  consolidating across ${legs} drain leg(s) into USD`);
+  // Each drain leg adds 3 commands (request_deposit_from_* + mint_from_request + consume_direct).
+  console.log(`  consolidating across ${Math.floor(legs / 3)} drain leg(s) into USD`);
   await simThenMaybeExecute(client, tx, "consolidateToUsd", keypair);
 });

@@ -161,11 +161,80 @@ export class WaterXClient {
     return f;
   }
 
-  /** `wlp.pool_tokens[ticker]` (fully-qualified Move type), throws if unknown. */
-  getPoolTokenType(ticker: string): string {
-    const t = this.config.packages.wlp?.pool_tokens?.[ticker];
-    if (!t) throw new Error(`No pool token registered for ticker: ${ticker}`);
-    return t;
+  /**
+   * True when `ticker` is priced by `waterx_constant_rule` (a constant pin,
+   * e.g. `USDCUSD → $1`) rather than Pyth. Such tickers are fed via
+   * `constant_rule::feed` and need no Pyth update; see {@link refreshOraclePrices}.
+   *
+   * All-or-nothing, mirroring {@link getSupraRule} and the keeper: only routes a
+   * ticker to the constant rule when the rule is FULLY wired (`published_at` +
+   * `config` present). A half-populated block — `prices` listed before the rule
+   * is deployed, a realistic mid-rollout state — would otherwise make this true
+   * while {@link aggregateTickerWithConstant} throws, aborting the whole
+   * price-refresh PTB instead of safely falling back to Pyth.
+   */
+  isConstantTicker(ticker: string): boolean {
+    const c = this.config.packages.waterx_constant_rule;
+    if (!c?.published_at || !c.config) return false;
+    return c.prices?.[ticker] !== undefined;
+  }
+
+  /**
+   * True when `ticker` is mid-migration and must be fed by *both* Pyth and the
+   * constant rule into one collector — so the aggregator can hold the
+   * `{Pyth, Constant}` weight set without an `EMissingPriceSource` window while
+   * rule weights are flipped (on-chain `aggregator::remove_outliers` requires
+   * every weighted rule present in the collector). Listed in
+   * `waterx_constant_rule.dual_feed`; clamped to `prices` so a stray entry that
+   * isn't a real constant ticker can't double-feed against no weight. See
+   * {@link aggregateTickerWithDual} and the USDCUSD runbook in `waterx-contract`.
+   */
+  isDualFeedTicker(ticker: string): boolean {
+    const c = this.config.packages.waterx_constant_rule;
+    if (!c?.published_at || !c.config) return false;
+    if (c.prices?.[ticker] === undefined) return false;
+    return c.dual_feed?.includes(ticker) ?? false;
+  }
+
+  /**
+   * True when `ticker` is fed by the constant rule *alone* (steady state): no
+   * Pyth feed call, so it skips the Pyth update. Dual-feed tickers are constant
+   * *and* Pyth, so they are NOT constant-only.
+   */
+  isConstantOnlyTicker(ticker: string): boolean {
+    return this.isConstantTicker(ticker) && !this.isDualFeedTicker(ticker);
+  }
+
+  /**
+   * The `supra_rule` config when it is deployed, enabled, and fully wired
+   * (`config` + `oracle_holder`), else `undefined`. When present, callers feed
+   * `supra_rule::feed` as a second weighted rule alongside Pyth on the same
+   * collector; see {@link refreshOraclePrices}. Default-off, so a Pyth-only
+   * deployment returns `undefined` here.
+   */
+  getSupraRule(): { published_at: string; config: string; oracle_holder: string } | undefined {
+    const s = this.config.packages.supra_rule;
+    if (!s?.enabled || !s.published_at || !s.config || !s.oracle_holder) return undefined;
+    return { published_at: s.published_at, config: s.config, oracle_holder: s.oracle_holder };
+  }
+
+  /**
+   * Resolve a WLP pool token's fully-qualified Move type.
+   *
+   * `wlp.pool_tokens` is keyed by **oracle ticker** (e.g. `"USDCUSD"`) — the
+   * Rust keeper requires this, since it reuses each key to look up the token's
+   * aggregator + pyth feed. For ergonomics this also accepts the coin symbol
+   * (the trailing `::Struct` segment, e.g. `"USD"` → `…::usd::USD`): an exact
+   * ticker hit wins, otherwise we match by coin name. Throws if neither hits.
+   */
+  getPoolTokenType(tickerOrName: string): string {
+    const poolTokens = this.config.packages.wlp?.pool_tokens ?? {};
+    const exact = poolTokens[tickerOrName];
+    if (exact) return exact;
+    for (const t of Object.values(poolTokens)) {
+      if (typeof t === "string" && t.split("::").pop() === tickerOrName) return t;
+    }
+    throw new Error(`No pool token registered for ticker/name: ${tickerOrName}`);
   }
 
   /** Fully-qualified WLP coin type derived from `wlp.original_id`. */

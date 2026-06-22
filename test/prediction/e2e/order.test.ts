@@ -10,7 +10,12 @@ import {
 import { beforeAll, describe, it } from "vitest";
 
 import { minimalPlaceOrderParams, PTB_DUMMY } from "../fixtures/ptb-params.ts";
-import { createE2eClient, discoverFixtures, type E2eFixtures } from "../helpers/e2e-context.ts";
+import {
+  createE2eClient,
+  discoverFixtures,
+  predictE2eNetwork,
+  type E2eFixtures,
+} from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import {
   expectSimulateSuccess,
@@ -22,13 +27,18 @@ import {
 
 /** `waterx_prediction::fill_order` abort code when the order's expiry has already passed. */
 const E_ORDER_EXPIRED = 18;
+/** `waterx_prediction::place_order` abort code when `receiver_account_id` is not registered. */
+const E_NOT_ACCOUNT_POSITION = 16;
+/** Valid address shape, never registered in the wxa AccountRegistry. */
+const UNREGISTERED_RECEIVER_ID =
+  "0x00000000000000000000000000000000000000000000000000000000000000bb";
 
 /**
  * Order lifecycle PTBs (covers `OrderPlaced` / `OrderCancelled` / `OrderFilled` indexer events
  * via dry-run simulate). Keeper-style and admin-style sims do not require the corresponding
  * key — they only need an existing order id and a coin owned by the AdminCap holder respectively.
  */
-describe("order PTB simulate (testnet)", () => {
+describe(`order PTB simulate (${predictE2eNetwork})`, () => {
   let client: PredictClient;
   let fx: E2eFixtures;
   let guard: ReturnType<typeof fixtureGuards>;
@@ -54,6 +64,34 @@ describe("order PTB simulate (testnet)", () => {
       marketId: marketBytes,
     });
     await expectSimulateSuccess(client, tx, owner);
+  });
+
+  it("placeOrder aborts ENotAccountPosition for an unregistered receiverAccountId (bet-sharing guard)", async (ctx) => {
+    guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
+    guard.skipUnlessAccountReady(ctx);
+    const owner = await guard.skipUnlessAccountOwner(ctx);
+    const marketBytes = fx.openMarketIdBytes ?? fx.marketIdBytes;
+    if (!marketBytes) {
+      guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
+    }
+    const tx = new Transaction();
+    placeOrder(client, tx, {
+      ...minimalPlaceOrderParams(client),
+      accountId: fx.accountId,
+      receiverAccountId: UNREGISTERED_RECEIVER_ID,
+      marketId: marketBytes,
+    });
+    const result = await simulateWithSender(client, tx, owner);
+    if (result.$kind !== "FailedTransaction") {
+      throw new Error("Expected placeOrder with unregistered receiver to abort");
+    }
+    // `has_account(receiver_account_id)` is the first assert in place_order —
+    // the abort must be ENotAccountPosition, not a later permission/payment abort.
+    if (parseMoveAbortCode(simulateErrorMessage(result)) !== E_NOT_ACCOUNT_POSITION) {
+      throw new Error(
+        `Expected abort code ${E_NOT_ACCOUNT_POSITION} (ENotAccountPosition), got: ${simulateErrorMessage(result)}`,
+      );
+    }
   });
 
   it("selfCancelOrder on an expired OPEN order (rescue path)", async (ctx) => {

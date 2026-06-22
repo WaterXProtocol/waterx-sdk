@@ -39,6 +39,7 @@ describe(`wlp (${e2eNetwork})`, () => {
         depositTicker: "USDCUSD",
         depositTokenType,
         skipOraclePriceRefresh: false,
+        consolidateToUsd: false,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;

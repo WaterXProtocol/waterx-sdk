@@ -130,6 +130,17 @@ export {
 } from "./fetch.ts";
 export type { GetAccountIdsParams, ViewBaseParams } from "./fetch.ts";
 
+export {
+  base64UrlNoPadDecode,
+  base64UrlNoPadEncode,
+  buildGiftClaimMessage,
+  deriveGiftKeypair,
+  generateGiftSeed,
+  parseGiftUrl,
+  signGiftClaim,
+} from "./gift-link.ts";
+export type { GiftUrlParts } from "./gift-link.ts";
+
 export * as bucketFrameworkAccountCalls from "./generated/bucket_v2_framework/account.ts";
 export * as waterxAccountCalls from "./generated/waterx_account/account.ts";
 export * as predictionAccountDataCalls from "./generated/waterx_prediction/account_data.ts";

@@ -14,6 +14,7 @@ export default tseslint.config(
       "node_modules/**",
       "src/generated/**",
       "src/prediction/generated/**",
+      "test/prediction/helpers/bucket-backend-mono/**",
       "eslint.config.mjs",
       "contracts/**",
       "coverage/**",

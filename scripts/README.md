@@ -16,12 +16,14 @@ non-zero exit aborts the chain and prints a summary.
 | 0 | `smoke-remote` | network reachable | — | yes |
 | 1 | `smoke` | none | — (PTB simulate sanity) | yes |
 | 2 | `create-wxa-account` | local sui CLI keypair | `WATERX_SMOKE_ACCOUNT_ID` (printed) | no — creates a new account each run |
-| 3 | `mint-usd-from-mock-usdc` | step 2, MOCK_USDC in wallet | USD CREDIT in wxa | yes |
-| 4 | `deposit-to-wlp` | step 3, USD in wxa | WLP in wxa | yes |
-| 5 | `smoke-staking` | step 4, ≥1M WLP in wxa | stake then unstake (no net state) | yes |
-| 6 | `smoke-happy-path` | step 2 | deposit + mint + place + cancel (no resting orders) | yes |
-| 7 | `smoke-keeper-match` | steps 2–4, USD in wxa | market BUY → keeper match → close (no resting position) | yes |
-| 8 | `smoke-custody` | MOCK_USDC in wallet | CREDIT round-trip (no net state) | yes |
+| 3 | `mint-usd-from-collateral` | step 2, USDC + USDSUI in wallet | USD CREDIT in wxa (one mint per vault asset) | yes |
+| 4 | `smoke-credit-withdraw` | step 3, USD in wxa | requestCreditWithdraw + enqueue (sim unless `WATERX_CREDIT_WITHDRAW_EXECUTE=1`) | yes |
+| 5 | `deposit-to-wlp` | step 3, USD in wxa | WLP in wxa | yes |
+| 6 | `smoke-staking` | step 5, ≥1M WLP in wxa | stake then unstake (no net state) | yes |
+| 7 | `mint-and-stake-wlp` | step 3, ≥1 USD CREDIT in wxa | atomic mint WLP + stake in one PTB | yes |
+| 8 | `smoke-happy-path` | step 2 | deposit + mint + place + cancel (no resting orders) | yes |
+| 9 | `smoke-keeper-match` | steps 2–5, USD in wxa | market BUY → keeper match → close (no resting position) | yes |
+| 10 | `smoke-custody` | USDC in wallet | CREDIT round-trip (no net state) | yes |
 
 Each step's preflight throws an actionable error naming the prior step
 that would produce the missing state, so a forgotten dependency is
@@ -39,7 +41,14 @@ visible at step 1 instead of step 5.
 # default chain, executes on-chain
 pnpm smoke:chain
 
-# every step in simulate-only mode (no on-chain writes)
+# every step in simulate-only mode (no on-chain writes).
+# A dry run NEVER signs — simulate only needs the sender address, not the
+# keystore. With no WATERX_SMOKE_ACCOUNT_ID / SUI_ACTIVE_ADDRESS / client.yaml
+# the orchestrator falls back to the committed defaults in run-smoke-chain.ts
+# (DEFAULT_SMOKE_ACCOUNT_ID + DEFAULT_SMOKE_SIGNER) — a pre-funded fixture
+# account owned by the smoke signer — so the dry chain passes with zero setup
+# and zero secrets. This is what the `smoke-chain-dry` CI job runs (no keystore).
+# Transient Hermes/network errors are retried (not failed).
 pnpm smoke:chain:dry
 
 # with optional steps

@@ -20,10 +20,15 @@ import {
 } from "~predict/fetch.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { createE2eClient, discoverFixtures, type E2eFixtures } from "../helpers/e2e-context.ts";
+import {
+  createE2eClient,
+  discoverFixtures,
+  predictE2eNetwork,
+  type E2eFixtures,
+} from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
 
-describe("fetch helpers (testnet simulate)", () => {
+describe(`fetch helpers (${predictE2eNetwork} simulate)`, () => {
   let client: PredictClient;
   let fx: E2eFixtures;
   let guard: ReturnType<typeof fixtureGuards>;

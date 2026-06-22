@@ -7,7 +7,7 @@
  * Per-account prediction broker index, stored as a `WaterXPredictionData` blob on
  * the shared `waterx_account::Account` object via `wxa::new_data` /
  * `wxa::borrow_data` / `wxa::borrow_data_mut`.
- * 
+ *
  * `MarketRegistry` remains the canonical storage for orders and positions. This
  * slot is an account-centric index for wallet UX and indexers: account ->
  * order_ids / position_ids, plus account -> market_key -> ids.

@@ -2,7 +2,12 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
 import { optionalEnv } from "./e2e-env.ts";
 
-export { optionalEnv, readFixtureOverrides, readTestnetClientOverrides } from "./e2e-env.ts";
+export {
+  optionalEnv,
+  readE2eClientOverrides,
+  readFixtureOverrides,
+  readTestnetClientOverrides,
+} from "./e2e-env.ts";
 
 /** @deprecated Use `readFixtureOverrides()` — kept for integration helpers. */
 export const e2eEnv = {
@@ -106,6 +111,11 @@ function keypairFromEnvSecret(raw: string): Ed25519Keypair {
 export function loadSigner(): Ed25519Keypair {
   const raw = ownerSecretEnv();
   if (!raw) throw new Error("SUI_PRIVATE_KEY (or WATERX_INTEGRATION_PRIVATE_KEY) is not set");
+  return loadSignerFromSecret(raw);
+}
+
+/** Load an Ed25519 keypair from an explicit secret (multi-wallet stress scripts). */
+export function loadSignerFromSecret(raw: string): Ed25519Keypair {
   return keypairFromEnvSecret(raw);
 }
 

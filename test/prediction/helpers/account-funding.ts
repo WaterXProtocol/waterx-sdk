@@ -4,6 +4,7 @@ import { consumeDepositDirect, deposit } from "~predict/account.ts";
 import type { PredictClient } from "~predict/client.ts";
 import { getAccountData, getAccountIds } from "~predict/fetch.ts";
 
+import { getAccountSettlementBalance } from "./account-balance.ts";
 import { assertSuccessfulExecution } from "./tx-result.ts";
 
 interface WalletCoin {
@@ -151,7 +152,8 @@ export function appendPsmDeposit(
 
 /**
  * Decide how to fund a registry account before `placeOrder`.
- * Skips when prediction-side `hasData` is already true (account has prior orders/positions).
+ * Skips when the account already holds enough settlement balance, or when prediction-side
+ * `hasData` is true (account has prior orders/positions).
  */
 export async function planAccountFunding(
   client: PredictClient,
@@ -159,18 +161,10 @@ export async function planAccountFunding(
   amount: bigint,
   params: { accountId: string },
 ): Promise<AccountFundingPlan> {
-  const registered = await resolveOwnerRegistryAccountId(client, owner, params.accountId);
-  if (!registered) {
-    throw new Error(
-      `Account ${params.accountId} is not registered for owner ${owner} — run createAccount first`,
-    );
-  }
-  if (!sameRegistryAccountId(registered, params.accountId)) {
-    throw new Error(
-      `Account ${params.accountId} is stale (not in waterx_account registry for ${owner}) — ` +
-        `use ${registered} or create a new account`,
-    );
-  }
+  await assertRegisteredAccount(client, owner, params.accountId);
+
+  const stored = await getAccountSettlementBalance(client, params.accountId);
+  if (stored >= amount) return "skipped";
 
   const data = await getAccountData(client, { accountId: params.accountId });
   if (data.hasData) return "skipped";
@@ -201,6 +195,102 @@ export function formatFundingNeededError(
   return (
     `Cannot fund account ${accountId} for wallet ${owner}: need ${amount} base units of ` +
     `${usd} in wallet${mockHint}.`
+  );
+}
+
+async function assertRegisteredAccount(
+  client: PredictClient,
+  owner: string,
+  accountId: string,
+): Promise<void> {
+  const registered = await resolveOwnerRegistryAccountId(client, owner, accountId);
+  if (!registered) {
+    throw new Error(
+      `Account ${accountId} is not registered for owner ${owner} — run createAccount first`,
+    );
+  }
+  if (!sameRegistryAccountId(registered, accountId)) {
+    throw new Error(
+      `Account ${accountId} is stale (not in waterx_account registry for ${owner}) — ` +
+        `use ${registered} or create a new account`,
+    );
+  }
+}
+
+/** Deposit `amount` into the account regardless of `hasData` (extra top-up). */
+export async function forceDepositToAccount(
+  client: PredictClient,
+  signer: Ed25519Keypair,
+  accountId: string,
+  amount: bigint,
+): Promise<Exclude<AccountFundingPlan, "skipped" | "needed">> {
+  if (amount <= 0n) {
+    throw new Error(`forceDepositToAccount: amount must be positive, got ${amount}`);
+  }
+  const owner = signer.toSuiAddress();
+  await assertRegisteredAccount(client, owner, accountId);
+
+  const tx = new Transaction();
+  tx.setSender(owner);
+  let plan: Exclude<AccountFundingPlan, "skipped" | "needed">;
+
+  const usd = await listBestWalletCoin(client, owner, client.settlementCoinType(), amount);
+  if (usd) {
+    plan = "wallet-usd";
+    appendWalletUsdDeposit(client, tx, {
+      accountId,
+      usdCoinId: usd.objectId,
+      amount,
+    });
+  } else {
+    const mockUsdcType = resolveMockUsdcCoinType(client);
+    if (!mockUsdcType || !psmConfigReady(client)) {
+      throw new Error(formatFundingNeededError(client, owner, accountId, amount));
+    }
+    const mock = await listBestWalletCoin(client, owner, mockUsdcType, amount);
+    if (!mock) throw new Error(formatFundingNeededError(client, owner, accountId, amount));
+    plan = "psm-mock-usdc";
+    appendPsmDeposit(client, tx, { accountId, mockUsdcCoinId: mock.objectId, amount });
+  }
+
+  const result = await client.signAndExecuteTransaction({
+    signer,
+    transaction: tx,
+    include: { effects: true, objectTypes: true },
+  });
+  assertSuccessfulExecution(result);
+  return plan;
+}
+
+/**
+ * Sweep all settlement USD or MOCK_USDC still in the owner wallet into the registry account.
+ * Returns deposited base units (0 when the wallet has nothing left to deposit).
+ */
+export async function forceDepositAllAvailable(
+  client: PredictClient,
+  signer: Ed25519Keypair,
+  accountId: string,
+): Promise<{ plan: Exclude<AccountFundingPlan, "skipped" | "needed">; amount: bigint }> {
+  const owner = signer.toSuiAddress();
+  await assertRegisteredAccount(client, owner, accountId);
+
+  const usd = await listBestWalletCoin(client, owner, client.settlementCoinType(), 1n);
+  if (usd && usd.balance > 0n) {
+    const plan = await forceDepositToAccount(client, signer, accountId, usd.balance);
+    return { plan, amount: usd.balance };
+  }
+
+  const mockUsdcType = resolveMockUsdcCoinType(client);
+  if (mockUsdcType && psmConfigReady(client)) {
+    const mock = await listBestWalletCoin(client, owner, mockUsdcType, 1n);
+    if (mock && mock.balance > 0n) {
+      const plan = await forceDepositToAccount(client, signer, accountId, mock.balance);
+      return { plan, amount: mock.balance };
+    }
+  }
+
+  throw new Error(
+    `Cannot deposit for ${owner}: wallet has no settlement USD or MOCK_USDC left to sweep`,
   );
 }
 

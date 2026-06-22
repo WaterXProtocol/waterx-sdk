@@ -3,7 +3,6 @@ import {
   buildPlaceOrderTx,
   buildRedeemVaaTx,
   buildRequestCreditWithdrawTx,
-  burnCredit,
   claimReward,
   closePositionRequest,
   custodyMint,
@@ -20,6 +19,8 @@ import {
   WaterXClient,
 } from "@waterx/perp-sdk";
 import { describe, expect, it } from "vitest";
+
+import { Client, perp, prediction } from "../../../src/sdk.ts";
 
 describe("SDK package wiring (v3)", () => {
   it("exports WaterXClient async factories", () => {
@@ -47,9 +48,7 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof mintCredit).toBe("function");
     expect(typeof mintCreditFromRequest).toBe("function");
     expect(typeof mintCreditToAccount).toBe("function");
-    expect(typeof burnCredit).toBe("function");
     expect(typeof nativeCustodyCalls.mint).toBe("function");
-    expect(typeof nativeCustodyCalls.burn).toBe("function");
   });
 
   it("exports credit-bridge builders and wormhole helpers", () => {
@@ -57,5 +56,14 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof buildRequestCreditWithdrawTx).toBe("function");
     expect(typeof custodyMint).toBe("function");
     expect(typeof fetchDepositVaa).toBe("function");
+  });
+
+  it("exports unified Client facade from @waterx/sdk", () => {
+    expect(typeof Client).toBe("function");
+    expect(typeof Client.create).toBe("function");
+    expect(typeof Client.fromClients).toBe("function");
+    expect(typeof perp).toBe("object");
+    expect(typeof prediction).toBe("object");
+    expect(perp.WaterXClient).toBe(WaterXClient);
   });
 });

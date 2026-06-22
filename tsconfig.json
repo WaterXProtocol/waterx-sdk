@@ -28,5 +28,5 @@
     "test/perp/helpers/e2e/transient-rpc.ts",
     "test/perp/helpers/trading/expected-open-trading-fee.ts"
   ],
-  "exclude": ["node_modules", "**/__tests__/*"]
+  "exclude": ["node_modules", "**/__tests__/*", "test/prediction/helpers/bucket-backend-mono"]
 }

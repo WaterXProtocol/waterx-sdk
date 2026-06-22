@@ -16,9 +16,6 @@ const GRPC_URLS: Record<Network, string> = {
   TESTNET: "https://fullnode.testnet.sui.io:443",
 };
 
-const MAINNET_CONFIG_URL_REQUIRED =
-  "PredictClient mainnet requires opts.configUrl until prediction mainnet config is available in waterx-config.";
-
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
   /** Settlement alias in `packages.waterx_prediction.*` maps. Default: "USD". */
@@ -67,10 +64,6 @@ export class PredictClient {
     network: Network = "TESTNET",
     opts: CreateClientOptions = {},
   ): Promise<PredictClient> {
-    if (network === "MAINNET" && !opts.configUrl) {
-      throw new Error(MAINNET_CONFIG_URL_REQUIRED);
-    }
-
     const config = await loadConfig(network, opts);
     return new PredictClient(network, config, {
       grpcUrl: opts.grpcUrl,

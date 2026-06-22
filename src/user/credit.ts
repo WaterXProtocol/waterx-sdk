@@ -10,7 +10,8 @@
  *     `enqueueWithdrawal` parks a FIFO `Queue<CREDIT>` entry.
  *   - Keeper drains the queue via `executeWithdrawalWormhole` /
  *     `executeWithdrawalNative` (caller must be on the executor allowlist).
- *   - PSM: `custodyMint` / `custodyBurn` against the native `CustodyVault`.
+ *   - PSM: `custodyMint` against the native `CustodyVault` (direct burn was
+ *     removed — audit L03/M14; redeem via the withdraw queue path above).
  *
  * Every builder that emits a hot potato returns its argument so the caller
  * (or the high-level `tx-builders.ts` wrappers) can pair + consume it in the
@@ -19,12 +20,10 @@
 
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
+import { normalizeStructTag } from "@mysten/sui/utils";
 
 import type { WaterXClient } from "../client.ts";
-import {
-  burn as custodyBurnCall,
-  mint as custodyMintCall,
-} from "../generated/native_custody/custody_vault.ts";
+import { mint as custodyMintCall } from "../generated/native_custody/custody_vault.ts";
 import { requestWithdraw as requestWithdrawCall } from "../generated/waterx_account/account.ts";
 import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
 import {
@@ -64,7 +63,7 @@ function toEvmAddressBytes(
 }
 
 function creditTypeOf(client: WaterXClient, override?: string): string {
-  return override ?? client.creditType();
+  return normalizeStructTag(override ?? client.creditType());
 }
 
 // Required-ID accessors: the credit/bridge package entries carry their
@@ -206,6 +205,12 @@ export function routeWormhole(
 export interface RouteNativeParams {
   /** Fully-qualified backing asset Move type `T` (e.g. via `client.getNativeAsset`). */
   assetType: string;
+  /**
+   * Minimum `Coin<T>` the user will accept after the native burn fee;
+   * `execute_native` aborts `EOutputBelowMin` if a later fee change would
+   * deliver less (audit M15). Defaults to `0` (opt out).
+   */
+  minOutput?: bigint | number;
 }
 
 /** Build `withdrawal_queue::route_native<T>`. Returns the `extra_data` argument. */
@@ -216,7 +221,8 @@ export function routeNative(
 ): TransactionArgument {
   const out = routeNativeCall({
     package: queuePkg(client),
-    typeArguments: [params.assetType],
+    arguments: { minOutput: BigInt(params.minOutput ?? 0n) },
+    typeArguments: [normalizeStructTag(params.assetType)],
   })(tx);
   return out as unknown as TransactionArgument;
 }
@@ -349,12 +355,18 @@ export function executeWithdrawalNative(
       vault: tx.object(custodyVaultId(client)),
       creditRegistry: tx.object(creditRegistryId(client)),
     },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
+    typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],
   })(tx);
 }
 
 // ============================================================================
-// PSM (native custody) direct mint / burn
+// PSM (native custody) direct mint
+//
+// Direct burn was removed from the contract (audit L03/M14): there is no
+// witness-free `custody_vault::burn` anymore — `burn_authorized<T, CREDIT, M>`
+// requires a CreditRegistry-registered module witness that only the
+// withdrawal_queue can construct. CREDIT exits route through
+// requestCreditWithdraw -> enqueueWithdrawal -> keeper executeWithdrawalNative.
 // ============================================================================
 
 export interface CustodyMintParams {
@@ -388,38 +400,7 @@ export function custodyMint(
       assetCoin: params.assetCoin as unknown as TransactionArgument,
       extraData: toBytes(params.extraData ?? new Uint8Array()),
     },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
+    typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],
   })(tx);
   return req as unknown as TransactionArgument;
-}
-
-export interface CustodyBurnParams {
-  /** wxa account ID the burned CREDIT belongs to (cap / fee key). */
-  accountId: string;
-  /** `Coin<CREDIT>` to burn. */
-  creditCoin: TransactionArgument;
-  assetType: string;
-  creditType?: string;
-}
-
-/**
- * Build `native_custody::custody_vault::burn<T, CREDIT>`. Returns the
- * resulting `Coin<T>` argument.
- */
-export function custodyBurn(
-  client: WaterXClient,
-  tx: Transaction,
-  params: CustodyBurnParams,
-): TransactionArgument {
-  const out = custodyBurnCall({
-    package: custodyPkg(client),
-    arguments: {
-      vault: tx.object(custodyVaultId(client)),
-      registry: tx.object(creditRegistryId(client)),
-      accountId: params.accountId,
-      creditCoin: params.creditCoin as unknown as TransactionArgument,
-    },
-    typeArguments: [params.assetType, creditTypeOf(client, params.creditType)],
-  })(tx);
-  return out as unknown as TransactionArgument;
 }

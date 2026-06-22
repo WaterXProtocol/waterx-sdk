@@ -25,9 +25,6 @@
  *   WATERX_POLL_INTERVAL_MS    poll interval, default 1500
  *   WATERX_SKIP_UNSTAKE=1      skip the unstake step
  */
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
 import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
@@ -44,27 +41,9 @@ import {
 } from "../src/generated/waterx_staking/waterx_staking.ts";
 import { claimReward, stake, unstake } from "../src/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadActiveKeypair } from "./load-signer.ts";
 
-const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
-const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 const TESTNET_JSON_RPC = "https://fullnode.testnet.sui.io:443";
-
-function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
-  const yaml = readFileSync(CLIENT_YAML, "utf8");
-  const m = /active_address:\s*"?(0x[a-f0-9]+)"?/i.exec(yaml);
-  if (!m) throw new Error("could not parse active_address from client.yaml");
-  const activeAddress = m[1]!.toLowerCase();
-  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
-  for (const enc of keystore) {
-    const raw = fromBase64(enc);
-    if (raw.length !== 33 || raw[0] !== 0x00) continue;
-    const kp = Ed25519Keypair.fromSecretKey(raw.slice(1));
-    if (kp.toSuiAddress().toLowerCase() === activeAddress) {
-      return { keypair: kp, address: kp.toSuiAddress() };
-    }
-  }
-  throw new Error(`no ED25519 key for ${activeAddress}`);
-}
 
 interface SimResult {
   $kind?: string;

@@ -5,7 +5,7 @@
 
 /**
  * Generalized multi-account framework for the WaterX ecosystem.
- * 
+ *
  * Pure custody layer. Accounts hold per-T `Balance<T>` as dynamic fields keyed by
  * `BalanceKey<T>()`, with a `VecMap<TypeName, u64>` mirror on each `Account` for
  * fast enumeration. External flow in/out is mediated by hot-potato
@@ -13,14 +13,14 @@
  * registered policy module destroys the potato with its own witness and decides
  * what final asset to put back into the account (e.g. a PSM policy turns
  * `Coin<USDC>` into `Balance<USD>` and credits the account via `put<USD, P>`).
- * 
+ *
  * Internal protocol ↔ account flow stays witness-gated via `take<T, P>` /
  * `put<T, P>` with no policy registration involved — the protocol module's witness
  * is the only authority needed, since only that module can construct a value of
  * its witness type.
- * 
+ *
  * Types of T:
- * 
+ *
  * - Has registered deposit policy → `request_deposit<T>` works.
  * - Has registered withdraw policy → `request_withdraw<T>` works.
  * - Neither → "Parkable". Coins can sit on the account address via

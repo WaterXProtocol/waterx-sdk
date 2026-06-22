@@ -262,7 +262,7 @@ async function scanAccountOpenOrders(
 }
 
 /**
- * Discovery v2: prefers fixtures from `tests/fixtures/testnet-seeded.json` when available,
+ * Discovery v2: prefers fixtures from `test/prediction/fixtures/testnet-seeded.json` when available,
  * falls back to walking the registry cursors. Returns rich per-state fixtures so tests can
  * pick the exact slot they need without re-walking the chain.
  */
