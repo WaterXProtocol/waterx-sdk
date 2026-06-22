@@ -11,14 +11,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import {
-  forceDepositAllAvailable,
-  forceDepositToAccount,
-} from "../helpers/account-funding.ts";
-import {
-  formatSettlementBase,
-  getAccountSettlementBalance,
-} from "../helpers/account-balance.ts";
+import { formatSettlementBase, getAccountSettlementBalance } from "../helpers/account-balance.ts";
+import { forceDepositAllAvailable, forceDepositToAccount } from "../helpers/account-funding.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
 import { optionalEnv } from "../helpers/e2e-env.ts";
 import { readSeedDepositAmount } from "../helpers/env.ts";
@@ -52,9 +46,7 @@ async function main(): Promise<void> {
 
   for (const row of rows) {
     if (!row.accountId?.startsWith("0x")) {
-      throw new Error(
-        `${row.label ?? "wallet"}: missing accountId — run pnpm accounts first`,
-      );
+      throw new Error(`${row.label ?? "wallet"}: missing accountId — run pnpm accounts first`);
     }
 
     const signer = resolveStressSigner(row);

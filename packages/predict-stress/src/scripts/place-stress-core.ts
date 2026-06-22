@@ -20,7 +20,6 @@
  *   predict:place-stress-hammer-smoke   1 round × N parallel, place only
  *   predict:place-stress-hammer         10 rounds × N parallel, place only
  */
-import { loadPackageEnv } from "../load-env.ts";
 import {
   formatCatalogPlaceFailures,
   listTradeableCatalogBets,
@@ -48,6 +47,7 @@ import {
   stressWalletLabel,
   type StressWalletEntry,
 } from "../helpers/stress-wallets.ts";
+import { loadPackageEnv } from "../load-env.ts";
 
 loadPackageEnv();
 

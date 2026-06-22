@@ -42,7 +42,9 @@ async function ensureAccountForWallet(
   const owner = signer.toSuiAddress();
   const expectedOwner = row.owner?.toLowerCase();
   if (expectedOwner && expectedOwner !== owner.toLowerCase()) {
-    throw new Error(`${row.label ?? owner}: keystore address ${owner} != config owner ${row.owner}`);
+    throw new Error(
+      `${row.label ?? owner}: keystore address ${owner} != config owner ${row.owner}`,
+    );
   }
 
   const existing = await resolveOwnerRegistryAccountId(client, owner, row.accountId);

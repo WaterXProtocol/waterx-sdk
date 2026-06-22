@@ -3,7 +3,7 @@
  * Copy stress harness helpers from waterx-sdk test/prediction into this package.
  * Run from packages/predict-stress: pnpm sync
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,8 +39,14 @@ const OTHER_FILES = [
   ["test/prediction/contract/event-fields.ts", "src/contract/event-fields.ts"],
   ["test/prediction/fixtures/ptb-params.ts", "src/fixtures/ptb-params.ts"],
   ["test/prediction/scripts/place-stress-multi-wallet.ts", "src/scripts/place-stress-core.ts"],
-  ["test/prediction/scripts/bootstrap-stress-accounts.ts", "src/scripts/bootstrap-accounts-core.ts"],
-  ["test/prediction/scripts/bootstrap-stress-deposits.ts", "src/scripts/bootstrap-deposits-core.ts"],
+  [
+    "test/prediction/scripts/bootstrap-stress-accounts.ts",
+    "src/scripts/bootstrap-accounts-core.ts",
+  ],
+  [
+    "test/prediction/scripts/bootstrap-stress-deposits.ts",
+    "src/scripts/bootstrap-deposits-core.ts",
+  ],
 ];
 
 function rewriteSdkImports(content) {

@@ -21,10 +21,10 @@ pnpm ramp                    # 預設：1→2→4→8 + fill 量測 + 30s cooldo
 
 ## 設定方式（建議只用這兩個檔）
 
-| 檔案 | 用途 |
-|------|------|
+| 檔案                        | 用途                                     |
+| --------------------------- | ---------------------------------------- |
 | `config/stress.config.json` | API、下注金額、segments、各 profile 行為 |
-| `config/wallets.json` | 錢包私鑰 + accountId（**勿 commit**） |
+| `config/wallets.json`       | 錢包私鑰 + accountId（**勿 commit**）    |
 
 `.env` 只放可選覆寫（RPC、deposit 金額）。**Shell 已 export 的變數優先於 JSON。**
 
@@ -62,15 +62,15 @@ pnpm ramp                    # 預設：1→2→4→8 + fill 量測 + 30s cooldo
 
 ## 常用指令
 
-| 指令 | 說明 |
-|------|------|
-| `pnpm dry-run` | 驗證 API + 錢包設定 |
-| `pnpm smoke` | 1 錢包，只 place |
-| `pnpm smoke-fill` | 1 錢包，place + fill 耗時 |
-| `pnpm ramp` | **預設** 1→2→4→8 + fill 量測 |
-| `pnpm timing-max` | 8 並行 + fill，無 cooldown |
-| `pnpm hammer-smoke` | 1 輪 × 全錢包，只 place |
-| `pnpm hammer` | 10 輪 × 全錢包，只 place（不打 fill poll） |
+| 指令                | 說明                                       |
+| ------------------- | ------------------------------------------ |
+| `pnpm dry-run`      | 驗證 API + 錢包設定                        |
+| `pnpm smoke`        | 1 錢包，只 place                           |
+| `pnpm smoke-fill`   | 1 錢包，place + fill 耗時                  |
+| `pnpm ramp`         | **預設** 1→2→4→8 + fill 量測               |
+| `pnpm timing-max`   | 8 並行 + fill，無 cooldown                 |
+| `pnpm hammer-smoke` | 1 輪 × 全錢包，只 place                    |
+| `pnpm hammer`       | 10 輪 × 全錢包，只 place（不打 fill poll） |
 
 ## 輸出欄位
 
@@ -146,9 +146,9 @@ pnpm sync    # 從 ../../test/prediction 複製並改 import
 
 ## 疑難排解
 
-| 症狀 | 處理 |
-|------|------|
+| 症狀                     | 處理                                             |
+| ------------------------ | ------------------------------------------------ |
 | `wallets file not found` | `pnpm init` 或複製 `config/wallets.example.json` |
-| fill poll HTTP 429 | 用 `pnpm hammer`（不 poll fill）或換私有 RPC |
-| `no wxa account` | `pnpm accounts` |
-| 餘額不足 | `E2E_STRESS_DEPOSIT_ALL=1 pnpm deposits` |
+| fill poll HTTP 429       | 用 `pnpm hammer`（不 poll fill）或換私有 RPC     |
+| `no wxa account`         | `pnpm accounts`                                  |
+| 餘額不足                 | `E2E_STRESS_DEPOSIT_ALL=1 pnpm deposits`         |
