@@ -26,10 +26,24 @@ export interface WaterxPredictionPackage extends WaterxConfigPackageBase {
   settlement_coin_types?: Record<string, string>;
 }
 
+export interface WaterxPredictionGiftPackage extends WaterxConfigPackageBase {
+  admin_cap?: string;
+  /** `ClaimableLinkConfig` shared object id. */
+  claimable_link_config: string;
+}
+
+export interface WaterxReferralPackage extends WaterxConfigPackageBase {
+  admin_cap?: string;
+  /** `ReferralTable` shared object id. */
+  referral_table: string;
+}
+
 export interface WaterxPredictionConfigPackages {
   bucket_framework: WaterxConfigPackageBase;
   waterx_account: WaterxAccountPackage;
   waterx_prediction: WaterxPredictionPackage;
+  waterx_prediction_gift?: WaterxPredictionGiftPackage;
+  waterx_referral?: WaterxReferralPackage;
   [name: string]: unknown;
 }
 

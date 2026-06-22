@@ -20,6 +20,19 @@ export const ACCOUNT_PERM_MANAGE_DELEGATES = 1 << 1;
 export const ACCOUNT_PERM_RECEIVE = 1 << 2;
 export const ACCOUNT_PERM_ALL = 0xffffffff;
 
+/**
+ * Gift KDF / signed-message constants. Mirror `waterx_prediction_gift::claimable_link`.
+ * Stable across package upgrades — outstanding URLs must keep working.
+ */
+export const GIFT_KDF_DOMAIN = new TextEncoder().encode("waterx_prediction_gift/kdf");
+export const GIFT_DOMAIN_CLAIM = new TextEncoder().encode("waterx_prediction_gift/claim");
+export const GIFT_URL_SEED_BYTES = 16;
+export const GIFT_PUBKEY_LEN = 32;
+export const GIFT_SIG_LEN = 64;
+export const GIFT_CONTROLLER_DELEGATE_ALIAS = "waterx_gift_controller";
+export const GIFT_AUTO_MAIN_ACCOUNT_ALIAS = "main";
+export const GIFT_MAX_SHARES_PER_GIFT = 500;
+
 export const PREDICTION_ERROR_CODES = {
   EBadStatus: 1,
   EMarketNotResolved: 3,

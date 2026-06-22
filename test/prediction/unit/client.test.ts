@@ -90,6 +90,12 @@ describe("PredictClient", () => {
     expect(client.accountRegistry()).toBe(TESTNET_FIXTURE_IDS.accountRegistry);
     expect(client.settlementCoinType()).toBe(TESTNET_FIXTURE_IDS.settlementCoinType);
     expect(client.waterxAccountAdminCap()).toBe(TESTNET_FIXTURE_IDS.waterxAccountAdminCap);
+    expect(client.waterxPredictionGiftPackageId()).toBe(
+      TESTNET_FIXTURE_IDS.waterxPredictionGiftPackageId,
+    );
+    expect(client.claimableLinkConfigId()).toBe(TESTNET_FIXTURE_IDS.claimableLinkConfig);
+    expect(client.waterxReferralPackageId()).toBe(TESTNET_FIXTURE_IDS.waterxReferralPackageId);
+    expect(client.referralTableId()).toBe(TESTNET_FIXTURE_IDS.referralTable);
   });
 
   it("delegates RPC helpers to grpcClient", async () => {

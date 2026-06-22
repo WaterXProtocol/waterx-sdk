@@ -41,3 +41,5 @@ export type {
   SelfCancelCloseParams,
   SelfCancelOrderParams,
 } from "../prediction.ts";
+
+export * as gift from "./gift.ts";

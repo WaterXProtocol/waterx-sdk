@@ -7,7 +7,9 @@ export type {
   WaterxConfigPackageBase,
   WaterxPredictionConfig,
   WaterxPredictionConfigPackages,
+  WaterxPredictionGiftPackage,
   WaterxPredictionPackage,
+  WaterxReferralPackage,
 } from "./config.ts";
 export * from "./constants.ts";
 export * from "./types.ts";
@@ -133,13 +135,37 @@ export type { GetAccountIdsParams, ViewBaseParams } from "./fetch.ts";
 export {
   base64UrlNoPadDecode,
   base64UrlNoPadEncode,
+  buildClaimShareFlow,
+  buildCreateGiftFlow,
   buildGiftClaimMessage,
+  claimShare,
+  createGift,
+  deleteGift,
+  deriveGiftAddress,
   deriveGiftKeypair,
+  encodeGiftUrl,
   generateGiftSeed,
+  getCreatorGiftCount,
+  getCreatorGiftIds,
+  getGift,
+  getGiftConfigPaused,
+  getGiftControllerAddress,
+  getGiftHasClaimed,
   parseGiftUrl,
   signGiftClaim,
-} from "./gift-link.ts";
-export type { GiftUrlParts } from "./gift-link.ts";
+} from "./gift.ts";
+export type {
+  BuildClaimShareFlowParams,
+  BuildClaimShareFlowResult,
+  BuildCreateGiftFlowResult,
+  ClaimShareParams,
+  CreateGiftParams,
+  DeleteGiftParams,
+  GiftBaseParams,
+  GiftReferralParams,
+  GiftUrlParts,
+  GiftView,
+} from "./gift.ts";
 
 export * as bucketFrameworkAccountCalls from "./generated/bucket_v2_framework/account.ts";
 export * as waterxAccountCalls from "./generated/waterx_account/account.ts";

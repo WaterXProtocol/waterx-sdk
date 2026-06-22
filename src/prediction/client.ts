@@ -187,6 +187,38 @@ export class PredictClient {
       "packages.waterx_account.admin_cap",
     );
   }
+
+  waterxPredictionGiftPackageId(): string {
+    return requireConfigValue(
+      this.config.packages.waterx_prediction_gift,
+      "published_at",
+      "packages.waterx_prediction_gift.published_at",
+    );
+  }
+
+  claimableLinkConfigId(): string {
+    return requireConfigValue(
+      this.config.packages.waterx_prediction_gift,
+      "claimable_link_config",
+      "packages.waterx_prediction_gift.claimable_link_config",
+    );
+  }
+
+  waterxReferralPackageId(): string {
+    return requireConfigValue(
+      this.config.packages.waterx_referral,
+      "published_at",
+      "packages.waterx_referral.published_at",
+    );
+  }
+
+  referralTableId(): string {
+    return requireConfigValue(
+      this.config.packages.waterx_referral,
+      "referral_table",
+      "packages.waterx_referral.referral_table",
+    );
+  }
 }
 
 function isPublishedPackage(value: unknown): value is WaterxConfigPackageBase {
