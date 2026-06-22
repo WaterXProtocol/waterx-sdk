@@ -4,33 +4,6 @@
 import { MoveStruct } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 import * as type_name from './deps/std/type_name.ts';
-import * as type_name_1 from './deps/std/type_name.ts';
-import * as type_name_2 from './deps/std/type_name.ts';
-import * as type_name_3 from './deps/std/type_name.ts';
-import * as type_name_4 from './deps/std/type_name.ts';
-import * as type_name_5 from './deps/std/type_name.ts';
-import * as type_name_6 from './deps/std/type_name.ts';
-import * as type_name_7 from './deps/std/type_name.ts';
-import * as type_name_8 from './deps/std/type_name.ts';
-import * as type_name_9 from './deps/std/type_name.ts';
-import * as type_name_10 from './deps/std/type_name.ts';
-import * as type_name_11 from './deps/std/type_name.ts';
-import * as type_name_12 from './deps/std/type_name.ts';
-import * as type_name_13 from './deps/std/type_name.ts';
-import * as type_name_14 from './deps/std/type_name.ts';
-import * as type_name_15 from './deps/std/type_name.ts';
-import * as type_name_16 from './deps/std/type_name.ts';
-import * as type_name_17 from './deps/std/type_name.ts';
-import * as type_name_18 from './deps/std/type_name.ts';
-import * as type_name_19 from './deps/std/type_name.ts';
-import * as type_name_20 from './deps/std/type_name.ts';
-import * as type_name_21 from './deps/std/type_name.ts';
-import * as type_name_22 from './deps/std/type_name.ts';
-import * as type_name_23 from './deps/std/type_name.ts';
-import * as type_name_24 from './deps/std/type_name.ts';
-import * as type_name_25 from './deps/std/type_name.ts';
-import * as type_name_26 from './deps/std/type_name.ts';
-import * as type_name_27 from './deps/std/type_name.ts';
 const $moduleName = '@waterx/account::events';
 export const AccountCreated = new MoveStruct({ name: `${$moduleName}::AccountCreated`, fields: {
         owner: bcs.Address,
@@ -69,79 +42,79 @@ export const DelegateProtocolPermissionSet = new MoveStruct({ name: `${$moduleNa
 export const DelegateProtocolPermissionUnset = new MoveStruct({ name: `${$moduleName}::DelegateProtocolPermissionUnset`, fields: {
         account_object_address: bcs.Address,
         delegate: bcs.Address,
-        protocol: type_name_1.TypeName
+        protocol: type_name.TypeName
     } });
 export const ProtocolWhitelisted = new MoveStruct({ name: `${$moduleName}::ProtocolWhitelisted`, fields: {
-        protocol: type_name_2.TypeName
+        protocol: type_name.TypeName
     } });
 export const ProtocolDelisted = new MoveStruct({ name: `${$moduleName}::ProtocolDelisted`, fields: {
-        protocol: type_name_3.TypeName
+        protocol: type_name.TypeName
     } });
 export const ProtocolPaused = new MoveStruct({ name: `${$moduleName}::ProtocolPaused`, fields: {
-        protocol: type_name_4.TypeName
+        protocol: type_name.TypeName
     } });
 export const ProtocolUnpaused = new MoveStruct({ name: `${$moduleName}::ProtocolUnpaused`, fields: {
-        protocol: type_name_5.TypeName
+        protocol: type_name.TypeName
     } });
 export const ProtocolAssetAllowed = new MoveStruct({ name: `${$moduleName}::ProtocolAssetAllowed`, fields: {
-        protocol: type_name_6.TypeName,
-        asset: type_name_7.TypeName
+        protocol: type_name.TypeName,
+        asset: type_name.TypeName
     } });
 export const ProtocolAssetDisallowed = new MoveStruct({ name: `${$moduleName}::ProtocolAssetDisallowed`, fields: {
-        protocol: type_name_8.TypeName,
-        asset: type_name_9.TypeName
+        protocol: type_name.TypeName,
+        asset: type_name.TypeName
     } });
 export const DepositPolicyRegistered = new MoveStruct({ name: `${$moduleName}::DepositPolicyRegistered`, fields: {
-        token_type: type_name_10.TypeName,
-        policy: type_name_11.TypeName
+        token_type: type_name.TypeName,
+        policy: type_name.TypeName
     } });
 export const DepositPolicyUnregistered = new MoveStruct({ name: `${$moduleName}::DepositPolicyUnregistered`, fields: {
-        token_type: type_name_12.TypeName,
-        policy: type_name_13.TypeName
+        token_type: type_name.TypeName,
+        policy: type_name.TypeName
     } });
 export const WithdrawPolicyRegistered = new MoveStruct({ name: `${$moduleName}::WithdrawPolicyRegistered`, fields: {
-        token_type: type_name_14.TypeName,
-        policy: type_name_15.TypeName
+        token_type: type_name.TypeName,
+        policy: type_name.TypeName
     } });
 export const WithdrawPolicyUnregistered = new MoveStruct({ name: `${$moduleName}::WithdrawPolicyUnregistered`, fields: {
-        token_type: type_name_16.TypeName,
-        policy: type_name_17.TypeName
+        token_type: type_name.TypeName,
+        policy: type_name.TypeName
     } });
 export const DepositRequested = new MoveStruct({ name: `${$moduleName}::DepositRequested`, fields: {
         account_object_address: bcs.Address,
-        token_type: type_name_18.TypeName,
+        token_type: type_name.TypeName,
         amount: bcs.u64()
     } });
 export const DepositConsumed = new MoveStruct({ name: `${$moduleName}::DepositConsumed`, fields: {
         account_object_address: bcs.Address,
-        token_type: type_name_19.TypeName,
-        policy: type_name_20.TypeName,
+        token_type: type_name.TypeName,
+        policy: type_name.TypeName,
         amount: bcs.u64()
     } });
 export const WithdrawRequested = new MoveStruct({ name: `${$moduleName}::WithdrawRequested`, fields: {
         account_object_address: bcs.Address,
-        token_type: type_name_21.TypeName,
+        token_type: type_name.TypeName,
         amount: bcs.u64(),
         requested_by: bcs.Address,
         recipient: bcs.Address
     } });
 export const WithdrawConsumed = new MoveStruct({ name: `${$moduleName}::WithdrawConsumed`, fields: {
         account_object_address: bcs.Address,
-        token_type: type_name_22.TypeName,
-        policy: type_name_23.TypeName,
+        token_type: type_name.TypeName,
+        policy: type_name.TypeName,
         amount: bcs.u64(),
         recipient: bcs.Address
     } });
 export const TakenByProtocol = new MoveStruct({ name: `${$moduleName}::TakenByProtocol`, fields: {
         account_object_address: bcs.Address,
-        protocol: type_name_24.TypeName,
-        token_type: type_name_25.TypeName,
+        protocol: type_name.TypeName,
+        token_type: type_name.TypeName,
         amount: bcs.u64()
     } });
 export const ReturnedByProtocol = new MoveStruct({ name: `${$moduleName}::ReturnedByProtocol`, fields: {
         account_object_address: bcs.Address,
-        protocol: type_name_26.TypeName,
-        token_type: type_name_27.TypeName,
+        protocol: type_name.TypeName,
+        token_type: type_name.TypeName,
         amount: bcs.u64()
     } });
 export const ManagerAdded = new MoveStruct({ name: `${$moduleName}::ManagerAdded`, fields: {

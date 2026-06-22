@@ -157,7 +157,7 @@ export function consumeCreditDeposit(
     package: client.config.packages.waterx_account.published_at,
     arguments: {
       registry: tx.object(client.config.packages.waterx_account.account_registry),
-      req: params.depositRequest as unknown as string,
+      req: params.depositRequest as unknown as TransactionArgument,
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
   })(tx);
@@ -257,7 +257,7 @@ export function requestCreditWithdraw(
     package: client.config.packages.waterx_account.published_at,
     arguments: {
       registry: tx.object(client.config.packages.waterx_account.account_registry),
-      senderRequest: senderRequest as unknown as string,
+      senderRequest: senderRequest as unknown as TransactionArgument,
       accountId: params.accountId,
       amount: params.amount,
       recipient: params.recipient,
@@ -288,7 +288,7 @@ export function enqueueWithdrawal(
     arguments: {
       queue: tx.object(queueId(client)),
       registry: tx.object(client.config.packages.waterx_account.account_registry),
-      req: params.withdrawRequest as unknown as string,
+      req: params.withdrawRequest as unknown as TransactionArgument,
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
   })(tx);
@@ -321,11 +321,11 @@ export function executeWithdrawalWormhole(
     arguments: {
       queue: tx.object(queueId(client)),
       key: params.key,
-      request: request as unknown as string,
+      request: request as unknown as TransactionArgument,
       bridge: tx.object(bridgeId(client)),
       creditRegistry: tx.object(creditRegistryId(client)),
       wormholeState: tx.object(client.wormholeStateId()),
-      wormholeFee: params.wormholeFee as unknown as string,
+      wormholeFee: params.wormholeFee as unknown as TransactionArgument,
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
   })(tx);
@@ -351,7 +351,7 @@ export function executeWithdrawalNative(
     arguments: {
       queue: tx.object(queueId(client)),
       key: params.key,
-      request: request as unknown as string,
+      request: request as unknown as TransactionArgument,
       vault: tx.object(custodyVaultId(client)),
       creditRegistry: tx.object(creditRegistryId(client)),
     },
@@ -397,7 +397,7 @@ export function custodyMint(
       registry: tx.object(creditRegistryId(client)),
       accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
-      assetCoin: params.assetCoin as unknown as string,
+      assetCoin: params.assetCoin as unknown as TransactionArgument,
       extraData: toBytes(params.extraData ?? new Uint8Array()),
     },
     typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],

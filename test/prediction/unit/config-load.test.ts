@@ -1,0 +1,237 @@
+import { PredictClient } from "~predict/client.ts";
+import {
+  clearConfigCache,
+  defaultConfigUrl,
+  loadConfig,
+  type WaterxPredictionConfig,
+} from "~predict/config.ts";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const remoteConfig = {
+  network: "testnet",
+  grpcUrl: "https://remote.grpc:443",
+  packages: {
+    bucket_framework: {
+      published_at: "0xbucket",
+    },
+    waterx_account: {
+      published_at: "0xaccount",
+      admin_cap: "0xaccount_admin",
+      account_registry: "0xaccount_registry",
+    },
+    waterx_prediction: {
+      published_at: "0xprediction",
+      admin_cap: "0xprediction_admin",
+      global_config: "0xglobal",
+      market_registries: {
+        USD: "0xmarket_registry_usd",
+      },
+      settlement_coin_types: {
+        USD: "0xusd::usd::USD",
+      },
+    },
+  },
+} satisfies WaterxPredictionConfig;
+
+function jsonResponse(body: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => body,
+  } as Response;
+}
+
+describe("waterx-config loader", () => {
+  beforeEach(() => {
+    clearConfigCache();
+  });
+
+  it("defaultConfigUrl points at waterx-config raw JSON", () => {
+    expect(defaultConfigUrl("TESTNET")).toBe(
+      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+    );
+  });
+
+  it("loads and caches the remote prediction config", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
+    const opts = {
+      configUrl: "https://waterx.test/testnet.json",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      cache: true,
+    };
+
+    const first = await loadConfig("TESTNET", opts);
+    const second = await loadConfig("TESTNET", opts);
+
+    expect(first).toBe(remoteConfig);
+    expect(second).toBe(remoteConfig);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects config missing packages object", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ network: "testnet" }));
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/has no packages object/);
+  });
+
+  it("rejects config missing waterx_account.account_registry", async () => {
+    const bad = structuredClone(remoteConfig);
+    delete (bad.packages.waterx_account as { account_registry?: string }).account_registry;
+    const fetchMock = vi.fn(async () => jsonResponse(bad));
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/account_registry/);
+  });
+
+  it("rejects config missing waterx_prediction.global_config", async () => {
+    const bad = structuredClone(remoteConfig);
+    delete (bad.packages.waterx_prediction as { global_config?: string }).global_config;
+    const fetchMock = vi.fn(async () => jsonResponse(bad));
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/global_config/);
+  });
+
+  it("rejects config missing waterx_prediction.market_registries", async () => {
+    const bad = structuredClone(remoteConfig);
+    delete (bad.packages.waterx_prediction as { market_registries?: unknown }).market_registries;
+    const fetchMock = vi.fn(async () => jsonResponse(bad));
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/market_registries/);
+  });
+
+  it("rejects config missing package published_at", async () => {
+    const bad = structuredClone(remoteConfig);
+    delete (bad.packages.bucket_framework as { published_at?: string }).published_at;
+    const fetchMock = vi.fn(async () => jsonResponse(bad));
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/bucket_framework.*published_at/);
+  });
+
+  it("rejects when fetchImpl is missing", async () => {
+    const saved = globalThis.fetch;
+    // @ts-expect-error — simulate environments without global fetch
+    delete globalThis.fetch;
+    try {
+      await expect(
+        loadConfig("TESTNET", { configUrl: "https://waterx.test/x.json" }),
+      ).rejects.toThrow(/no global fetch/);
+    } finally {
+      globalThis.fetch = saved;
+    }
+  });
+
+  it("rejects non-OK HTTP responses", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 503 }) as Response);
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/HTTP 503/);
+  });
+
+  it("rejects config from the wrong network", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        ...remoteConfig,
+        network: "mainnet",
+      }),
+    );
+
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/mainnet.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/declares network=mainnet/);
+  });
+
+  it("rejects config missing packages", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ network: "testnet" }));
+
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/no packages object/);
+  });
+
+  it("rejects config missing account_registry", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        ...remoteConfig,
+        packages: {
+          ...remoteConfig.packages,
+          waterx_account: {
+            published_at: "0xaccount",
+          },
+        },
+      }),
+    );
+
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/account_registry/);
+  });
+
+  it("rejects config missing prediction global_config", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        ...remoteConfig,
+        packages: {
+          ...remoteConfig.packages,
+          waterx_prediction: {
+            published_at: "0xprediction",
+            market_registries: { USD: "0xregistry" },
+          },
+        },
+      }),
+    );
+
+    await expect(
+      loadConfig("TESTNET", {
+        configUrl: "https://waterx.test/bad.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(/global_config/);
+  });
+});
+
+describe("PredictClient remote config", () => {
+  it("PredictClient.create fetches waterx-config", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
+
+    const client = await PredictClient.create("TESTNET", {
+      configUrl: "https://waterx.test/testnet.json",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(client.config).toBe(remoteConfig);
+    expect(client.packageId()).toBe("0xprediction");
+    expect(client.accountRegistry()).toBe("0xaccount_registry");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

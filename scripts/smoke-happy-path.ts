@@ -180,7 +180,7 @@ async function main(): Promise<void> {
         package: client.config.packages.waterx_account.published_at,
         arguments: {
           registry: tx.object(client.config.packages.waterx_account.account_registry),
-          req: req as unknown as string,
+          req: req as unknown as TransactionArgument,
         },
         typeArguments: [usdcType],
       })(tx);

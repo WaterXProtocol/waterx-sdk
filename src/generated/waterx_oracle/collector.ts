@@ -7,7 +7,7 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as type_name from './deps/std/type_name.ts';
@@ -21,12 +21,12 @@ export const PriceCollector = new MoveStruct({ name: `${$moduleName}::PriceColle
         contents: vec_map.VecMap(type_name.TypeName, bcs.option(PriceObservation))
     } });
 export interface SymbolArguments {
-    c: RawTransactionArgument<string>;
+    c: TransactionArgument;
 }
 export interface SymbolOptions {
     package?: string;
     arguments: SymbolArguments | [
-        c: RawTransactionArgument<string>
+        c: TransactionArgument
     ];
 }
 export function symbol(options: SymbolOptions) {
@@ -43,12 +43,12 @@ export function symbol(options: SymbolOptions) {
     });
 }
 export interface ContentsArguments {
-    c: RawTransactionArgument<string>;
+    c: TransactionArgument;
 }
 export interface ContentsOptions {
     package?: string;
     arguments: ContentsArguments | [
-        c: RawTransactionArgument<string>
+        c: TransactionArgument
     ];
 }
 export function contents(options: ContentsOptions) {
@@ -65,16 +65,16 @@ export function contents(options: ContentsOptions) {
     });
 }
 export interface CollectArguments<R extends BcsType<any>> {
-    c: RawTransactionArgument<string>;
+    c: TransactionArgument;
     W: RawTransactionArgument<R>;
-    price: RawTransactionArgument<string | null>;
+    price: TransactionArgument;
 }
 export interface CollectOptions<R extends BcsType<any>> {
     package?: string;
     arguments: CollectArguments<R> | [
-        c: RawTransactionArgument<string>,
+        c: TransactionArgument,
         W: RawTransactionArgument<R>,
-        price: RawTransactionArgument<string | null>
+        price: TransactionArgument
     ];
     typeArguments: [
         string
@@ -86,7 +86,7 @@ export function collect<R extends BcsType<any>>(options: CollectOptions<R>) {
     const argumentsTypes = [
         null,
         `${options.typeArguments[0]}`,
-        '0x1::option::Option<null>'
+        null
     ] satisfies (string | null)[];
     const parameterNames = ["c", "W", "price"];
     return (tx: Transaction) => tx.moveCall({
@@ -98,17 +98,17 @@ export function collect<R extends BcsType<any>>(options: CollectOptions<R>) {
     });
 }
 export interface CollectAtArguments<R extends BcsType<any>> {
-    c: RawTransactionArgument<string>;
+    c: TransactionArgument;
     W: RawTransactionArgument<R>;
-    price: RawTransactionArgument<string>;
+    price: TransactionArgument;
     timestampMs: RawTransactionArgument<number | bigint>;
 }
 export interface CollectAtOptions<R extends BcsType<any>> {
     package?: string;
     arguments: CollectAtArguments<R> | [
-        c: RawTransactionArgument<string>,
+        c: TransactionArgument,
         W: RawTransactionArgument<R>,
-        price: RawTransactionArgument<string>,
+        price: TransactionArgument,
         timestampMs: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -134,12 +134,12 @@ export function collectAt<R extends BcsType<any>>(options: CollectAtOptions<R>) 
     });
 }
 export interface ObservationPriceArguments {
-    o: RawTransactionArgument<string>;
+    o: TransactionArgument;
 }
 export interface ObservationPriceOptions {
     package?: string;
     arguments: ObservationPriceArguments | [
-        o: RawTransactionArgument<string>
+        o: TransactionArgument
     ];
 }
 export function observationPrice(options: ObservationPriceOptions) {
@@ -156,12 +156,12 @@ export function observationPrice(options: ObservationPriceOptions) {
     });
 }
 export interface ObservationTimestampMsArguments {
-    o: RawTransactionArgument<string>;
+    o: TransactionArgument;
 }
 export interface ObservationTimestampMsOptions {
     package?: string;
     arguments: ObservationTimestampMsArguments | [
-        o: RawTransactionArgument<string>
+        o: TransactionArgument
     ];
 }
 export function observationTimestampMs(options: ObservationTimestampMsOptions) {

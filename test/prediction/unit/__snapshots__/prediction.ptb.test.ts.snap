@@ -1,0 +1,491 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`prediction PTB builders > adminPlaceOrderFor 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "selection_no",
+    "module": "position",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "admin_place_order_for",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > batchClaim 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+    ],
+    "function": "claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+    ],
+    "function": "claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+    ],
+    "function": "claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > claim 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+    ],
+    "function": "claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "fill_order",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 2`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "cancel_order",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 3`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "confirm_close",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 4`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "cancel_close",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 5`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "force_claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 6`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "force_claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "force_claim",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > keeper flows 7`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [],
+    "function": "yes",
+    "module": "outcome",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+    ],
+    "function": "resolve_market",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > placeOrder 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [],
+    "function": "selection_yes",
+    "module": "position",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "place_order",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > requestClose 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "request_close",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > selectionArg / outcomeArg pure variants add helper calls 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "selection_yes",
+    "module": "position",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [],
+    "function": "invalid",
+    "module": "outcome",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`prediction PTB builders > selfCancelClose 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+    ],
+    "function": "self_cancel_close",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`prediction PTB builders > selfCancelOrder 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+    ],
+    "function": "self_cancel_order",
+    "module": "waterx_prediction",
+    "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;

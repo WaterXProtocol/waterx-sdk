@@ -3,7 +3,7 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
 import * as keyed_big_vector from './keyed_big_vector.ts';
 const $moduleName = '@waterx/perp::order_book';
@@ -27,13 +27,13 @@ export function _new(options: NewOptions = {}) {
     });
 }
 export interface ContainsLevelArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
 }
 export interface ContainsLevelOptions {
     package?: string;
     arguments: ContainsLevelArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -52,14 +52,14 @@ export function containsLevel(options: ContainsLevelOptions) {
     });
 }
 export interface AddOrderArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
     order: RawTransactionArgument<string>;
 }
 export interface AddOrderOptions {
     package?: string;
     arguments: AddOrderArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
         order: RawTransactionArgument<string>
     ];
@@ -80,14 +80,14 @@ export function addOrder(options: AddOrderOptions) {
     });
 }
 export interface RemoveOrderArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface RemoveOrderOptions {
     package?: string;
     arguments: RemoveOrderArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
         orderId: RawTransactionArgument<number | bigint>
     ];
@@ -108,13 +108,13 @@ export function removeOrder(options: RemoveOrderOptions) {
     });
 }
 export interface PopOrderForMatchArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
 }
 export interface PopOrderForMatchOptions {
     package?: string;
     arguments: PopOrderForMatchArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -133,14 +133,14 @@ export function popOrderForMatch(options: PopOrderForMatchOptions) {
     });
 }
 export interface BorrowOrderArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface BorrowOrderOptions {
     package?: string;
     arguments: BorrowOrderArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
         orderId: RawTransactionArgument<number | bigint>
     ];
@@ -161,14 +161,14 @@ export function borrowOrder(options: BorrowOrderOptions) {
     });
 }
 export interface BorrowOrderMutArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface BorrowOrderMutOptions {
     package?: string;
     arguments: BorrowOrderMutArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
         orderId: RawTransactionArgument<number | bigint>
     ];
@@ -189,13 +189,13 @@ export function borrowOrderMut(options: BorrowOrderMutOptions) {
     });
 }
 export interface BorrowLevelByIndexArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     levelIndex: RawTransactionArgument<number | bigint>;
 }
 export interface BorrowLevelByIndexOptions {
     package?: string;
     arguments: BorrowLevelByIndexArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         levelIndex: RawTransactionArgument<number | bigint>
     ];
 }
@@ -214,12 +214,12 @@ export function borrowLevelByIndex(options: BorrowLevelByIndexOptions) {
     });
 }
 export interface DestroyEmptyArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
 }
 export interface DestroyEmptyOptions {
     package?: string;
     arguments: DestroyEmptyArguments | [
-        book: RawTransactionArgument<string>
+        book: TransactionArgument
     ];
 }
 export function destroyEmpty(options: DestroyEmptyOptions) {
@@ -236,14 +236,14 @@ export function destroyEmpty(options: DestroyEmptyOptions) {
     });
 }
 export interface ContainsOrderArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface ContainsOrderOptions {
     package?: string;
     arguments: ContainsOrderArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
         orderId: RawTransactionArgument<number | bigint>
     ];
@@ -264,13 +264,13 @@ export function containsOrder(options: ContainsOrderOptions) {
     });
 }
 export interface OrderCountAtArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
 }
 export interface OrderCountAtOptions {
     package?: string;
     arguments: OrderCountAtArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -289,12 +289,12 @@ export function orderCountAt(options: OrderCountAtOptions) {
     });
 }
 export interface LevelCountArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
 }
 export interface LevelCountOptions {
     package?: string;
     arguments: LevelCountArguments | [
-        book: RawTransactionArgument<string>
+        book: TransactionArgument
     ];
 }
 export function levelCount(options: LevelCountOptions) {
@@ -311,13 +311,13 @@ export function levelCount(options: LevelCountOptions) {
     });
 }
 export interface TakeLevelArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
 }
 export interface TakeLevelOptions {
     package?: string;
     arguments: TakeLevelArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>
     ];
 }
@@ -336,16 +336,16 @@ export function takeLevel(options: TakeLevelOptions) {
     });
 }
 export interface RestoreLevelArguments {
-    book: RawTransactionArgument<string>;
+    book: TransactionArgument;
     priceKey: RawTransactionArgument<number | bigint>;
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
 }
 export interface RestoreLevelOptions {
     package?: string;
     arguments: RestoreLevelArguments | [
-        book: RawTransactionArgument<string>,
+        book: TransactionArgument,
         priceKey: RawTransactionArgument<number | bigint>,
-        level: RawTransactionArgument<string>
+        level: TransactionArgument
     ];
 }
 export function restoreLevel(options: RestoreLevelOptions) {
@@ -364,12 +364,12 @@ export function restoreLevel(options: RestoreLevelOptions) {
     });
 }
 export interface PopFrontArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
 }
 export interface PopFrontOptions {
     package?: string;
     arguments: PopFrontArguments | [
-        level: RawTransactionArgument<string>
+        level: TransactionArgument
     ];
 }
 export function popFront(options: PopFrontOptions) {
@@ -386,13 +386,13 @@ export function popFront(options: PopFrontOptions) {
     });
 }
 export interface PushFrontArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
     order: RawTransactionArgument<string>;
 }
 export interface PushFrontOptions {
     package?: string;
     arguments: PushFrontArguments | [
-        level: RawTransactionArgument<string>,
+        level: TransactionArgument,
         order: RawTransactionArgument<string>
     ];
 }
@@ -411,13 +411,13 @@ export function pushFront(options: PushFrontOptions) {
     });
 }
 export interface PushBackArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
     order: RawTransactionArgument<string>;
 }
 export interface PushBackOptions {
     package?: string;
     arguments: PushBackArguments | [
-        level: RawTransactionArgument<string>,
+        level: TransactionArgument,
         order: RawTransactionArgument<string>
     ];
 }
@@ -436,12 +436,12 @@ export function pushBack(options: PushBackOptions) {
     });
 }
 export interface LevelIsEmptyArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
 }
 export interface LevelIsEmptyOptions {
     package?: string;
     arguments: LevelIsEmptyArguments | [
-        level: RawTransactionArgument<string>
+        level: TransactionArgument
     ];
 }
 export function levelIsEmpty(options: LevelIsEmptyOptions) {
@@ -458,12 +458,12 @@ export function levelIsEmpty(options: LevelIsEmptyOptions) {
     });
 }
 export interface LevelOrderCountArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
 }
 export interface LevelOrderCountOptions {
     package?: string;
     arguments: LevelOrderCountArguments | [
-        level: RawTransactionArgument<string>
+        level: TransactionArgument
     ];
 }
 export function levelOrderCount(options: LevelOrderCountOptions) {
@@ -480,12 +480,12 @@ export function levelOrderCount(options: LevelOrderCountOptions) {
     });
 }
 export interface LevelFrontOrderIdArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
 }
 export interface LevelFrontOrderIdOptions {
     package?: string;
     arguments: LevelFrontOrderIdArguments | [
-        level: RawTransactionArgument<string>
+        level: TransactionArgument
     ];
 }
 export function levelFrontOrderId(options: LevelFrontOrderIdOptions) {
@@ -502,13 +502,13 @@ export function levelFrontOrderId(options: LevelFrontOrderIdOptions) {
     });
 }
 export interface LevelNextOrderIdArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface LevelNextOrderIdOptions {
     package?: string;
     arguments: LevelNextOrderIdArguments | [
-        level: RawTransactionArgument<string>,
+        level: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -527,13 +527,13 @@ export function levelNextOrderId(options: LevelNextOrderIdOptions) {
     });
 }
 export interface BorrowLevelOrderArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
     orderId: RawTransactionArgument<number | bigint>;
 }
 export interface BorrowLevelOrderOptions {
     package?: string;
     arguments: BorrowLevelOrderArguments | [
-        level: RawTransactionArgument<string>,
+        level: TransactionArgument,
         orderId: RawTransactionArgument<number | bigint>
     ];
 }
@@ -552,12 +552,12 @@ export function borrowLevelOrder(options: BorrowLevelOrderOptions) {
     });
 }
 export interface DestroyEmptyLevelArguments {
-    level: RawTransactionArgument<string>;
+    level: TransactionArgument;
 }
 export interface DestroyEmptyLevelOptions {
     package?: string;
     arguments: DestroyEmptyLevelArguments | [
-        level: RawTransactionArgument<string>
+        level: TransactionArgument
     ];
 }
 export function destroyEmptyLevel(options: DestroyEmptyLevelOptions) {

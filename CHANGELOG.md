@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@waterx/perp-sdk` are documented here.
+All notable changes to `@waterx/sdk` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
@@ -8,8 +8,19 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-06-21
+
 ### Added
 
+- **Unified package `@waterx/sdk`.** Renamed from `@waterx/perp-sdk`; publish under the new
+  name. Subpath exports: `@waterx/sdk`, `@waterx/sdk/perp`, `@waterx/sdk/prediction`.
+  `@waterx/perp-sdk@<=2.2.2` remains on npm — deprecate after publish, do not overwrite.
+- **Prediction markets merged in.** Former `@waterx/predict-sdk` API lives at
+  `@waterx/sdk/prediction`; unified `Client` facade (`client.perp.*` / `client.predict.*`).
+  Includes full `waterx_prediction_gift` / claimable-link runtime (`createGift`,
+  `claimShare`, `buildCreateGiftFlow`, `getGift`, …) ported from `@waterx/predict-sdk`.
+  Explicit `./prediction/user` and `./prediction/utils` package exports match the
+  old `@waterx/predict-sdk/user` and `/utils` subpath contract.
 - **Effective-collateral margin math.** Two offline helpers in `utils/math`:
   - `calcEffectiveCollateralUsd(...)` — mirrors `calculate_effective_collateral_amount`
     in `trading.move` (gross − borrow − trading fees − funding-when-owed − optional
@@ -23,11 +34,6 @@ reference the PR that introduced them.
     all on effective collateral. Returns a USD figure; convert to the
     `withdrawCollateralRequest` `amount` via
     `floor((usd / collateralPriceUsd) * 10 ** collateralDecimal)`.
-
-## [2.3.0] - 2026-06-17
-
-### Added
-
 - **Dual-feed transition routing for constant tickers.** A new `waterx_constant_rule.dual_feed`
   list (subset of `prices`) marks tickers mid-migration: `refreshOraclePrices` feeds them via *both*
   `pyth_rule::feed` and `constant_rule::feed` into one collector (new `aggregateTickerWithDual`), so
@@ -57,3 +63,11 @@ reference the PR that introduced them.
   previously made the ticker skip Pyth and then threw in `aggregateTickerWithConstant`,
   aborting the whole price-refresh PTB; it now falls back to Pyth. Mirrors the keeper's
   all-or-nothing guard. (#43)
+
+### Migration
+
+| Old import | New import |
+|------------|------------|
+| `@waterx/perp-sdk` | `@waterx/sdk` (flat perp re-export deprecated) |
+| `@waterx/perp-sdk/perp` | `@waterx/sdk/perp` |
+| `@waterx/predict-sdk` | `@waterx/sdk/prediction` |

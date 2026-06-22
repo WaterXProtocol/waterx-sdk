@@ -91,6 +91,8 @@ jobs:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm build
+      - name: Vitest — post-build package exports smoke
+        run: pnpm exec vitest run --project post-build --reporter=dot
 
   # Unit tests (coverage + JUnit). E2E simulate runs in separate `test-e2e` job.
   test:
@@ -107,8 +109,8 @@ jobs:
         with:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Vitest — unit + coverage + JUnit
-        run: pnpm exec vitest run --project unit --coverage --reporter=dot --reporter=junit --outputFile=test-results-unit.xml
+      - name: Vitest — unit (perp + prediction) + coverage + JUnit
+        run: pnpm exec vitest run --project unit --project predict-unit --coverage --reporter=dot --reporter=junit --outputFile=test-results-unit.xml
       - name: Test report (unit)
         uses: dorny/test-reporter@v2
         if: always()
@@ -125,7 +127,7 @@ jobs:
               import { readFileSync } from "node:fs";
               const c = JSON.parse(readFileSync(process.argv[1], "utf8")).total;
               const f = (v) => v.pct + "%";
-              console.log("## @waterx/perp-sdk — Test coverage\n");
+              console.log("## @waterx/sdk — Test coverage\n");
               console.log("| Metric | Coverage |");
               console.log("|--------|----------|");
               console.log("| Statements | " + f(c.statements) + " |");
@@ -173,6 +175,38 @@ jobs:
         with:
           name: perp-sdk E2E simulate
           path: test-results-e2e.xml
+          reporter: java-junit
+
+  # Prediction-line e2e (testnet simulate; read-only, single fork to avoid public-RPC 429).
+  # On-chain integration (`predict-integration`) needs a funded key — local-only, like perp's.
+  test-e2e-predict:
+    needs: setup
+    runs-on: ubuntu-latest
+    name: E2E simulate (prediction)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - id: cache-nm
+        uses: actions/cache/restore@v5
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Vitest predict-e2e (dot + JUnit)
+        env:
+          NODE_NO_WARNINGS: "1"
+        run: pnpm exec vitest run --project predict-e2e --reporter=dot --reporter=junit --outputFile=test-results-predict-e2e.xml
+      - name: Test report (predict-e2e)
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: prediction E2E simulate
+          path: test-results-predict-e2e.xml
           reporter: java-junit
 
   # Testnet dry smoke chain (zero-write, simulate-only) against the committed

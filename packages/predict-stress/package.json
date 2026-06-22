@@ -1,0 +1,35 @@
+{
+  "name": "@waterx/predict-stress",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone WaterX prediction multi-wallet stress harness",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "sync": "node scripts/sync-from-sdk.mjs",
+    "init": "node scripts/init-config.mjs",
+    "accounts": "tsx src/scripts/bootstrap-accounts.ts",
+    "deposits": "tsx src/scripts/bootstrap-deposits.ts",
+    "dry-run": "tsx src/scripts/place-stress.ts --profile dry-run",
+    "smoke": "tsx src/scripts/place-stress.ts --profile smoke",
+    "smoke-fill": "tsx src/scripts/place-stress.ts --profile smoke-fill",
+    "ramp": "tsx src/scripts/place-stress.ts --profile ramp",
+    "timing-max": "tsx src/scripts/place-stress.ts --profile timing-max",
+    "hammer-smoke": "tsx src/scripts/place-stress.ts --profile hammer-smoke",
+    "hammer": "tsx src/scripts/place-stress.ts --profile hammer"
+  },
+  "dependencies": {
+    "@mysten/bcs": "^1.9.0",
+    "@mysten/sui": "^2.9.0",
+    "@waterx/sdk": "file:../..",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -31,33 +31,14 @@
 
 import { MoveStruct, MoveTuple, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as object_table from './deps/sui/object_table.ts';
 import * as table from './deps/sui/table.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as type_name from './deps/std/type_name.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
-import * as type_name_1 from './deps/std/type_name.ts';
-import * as vec_map_1 from './deps/sui/vec_map.ts';
-import * as type_name_2 from './deps/std/type_name.ts';
-import * as vec_set_1 from './deps/sui/vec_set.ts';
-import * as type_name_3 from './deps/std/type_name.ts';
-import * as vec_map_2 from './deps/sui/vec_map.ts';
-import * as type_name_4 from './deps/std/type_name.ts';
-import * as vec_set_2 from './deps/sui/vec_set.ts';
-import * as type_name_5 from './deps/std/type_name.ts';
-import * as vec_map_3 from './deps/sui/vec_map.ts';
-import * as type_name_6 from './deps/std/type_name.ts';
-import * as vec_set_3 from './deps/sui/vec_set.ts';
-import * as vec_set_4 from './deps/sui/vec_set.ts';
 import * as balance_1 from './deps/sui/balance.ts';
 import * as sheet from './deps/bucket_v2_framework/sheet.ts';
-import * as vec_map_4 from './deps/sui/vec_map.ts';
-import * as type_name_7 from './deps/std/type_name.ts';
-import * as vec_map_5 from './deps/sui/vec_map.ts';
-import * as type_name_8 from './deps/std/type_name.ts';
-import * as balance_2 from './deps/sui/balance.ts';
-import * as balance_3 from './deps/sui/balance.ts';
 const $moduleName = '@waterx/account::account';
 export const ACCOUNT = new MoveStruct({ name: `${$moduleName}::ACCOUNT`, fields: {
         dummy_field: bcs.bool()
@@ -95,7 +76,7 @@ export const AccountRegistry = new MoveStruct({ name: `${$moduleName}::AccountRe
          * - `new_data<P, _>` / `borrow_data_mut<P, _>` / `remove_data<P, _>` require only
          *   `P` whitelisted.
          */
-        protocol_whitelist: vec_map.VecMap(type_name.TypeName, vec_set.VecSet(type_name_1.TypeName)),
+        protocol_whitelist: vec_map.VecMap(type_name.TypeName, vec_set.VecSet(type_name.TypeName)),
         /**
          * `T → registered DepositPolicy witness TypeName`. Presence means
          * `request_deposit<T>` / `request_deposit_from_receivings<T>` are permitted; only
@@ -108,21 +89,21 @@ export const AccountRegistry = new MoveStruct({ name: `${$moduleName}::AccountRe
          * migration (both coexist while consumers switch). `request_deposit<T>` requires
          * the set to be non-empty; `consume_deposit<T, P>` requires P to be in the set.
          */
-        deposit_policies: vec_map_1.VecMap(type_name_2.TypeName, vec_set_1.VecSet(type_name_3.TypeName)),
+        deposit_policies: vec_map.VecMap(type_name.TypeName, vec_set.VecSet(type_name.TypeName)),
         /**
          * `T → set of WithdrawPolicy witness TypeNames`. Symmetric to `deposit_policies`
          * for `request_withdraw<T>` / `consume_withdraw`.
          */
-        withdraw_policies: vec_map_2.VecMap(type_name_4.TypeName, vec_set_2.VecSet(type_name_5.TypeName)),
+        withdraw_policies: vec_map.VecMap(type_name.TypeName, vec_set.VecSet(type_name.TypeName)),
         /**
          * Per-T aggregate of `Balance<T>` currently held inside accounts. Incremented in
          * `put<T, P>`, decremented in `take<T, P>` and `request_withdraw<T>`. Does _not_
          * include balance held by protocols (after `take`) or sitting in flight inside a
          * `DepositRequest` / `WithdrawRequest` hot potato.
          */
-        balances: vec_map_3.VecMap(type_name_6.TypeName, bcs.u64()),
-        allowed_versions: vec_set_3.VecSet(bcs.u16()),
-        managers: vec_set_4.VecSet(bcs.Address),
+        balances: vec_map.VecMap(type_name.TypeName, bcs.u64()),
+        allowed_versions: vec_set.VecSet(bcs.u16()),
+        managers: vec_set.VecSet(bcs.Address),
         paused: bcs.bool()
     } });
 export const VaultKey = new MoveTuple({ name: `${$moduleName}::VaultKey<phantom T>`, fields: [bcs.bool()] });
@@ -141,7 +122,7 @@ export const Delegate = new MoveStruct({ name: `${$moduleName}::Delegate`, field
          * protocol's module interprets its own bits. Owner always has `PERM_ALL` per
          * protocol regardless of this field.
          */
-        protocol_permissions: vec_map_4.VecMap(type_name_7.TypeName, bcs.u32()),
+        protocol_permissions: vec_map.VecMap(type_name.TypeName, bcs.u32()),
         expires_at_ms: bcs.option(bcs.u64())
     } });
 export const Account = new MoveStruct({ name: `${$moduleName}::Account`, fields: {
@@ -154,16 +135,16 @@ export const Account = new MoveStruct({ name: `${$moduleName}::Account`, fields:
          * `BalanceKey<T>()` on this UID. Always equals the matching stored balance's
          * `value()`.
          */
-        balances: vec_map_5.VecMap(type_name_8.TypeName, bcs.u64())
+        balances: vec_map.VecMap(type_name.TypeName, bcs.u64())
     } });
 export const DepositRequest = new MoveStruct({ name: `${$moduleName}::DepositRequest<phantom T>`, fields: {
         account_id: bcs.Address,
-        balance: balance_2.Balance,
+        balance: balance_1.Balance,
         extra_data: bcs.vector(bcs.u8())
     } });
 export const WithdrawRequest = new MoveStruct({ name: `${$moduleName}::WithdrawRequest<phantom T>`, fields: {
         account_id: bcs.Address,
-        balance: balance_3.Balance,
+        balance: balance_1.Balance,
         recipient: bcs.Address,
         extra_data: bcs.vector(bcs.u8())
     } });
@@ -438,13 +419,13 @@ export function assertNotPaused(options: AssertNotPausedOptions) {
 }
 export interface PauseArguments {
     registry: RawTransactionArgument<string>;
-    managerRequest: RawTransactionArgument<string>;
+    managerRequest: TransactionArgument;
 }
 export interface PauseOptions {
     package?: string;
     arguments: PauseArguments | [
         registry: RawTransactionArgument<string>,
-        managerRequest: RawTransactionArgument<string>
+        managerRequest: TransactionArgument
     ];
 }
 export function pause(options: PauseOptions) {
@@ -1252,14 +1233,14 @@ export function unregisterWithdrawPolicy(options: UnregisterWithdrawPolicyOption
 }
 export interface CreateAccountArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     alias: RawTransactionArgument<string>;
 }
 export interface CreateAccountOptions {
     package?: string;
     arguments: CreateAccountArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         alias: RawTransactionArgument<string>
     ];
 }
@@ -1316,7 +1297,7 @@ export function deriveAccountAddress(options: DeriveAccountAddressOptions) {
 }
 export interface SetAliasArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     alias: RawTransactionArgument<string>;
 }
@@ -1324,7 +1305,7 @@ export interface SetAliasOptions {
     package?: string;
     arguments: SetAliasArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         alias: RawTransactionArgument<string>
     ];
@@ -1347,7 +1328,7 @@ export function setAlias(options: SetAliasOptions) {
 }
 export interface AddDelegateArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     delegateAddress: RawTransactionArgument<string>;
     alias: RawTransactionArgument<string>;
@@ -1358,7 +1339,7 @@ export interface AddDelegateOptions {
     package?: string;
     arguments: AddDelegateArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         delegateAddress: RawTransactionArgument<string>,
         alias: RawTransactionArgument<string>,
@@ -1388,7 +1369,7 @@ export function addDelegate(options: AddDelegateOptions) {
 }
 export interface RemoveDelegateArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     delegateAddress: RawTransactionArgument<string>;
 }
@@ -1396,7 +1377,7 @@ export interface RemoveDelegateOptions {
     package?: string;
     arguments: RemoveDelegateArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         delegateAddress: RawTransactionArgument<string>
     ];
@@ -1426,7 +1407,7 @@ export function removeDelegate(options: RemoveDelegateOptions) {
 }
 export interface UpdateDelegateArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     delegateAddress: RawTransactionArgument<string>;
     alias: RawTransactionArgument<string>;
@@ -1437,7 +1418,7 @@ export interface UpdateDelegateOptions {
     package?: string;
     arguments: UpdateDelegateArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         delegateAddress: RawTransactionArgument<string>,
         alias: RawTransactionArgument<string>,
@@ -1467,7 +1448,7 @@ export function updateDelegate(options: UpdateDelegateOptions) {
 }
 export interface SetDelegateProtocolPermissionArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     delegateAddress: RawTransactionArgument<string>;
     permissions: RawTransactionArgument<number>;
@@ -1476,7 +1457,7 @@ export interface SetDelegateProtocolPermissionOptions {
     package?: string;
     arguments: SetDelegateProtocolPermissionArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         delegateAddress: RawTransactionArgument<string>,
         permissions: RawTransactionArgument<number>
@@ -1506,7 +1487,7 @@ export function setDelegateProtocolPermission(options: SetDelegateProtocolPermis
 }
 export interface UnsetDelegateProtocolPermissionArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     delegateAddress: RawTransactionArgument<string>;
 }
@@ -1514,7 +1495,7 @@ export interface UnsetDelegateProtocolPermissionOptions {
     package?: string;
     arguments: UnsetDelegateProtocolPermissionArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         delegateAddress: RawTransactionArgument<string>
     ];
@@ -1544,7 +1525,7 @@ export interface RequestDepositArguments {
     registry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     coin: RawTransactionArgument<string>;
-    extraData: RawTransactionArgument<number[]>;
+    extraData: RawTransactionArgument<Array<number>>;
 }
 export interface RequestDepositOptions {
     package?: string;
@@ -1552,7 +1533,7 @@ export interface RequestDepositOptions {
         registry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         coin: RawTransactionArgument<string>,
-        extraData: RawTransactionArgument<number[]>
+        extraData: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string
@@ -1584,16 +1565,16 @@ export function requestDeposit(options: RequestDepositOptions) {
 export interface RequestDepositFromReceivingsArguments {
     registry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
-    receivings: RawTransactionArgument<string[]>;
-    extraData: RawTransactionArgument<number[]>;
+    receivings: TransactionArgument;
+    extraData: RawTransactionArgument<Array<number>>;
 }
 export interface RequestDepositFromReceivingsOptions {
     package?: string;
     arguments: RequestDepositFromReceivingsArguments | [
         registry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
-        receivings: RawTransactionArgument<string[]>,
-        extraData: RawTransactionArgument<number[]>
+        receivings: TransactionArgument,
+        extraData: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string
@@ -1627,7 +1608,7 @@ export interface RequestDepositFromFundsArguments {
     registry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     accumulatorRoot: RawTransactionArgument<string>;
-    extraData: RawTransactionArgument<number[]>;
+    extraData: RawTransactionArgument<Array<number>>;
 }
 export interface RequestDepositFromFundsOptions {
     package?: string;
@@ -1635,7 +1616,7 @@ export interface RequestDepositFromFundsOptions {
         registry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         accumulatorRoot: RawTransactionArgument<string>,
-        extraData: RawTransactionArgument<number[]>
+        extraData: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string
@@ -1675,14 +1656,14 @@ export function requestDepositFromFunds(options: RequestDepositFromFundsOptions)
 }
 export interface ConsumeDepositArguments<P extends BcsType<any>> {
     registry: RawTransactionArgument<string>;
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
     Witness: RawTransactionArgument<P>;
 }
 export interface ConsumeDepositOptions<P extends BcsType<any>> {
     package?: string;
     arguments: ConsumeDepositArguments<P> | [
         registry: RawTransactionArgument<string>,
-        req: RawTransactionArgument<string>,
+        req: TransactionArgument,
         Witness: RawTransactionArgument<P>
     ];
     typeArguments: [
@@ -1714,21 +1695,21 @@ export function consumeDeposit<P extends BcsType<any>>(options: ConsumeDepositOp
 }
 export interface RequestWithdrawArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     amount: RawTransactionArgument<number | bigint>;
     recipient: RawTransactionArgument<string>;
-    extraData: RawTransactionArgument<number[]>;
+    extraData: RawTransactionArgument<Array<number>>;
 }
 export interface RequestWithdrawOptions {
     package?: string;
     arguments: RequestWithdrawArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         amount: RawTransactionArgument<number | bigint>,
         recipient: RawTransactionArgument<string>,
-        extraData: RawTransactionArgument<number[]>
+        extraData: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string
@@ -1761,14 +1742,14 @@ export function requestWithdraw(options: RequestWithdrawOptions) {
 }
 export interface ConsumeWithdrawArguments<P extends BcsType<any>> {
     registry: RawTransactionArgument<string>;
-    req: RawTransactionArgument<string>;
+    req: TransactionArgument;
     Witness: RawTransactionArgument<P>;
 }
 export interface ConsumeWithdrawOptions<P extends BcsType<any>> {
     package?: string;
     arguments: ConsumeWithdrawArguments<P> | [
         registry: RawTransactionArgument<string>,
-        req: RawTransactionArgument<string>,
+        req: TransactionArgument,
         Witness: RawTransactionArgument<P>
     ];
     typeArguments: [
@@ -1840,17 +1821,17 @@ export function transferCoin(options: TransferCoinOptions) {
 }
 export interface ReceiveArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
-    receiving: RawTransactionArgument<string>;
+    receiving: TransactionArgument;
 }
 export interface ReceiveOptions {
     package?: string;
     arguments: ReceiveArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
-        receiving: RawTransactionArgument<string>
+        receiving: TransactionArgument
     ];
     typeArguments: [
         string
@@ -1892,7 +1873,7 @@ export function receive(options: ReceiveOptions) {
 }
 export interface WithdrawFromFundsArguments {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     accumulatorRoot: RawTransactionArgument<string>;
 }
@@ -1900,7 +1881,7 @@ export interface WithdrawFromFundsOptions {
     package?: string;
     arguments: WithdrawFromFundsArguments | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         accumulatorRoot: RawTransactionArgument<string>
     ];
@@ -1941,7 +1922,7 @@ export function withdrawFromFunds(options: WithdrawFromFundsOptions) {
 }
 export interface TakeArguments<P extends BcsType<any>> {
     registry: RawTransactionArgument<string>;
-    senderRequest: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
     accountId: RawTransactionArgument<string>;
     amount: RawTransactionArgument<number | bigint>;
     Witness: RawTransactionArgument<P>;
@@ -1950,7 +1931,7 @@ export interface TakeOptions<P extends BcsType<any>> {
     package?: string;
     arguments: TakeArguments<P> | [
         registry: RawTransactionArgument<string>,
-        senderRequest: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
         accountId: RawTransactionArgument<string>,
         amount: RawTransactionArgument<number | bigint>,
         Witness: RawTransactionArgument<P>
@@ -2002,7 +1983,7 @@ export function take<P extends BcsType<any>>(options: TakeOptions<P>) {
 export interface PutArguments<P extends BcsType<any>> {
     registry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
-    bal: RawTransactionArgument<string>;
+    bal: TransactionArgument;
     Witness: RawTransactionArgument<P>;
 }
 export interface PutOptions<P extends BcsType<any>> {
@@ -2010,7 +1991,7 @@ export interface PutOptions<P extends BcsType<any>> {
     arguments: PutArguments<P> | [
         registry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
-        bal: RawTransactionArgument<string>,
+        bal: TransactionArgument,
         Witness: RawTransactionArgument<P>
     ];
     typeArguments: [
@@ -2518,12 +2499,12 @@ export function accountBalancesField(options: AccountBalancesFieldOptions) {
     });
 }
 export interface DelegateAddressArguments {
-    delegate: RawTransactionArgument<string>;
+    delegate: TransactionArgument;
 }
 export interface DelegateAddressOptions {
     package?: string;
     arguments: DelegateAddressArguments | [
-        delegate: RawTransactionArgument<string>
+        delegate: TransactionArgument
     ];
 }
 export function delegateAddress(options: DelegateAddressOptions) {
@@ -2540,12 +2521,12 @@ export function delegateAddress(options: DelegateAddressOptions) {
     });
 }
 export interface DelegateAliasArguments {
-    delegate: RawTransactionArgument<string>;
+    delegate: TransactionArgument;
 }
 export interface DelegateAliasOptions {
     package?: string;
     arguments: DelegateAliasArguments | [
-        delegate: RawTransactionArgument<string>
+        delegate: TransactionArgument
     ];
 }
 export function delegateAlias(options: DelegateAliasOptions) {
@@ -2562,12 +2543,12 @@ export function delegateAlias(options: DelegateAliasOptions) {
     });
 }
 export interface DelegatePermissionsArguments {
-    delegate: RawTransactionArgument<string>;
+    delegate: TransactionArgument;
 }
 export interface DelegatePermissionsOptions {
     package?: string;
     arguments: DelegatePermissionsArguments | [
-        delegate: RawTransactionArgument<string>
+        delegate: TransactionArgument
     ];
 }
 export function delegatePermissions(options: DelegatePermissionsOptions) {
@@ -2584,12 +2565,12 @@ export function delegatePermissions(options: DelegatePermissionsOptions) {
     });
 }
 export interface DelegateProtocolPermissionsArguments {
-    delegate: RawTransactionArgument<string>;
+    delegate: TransactionArgument;
 }
 export interface DelegateProtocolPermissionsOptions {
     package?: string;
     arguments: DelegateProtocolPermissionsArguments | [
-        delegate: RawTransactionArgument<string>
+        delegate: TransactionArgument
     ];
 }
 export function delegateProtocolPermissions(options: DelegateProtocolPermissionsOptions) {
@@ -2606,12 +2587,12 @@ export function delegateProtocolPermissions(options: DelegateProtocolPermissions
     });
 }
 export interface DelegateExpiresAtMsArguments {
-    delegate: RawTransactionArgument<string>;
+    delegate: TransactionArgument;
 }
 export interface DelegateExpiresAtMsOptions {
     package?: string;
     arguments: DelegateExpiresAtMsArguments | [
-        delegate: RawTransactionArgument<string>
+        delegate: TransactionArgument
     ];
 }
 export function delegateExpiresAtMs(options: DelegateExpiresAtMsOptions) {
@@ -2628,12 +2609,12 @@ export function delegateExpiresAtMs(options: DelegateExpiresAtMsOptions) {
     });
 }
 export interface DepositRequestAccountIdArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface DepositRequestAccountIdOptions {
     package?: string;
     arguments: DepositRequestAccountIdArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2654,12 +2635,12 @@ export function depositRequestAccountId(options: DepositRequestAccountIdOptions)
     });
 }
 export interface DepositRequestBalanceArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface DepositRequestBalanceOptions {
     package?: string;
     arguments: DepositRequestBalanceArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2680,12 +2661,12 @@ export function depositRequestBalance(options: DepositRequestBalanceOptions) {
     });
 }
 export interface DepositRequestAmountArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface DepositRequestAmountOptions {
     package?: string;
     arguments: DepositRequestAmountArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2706,12 +2687,12 @@ export function depositRequestAmount(options: DepositRequestAmountOptions) {
     });
 }
 export interface DepositRequestExtraDataArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface DepositRequestExtraDataOptions {
     package?: string;
     arguments: DepositRequestExtraDataArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2732,12 +2713,12 @@ export function depositRequestExtraData(options: DepositRequestExtraDataOptions)
     });
 }
 export interface WithdrawRequestAccountIdArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface WithdrawRequestAccountIdOptions {
     package?: string;
     arguments: WithdrawRequestAccountIdArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2758,12 +2739,12 @@ export function withdrawRequestAccountId(options: WithdrawRequestAccountIdOption
     });
 }
 export interface WithdrawRequestBalanceArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface WithdrawRequestBalanceOptions {
     package?: string;
     arguments: WithdrawRequestBalanceArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2784,12 +2765,12 @@ export function withdrawRequestBalance(options: WithdrawRequestBalanceOptions) {
     });
 }
 export interface WithdrawRequestAmountArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface WithdrawRequestAmountOptions {
     package?: string;
     arguments: WithdrawRequestAmountArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2810,12 +2791,12 @@ export function withdrawRequestAmount(options: WithdrawRequestAmountOptions) {
     });
 }
 export interface WithdrawRequestRecipientArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface WithdrawRequestRecipientOptions {
     package?: string;
     arguments: WithdrawRequestRecipientArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string
@@ -2836,12 +2817,12 @@ export function withdrawRequestRecipient(options: WithdrawRequestRecipientOption
     });
 }
 export interface WithdrawRequestExtraDataArguments {
-    r: RawTransactionArgument<string>;
+    r: TransactionArgument;
 }
 export interface WithdrawRequestExtraDataOptions {
     package?: string;
     arguments: WithdrawRequestExtraDataArguments | [
-        r: RawTransactionArgument<string>
+        r: TransactionArgument
     ];
     typeArguments: [
         string

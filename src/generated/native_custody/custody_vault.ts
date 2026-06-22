@@ -3,9 +3,8 @@
  **************************************************************/
 import { MoveStruct, MoveTuple, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as float from './deps/bucket_v2_framework/float.ts';
-import * as float_1 from './deps/bucket_v2_framework/float.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
 import * as balance_1 from './deps/sui/balance.ts';
 import * as sheet_1 from './deps/bucket_v2_framework/sheet.ts';
@@ -16,7 +15,7 @@ export const NativeCustody = new MoveStruct({ name: `${$moduleName}::NativeCusto
     } });
 export const FeeConfig = new MoveStruct({ name: `${$moduleName}::FeeConfig`, fields: {
         mint_fee_rate: float.Float,
-        burn_fee_rate: float_1.Float
+        burn_fee_rate: float.Float
     } });
 export const SingleVault = new MoveStruct({ name: `${$moduleName}::SingleVault<phantom T>`, fields: {
         id: bcs.Address,
@@ -419,7 +418,7 @@ export interface MintArguments {
     accountRegistry: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     assetCoin: RawTransactionArgument<string>;
-    extraData: RawTransactionArgument<number[]>;
+    extraData: RawTransactionArgument<Array<number>>;
 }
 export interface MintOptions {
     package?: string;
@@ -429,7 +428,7 @@ export interface MintOptions {
         accountRegistry: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         assetCoin: RawTransactionArgument<string>,
-        extraData: RawTransactionArgument<number[]>
+        extraData: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string,
@@ -467,7 +466,7 @@ export interface MintFromRequestArguments {
     vault: RawTransactionArgument<string>;
     registry: RawTransactionArgument<string>;
     accountRegistry: RawTransactionArgument<string>;
-    depositRequest: RawTransactionArgument<string>;
+    depositRequest: TransactionArgument;
 }
 export interface MintFromRequestOptions {
     package?: string;
@@ -475,7 +474,7 @@ export interface MintFromRequestOptions {
         vault: RawTransactionArgument<string>,
         registry: RawTransactionArgument<string>,
         accountRegistry: RawTransactionArgument<string>,
-        depositRequest: RawTransactionArgument<string>
+        depositRequest: TransactionArgument
     ];
     typeArguments: [
         string,

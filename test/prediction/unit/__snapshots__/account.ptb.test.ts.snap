@@ -1,0 +1,319 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`account PTB builders > addDelegate 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "add_delegate",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`account PTB builders > addDelegate with expiry timestamp 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "add_delegate",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`account PTB builders > allow / disallow prediction protocol settlement asset 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+    ],
+    "function": "allow_protocol_asset",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > allow / disallow prediction protocol settlement asset 2`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+    ],
+    "function": "disallow_protocol_asset",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > consumeDepositDirect 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+    ],
+    "function": "consume_deposit_direct",
+    "module": "direct_rule",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > createAccount 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+    ],
+    "function": "create_account",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`account PTB builders > deposit 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "request_deposit",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+    ],
+    "function": "consume_deposit_direct",
+    "module": "direct_rule",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > removeDelegate 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "remove_delegate",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [],
+  },
+]
+`;
+
+exports[`account PTB builders > requestDeposit 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "request_deposit",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > requestDepositFromReceivings 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Result",
+      "Input",
+    ],
+    "function": "request_deposit_from_receivings",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > requestWithdraw 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "request_withdraw",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > setDelegatePredictionPermission 1`] = `
+[
+  {
+    "argumentKinds": [],
+    "function": "request",
+    "module": "account",
+    "package": "0x0cdfc09284014fd36bbb19da8ab1c60056ca207d4c866e78dc01ca8e51dac790",
+    "typeArguments": [],
+  },
+  {
+    "argumentKinds": [
+      "Input",
+      "NestedResult",
+      "Input",
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "set_delegate_protocol_permission",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > transferCoinToAccount 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+      "Input",
+    ],
+    "function": "transfer_coin",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+    ],
+  },
+]
+`;
+
+exports[`account PTB builders > whitelistPredictionProtocol 1`] = `
+[
+  {
+    "argumentKinds": [
+      "Input",
+      "Input",
+    ],
+    "function": "whitelist_protocol",
+    "module": "account",
+    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "typeArguments": [
+      "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
+    ],
+  },
+]
+`;

@@ -12,9 +12,8 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as type_name from './deps/std/type_name.ts';
-import * as type_name_1 from './deps/std/type_name.ts';
 const $moduleName = '@waterx/perp::keyed_big_vector';
 export const KeyedBigVector = new MoveStruct({ name: `${$moduleName}::KeyedBigVector`, fields: {
         /** The unique identifier of the KeyedBigVector object. */
@@ -22,7 +21,7 @@ export const KeyedBigVector = new MoveStruct({ name: `${$moduleName}::KeyedBigVe
         /** The type name of the keys. */
         key_type: type_name.TypeName,
         /** The type name of the values. */
-        value_type: type_name_1.TypeName,
+        value_type: type_name.TypeName,
         /** The index of the latest slice. */
         slice_idx: bcs.u16(),
         /** The maximum size of each slice. */
@@ -295,12 +294,12 @@ export function contains<K extends BcsType<any>>(options: ContainsOptions<K>) {
     });
 }
 export interface GetSliceIdxArguments {
-    slice: RawTransactionArgument<string>;
+    slice: TransactionArgument;
 }
 export interface GetSliceIdxOptions {
     package?: string;
     arguments: GetSliceIdxArguments | [
-        slice: RawTransactionArgument<string>
+        slice: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -323,12 +322,12 @@ export function getSliceIdx(options: GetSliceIdxOptions) {
     });
 }
 export interface GetSliceLengthArguments {
-    slice: RawTransactionArgument<string>;
+    slice: TransactionArgument;
 }
 export interface GetSliceLengthOptions {
     package?: string;
     arguments: GetSliceLengthArguments | [
-        slice: RawTransactionArgument<string>
+        slice: TransactionArgument
     ];
     typeArguments: [
         string,
@@ -725,13 +724,13 @@ export function borrowByKeyMut<K extends BcsType<any>>(options: BorrowByKeyMutOp
     });
 }
 export interface BorrowFromSliceArguments {
-    slice: RawTransactionArgument<string>;
+    slice: TransactionArgument;
     i: RawTransactionArgument<number | bigint>;
 }
 export interface BorrowFromSliceOptions {
     package?: string;
     arguments: BorrowFromSliceArguments | [
-        slice: RawTransactionArgument<string>,
+        slice: TransactionArgument,
         i: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [
@@ -756,13 +755,13 @@ export function borrowFromSlice(options: BorrowFromSliceOptions) {
     });
 }
 export interface BorrowFromSliceMutArguments {
-    slice: RawTransactionArgument<string>;
+    slice: TransactionArgument;
     i: RawTransactionArgument<number | bigint>;
 }
 export interface BorrowFromSliceMutOptions {
     package?: string;
     arguments: BorrowFromSliceMutArguments | [
-        slice: RawTransactionArgument<string>,
+        slice: TransactionArgument,
         i: RawTransactionArgument<number | bigint>
     ];
     typeArguments: [

@@ -3,14 +3,12 @@
  **************************************************************/
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs, type BcsType } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as table from './deps/sui/table.ts';
 import * as emitter from './deps/wormhole_sdk/emitter.ts';
 import * as vec_map from './deps/sui/vec_map.ts';
-import * as vec_map_1 from './deps/sui/vec_map.ts';
 import * as consumed_vaas from './deps/wormhole_sdk/consumed_vaas.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
-import * as vec_set_1 from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/wormhole-bridge::wormhole_bridge';
 export const WormholeBridge = new MoveStruct({ name: `${$moduleName}::WormholeBridge`, fields: {
         dummy_field: bcs.bool()
@@ -32,7 +30,7 @@ export const Bridge = new MoveStruct({ name: `${$moduleName}::Bridge`, fields: {
         id: bcs.Address,
         emitter_cap: emitter.EmitterCap,
         trusted_emitters: vec_map.VecMap(bcs.u16(), bcs.vector(bcs.u8())),
-        minted_per_token: vec_map_1.VecMap(ChainTokenKey, bcs.u64()),
+        minted_per_token: vec_map.VecMap(ChainTokenKey, bcs.u64()),
         consumed_vaas: consumed_vaas.ConsumedVAAs,
         keepers: vec_set.VecSet(bcs.Address),
         daily_mint_limit: bcs.u64(),
@@ -69,7 +67,7 @@ export const Bridge = new MoveStruct({ name: `${$moduleName}::Bridge`, fields: {
          * remove_supported_evm_token / set_rate_limits / set_paused / emergency_pause /
          * add_keeper / remove_keeper paths.
          */
-        allowed_versions: vec_set_1.VecSet(bcs.u16())
+        allowed_versions: vec_set.VecSet(bcs.u16())
     } });
 export interface PackageVersionOptions {
     package?: string;
@@ -133,7 +131,7 @@ export interface RedeemVaaArguments {
     registry: RawTransactionArgument<string>;
     accountRegistry: RawTransactionArgument<string>;
     wormholeState: RawTransactionArgument<string>;
-    vaaBytes: RawTransactionArgument<number[]>;
+    vaaBytes: RawTransactionArgument<Array<number>>;
 }
 export interface RedeemVaaOptions {
     package?: string;
@@ -142,7 +140,7 @@ export interface RedeemVaaOptions {
         registry: RawTransactionArgument<string>,
         accountRegistry: RawTransactionArgument<string>,
         wormholeState: RawTransactionArgument<string>,
-        vaaBytes: RawTransactionArgument<number[]>
+        vaaBytes: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string
@@ -184,8 +182,8 @@ export interface BurnForWithdrawalAuthorizedArguments<M extends BcsType<any>> {
     coin: RawTransactionArgument<string>;
     wormholeFee: RawTransactionArgument<string>;
     evmDestinationChain: RawTransactionArgument<number>;
-    evmRecipient: RawTransactionArgument<number[]>;
-    evmToken: RawTransactionArgument<number[]>;
+    evmRecipient: RawTransactionArgument<Array<number>>;
+    evmToken: RawTransactionArgument<Array<number>>;
 }
 export interface BurnForWithdrawalAuthorizedOptions<M extends BcsType<any>> {
     package?: string;
@@ -199,8 +197,8 @@ export interface BurnForWithdrawalAuthorizedOptions<M extends BcsType<any>> {
         coin: RawTransactionArgument<string>,
         wormholeFee: RawTransactionArgument<string>,
         evmDestinationChain: RawTransactionArgument<number>,
-        evmRecipient: RawTransactionArgument<number[]>,
-        evmToken: RawTransactionArgument<number[]>
+        evmRecipient: RawTransactionArgument<Array<number>>,
+        evmToken: RawTransactionArgument<Array<number>>
     ];
     typeArguments: [
         string,
@@ -249,7 +247,7 @@ export interface AddTrustedEmitterArguments {
     _: RawTransactionArgument<string>;
     bridge: RawTransactionArgument<string>;
     chainId: RawTransactionArgument<number>;
-    evmBridgeAddress: RawTransactionArgument<number[]>;
+    evmBridgeAddress: RawTransactionArgument<Array<number>>;
 }
 export interface AddTrustedEmitterOptions {
     package?: string;
@@ -257,7 +255,7 @@ export interface AddTrustedEmitterOptions {
         _: RawTransactionArgument<string>,
         bridge: RawTransactionArgument<string>,
         chainId: RawTransactionArgument<number>,
-        evmBridgeAddress: RawTransactionArgument<number[]>
+        evmBridgeAddress: RawTransactionArgument<Array<number>>
     ];
 }
 export function addTrustedEmitter(options: AddTrustedEmitterOptions) {
@@ -314,7 +312,7 @@ export interface AddSupportedEvmTokenArguments {
     _: RawTransactionArgument<string>;
     bridge: RawTransactionArgument<string>;
     chainId: RawTransactionArgument<number>;
-    token: RawTransactionArgument<number[]>;
+    token: RawTransactionArgument<Array<number>>;
 }
 export interface AddSupportedEvmTokenOptions {
     package?: string;
@@ -322,7 +320,7 @@ export interface AddSupportedEvmTokenOptions {
         _: RawTransactionArgument<string>,
         bridge: RawTransactionArgument<string>,
         chainId: RawTransactionArgument<number>,
-        token: RawTransactionArgument<number[]>
+        token: RawTransactionArgument<Array<number>>
     ];
 }
 export function addSupportedEvmToken(options: AddSupportedEvmTokenOptions) {
@@ -345,7 +343,7 @@ export interface RemoveSupportedEvmTokenArguments {
     _: RawTransactionArgument<string>;
     bridge: RawTransactionArgument<string>;
     chainId: RawTransactionArgument<number>;
-    token: RawTransactionArgument<number[]>;
+    token: RawTransactionArgument<Array<number>>;
 }
 export interface RemoveSupportedEvmTokenOptions {
     package?: string;
@@ -353,7 +351,7 @@ export interface RemoveSupportedEvmTokenOptions {
         _: RawTransactionArgument<string>,
         bridge: RawTransactionArgument<string>,
         chainId: RawTransactionArgument<number>,
-        token: RawTransactionArgument<number[]>
+        token: RawTransactionArgument<Array<number>>
     ];
 }
 export function removeSupportedEvmToken(options: RemoveSupportedEvmTokenOptions) {
@@ -510,13 +508,13 @@ export function setPaused(options: SetPausedOptions) {
 }
 export interface EmergencyPauseArguments {
     bridge: RawTransactionArgument<string>;
-    request: RawTransactionArgument<string>;
+    request: TransactionArgument;
 }
 export interface EmergencyPauseOptions {
     package?: string;
     arguments: EmergencyPauseArguments | [
         bridge: RawTransactionArgument<string>,
-        request: RawTransactionArgument<string>
+        request: TransactionArgument
     ];
 }
 export function emergencyPause(options: EmergencyPauseOptions) {
@@ -993,14 +991,14 @@ export function isKeeper(options: IsKeeperOptions) {
 export interface IsEvmTokenSupportedArguments {
     bridge: RawTransactionArgument<string>;
     chainId: RawTransactionArgument<number>;
-    token: RawTransactionArgument<number[]>;
+    token: RawTransactionArgument<Array<number>>;
 }
 export interface IsEvmTokenSupportedOptions {
     package?: string;
     arguments: IsEvmTokenSupportedArguments | [
         bridge: RawTransactionArgument<string>,
         chainId: RawTransactionArgument<number>,
-        token: RawTransactionArgument<number[]>
+        token: RawTransactionArgument<Array<number>>
     ];
 }
 export function isEvmTokenSupported(options: IsEvmTokenSupportedOptions) {
@@ -1021,14 +1019,14 @@ export function isEvmTokenSupported(options: IsEvmTokenSupportedOptions) {
 export interface MintedForArguments {
     bridge: RawTransactionArgument<string>;
     chainId: RawTransactionArgument<number>;
-    token: RawTransactionArgument<number[]>;
+    token: RawTransactionArgument<Array<number>>;
 }
 export interface MintedForOptions {
     package?: string;
     arguments: MintedForArguments | [
         bridge: RawTransactionArgument<string>,
         chainId: RawTransactionArgument<number>,
-        token: RawTransactionArgument<number[]>
+        token: RawTransactionArgument<Array<number>>
     ];
 }
 export function mintedFor(options: MintedForOptions) {

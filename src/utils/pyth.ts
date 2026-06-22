@@ -580,8 +580,8 @@ export function reimbursePythSponsor(
     package: entry.published_at,
     arguments: {
       self: tx.object(entry.pyth_sponsor),
-      fund: fund as unknown as string,
-      tradingReq: tradingRequest as unknown as string,
+      fund: fund as unknown as TransactionArgument,
+      tradingReq: tradingRequest as unknown as TransactionArgument,
     },
     typeArguments: [collateralType],
   })(tx);
