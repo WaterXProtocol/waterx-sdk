@@ -76,7 +76,6 @@ import {
   reimbursePythSponsor,
   updatePythPrices,
 } from "./utils/pyth.ts";
-import { mintCreditToAccount } from "./user/custody.ts";
 
 // ============================================================================
 // Common opts
@@ -311,44 +310,6 @@ export async function buildConsolidateToUsdTx(
   const txOut = tx ?? new Transaction();
   await appendConsolidateToUsd(client, txOut, accountId);
   return txOut;
-}
-
-// ============================================================================
-// Wallet deposit (PSM mint + optional pre-sweep)
-// ============================================================================
-
-export interface BuildDepositFromWalletTxParams extends CommonBuildOpts {
-  /** wxa account receiving the minted CREDIT. */
-  accountId: string;
-  /** Fully-qualified backing-asset Move type `T` (must be registered on the vault). */
-  assetType: string;
-  /** `Coin<T>` from the sender's wallet (e.g. via `coinWithBalance` or merge/split). */
-  assetCoin: TransactionArgument;
-  /** CREDIT CoinType. Defaults to `client.creditType()`. */
-  creditType?: string;
-}
-
-/**
- * Wallet → account deposit: optionally pre-sweep parked backing assets at the
- * account address ({@link appendConsolidateToUsd}), then PSM-mint CREDIT via
- * {@link mintCreditToAccount} in the same PTB.
- *
- * The caller prepares `assetCoin` from the wallet (`coinWithBalance`, or
- * `listCoins` + merge/split). This builder does not read the sender's wallet.
- */
-export async function buildDepositFromWalletTx(
-  client: WaterXClient,
-  params: BuildDepositFromWalletTxParams,
-): Promise<Transaction> {
-  const tx = newTx(params);
-  await maybeConsolidate(client, tx, params.accountId, params);
-  mintCreditToAccount(client, tx, {
-    accountId: params.accountId,
-    assetCoin: params.assetCoin,
-    assetType: params.assetType,
-    creditType: params.creditType,
-  });
-  return tx;
 }
 
 // ============================================================================

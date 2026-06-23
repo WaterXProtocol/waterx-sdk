@@ -1,5 +1,4 @@
 import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/constants.ts";
-import { Transaction } from "@mysten/sui/transactions";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -9,7 +8,6 @@ import {
   buildClosePositionTx,
   buildDecreasePositionTx,
   buildDepositCollateralTx,
-  buildDepositFromWalletTx,
   buildExecuteWithdrawalTx,
   buildIncreasePositionTx,
   buildMintAndStakeWlpTx,
@@ -23,7 +21,6 @@ import {
 } from "../../../../src/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
-import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {
   ACCOUNT_ID,
   baseOrderMain,
@@ -365,31 +362,6 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         accountId: ACCOUNT_ID,
         rewarderTypes: [REWARD_TYPE],
       }),
-  ),
-  caseAsyncTx(
-    "buildDepositFromWalletTx",
-    async (c) => {
-      const tx = new Transaction();
-      const coin = tx.object(PTB_DUMMY_DEPOSIT_COIN);
-      return buildDepositFromWalletTx(c, {
-        tx,
-        accountId: ACCOUNT_ID,
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-        assetCoin: coin,
-        ...commonTxOpts,
-      });
-    },
-    async (p) => {
-      const tx = new Transaction();
-      const coin = tx.object(PTB_DUMMY_DEPOSIT_COIN);
-      return p.buildDepositFromWalletTx({
-        tx,
-        accountId: ACCOUNT_ID,
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-        assetCoin: coin,
-        ...commonTxOpts,
-      });
-    },
   ),
   caseFactory(
     "buildRedeemVaaTx",

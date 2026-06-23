@@ -1,6 +1,5 @@
 import {
   buildClosePositionTx,
-  buildDepositFromWalletTx,
   buildPlaceOrderTx,
   buildRedeemVaaTx,
   buildRequestCreditWithdrawTx,
@@ -70,6 +69,5 @@ describe("SDK package wiring (v3)", () => {
     expect(perp.WaterXClient).toBe(WaterXClient);
     expect(typeof prediction.buildPlaceOrderTx).toBe("function");
     expect(typeof prediction.buildBatchClaimTx).toBe("function");
-    expect(typeof buildDepositFromWalletTx).toBe("function");
   });
 });
