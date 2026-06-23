@@ -10,7 +10,10 @@ import {
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
-function u64Sim(value: bigint): { $kind: "Success"; commandResults: { returnValues: { bcs: string }[] }[] } {
+function u64Sim(value: bigint): {
+  $kind: "Success";
+  commandResults: { returnValues: { bcs: string }[] }[];
+} {
   return {
     $kind: "Success",
     commandResults: [{ returnValues: [{ bcs: toBase64(bcs.u64().serialize(value).toBytes()) }] }],
