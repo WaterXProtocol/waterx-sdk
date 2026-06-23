@@ -17,6 +17,8 @@
  * so frontend wallet flows and multi-step Pyth injection keep working.
  */
 
+import { Transaction } from "@mysten/sui/transactions";
+
 import { WaterXClient, type CreateClientOptions as PerpCreateOptions } from "./client.ts";
 import type { Network } from "./constants.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
@@ -31,6 +33,12 @@ import {
 import * as predFetch from "./prediction/fetch.ts";
 import * as predGift from "./prediction/gift.ts";
 import * as predOps from "./prediction/prediction.ts";
+import {
+  buildBatchClaimTx as buildPredictBatchClaimTx,
+  buildPlaceOrderTx as buildPredictPlaceOrderTx,
+  type BuildBatchClaimTxParams,
+  type BuildPlaceOrderTxParams,
+} from "./prediction/tx-builders.ts";
 import * as perpTx from "./tx-builders.ts";
 import * as perpUser from "./user/index.ts";
 
@@ -117,6 +125,21 @@ export class Client {
   readonly perp: PerpModule;
   /** Prediction builders & views (`client.predict.placeOrder(tx, params)`). */
   readonly predict: PredictModule;
+
+  /**
+   * Async prediction builder: optional consolidate + `placeOrder`.
+   * Uses `perpClient` for the sweep and `predictClient` for the bet leg.
+   */
+  buildPredictPlaceOrderTx(params: BuildPlaceOrderTxParams): Promise<Transaction> {
+    return buildPredictPlaceOrderTx(this.perpClient, this.predictClient, params);
+  }
+
+  /**
+   * Async prediction builder: optional consolidate + `batchClaim`.
+   */
+  buildPredictBatchClaimTx(params: BuildBatchClaimTxParams): Promise<Transaction> {
+    return buildPredictBatchClaimTx(this.perpClient, this.predictClient, params);
+  }
 
   private constructor(perpClient: WaterXClient, predictClient: PredictClient) {
     this.perpClient = perpClient;

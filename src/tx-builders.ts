@@ -68,6 +68,7 @@ import {
   type RequestRedeemWlpParams,
 } from "./user/wlp.ts";
 import { getCollateralAssets } from "./utils/config.ts";
+import { probeParkedBackingAssets } from "./utils/consolidate-balance.ts";
 import {
   openPythSponsorFund,
   PythCache,
@@ -75,6 +76,7 @@ import {
   reimbursePythSponsor,
   updatePythPrices,
 } from "./utils/pyth.ts";
+import { mintCreditToAccount } from "./user/custody.ts";
 
 // ============================================================================
 // Common opts
@@ -226,44 +228,37 @@ export async function appendConsolidateToUsd(
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
-  if (!client.config.packages.native_custody?.vault) return 0;
-  if (!client.config.packages.waterx_credit?.credit_type) return 0;
-
+  const parked = await probeParkedBackingAssets(client, accountId);
   let legs = 0;
-  for (const asset of client.getNativeAssets()) {
-    // Funds-accumulator leg (transfer_coin / send_funds path).
-    const bal = (await client.getBalance({
-      owner: accountId,
-      coinType: asset.type,
-    })) as { balance?: { addressBalance?: string } };
-    if (BigInt(bal.balance?.addressBalance ?? "0") > 0n) {
+  for (const row of parked) {
+    if (row.fundsRaw > 0n) {
       const fromFunds = requestDepositFromFunds(client, tx, {
         accountId,
-        coinType: asset.type,
+        coinType: row.assetType,
       });
-      foldDepositRequestToUsd(client, tx, fromFunds, asset.type);
+      foldDepositRequestToUsd(client, tx, fromFunds, row.assetType);
       legs += 1;
     }
 
-    // Receivings leg (TTO'd Coin<T> path).
-    const coins = (await client.listCoins({
-      owner: accountId,
-      coinType: asset.type,
-    })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
-    const refs = (coins.objects ?? []).filter(
-      (c): c is { objectId: string; version: string; digest: string } =>
-        !!c.objectId && !!c.version && !!c.digest,
-    );
-    if (refs.length > 0) {
+    if (row.coinsRaw > 0n) {
+      const coins = (await client.listCoins({
+        owner: accountId,
+        coinType: row.assetType,
+      })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
+      const refs = (coins.objects ?? []).filter(
+        (c): c is { objectId: string; version: string; digest: string } =>
+          !!c.objectId && !!c.version && !!c.digest,
+      );
+      if (refs.length === 0) continue;
       const receivings = refs.map((c) =>
         tx.receivingRef({ objectId: c.objectId, version: c.version, digest: c.digest }),
       ) as unknown as TransactionArgument[];
       const fromReceivings = requestDepositFromReceivings(client, tx, {
         accountId,
-        coinType: asset.type,
+        coinType: row.assetType,
         receivings,
       });
-      foldDepositRequestToUsd(client, tx, fromReceivings, asset.type);
+      foldDepositRequestToUsd(client, tx, fromReceivings, row.assetType);
       legs += 1;
     }
   }
@@ -316,6 +311,44 @@ export async function buildConsolidateToUsdTx(
   const txOut = tx ?? new Transaction();
   await appendConsolidateToUsd(client, txOut, accountId);
   return txOut;
+}
+
+// ============================================================================
+// Wallet deposit (PSM mint + optional pre-sweep)
+// ============================================================================
+
+export interface BuildDepositFromWalletTxParams extends CommonBuildOpts {
+  /** wxa account receiving the minted CREDIT. */
+  accountId: string;
+  /** Fully-qualified backing-asset Move type `T` (must be registered on the vault). */
+  assetType: string;
+  /** `Coin<T>` from the sender's wallet (e.g. via `coinWithBalance` or merge/split). */
+  assetCoin: TransactionArgument;
+  /** CREDIT CoinType. Defaults to `client.creditType()`. */
+  creditType?: string;
+}
+
+/**
+ * Wallet → account deposit: optionally pre-sweep parked backing assets at the
+ * account address ({@link appendConsolidateToUsd}), then PSM-mint CREDIT via
+ * {@link mintCreditToAccount} in the same PTB.
+ *
+ * The caller prepares `assetCoin` from the wallet (`coinWithBalance`, or
+ * `listCoins` + merge/split). This builder does not read the sender's wallet.
+ */
+export async function buildDepositFromWalletTx(
+  client: WaterXClient,
+  params: BuildDepositFromWalletTxParams,
+): Promise<Transaction> {
+  const tx = newTx(params);
+  await maybeConsolidate(client, tx, params.accountId, params);
+  mintCreditToAccount(client, tx, {
+    accountId: params.accountId,
+    assetCoin: params.assetCoin,
+    assetType: params.assetType,
+    creditType: params.creditType,
+  });
+  return tx;
 }
 
 // ============================================================================

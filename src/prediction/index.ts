@@ -108,6 +108,16 @@ export type {
 } from "./prediction.ts";
 
 export {
+  buildBatchClaimTx,
+  buildPlaceOrderTx,
+} from "./tx-builders.ts";
+export type {
+  BuildBatchClaimTxParams,
+  BuildPlaceOrderTxParams,
+  PredictCommonBuildOpts,
+} from "./tx-builders.ts";
+
+export {
   getAccountData,
   getAccountIds,
   getAccountOrderIds,
