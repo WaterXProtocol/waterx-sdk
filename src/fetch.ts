@@ -73,6 +73,7 @@ import {
   personalBurned as personalBurnedCall,
 } from "./generated/wormhole_bridge/wormhole_bridge.ts";
 import {
+  probeAddressCreditBalance,
   probeParkedBackingAssets,
   sumParkedBackingAsCreditRaw,
   type ParkedBackingAssetBalance,
@@ -585,17 +586,19 @@ export async function getAccountBalance(
 }
 
 /**
- * Inclusive wxUSD credit an account can spend after the next async tx-builder
- * sweep plus any object-owned CREDIT already at the account address.
+ * Inclusive wxUSD credit an account can spend after the default async tx-builder
+ * pre-sweep ({@link appendConsolidateForSpend}).
  *
  * - `internalRaw` — stored `Balance<CREDIT>` (`getAccountBalance`).
  * - `pendingBackingRaw` — native-custody backing assets (USDC, USDSUI, …)
  *   parked at the account's Sui address, rescaled to CREDIT decimals at the
  *   1:1 PSM peg (same probe as {@link appendConsolidateToUsd}).
- * - `pendingCreditAtAddressRaw` — `getBalance` for CREDIT at the account
- *   address (accumulator + owned coins). Not swept by
- *   {@link appendConsolidateToUsd}; included so overview UIs match FE parity.
- * - `totalRaw` — sum of the three components.
+ * - `pendingCreditAtAddressRaw` — CREDIT at the account address (accumulator +
+ *   owned coins). Swept into the internal slot by
+ *   {@link appendConsolidateAddressCredit} via `consumeDepositDirect`.
+ * - `totalRaw` — sum of the three components; matches post-
+ *   {@link appendConsolidateForSpend} spendable balance for predict / perp
+ *   builders with `consolidateToUsd: true` (default).
  */
 export interface SpendableCreditBalance {
   internalRaw: bigint;
@@ -611,13 +614,13 @@ export async function getSpendableCreditBalance(
   accountId: string,
 ): Promise<SpendableCreditBalance> {
   const creditType = client.creditType();
-  const [internalRaw, parkedBacking, addressCreditRaw] = await Promise.all([
+  const [internalRaw, parkedBacking, addressCredit] = await Promise.all([
     getAccountBalance(client, accountId, creditType),
     probeParkedBackingAssets(client, accountId),
-    readAddressCoinBalance(client, accountId, creditType),
+    probeAddressCreditBalance(client, accountId),
   ]);
   const pendingBackingRaw = sumParkedBackingAsCreditRaw(parkedBacking, COLLATERAL_DECIMALS);
-  const pendingCreditAtAddressRaw = addressCreditRaw;
+  const pendingCreditAtAddressRaw = addressCredit.fundsRaw + addressCredit.coinsRaw;
   const totalRaw = internalRaw + pendingBackingRaw + pendingCreditAtAddressRaw;
   return {
     internalRaw,
@@ -626,20 +629,6 @@ export async function getSpendableCreditBalance(
     totalRaw,
     parkedBacking,
   };
-}
-
-/** Sum of address accumulator + owned coins for `coinType` at `owner`. */
-async function readAddressCoinBalance(
-  client: WaterXClient,
-  owner: string,
-  coinType: string,
-): Promise<bigint> {
-  try {
-    const result = await client.getBalance({ owner, coinType });
-    return BigInt(result.balance.balance);
-  } catch {
-    return 0n;
-  }
 }
 
 // ============================================================================

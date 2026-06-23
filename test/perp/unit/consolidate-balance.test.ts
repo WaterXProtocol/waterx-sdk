@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { WaterXClient } from "../../../src/client.ts";
 import {
+  probeAddressCreditBalance,
   probeParkedBackingAssets,
   rescaleRawAmount,
   sumParkedBackingAsCreditRaw,
@@ -45,6 +46,32 @@ describe("consolidate-balance utils", () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0]?.fundsRaw).toBe(1_000_000n);
     expect(rows[0]?.coinsRaw).toBe(2_000_000n);
+  });
+
+  it("probeAddressCreditBalance returns funds and coins separately", async () => {
+    const client = createUnitTestClient();
+    vi.spyOn(client, "getBalance").mockResolvedValue({
+      balance: { addressBalance: "100000", coinBalance: "200000", balance: "300000" },
+    } as never);
+    vi.spyOn(client, "listCoins").mockResolvedValue({
+      objects: [{ objectId: "0x1", balance: "200000" }],
+    } as never);
+
+    const row = await probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID);
+    expect(row.fundsRaw).toBe(100_000n);
+    expect(row.coinsRaw).toBe(200_000n);
+  });
+
+  it("probeAddressCreditBalance returns zeros when waterx_credit is missing", async () => {
+    const config = structuredClone(MOCK_TESTNET_CONFIG);
+    delete config.packages.waterx_credit;
+    const client = new WaterXClient("TESTNET", config, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
+      fundsRaw: 0n,
+      coinsRaw: 0n,
+    });
   });
 
   it("probeParkedBackingAssets returns [] when native_custody is missing", async () => {

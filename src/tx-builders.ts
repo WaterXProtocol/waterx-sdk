@@ -68,7 +68,10 @@ import {
   type RequestRedeemWlpParams,
 } from "./user/wlp.ts";
 import { getCollateralAssets } from "./utils/config.ts";
-import { probeParkedBackingAssets } from "./utils/consolidate-balance.ts";
+import {
+  probeAddressCreditBalance,
+  probeParkedBackingAssets,
+} from "./utils/consolidate-balance.ts";
 import {
   openPythSponsorFund,
   PythCache,
@@ -101,10 +104,9 @@ export interface CommonBuildOpts {
   useSponsor?: boolean;
   /**
    * Pre-sweep parked backing assets (USDC, USDsui, …) at the wxa account's
-   * address into USD credit before the main action — drains the funds
-   * accumulator and TTO'd `Coin<T>` objects via
-   * {@link appendConsolidateToUsd}, settles into the account in the same
-   * PTB. Skips empty buckets via gRPC probes so it's safe on any account.
+   * address into USD credit, plus any CREDIT coins/funds at the address into
+   * the internal wxa slot — see {@link appendConsolidateForSpend}. Skips empty
+   * buckets via gRPC probes so it's safe on any account.
    *
    * Default: `true`. Set to `false` to skip (e.g. caller already swept,
    * deployment lacks `native_custody`, or the gRPC reads aren't worth
@@ -264,6 +266,90 @@ export async function appendConsolidateToUsd(
   return legs;
 }
 
+/**
+ * Drain CREDIT parked at `accountId`'s Sui address (funds accumulator +
+ * owned `Coin<CREDIT>`) into the wxa internal slot via
+ * `consumeDepositDirect<CREDIT>`. Complements {@link appendConsolidateToUsd}
+ * for address-owned wxUSD that predict / perp actions debit from the internal
+ * balance.
+ */
+export async function appendConsolidateAddressCredit(
+  client: WaterXClient,
+  tx: Transaction,
+  accountId: string,
+): Promise<number> {
+  if (!client.config.packages.waterx_credit?.credit_type) return 0;
+
+  const creditType = client.creditType();
+  const { fundsRaw, coinsRaw } = await probeAddressCreditBalance(client, accountId);
+  let legs = 0;
+
+  if (fundsRaw > 0n) {
+    const fromFunds = requestDepositFromFunds(client, tx, {
+      accountId,
+      coinType: creditType,
+    });
+    consumeDepositRequest(client, tx, fromFunds, creditType);
+    legs += 1;
+  }
+
+  if (coinsRaw > 0n) {
+    const coins = (await client.listCoins({
+      owner: accountId,
+      coinType: creditType,
+    })) as { objects?: { objectId?: string; version?: string; digest?: string }[] };
+    const refs = (coins.objects ?? []).filter(
+      (c): c is { objectId: string; version: string; digest: string } =>
+        !!c.objectId && !!c.version && !!c.digest,
+    );
+    if (refs.length > 0) {
+      const receivings = refs.map((c) =>
+        tx.receivingRef({ objectId: c.objectId, version: c.version, digest: c.digest }),
+      ) as unknown as TransactionArgument[];
+      const fromReceivings = requestDepositFromReceivings(client, tx, {
+        accountId,
+        coinType: creditType,
+        receivings,
+      });
+      consumeDepositRequest(client, tx, fromReceivings, creditType);
+      legs += 1;
+    }
+  }
+
+  return legs;
+}
+
+/**
+ * Full pre-action sweep: backing assets → wxUSD credit (PSM) plus address
+ * CREDIT → internal slot. Used by async tx-builders when `consolidateToUsd`
+ * is enabled (default).
+ */
+export async function appendConsolidateForSpend(
+  client: WaterXClient,
+  tx: Transaction,
+  accountId: string,
+): Promise<number> {
+  const backingLegs = await appendConsolidateToUsd(client, tx, accountId);
+  const creditLegs = await appendConsolidateAddressCredit(client, tx, accountId);
+  return backingLegs + creditLegs;
+}
+
+function consumeDepositRequest(
+  client: WaterXClient,
+  tx: Transaction,
+  depositRequest: TransactionArgument,
+  coinType: string,
+): void {
+  consumeDepositDirect({
+    package: client.config.packages.waterx_account.published_at,
+    arguments: {
+      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      req: depositRequest as unknown as TransactionArgument,
+    },
+    typeArguments: [coinType],
+  })(tx);
+}
+
 function foldDepositRequestToUsd(
   client: WaterXClient,
   tx: Transaction,
@@ -274,14 +360,7 @@ function foldDepositRequestToUsd(
     depositRequest,
     assetType,
   });
-  consumeDepositDirect({
-    package: client.config.packages.waterx_account.published_at,
-    arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
-      req: usdReq as unknown as TransactionArgument,
-    },
-    typeArguments: [client.creditType()],
-  })(tx);
+  consumeDepositRequest(client, tx, usdReq as unknown as TransactionArgument, client.creditType());
 }
 
 /** Internal: run the async sweep iff `consolidateToUsd !== false`. */
@@ -292,7 +371,7 @@ async function maybeConsolidate(
   opts: CommonBuildOpts | undefined,
 ): Promise<void> {
   if (opts?.consolidateToUsd === false) return;
-  await appendConsolidateToUsd(client, tx, accountId);
+  await appendConsolidateForSpend(client, tx, accountId);
 }
 
 /**

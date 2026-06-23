@@ -37,7 +37,12 @@ describe("getSpendableCreditBalance", () => {
       }
       return { balance: { addressBalance: "0", coinBalance: "0", balance: "0" } } as never;
     });
-    vi.spyOn(client, "listCoins").mockResolvedValue({ objects: [] } as never);
+    vi.spyOn(client, "listCoins").mockImplementation(async ({ coinType }) => {
+      if (coinType === MOCK_CREDIT_TYPE) {
+        return { objects: [{ objectId: "0xcredit", balance: "100000" }] } as never;
+      }
+      return { objects: [] } as never;
+    });
 
     const result = await fetchMod.getSpendableCreditBalance(client, PTB_DUMMY_ACCOUNT_ID);
     expect(result.internalRaw).toBe(1_000_000n);

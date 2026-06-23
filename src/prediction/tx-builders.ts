@@ -1,17 +1,17 @@
 /**
  * Async high-level prediction PTB builders with optional pre-sweep of parked
- * backing assets into wxUSD credit ({@link appendConsolidateToUsd}).
+ * backing assets into wxUSD credit ({@link appendConsolidateForSpend}).
  *
  * Takes both `WaterXClient` (native_custody / consolidate) and `PredictClient`
  * because sync prediction builders only target the prediction deployment.
  *
  * FE/BE tx services should call these instead of hand-composing
- * `appendConsolidateToUsd` before `placeOrder` / `batchClaim`.
+ * `appendConsolidateForSpend` before `placeOrder` / `batchClaim`.
  */
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
-import { appendConsolidateToUsd } from "../tx-builders.ts";
+import { appendConsolidateForSpend } from "../tx-builders.ts";
 import type { PredictClient } from "./client.ts";
 import {
   batchClaim,
@@ -24,9 +24,10 @@ import type { IdArgument } from "./types.ts";
 export interface PredictCommonBuildOpts {
   tx?: Transaction;
   /**
-   * Pre-sweep parked backing assets (USDC, USDsui, …) at the wxa account's
-   * address into USD credit before the main action — same semantics as perp
-   * {@link CommonBuildOpts.consolidateToUsd}. Default: `true`.
+   * Pre-sweep parked backing assets (USDC, USDsui, …) and address CREDIT at
+   * the wxa account's address into spendable wxUSD before the main action —
+   * same semantics as perp {@link CommonBuildOpts.consolidateToUsd}. Default:
+   * `true`.
    *
    * Requires `accountId` to be a plain address string (not a PTB argument).
    * When `accountId` is a dynamic `TransactionArgument`, the sweep is skipped.
@@ -54,7 +55,7 @@ async function maybeConsolidate(
 ): Promise<void> {
   if (opts?.consolidateToUsd === false) return;
   if (typeof accountId !== "string") return;
-  await appendConsolidateToUsd(perpClient, tx, accountId);
+  await appendConsolidateForSpend(perpClient, tx, accountId);
 }
 
 function stripPlaceOrderParams(params: BuildPlaceOrderTxParams): PlaceOrderParams {
