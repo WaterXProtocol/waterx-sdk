@@ -74,6 +74,32 @@ describe("consolidate-balance utils", () => {
     });
   });
 
+  it("probeAddressCreditBalance returns funds-only row", async () => {
+    const client = createUnitTestClient();
+    vi.spyOn(client, "getBalance").mockResolvedValue({
+      balance: { addressBalance: "420000", coinBalance: "0", balance: "420000" },
+    } as never);
+    vi.spyOn(client, "listCoins").mockResolvedValue({ objects: [] } as never);
+
+    await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
+      fundsRaw: 420_000n,
+      coinsRaw: 0n,
+    });
+  });
+
+  it("probeAddressCreditBalance tolerates getBalance failure", async () => {
+    const client = createUnitTestClient();
+    vi.spyOn(client, "getBalance").mockRejectedValue(new Error("rpc down"));
+    vi.spyOn(client, "listCoins").mockResolvedValue({
+      objects: [{ objectId: "0x1", balance: "5000" }],
+    } as never);
+
+    await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
+      fundsRaw: 0n,
+      coinsRaw: 5_000n,
+    });
+  });
+
   it("probeParkedBackingAssets returns [] when native_custody is missing", async () => {
     const config = structuredClone(MOCK_TESTNET_CONFIG);
     delete config.packages.native_custody;
