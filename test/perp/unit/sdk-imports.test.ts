@@ -9,6 +9,7 @@ import {
   executeTrading,
   fetchDepositVaa,
   getMarketData,
+  getSpendableCreditBalance,
   mintCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
@@ -39,6 +40,7 @@ describe("SDK package wiring (v3)", () => {
 
   it("exports fetch + WLP + staking", () => {
     expect(typeof getMarketData).toBe("function");
+    expect(typeof getSpendableCreditBalance).toBe("function");
     expect(typeof mintWlp).toBe("function");
     expect(typeof stake).toBe("function");
     expect(typeof claimReward).toBe("function");
@@ -65,5 +67,7 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof perp).toBe("object");
     expect(typeof prediction).toBe("object");
     expect(perp.WaterXClient).toBe(WaterXClient);
+    expect(typeof prediction.buildPlaceOrderTx).toBe("function");
+    expect(typeof prediction.buildBatchClaimTx).toBe("function");
   });
 });

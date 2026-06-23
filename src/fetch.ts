@@ -11,7 +11,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "./client.ts";
-import { DRY_RUN_SENDER } from "./constants.ts";
+import { COLLATERAL_DECIMALS, DRY_RUN_SENDER } from "./constants.ts";
 import {
   burnFeeRate as burnFeeRateCall,
   creditSupply as creditSupplyCall,
@@ -72,6 +72,12 @@ import {
   personalBurnCapAmount as personalBurnCapAmountCall,
   personalBurned as personalBurnedCall,
 } from "./generated/wormhole_bridge/wormhole_bridge.ts";
+import {
+  probeAddressCreditBalance,
+  probeParkedBackingAssets,
+  sumParkedBackingAsCreditRaw,
+  type ParkedBackingAssetBalance,
+} from "./utils/consolidate-balance.ts";
 
 // ============================================================================
 // Simulate / decode helpers
@@ -577,6 +583,52 @@ export async function getAccountBalance(
   })(tx);
   const bytes = await simulateAndExtract(client, tx);
   return BigInt(bcs.u64().parse(bytes));
+}
+
+/**
+ * Inclusive wxUSD credit an account can spend after the default async tx-builder
+ * pre-sweep ({@link appendConsolidateForSpend}).
+ *
+ * - `internalRaw` — stored `Balance<CREDIT>` (`getAccountBalance`).
+ * - `pendingBackingRaw` — native-custody backing assets (USDC, USDSUI, …)
+ *   parked at the account's Sui address, rescaled to CREDIT decimals at the
+ *   1:1 PSM peg (same probe as {@link appendConsolidateToUsd}).
+ * - `pendingCreditAtAddressRaw` — CREDIT at the account address (accumulator +
+ *   owned coins). Swept into the internal slot by
+ *   {@link appendConsolidateAddressCredit} via `consumeDepositDirect`.
+ * - `totalRaw` — sum of the three components; matches post-
+ *   {@link appendConsolidateForSpend} spendable balance for predict / perp
+ *   builders with `consolidateToUsd: true` (default).
+ */
+export interface SpendableCreditBalance {
+  internalRaw: bigint;
+  pendingBackingRaw: bigint;
+  pendingCreditAtAddressRaw: bigint;
+  totalRaw: bigint;
+  /** Per-asset breakdown for the backing-asset probe (empty when nothing parked). */
+  parkedBacking: ParkedBackingAssetBalance[];
+}
+
+export async function getSpendableCreditBalance(
+  client: WaterXClient,
+  accountId: string,
+): Promise<SpendableCreditBalance> {
+  const creditType = client.creditType();
+  const [internalRaw, parkedBacking, addressCredit] = await Promise.all([
+    getAccountBalance(client, accountId, creditType),
+    probeParkedBackingAssets(client, accountId),
+    probeAddressCreditBalance(client, accountId),
+  ]);
+  const pendingBackingRaw = sumParkedBackingAsCreditRaw(parkedBacking, COLLATERAL_DECIMALS);
+  const pendingCreditAtAddressRaw = addressCredit.fundsRaw + addressCredit.coinsRaw;
+  const totalRaw = internalRaw + pendingBackingRaw + pendingCreditAtAddressRaw;
+  return {
+    internalRaw,
+    pendingBackingRaw,
+    pendingCreditAtAddressRaw,
+    totalRaw,
+    parkedBacking,
+  };
 }
 
 // ============================================================================

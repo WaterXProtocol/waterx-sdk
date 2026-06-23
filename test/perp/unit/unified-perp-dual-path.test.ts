@@ -19,6 +19,8 @@ const NON_CLIENT_FIRST = new Set([
   "updatePythPrices",
   // Async gRPC sweep helpers — covered in tx-builders.test.ts with mocked getBalance/listCoins.
   "appendConsolidateToUsd",
+  "appendConsolidateAddressCredit",
+  "appendConsolidateForSpend",
   "buildConsolidateToUsdTx",
 ]);
 
