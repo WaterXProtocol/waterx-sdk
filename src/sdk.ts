@@ -13,6 +13,10 @@
 
 export { Client } from "./unified-client.ts";
 export type { ClientCreateOptions, PerpModule, PredictModule } from "./unified-client.ts";
+export type {
+  BuildBatchClaimTxParams as BuildPredictBatchClaimTxParams,
+  BuildPlaceOrderTxParams as BuildPredictPlaceOrderTxParams,
+} from "./prediction/tx-builders.ts";
 
 export * as perp from "./index.ts";
 export * as prediction from "./prediction/index.ts";

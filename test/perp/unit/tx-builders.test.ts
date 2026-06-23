@@ -11,6 +11,7 @@ import {
   buildClosePositionTx,
   buildDecreasePositionTx,
   buildDepositCollateralTx,
+  buildDepositFromWalletTx,
   buildExecuteWithdrawalTx,
   buildIncreasePositionTx,
   buildMintWlpTx,
@@ -29,7 +30,7 @@ import {
   MOCK_TESTNET_CONFIG,
   MOCK_USDC_TYPE,
 } from "../helpers/fixtures/mock-testnet-config.ts";
-import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
+import { PTB_DUMMY_ACCOUNT_ID, PTB_DUMMY_DEPOSIT_COIN } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const baseOrder = {
@@ -237,6 +238,20 @@ describe("tx-builders (v3)", () => {
     const tx = new Transaction();
     const out = await buildPlaceOrderTx(client, { ...common, main: baseOrder, tx });
     expect(out).toBe(tx);
+  });
+
+  it("buildDepositFromWalletTx chains mintCreditToAccount", async () => {
+    const tx = new Transaction();
+    const coin = tx.object(PTB_DUMMY_DEPOSIT_COIN);
+    const out = await buildDepositFromWalletTx(client, {
+      tx,
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      assetType: MOCK_CUSTODY_ASSET_TYPE,
+      assetCoin: coin,
+      consolidateToUsd: false,
+    });
+    expect(out).toBe(tx);
+    expect(out.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
   it("buildRedeemVaaTx chains redeem_vaa + consume_deposit_direct", () => {

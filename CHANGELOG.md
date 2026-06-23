@@ -8,7 +8,20 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
-## [2.3.0] - 2026-06-21
+### Added
+
+- **`getSpendableCreditBalance`** — read helper returning internal wxUSD slot +
+  parked backing assets (same probe as `appendConsolidateToUsd`) plus CREDIT at
+  the account address; `totalRaw` for inclusive free-margin displays.
+- **`buildDepositFromWalletTx`** — async wallet-deposit builder: optional
+  pre-sweep (`consolidateToUsd`, default `true`) + `mintCreditToAccount` in one PTB.
+- **`@waterx/sdk/prediction` `buildPlaceOrderTx` / `buildBatchClaimTx`** — async
+  prediction builders with the same optional pre-sweep (requires `WaterXClient` +
+  `PredictClient`); unified `Client.buildPredictPlaceOrderTx` /
+  `Client.buildPredictBatchClaimTx` wrap both line clients.
+- **`src/utils/consolidate-balance.ts`** — shared probe/rescale helpers used by
+  the read path and `appendConsolidateToUsd` (refactored to reuse the probe).
+
 
 ### Added
 

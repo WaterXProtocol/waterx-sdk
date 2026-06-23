@@ -11,7 +11,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "./client.ts";
-import { DRY_RUN_SENDER } from "./constants.ts";
+import { COLLATERAL_DECIMALS, DRY_RUN_SENDER } from "./constants.ts";
 import {
   burnFeeRate as burnFeeRateCall,
   creditSupply as creditSupplyCall,
@@ -72,6 +72,11 @@ import {
   personalBurnCapAmount as personalBurnCapAmountCall,
   personalBurned as personalBurnedCall,
 } from "./generated/wormhole_bridge/wormhole_bridge.ts";
+import {
+  probeParkedBackingAssets,
+  sumParkedBackingAsCreditRaw,
+  type ParkedBackingAssetBalance,
+} from "./utils/consolidate-balance.ts";
 
 // ============================================================================
 // Simulate / decode helpers
@@ -577,6 +582,64 @@ export async function getAccountBalance(
   })(tx);
   const bytes = await simulateAndExtract(client, tx);
   return BigInt(bcs.u64().parse(bytes));
+}
+
+/**
+ * Inclusive wxUSD credit an account can spend after the next async tx-builder
+ * sweep plus any object-owned CREDIT already at the account address.
+ *
+ * - `internalRaw` — stored `Balance<CREDIT>` (`getAccountBalance`).
+ * - `pendingBackingRaw` — native-custody backing assets (USDC, USDSUI, …)
+ *   parked at the account's Sui address, rescaled to CREDIT decimals at the
+ *   1:1 PSM peg (same probe as {@link appendConsolidateToUsd}).
+ * - `pendingCreditAtAddressRaw` — `getBalance` for CREDIT at the account
+ *   address (accumulator + owned coins). Not swept by
+ *   {@link appendConsolidateToUsd}; included so overview UIs match FE parity.
+ * - `totalRaw` — sum of the three components.
+ */
+export interface SpendableCreditBalance {
+  internalRaw: bigint;
+  pendingBackingRaw: bigint;
+  pendingCreditAtAddressRaw: bigint;
+  totalRaw: bigint;
+  /** Per-asset breakdown for the backing-asset probe (empty when nothing parked). */
+  parkedBacking: ParkedBackingAssetBalance[];
+}
+
+export async function getSpendableCreditBalance(
+  client: WaterXClient,
+  accountId: string,
+): Promise<SpendableCreditBalance> {
+  const creditType = client.creditType();
+  const [internalRaw, parkedBacking, addressCreditRaw] = await Promise.all([
+    getAccountBalance(client, accountId, creditType),
+    probeParkedBackingAssets(client, accountId),
+    readAddressCoinBalance(client, accountId, creditType),
+  ]);
+  const pendingBackingRaw = sumParkedBackingAsCreditRaw(parkedBacking, COLLATERAL_DECIMALS);
+  const pendingCreditAtAddressRaw = addressCreditRaw;
+  const totalRaw = internalRaw + pendingBackingRaw + pendingCreditAtAddressRaw;
+  return {
+    internalRaw,
+    pendingBackingRaw,
+    pendingCreditAtAddressRaw,
+    totalRaw,
+    parkedBacking,
+  };
+}
+
+/** Sum of address accumulator + owned coins for `coinType` at `owner`. */
+async function readAddressCoinBalance(
+  client: WaterXClient,
+  owner: string,
+  coinType: string,
+): Promise<bigint> {
+  try {
+    const result = await client.getBalance({ owner, coinType });
+    return BigInt(result.balance.balance);
+  } catch {
+    return 0n;
+  }
 }
 
 // ============================================================================
