@@ -12,7 +12,6 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import type { WaterXClient } from "../client.ts";
 import { appendConsolidateToUsd } from "../tx-builders.ts";
-
 import type { PredictClient } from "./client.ts";
 import {
   batchClaim,

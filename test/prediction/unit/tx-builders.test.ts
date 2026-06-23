@@ -1,10 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildBatchClaimTx,
-  buildPlaceOrderTx,
-} from "../../../src/prediction/tx-builders.ts";
+import { buildBatchClaimTx, buildPlaceOrderTx } from "../../../src/prediction/tx-builders.ts";
 import { createUnitTestClient } from "../../perp/helpers/test-client.ts";
 import { minimalPlaceOrderParams, PTB_DUMMY } from "../fixtures/ptb-params.ts";
 import { createMockPredictClient } from "../helpers/mock-client.ts";
