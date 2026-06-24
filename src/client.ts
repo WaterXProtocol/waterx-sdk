@@ -162,47 +162,26 @@ export class WaterXClient {
   }
 
   /**
-   * True when `ticker` is priced by `waterx_constant_rule` (a constant pin,
+   * True when `ticker` is priced by `constant_rule` (a constant pin,
    * e.g. `USDCUSD → $1`) rather than Pyth. Such tickers are fed via
    * `constant_rule::feed` and need no Pyth update; see {@link refreshOraclePrices}.
    *
    * All-or-nothing, mirroring {@link getSupraRule} and the keeper: only routes a
    * ticker to the constant rule when the rule is FULLY wired (`published_at` +
-   * `config` present). A half-populated block — `prices` listed before the rule
-   * is deployed, a realistic mid-rollout state — would otherwise make this true
-   * while {@link aggregateTickerWithConstant} throws, aborting the whole
-   * price-refresh PTB instead of safely falling back to Pyth.
+   * `config` present). A half-populated block — a `feeds` entry listed before the
+   * rule is deployed, a realistic mid-rollout state — would otherwise make this
+   * true while {@link aggregateTicker} throws, aborting the whole price-refresh PTB
+   * instead of safely falling back to Pyth.
+   *
+   * Whether a constant ticker is *also* Pyth-fed (the dual-feed transition state)
+   * or constant-only is not a separate flag — it falls out of whether the ticker
+   * still has a `pyth_rule.feeds` entry. {@link aggregateTicker} feeds each rule the
+   * ticker is configured for, so no `isDualFeed` / `isConstantOnly` predicate is needed.
    */
   isConstantTicker(ticker: string): boolean {
-    const c = this.config.packages.waterx_constant_rule;
+    const c = this.config.packages.constant_rule;
     if (!c?.published_at || !c.config) return false;
-    return c.prices?.[ticker] !== undefined;
-  }
-
-  /**
-   * True when `ticker` is mid-migration and must be fed by *both* Pyth and the
-   * constant rule into one collector — so the aggregator can hold the
-   * `{Pyth, Constant}` weight set without an `EMissingPriceSource` window while
-   * rule weights are flipped (on-chain `aggregator::remove_outliers` requires
-   * every weighted rule present in the collector). Listed in
-   * `waterx_constant_rule.dual_feed`; clamped to `prices` so a stray entry that
-   * isn't a real constant ticker can't double-feed against no weight. See
-   * {@link aggregateTickerWithDual} and the USDCUSD runbook in `waterx-contract`.
-   */
-  isDualFeedTicker(ticker: string): boolean {
-    const c = this.config.packages.waterx_constant_rule;
-    if (!c?.published_at || !c.config) return false;
-    if (c.prices?.[ticker] === undefined) return false;
-    return c.dual_feed?.includes(ticker) ?? false;
-  }
-
-  /**
-   * True when `ticker` is fed by the constant rule *alone* (steady state): no
-   * Pyth feed call, so it skips the Pyth update. Dual-feed tickers are constant
-   * *and* Pyth, so they are NOT constant-only.
-   */
-  isConstantOnlyTicker(ticker: string): boolean {
-    return this.isConstantTicker(ticker) && !this.isDualFeedTicker(ticker);
+    return c.feeds?.[ticker] !== undefined;
   }
 
   /**

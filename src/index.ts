@@ -10,6 +10,7 @@ export {
 } from "./config.ts";
 export type {
   BasePackageEntry,
+  ConstantFeedEntry,
   WaterxReferralPackage,
   LoadConfigOptions,
   NativeCustodyAsset,
@@ -17,6 +18,7 @@ export type {
   PythInfraConfig,
   PythRulePackage,
   PythSponsorRulePackage,
+  SupraFeedEntry,
   SupraRulePackage,
   TestnetFaucetPackage,
   TrustedEmitterRow,
@@ -121,8 +123,8 @@ export * from "./fetch.ts";
 // ======== Pyth oracle utilities ========
 export {
   PythCache,
+  aggregateTicker,
   aggregateTickerWithConstant,
-  aggregateTickerWithDual,
   aggregateTickerWithPyth,
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
