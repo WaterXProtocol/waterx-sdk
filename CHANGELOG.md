@@ -16,6 +16,8 @@ reference the PR that introduced them.
   Lets delegate-scoping callers compose staking permission masks symbolically
   the same way they already can for perp and prediction. (#53)
 
+## [2.4.0] - 2026-06-24
+
 ### Changed
 
 - **Rule config schema: `constant_rule` / `supra_rule` now follow `pyth_rule.feeds`.**
