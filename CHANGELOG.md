@@ -8,6 +8,8 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-06-24
+
 ### Added
 
 - **Staking permission bitmasks exported.** New `STAKING_PERM_DEPOSIT_STAKE` /
