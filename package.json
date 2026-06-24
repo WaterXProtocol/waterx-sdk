@@ -1,6 +1,6 @@
 {
   "name": "@waterx/sdk",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "WaterX SDK — perpetuals and prediction markets on Sui",
   "license": "MIT",
   "author": "WaterX",
