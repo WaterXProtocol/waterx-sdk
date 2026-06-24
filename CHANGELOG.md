@@ -8,6 +8,27 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Changed
+
+- **Rule config schema: `constant_rule` / `supra_rule` now follow `pyth_rule.feeds`.**
+  Every oracle-rule package uses a `feeds: { TICKER: { … } }` map of per-ticker
+  objects instead of scalar maps. The `waterx_constant_rule` package key is renamed
+  to **`constant_rule`** (matching `pyth_rule` / `supra_rule`): `prices` (ticker →
+  price string) → `feeds` (ticker → `{ price }`). `supra_rule`: `pairs` (ticker →
+  number) → `feeds` (ticker → `{ pair_id, tolerance_ms? }`). New `ConstantFeedEntry`
+  / `SupraFeedEntry` exports.
+- **Oracle routing unified — one `aggregateTicker`; `dual_feed` flag + the dual
+  helper/predicates removed.** A ticker is fed by every rule it is configured for:
+  Pyth if it has a `pyth_rule.feeds` entry, Supra when enabled, Constant when it is
+  a constant ticker — "feed rule R for ticker T iff T ∈ R.feeds". "Dual-feed"
+  (Pyth + Constant) and "constant-only" fall out of membership, so the `dual_feed`
+  flag is gone and a constant ticker is dual while it still has a Pyth feed, then
+  constant-only once removed from `pyth_rule.feeds`. **Removed** `aggregateTickerWithDual`,
+  `WaterXClient.isDualFeedTicker`, `WaterXClient.isConstantOnlyTicker`; added
+  `aggregateTicker`. `aggregateTickerWithPyth` / `aggregateTickerWithConstant` stay as
+  thin wrappers. **Breaking config-schema + API change** — the `waterx-config` JSON +
+  keeper parser must move in lockstep (parser-first). (#51)
+
 ### Added
 
 - **`getSpendableCreditBalance`** — read helper returning internal wxUSD slot +

@@ -45,14 +45,14 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       version: 1,
       pyth_sponsor: "0x1528bdc52a60aaab31a9501001dfa69377708e4c2296c3d2e25b9ca0f4e9e256",
     },
-    waterx_constant_rule: {
+    constant_rule: {
       published_at: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",
       original_id: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",
       version: 1,
       config: "0xc04574571e0002000000000000000000000000000000000000000000c0577cf9",
       // Empty by default so the shared fixture keeps every ticker on Pyth.
       // Constant-routing tests clone the config and populate this map.
-      prices: {},
+      feeds: {},
     },
     waterx_account: {
       published_at: "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",

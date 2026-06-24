@@ -165,7 +165,9 @@ describe("constant rule oracle routing", () => {
   it("aggregateTickerWithConstant appends collector → constant_rule::feed → aggregate", async () => {
     const { aggregateTickerWithConstant } = await import("../../../src/utils/pyth.ts");
     const client = createUnitTestClient();
-    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    // Constant-ONLY: drop the Pyth feed so USDCUSD isn't dual.
+    delete client.config.packages.pyth_rule!.feeds.USDCUSD;
     const tx = new Transaction();
     aggregateTickerWithConstant(tx, client, { ticker: "USDCUSD" });
     const targets = moveTargets(tx);
@@ -175,13 +177,28 @@ describe("constant rule oracle routing", () => {
     expect(targets).not.toContain("pyth_rule::feed");
   });
 
-  it("aggregateTickerWithConstant throws when constant rule is not configured", async () => {
+  it("aggregateTickerWithConstant throws for a dual-feed ticker (still in pyth_rule.feeds)", async () => {
     const { aggregateTickerWithConstant } = await import("../../../src/utils/pyth.ts");
     const client = createUnitTestClient();
-    delete client.config.packages.waterx_constant_rule;
+    // USDCUSD is in the fixture's pyth_rule.feeds → constant + Pyth = dual. The
+    // constant-only wrapper must refuse it (feeding only Constant would abort
+    // aggregate with EMissingPriceSource on the still-weighted Pyth rule).
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
     const tx = new Transaction();
     expect(() => aggregateTickerWithConstant(tx, client, { ticker: "USDCUSD" })).toThrow(
-      /waterx_constant_rule/,
+      /dual-feed/,
+    );
+  });
+
+  it("aggregateTickerWithConstant throws when the ticker has no rule (constant rule absent)", async () => {
+    const { aggregateTickerWithConstant } = await import("../../../src/utils/pyth.ts");
+    const client = createUnitTestClient();
+    delete client.config.packages.constant_rule;
+    // Also constant-only (no Pyth feed) so the dual guard doesn't fire first.
+    delete client.config.packages.pyth_rule!.feeds.USDCUSD;
+    const tx = new Transaction();
+    expect(() => aggregateTickerWithConstant(tx, client, { ticker: "USDCUSD" })).toThrow(
+      /no oracle rule/,
     );
   });
 
@@ -191,7 +208,9 @@ describe("constant rule oracle routing", () => {
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const client = createUnitTestClient();
-    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    // Constant-ONLY (steady state): not in pyth_rule.feeds → no Pyth update / Hermes.
+    delete client.config.packages.pyth_rule!.feeds.USDCUSD;
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["USDCUSD"]);
 
@@ -215,7 +234,9 @@ describe("constant rule oracle routing", () => {
 
     const client = createUnitTestClient();
     attachPythGrpcMocks(client);
-    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    // USDC constant-ONLY (removed from pyth.feeds); BTC stays a Pyth ticker.
+    delete client.config.packages.pyth_rule!.feeds.USDCUSD;
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"]);
 
@@ -226,12 +247,13 @@ describe("constant rule oracle routing", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("aggregateTickerWithDual appends pyth_rule::feed + constant_rule::feed + aggregate", async () => {
-    const { aggregateTickerWithDual } = await import("../../../src/utils/pyth.ts");
+  it("aggregateTicker feeds both pyth + constant for a dual ticker", async () => {
+    const { aggregateTicker } = await import("../../../src/utils/pyth.ts");
     const client = createUnitTestClient();
-    client.config.packages.waterx_constant_rule!.prices = { USDCUSD: "1000000000" };
+    // USDCUSD has a pyth feed (fixture) AND a constant entry → fed by both.
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
     const tx = new Transaction();
-    aggregateTickerWithDual(tx, client, {
+    aggregateTicker(tx, client, {
       ticker: "USDCUSD",
       priceInfoObjectId: client.getPythFeed("USDCUSD").price_info_object,
     });
@@ -242,14 +264,12 @@ describe("constant rule oracle routing", () => {
     expect(targets).toContain("oracle::aggregate");
   });
 
-  it("aggregateTickerWithDual throws when constant rule is not configured", async () => {
-    const { aggregateTickerWithDual } = await import("../../../src/utils/pyth.ts");
+  it("aggregateTicker throws when no rule applies to the ticker", async () => {
+    const { aggregateTicker } = await import("../../../src/utils/pyth.ts");
     const client = createUnitTestClient();
-    delete client.config.packages.waterx_constant_rule;
+    // No priceInfoObjectId (not Pyth-fed here) and not a constant ticker → nothing to feed.
     const tx = new Transaction();
-    expect(() =>
-      aggregateTickerWithDual(tx, client, { ticker: "USDCUSD", priceInfoObjectId: "0x1" }),
-    ).toThrow(/waterx_constant_rule/);
+    expect(() => aggregateTicker(tx, client, { ticker: "BTCUSD" })).toThrow(/no oracle rule/);
   });
 
   it("refreshOraclePrices dual-feed ticker runs the Pyth update AND feeds both rules", async () => {
@@ -264,9 +284,11 @@ describe("constant rule oracle routing", () => {
 
     const client = createUnitTestClient();
     attachPythGrpcMocks(client); // keyed to the BTCUSD feed id
-    // Mark BTCUSD as a transition (dual-feed) constant ticker.
-    client.config.packages.waterx_constant_rule!.prices = { BTCUSD: "65000000000000" };
-    client.config.packages.waterx_constant_rule!.dual_feed = ["BTCUSD"];
+    // BTCUSD is in the fixture's pyth_rule.feeds; adding a constant entry while it
+    // still has a Pyth feed makes it a transition (dual-feed) ticker — no flag.
+    client.config.packages.constant_rule!.feeds = {
+      BTCUSD: { price: "65000000000000" },
+    };
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["BTCUSD"]);
 
