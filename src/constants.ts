@@ -54,6 +54,13 @@ export const PERM_REDEEM_WLP = 512;
 export const PERM_ALL_TRADING = 0xff;
 export const PERM_ALL = 0xffff;
 
+// ======== Staking Permission Bitmasks (matches waterx_staking.move) ========
+export const STAKING_PERM_DEPOSIT_STAKE = 1 << 0;
+export const STAKING_PERM_REDEEM_STAKE = 1 << 1;
+export const STAKING_PERM_CLAIM_REWARD = 1 << 2;
+export const STAKING_PERM_ALL =
+  STAKING_PERM_DEPOSIT_STAKE | STAKING_PERM_REDEEM_STAKE | STAKING_PERM_CLAIM_REWARD;
+
 // ======== Order Type Tags ========
 export const ORDER_LIMIT_BUY = 0;
 export const ORDER_LIMIT_SELL = 1;

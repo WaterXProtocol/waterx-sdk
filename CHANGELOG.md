@@ -8,6 +8,14 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Added
+
+- **Staking permission bitmasks exported.** New `STAKING_PERM_DEPOSIT_STAKE` /
+  `STAKING_PERM_REDEEM_STAKE` / `STAKING_PERM_CLAIM_REWARD` / `STAKING_PERM_ALL`
+  constants (matching `waterx_staking.move`), re-exported from the package root.
+  Lets delegate-scoping callers compose staking permission masks symbolically
+  the same way they already can for perp and prediction. (#53)
+
 ### Changed
 
 - **Rule config schema: `constant_rule` / `supra_rule` now follow `pyth_rule.feeds`.**
