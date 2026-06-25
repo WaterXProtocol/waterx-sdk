@@ -41,6 +41,19 @@ reference the PR that introduced them.
   - **Cross-network caveat:** `client.account` follows the **perp** line; on
     split-network setups (`opts.perp.network !== opts.predict.network`), reach the
     predict line's generic account builders via the `prediction` namespace.
+    `WaterXClient.create` now emits a `console.warn` in this case so it isn't
+    a silent footgun.
+- **Internal: shared transport extracted to `BaseLineClient`.** (#55)
+  `PerpClient` and `PredictClient` no longer each duplicate the gRPC client
+  construction, the read wrappers, `simulate` / `signAndExecuteTransaction`, and
+  `packageIds()` — these now live on a shared `BaseLineClient` base; the perp
+  config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) move to a
+  `PerpConfigView` that `PerpClient` composes. Public surface is unchanged
+  (`PerpClient` / `PredictClient` keep all their methods); `PerpClient`'s
+  `signAndExecuteTransaction` signature widens additively (now accepts the same
+  generic `include` / `additionalSignatures` / `Uint8Array` form as the predict
+  line). A new unit guard asserts no grafted builder name collides with a
+  sub-client prototype method.
 
 ## [2.4.1] - 2026-06-24
 

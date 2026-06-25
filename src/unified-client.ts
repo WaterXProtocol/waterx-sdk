@@ -190,9 +190,11 @@ export class WaterXClient {
   }
 
   private constructor(perpClient: PerpClient, predictClient: PredictClient) {
-    // Graft the bound builders onto the sub-client instances (no name collisions
-    // with the client's own methods — verified). The instances stay
-    // `instanceof PerpClient` / `PredictClient`, so signing/config methods work.
+    // Graft the bound builders onto the sub-client instances. No builder name
+    // collides with the client's own (transport/config) methods — enforced by the
+    // "graft guard" unit test (disjoint from the prototype chain), not just a
+    // comment. The instances stay `instanceof PerpClient` / `PredictClient`, so
+    // signing/config methods work.
     this.perp = Object.assign(perpClient, bindClient(perpClient, perpOps)) as PerpClient &
       PerpModule;
     this.predict = Object.assign(
@@ -221,13 +223,26 @@ export class WaterXClient {
     const { network: perpNetwork, ...perpRest } = opts.perp ?? {};
     const { network: predictNetwork, ...predictRest } = opts.predict ?? {};
 
-    const perpClient = await PerpClient.create(perpNetwork ?? baseNetwork, {
+    const resolvedPerpNetwork = perpNetwork ?? baseNetwork;
+    const resolvedPredictNetwork = predictNetwork ?? baseNetwork;
+    if (resolvedPerpNetwork !== resolvedPredictNetwork) {
+      // `client.account` always follows the perp line (see the class header).
+      // On a split-network setup a caller reaching for `client.account.*` would
+      // silently build against the perp deployment — warn so it isn't a surprise.
+      console.warn(
+        `[WaterXClient] split-network: perp=${resolvedPerpNetwork} predict=${resolvedPredictNetwork}. ` +
+          `client.account follows the perp line (${resolvedPerpNetwork}); reach the predict line's ` +
+          `generic account builders via the prediction namespace directly.`,
+      );
+    }
+
+    const perpClient = await PerpClient.create(resolvedPerpNetwork, {
       grpcUrl: opts.grpcUrl,
       configUrl: opts.configUrl,
       cache: opts.cache,
       ...perpRest,
     });
-    const predictClient = await PredictClient.create(predictNetwork ?? baseNetwork, {
+    const predictClient = await PredictClient.create(resolvedPredictNetwork, {
       grpcUrl: opts.grpcUrl,
       configUrl: opts.configUrl,
       cache: opts.cache,

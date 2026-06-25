@@ -29,6 +29,51 @@ const predAccountSpecific = {
   disallowPredictionProtocolAsset,
 };
 
+// Helpers whose first arg is NOT the line client must not be exposed as bound
+// facade methods (binding would pass the client where a value is expected).
+// Mirrors `NON_CLIENT_FIRST` in src/unified-client.ts.
+const NON_CLIENT_FIRST = [
+  "extractReturnBytes",
+  "base64UrlNoPadEncode",
+  "base64UrlNoPadDecode",
+  "generateGiftSeed",
+  "encodeGiftUrl",
+  "parseGiftUrl",
+  "deriveGiftKeypair",
+  "buildGiftClaimMessage",
+  "signGiftClaim",
+];
+
+const perpOps = {
+  ...perpTrading,
+  ...perpOrder,
+  ...perpWlp,
+  ...perpStaking,
+  ...perpReferral,
+  ...perpTx,
+  ...perpFetch,
+};
+const predictOps = {
+  ...predAccountSpecific,
+  ...predAdmin,
+  ...predOps,
+  ...predFetch,
+  ...predGift,
+};
+
+/** Method names across the whole prototype chain (own + inherited, e.g. BaseLineClient). */
+const protoMethodNames = (ctor: { prototype: object }): Set<string> => {
+  const names = new Set<string>();
+  let proto: object | null = ctor.prototype;
+  while (proto && proto !== Object.prototype) {
+    for (const n of Object.getOwnPropertyNames(proto)) {
+      if (n !== "constructor") names.add(n);
+    }
+    proto = Object.getPrototypeOf(proto) as object | null;
+  }
+  return names;
+};
+
 // Stub clients: the umbrella constructor only grafts/binds functions; it never
 // touches the client until a builder is actually invoked, so empty stubs are
 // enough. `Object.assign` mutates the stub in place and returns it, so
@@ -112,19 +157,6 @@ describe("umbrella WaterXClient", () => {
   });
 
   it("coverage guard: client-first builders are bound; non-client-first helpers are not", () => {
-    // Helpers whose first arg is NOT the line client must not be exposed as bound
-    // facade methods (binding would pass the client where a value is expected).
-    const NON_CLIENT_FIRST = [
-      "extractReturnBytes",
-      "base64UrlNoPadEncode",
-      "base64UrlNoPadDecode",
-      "generateGiftSeed",
-      "encodeGiftUrl",
-      "parseGiftUrl",
-      "deriveGiftKeypair",
-      "buildGiftClaimMessage",
-      "signGiftClaim",
-    ];
     const expected = (ns: object) => fnNames(ns).filter((n) => !NON_CLIENT_FIRST.includes(n));
 
     const accountExpected = expected({ ...accountOps });
@@ -135,15 +167,7 @@ describe("umbrella WaterXClient", () => {
       ).toBeTypeOf("function");
     }
 
-    const perpExpected = expected({
-      ...perpTrading,
-      ...perpOrder,
-      ...perpWlp,
-      ...perpStaking,
-      ...perpReferral,
-      ...perpTx,
-      ...perpFetch,
-    });
+    const perpExpected = expected(perpOps);
     for (const name of perpExpected) {
       expect(
         (client.perp as unknown as Record<string, unknown>)[name],
@@ -151,13 +175,7 @@ describe("umbrella WaterXClient", () => {
       ).toBeTypeOf("function");
     }
 
-    const predExpected = expected({
-      ...predAccountSpecific,
-      ...predAdmin,
-      ...predOps,
-      ...predFetch,
-      ...predGift,
-    });
+    const predExpected = expected(predictOps);
     for (const name of predExpected) {
       expect(
         (client.predict as unknown as Record<string, unknown>)[name],
@@ -176,6 +194,35 @@ describe("umbrella WaterXClient", () => {
     expect(accountExpected.length).toBeGreaterThan(10);
     expect(perpExpected.length).toBeGreaterThan(20);
     expect(predExpected.length).toBeGreaterThan(20);
+  });
+
+  it("graft guard: builder names never collide with sub-client prototype methods", () => {
+    // The umbrella grafts builders via `Object.assign(client, …)`, which writes
+    // OWN props that silently shadow PROTOTYPE methods. This asserts no builder
+    // name overlaps the sub-client's method chain (incl. inherited BaseLineClient
+    // transport: simulate / getObject / signAndExecuteTransaction / …), turning
+    // the "no collisions — verified" claim into a CI-enforced invariant.
+    const isBound = (n: string) => !NON_CLIENT_FIRST.includes(n);
+
+    const perpProto = protoMethodNames(PerpClient);
+    const perpCollisions = fnNames(perpOps)
+      .filter(isBound)
+      .filter((n) => perpProto.has(n));
+    expect(perpCollisions, `perp builder/prototype collisions: ${perpCollisions}`).toEqual([]);
+
+    const predictProto = protoMethodNames(PredictClient);
+    const predictCollisions = fnNames(predictOps)
+      .filter(isBound)
+      .filter((n) => predictProto.has(n));
+    expect(predictCollisions, `predict builder/prototype collisions: ${predictCollisions}`).toEqual(
+      [],
+    );
+
+    // Sanity: the prototype chains actually include inherited transport methods,
+    // so the guard is checking against a real surface (not an empty set).
+    expect(perpProto.has("simulate")).toBe(true);
+    expect(perpProto.has("signAndExecuteTransaction")).toBe(true);
+    expect(predictProto.has("simulate")).toBe(true);
   });
 
   it("WaterXClient.create loads perp + predict configs and wires both lines", async () => {
