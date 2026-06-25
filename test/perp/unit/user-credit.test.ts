@@ -4,7 +4,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/client.ts";
 import {
   consumeCreditDeposit,
   custodyMint,
@@ -199,10 +199,10 @@ describe("user/credit — PTB builders (configured pipeline)", () => {
 });
 
 describe("user/credit — missing config guards", () => {
-  function clientMissing(partial: Partial<typeof MOCK_TESTNET_CONFIG.packages>): WaterXClient {
+  function clientMissing(partial: Partial<typeof MOCK_TESTNET_CONFIG.packages>): PerpClient {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     Object.assign(cfg.packages, partial);
-    return new WaterXClient("TESTNET", cfg, {
+    return new PerpClient("TESTNET", cfg, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
   }

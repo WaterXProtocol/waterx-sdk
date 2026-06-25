@@ -3,7 +3,7 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
-import type { WaterXClient } from "@waterx/sdk";
+import type { PerpClient } from "@waterx/sdk";
 import { expect } from "vitest";
 
 import { getWxaAccountBalance } from "../../helpers/e2e/fetch-read-helpers-for-tests.ts";
@@ -23,7 +23,7 @@ export type IntegrationExecTx = (
   opts?: { gasBudget?: number },
 ) => Promise<NormalizedIntegrationTxResult>;
 
-export function selectedIntegrationLifecycleBasesFromEnv(client: WaterXClient): string[] {
+export function selectedIntegrationLifecycleBasesFromEnv(client: PerpClient): string[] {
   const all = activeLifecycleTestBasesIntegration(client);
   const raw = process.env.WATERX_INTEGRATION_BASES?.trim();
   if (!raw) return all;
@@ -49,7 +49,7 @@ export function selectedIntegrationLifecycleBasesFromEnv(client: WaterXClient): 
 
 /**
  * Parses `WATERX_INTEGRATION_BASES` against the static ticker table (**no WaterX client**).
- * Intended for Vitest **test discovery**: titles resolve before integration `WaterXClient` bootstrap.
+ * Intended for Vitest **test discovery**: titles resolve before integration `PerpClient` bootstrap.
  * Throws on symbols outside {@link LIFECYCLE_TEST_TICKER_ORDER}.
  */
 export function integrationLifecycleBasesConfiguredOrStaticDefault(): readonly string[] {
@@ -104,7 +104,7 @@ export function leverageBpsFromPositionOpened(ev: unknown): bigint {
  * Top up wxa account USDC to at least `minBalance` (smallest units) from the signer's wallet.
  */
 export async function ensureScratchLifecycleMinUsdc(
-  client: WaterXClient,
+  client: PerpClient,
   trader: Ed25519Keypair,
   accountId: string,
   owner: string,
@@ -128,7 +128,7 @@ export async function ensureScratchLifecycleMinUsdc(
 /** @deprecated v2 resize probe — not ported for v3 tickers yet. */
 export async function simulateResizeForIntegrationOrSkip(
   ctx: { skip: (reason?: string) => void },
-  _client: WaterXClient,
+  _client: PerpClient,
   _ticker: string,
   _params: unknown,
 ): Promise<bigint | undefined> {

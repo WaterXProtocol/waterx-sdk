@@ -16,7 +16,7 @@
 
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "./client.ts";
+import type { PerpClient } from "./client.ts";
 import { consumeDepositDirect } from "./generated/waterx_account/direct_rule.ts";
 import { requestDepositFromFunds, requestDepositFromReceivings } from "./user/account.ts";
 import {
@@ -140,7 +140,7 @@ function newTx(opts?: CommonBuildOpts): Transaction {
  */
 async function refreshWlpPoolOracles(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   extraTickers: string[],
   opts: {
     cache?: PythCache;
@@ -169,7 +169,7 @@ async function refreshWlpPoolOracles(
  *   trading::execute(req)
  */
 async function wrapRequestAndExecute(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   req: RequestParams & { accountId: string },
   collateralTicker: string,
@@ -225,7 +225,7 @@ async function wrapRequestAndExecute(
  * for the loaded deployment.
  */
 export async function appendConsolidateToUsd(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
@@ -274,7 +274,7 @@ export async function appendConsolidateToUsd(
  * balance.
  */
 export async function appendConsolidateAddressCredit(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
@@ -325,7 +325,7 @@ export async function appendConsolidateAddressCredit(
  * is enabled (default).
  */
 export async function appendConsolidateForSpend(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
@@ -335,7 +335,7 @@ export async function appendConsolidateForSpend(
 }
 
 function consumeDepositRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   depositRequest: TransactionArgument,
   coinType: string,
@@ -351,7 +351,7 @@ function consumeDepositRequest(
 }
 
 function foldDepositRequestToUsd(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   depositRequest: TransactionArgument,
   assetType: string,
@@ -365,7 +365,7 @@ function foldDepositRequestToUsd(
 
 /** Internal: run the async sweep iff `consolidateToUsd !== false`. */
 async function maybeConsolidate(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   accountId: string,
   opts: CommonBuildOpts | undefined,
@@ -382,7 +382,7 @@ async function maybeConsolidate(
  * `client.simulate(tx)` to detect a no-op before submitting.
  */
 export async function buildConsolidateToUsdTx(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   tx?: Transaction,
 ): Promise<Transaction> {
@@ -400,7 +400,7 @@ export interface BuildClosePositionParams extends ClosePositionRequestParams, Co
 }
 
 export async function buildClosePositionTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildClosePositionParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -421,7 +421,7 @@ export interface BuildIncreasePositionParams
 }
 
 export async function buildIncreasePositionTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildIncreasePositionParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -442,7 +442,7 @@ export interface BuildDecreasePositionParams
 }
 
 export async function buildDecreasePositionTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildDecreasePositionParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -467,7 +467,7 @@ export interface BuildDepositCollateralParams
 }
 
 export async function buildDepositCollateralTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildDepositCollateralParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -488,7 +488,7 @@ export interface BuildWithdrawCollateralParams
 }
 
 export async function buildWithdrawCollateralTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildWithdrawCollateralParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -512,7 +512,7 @@ export interface BuildPlaceOrderParams extends PlaceOrderRequestParams, CommonBu
 }
 
 export async function buildPlaceOrderTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildPlaceOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -532,7 +532,7 @@ export interface BuildCancelOrderParams extends CancelOrderRequestParams, Common
 }
 
 export async function buildCancelOrderTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildCancelOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -552,7 +552,7 @@ export interface BuildUpdateOrderParams extends UpdateOrderRequestParams, Common
 }
 
 export async function buildUpdateOrderTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildUpdateOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -572,7 +572,7 @@ export interface BuildCancelPreOrderParams extends CancelPreOrderRequestParams, 
 }
 
 export async function buildCancelPreOrderTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildCancelPreOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -592,7 +592,7 @@ export interface BuildAddPreOrderParams extends AddPreOrderRequestParams, Common
 }
 
 export async function buildAddPreOrderTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildAddPreOrderParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -627,7 +627,7 @@ export interface BuildMintWlpParams extends MintWlpParams, CommonBuildOpts {
  * witness to. Pyth update fees come from `tx.gas`.
  */
 export async function buildMintWlpTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildMintWlpParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -672,7 +672,7 @@ export interface BuildMintAndStakeWlpParams extends BuildMintWlpParams {
  * slot earns nothing.
  */
 export async function buildMintAndStakeWlpTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildMintAndStakeWlpParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -726,7 +726,7 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
  * into a larger PTB that already pre-pumps prices.
  */
 export async function buildUnstakeAndRequestRedeemWlpTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildUnstakeAndRequestRedeemWlpParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
@@ -789,7 +789,7 @@ export interface BuildCancelRedeemAndStakeWlpParams extends CancelRedeemWlpParam
  * invariant that user-held WLP is always staked.
  */
 export function buildCancelRedeemAndStakeWlpTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildCancelRedeemAndStakeWlpParams,
 ): Transaction {
   const tx = newTx(params);
@@ -840,7 +840,7 @@ export interface BuildClaimRewardsToAccountParams extends CommonBuildOpts {
  * `wxa_account::receive` in a separate user action.
  */
 export function buildClaimRewardsToAccountTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildClaimRewardsToAccountParams,
 ): Transaction {
   const tx = newTx(params);
@@ -880,7 +880,7 @@ export interface BuildRedeemVaaParams extends RedeemVaaParams {
  * `DepositRequest<CREDIT>` via the configured wxa deposit policy, in one
  * PTB. The recipient wxa account is encoded in the VAA payload.
  */
-export function buildRedeemVaaTx(client: WaterXClient, params: BuildRedeemVaaParams): Transaction {
+export function buildRedeemVaaTx(client: PerpClient, params: BuildRedeemVaaParams): Transaction {
   const tx = params.tx ?? new Transaction();
   const req = redeemVaa(client, tx, params);
   consumeCreditDeposit(client, tx, { depositRequest: req, creditType: params.creditType });
@@ -908,7 +908,7 @@ export interface BuildRequestCreditWithdrawParams {
  * drains the parked entry via {@link buildExecuteWithdrawalTx}.
  */
 export function buildRequestCreditWithdrawTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildRequestCreditWithdrawParams,
 ): Transaction {
   const tx = params.tx ?? new Transaction();
@@ -954,7 +954,7 @@ export interface BuildExecuteWithdrawalParams {
 
 /** Keeper: drain one parked queue entry. */
 export function buildExecuteWithdrawalTx(
-  client: WaterXClient,
+  client: PerpClient,
   params: BuildExecuteWithdrawalParams,
 ): Transaction {
   const tx = params.tx ?? new Transaction();

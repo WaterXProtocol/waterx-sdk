@@ -14,7 +14,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { setToleranceSec } from "../src/generated/waterx_pyth_rule/pyth_rule.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   const toleranceSec = BigInt(process.env.TOLERANCE_SEC ?? "300");
   const doExecute = process.env.EXECUTE === "1";
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
   const pkg = client.config.packages.pyth_rule.published_at;
   const configId = client.config.packages.pyth_rule.config;
   const listingCap = client.config.packages.waterx_oracle.listing_cap;

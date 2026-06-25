@@ -49,31 +49,38 @@ External chain infra (Pyth state, Wormhole state, Hermes endpoint) is
 and is exposed on `client.pyth`. Override per-deployment by setting
 `pyth` on the JSON if you ever need to.
 
-The client is **async**:
+`WaterXClient` is the **umbrella** entry point exposing three namespaces:
+`client.account` (shared `waterx_account` + credit/custody), `client.perp` (the
+`PerpClient` instance + perp builders), `client.predict` (the `PredictClient`
+instance + prediction builders). `client.perp` / `client.predict` **are** the
+line clients — config lookups, gRPC, and signing live on them. (The former
+perp-line `WaterXClient` class is now `PerpClient`; `Client` is a deprecated
+alias of the umbrella.) The factory is **async**:
 
 ```ts
 import { WaterXClient } from "@waterx/sdk";
 
-const client = await WaterXClient.create("TESTNET");
-// override URL / gRPC:
-const c2 = await WaterXClient.create("MAINNET", {
+const client = await WaterXClient.create({ network: "TESTNET" });
+// override URL / gRPC (shared, or per-line via { perp: {...}, predict: {...} }):
+const c2 = await WaterXClient.create({
+  network: "MAINNET",
   configUrl: "https://my.cdn/main/mainnet.json",
   grpcUrl: "https://my-fullnode/",
   cache: true, // optional in-process cache, default off
 });
 
-// Pin the canonical config to a specific git ref (commit SHA, branch, or
-// tag) instead of `main`. Ignored when `configUrl` is set.
-const c3 = await WaterXClient.create("TESTNET", { configRef: "a1b2c3d" });
+// Canonical-schema lookups live on the perp sub-client (client.perp):
+client.perp.config.packages.waterx_perp.global_config;  // shared GlobalConfig
+client.perp.config.packages.waterx_perp.markets["BTCUSD"]; // { market, config }
+client.perp.config.packages.wlp.pool_tokens["USDCUSD"];    // pool token Move type
+client.perp.getMarket("BTCUSD");                        // throwing helper
+client.perp.getPythFeed("BTCUSD");                      // { feed_id, price_info_object }
+client.perp.wlpType();                                  // `${wlp.original_id}::wlp::WLP`
+client.perp.pyth.state_id;                              // network default
 
-// Canonical-schema lookups:
-client.config.packages.waterx_perp.global_config;       // shared GlobalConfig
-client.config.packages.waterx_perp.markets["BTCUSD"];   // { market, config }
-client.config.packages.wlp.pool_tokens["USDCUSD"];      // pool token Move type
-client.getMarket("BTCUSD");                              // throwing helper
-client.getPythFeed("BTCUSD");                            // { feed_id, price_info_object }
-client.wlpType();                                        // `${wlp.original_id}::wlp::WLP`
-client.pyth.state_id;                                    // network default
+// Or construct a single line directly:
+import { PerpClient } from "@waterx/sdk/perp";
+const perp = await PerpClient.create("TESTNET", { configRef: "a1b2c3d" });
 ```
 
 `src/constants.ts` only holds enums (`Network`, `PERM_*`, `ORDER_*`,
@@ -182,7 +189,8 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
 ## SDK Layout (src/)
 
 - **`config.ts`** — `WaterXConfig` schema, `loadConfig()`, `defaultConfigUrl()`, `clearConfigCache()`.
-- **`client.ts`** — `WaterXClient` with async `static create(network, opts)`. Holds the resolved config + `SuiGrpcClient`. Exposes `getMarket(symbol)`, `getCollateral(symbol)`, `getPythFeedId(feedKey)`.
+- **`client.ts`** — `PerpClient` (the perp sub-client; formerly `WaterXClient`) with async `static create(network, opts)`. Holds the resolved config + `SuiGrpcClient`. Exposes `getMarket(symbol)`, `getCollateral(symbol)`, `getPythFeedId(feedKey)`. Reached as `client.perp` on the umbrella.
+- **`unified-client.ts`** — `WaterXClient`, the umbrella entry point (`client.account` / `client.perp` / `client.predict`), with async `static create(opts)` / `fromClients(perp, predict)`. `Client` is a deprecated alias. `account/index.ts` aggregates the shared `waterx_account` + credit + custody builders for `client.account`.
 - **`constants.ts`** — enums / permission bitmasks / order tags / action codes / `FLOAT_SCALE` / `rawPrice(usd)`. **Nothing chain-specific.**
 - **`user/`** — low-level builders (one moveCall per file):
   - `account.ts` — wxa account: `createAccount`, `setAlias`, delegate management, `requestDeposit`, `requestWithdraw`, `transferToAccount`.
@@ -201,7 +209,7 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
 - **`fetch.ts`** — read-only `simulate`-based queries. Perp reads (positions / orders / market / pool / global config / referrals) go through `waterx_perp_view`; PSM reads (`getCustodyVaultData`, `getCustodyAssetData`) hit `native_custody` directly; bridge rate-limit / cap snapshot (`getBridgeLimits` — daily mint/burn + usage, per-tx caps, optional per-account `personalBurned`, optional `mintedFor` backing per (chain, EVM token)) batches `wormhole_bridge` views in a single simulate. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, `BridgeLimitsView`, etc.). **`getSpendableCreditBalance`** — inclusive wxUSD read (internal slot + parked backing + CREDIT at account address); same probe as consolidate sweep.
 - **`tx-builders.ts`** — high-level async `build*Tx` wrappers that compose optional `appendConsolidateToUsd` pre-sweep (`consolidateToUsd`, default `true`), oracle refresh + `*Request` + `executeTrading` for perp trading. Sync low-level builders never auto-prepend the sweep — apps must call async `build*Tx` (or `buildConsolidateToUsdTx` separately).
 - **`utils/consolidate-balance.ts`** — shared gRPC probe/rescale helpers for `appendConsolidateToUsd` and `getSpendableCreditBalance`.
-- **`prediction/tx-builders.ts`** — async **`buildPlaceOrderTx`** / **`buildBatchClaimTx`** with the same optional pre-sweep (needs `WaterXClient` + `PredictClient`). Unified `Client.buildPredictPlaceOrderTx` / `buildPredictBatchClaimTx` wrap both clients. Sync `placeOrder` / `batchClaim` in `prediction.ts` do not auto-sweep.
+- **`prediction/tx-builders.ts`** — async **`buildPlaceOrderTx`** / **`buildBatchClaimTx`** with the same optional pre-sweep (needs `PerpClient` + `PredictClient`). Umbrella `WaterXClient.buildPredictPlaceOrderTx` / `buildPredictBatchClaimTx` wrap both clients. Sync `placeOrder` / `batchClaim` in `prediction.ts` do not auto-sweep.
 - **`utils/pyth.ts`** — Hermes REST, on-chain Pyth update PTB, `aggregateTickerWithPyth`, `refreshOraclePrices`. The single source of truth for oracle freshness.
 - **`generated/`** — `sui-ts-codegen` output for the packages in `sui-codegen.config.mjs` (incl. `native_custody`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen.
 

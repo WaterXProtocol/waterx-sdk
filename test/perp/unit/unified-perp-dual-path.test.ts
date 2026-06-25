@@ -45,16 +45,16 @@ describe("unified Client — perp dual-path PTB equivalence", () => {
   });
 
   it.each(perpDualPathCases.map((c) => [c.name, c] as const))(
-    "%s: client.perp.* matches legacy free function PTB",
+    "%s: client.perp.* / client.account.* matches legacy free function PTB",
     async (_name, caseDef) => {
-      await assertDualPathTxCase(caseDef, perpClient, unified.perp);
+      await assertDualPathTxCase(caseDef, perpClient, unified);
     },
   );
 
   it("fetch helpers are bound wrappers (async parity in e2e)", () => {
     for (const name of fnNames(perpFetch)) {
-      expect((unified.perp as Record<string, unknown>)[name]).toBeTypeOf("function");
-      expect((unified.perp as Record<string, unknown>)[name]).not.toBe(
+      expect((unified.perp as unknown as Record<string, unknown>)[name]).toBeTypeOf("function");
+      expect((unified.perp as unknown as Record<string, unknown>)[name]).not.toBe(
         (perpFetch as Record<string, unknown>)[name],
       );
     }

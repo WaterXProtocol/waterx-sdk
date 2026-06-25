@@ -18,11 +18,11 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 import * as staking from "../generated/waterx_staking/waterx_staking.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
-function pool(client: WaterXClient, stakeAlias: string): string {
+function pool(client: PerpClient, stakeAlias: string): string {
   const id = client.config.packages.waterx_staking?.pools?.[stakeAlias];
   if (!id) {
     throw new Error(
@@ -32,7 +32,7 @@ function pool(client: WaterXClient, stakeAlias: string): string {
   return id;
 }
 
-function stakingPackage(client: WaterXClient): string {
+function stakingPackage(client: PerpClient): string {
   const pkg = client.config.packages.waterx_staking?.published_at;
   if (!pkg) throw new Error("config.packages.waterx_staking is not configured");
   return pkg;
@@ -59,7 +59,7 @@ export interface StakeParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function stake(client: WaterXClient, tx: Transaction, params: StakeParams): void {
+export function stake(client: PerpClient, tx: Transaction, params: StakeParams): void {
   const pkg = stakingPackage(client);
   const poolId = pool(client, params.stakeAlias);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
@@ -106,7 +106,7 @@ export interface UnstakeParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function unstake(client: WaterXClient, tx: Transaction, params: UnstakeParams): void {
+export function unstake(client: PerpClient, tx: Transaction, params: UnstakeParams): void {
   const pkg = stakingPackage(client);
   const poolId = pool(client, params.stakeAlias);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
@@ -153,11 +153,7 @@ export interface ClaimRewardParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function claimReward(
-  client: WaterXClient,
-  tx: Transaction,
-  params: ClaimRewardParams,
-): void {
+export function claimReward(client: PerpClient, tx: Transaction, params: ClaimRewardParams): void {
   const pkg = stakingPackage(client);
   const poolId = pool(client, params.stakeAlias);
   const req = makeSenderRequest(client, tx, params.bucketAccount);

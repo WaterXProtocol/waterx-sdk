@@ -4,7 +4,7 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { positionExists } from "../../../../src/fetch.ts";
 import type { MarketDataView } from "../../../../src/fetch.ts";
 import {
@@ -34,7 +34,7 @@ import type { ScratchTradingScenario } from "../scratch/scratch-trading-scenario
 import { buildMatchOrdersAfterRefreshTx } from "./run-trading-scenario.ts";
 
 export type ScratchIntegrationDeps = {
-  client: WaterXClient;
+  client: PerpClient;
   trader: Ed25519Keypair;
   execBuiltTxWithCooldownRetries: typeof ExecCooldown;
   execIntegrationOrSkipSupra: typeof ExecOracleSkip;
@@ -48,7 +48,7 @@ function acceptablePriceWide(rowReturn: ReturnType<typeof lifecycleTickerRow>): 
 }
 
 async function waitPrimaryPosition(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
   accountId: string,
   opts?: { attempts?: number; spacingMs?: number },

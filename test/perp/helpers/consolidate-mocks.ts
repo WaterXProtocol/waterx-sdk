@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import type { WaterXClient } from "../../../src/client.ts";
+import type { PerpClient } from "../../../src/client.ts";
 import { MOCK_CREDIT_TYPE, MOCK_CUSTODY_ASSET_TYPE } from "./fixtures/mock-testnet-config.ts";
 
 export interface CoinRefMock {
@@ -33,7 +33,7 @@ export function coinRef(objectId: string, balance: string): CoinRefMock {
 
 /** Mock gRPC balance probes used by consolidate read + append helpers. */
 export function mockConsolidateBalances(
-  client: WaterXClient,
+  client: PerpClient,
   scenario: ConsolidateBalanceScenario = {},
 ): void {
   vi.spyOn(client, "getBalance").mockImplementation(async ({ coinType }) => {

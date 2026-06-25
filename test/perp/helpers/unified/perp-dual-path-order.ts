@@ -24,7 +24,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       buildPlaceOrderArgument(c, tx, baseOrderMain);
     },
     (p, tx) => {
-      p.buildPlaceOrderArgument(tx, baseOrderMain);
+      p.perp.buildPlaceOrderArgument(tx, baseOrderMain);
     },
   ),
   caseMutate(
@@ -38,7 +38,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.placeOrderRequest(tx, {
+      p.perp.placeOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -59,7 +59,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.cancelOrderRequest(tx, {
+      p.perp.cancelOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -84,7 +84,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.updateOrderRequest(tx, {
+      p.perp.updateOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -108,7 +108,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.cancelPreOrderRequest(tx, {
+      p.perp.cancelPreOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -136,7 +136,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.addPreOrderRequest(tx, {
+      p.perp.addPreOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,

@@ -12,7 +12,7 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 import * as lp from "../generated/waterx_perp/lp_pool.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
@@ -36,7 +36,7 @@ export interface MintWlpParams {
 
 /** Returns the minted `lp_amount` so it can be chained into e.g. `stake`. */
 export function mintWlp(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: MintWlpParams,
 ): TransactionArgument {
@@ -59,7 +59,7 @@ export function mintWlp(
   return lpAmount;
 }
 
-function requireWlpAum(client: WaterXClient): string {
+function requireWlpAum(client: PerpClient): string {
   const aum = client.config.packages.wlp.wlp_aum;
   if (!aum) {
     throw new Error("wlp.wlp_aum is not configured — mintWlp/settleRedeem require WlpAum");
@@ -83,7 +83,7 @@ export interface RequestRedeemWlpParams {
 }
 
 export function requestRedeemWlp(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: RequestRedeemWlpParams,
 ): void {
@@ -113,7 +113,7 @@ export interface CancelRedeemWlpParams {
 }
 
 export function cancelRedeemWlp(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: CancelRedeemWlpParams,
 ): void {
@@ -144,7 +144,7 @@ export interface SettleRedeemWlpParams {
 }
 
 export function settleRedeemWlp(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: SettleRedeemWlpParams,
 ): void {
@@ -170,7 +170,7 @@ export function settleRedeemWlp(
 
 /** Recompute one token pool's TVL using the current Oracle price. */
 export function updateTokenValue(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   args: { tokenType: string; lpType?: string },
 ): void {

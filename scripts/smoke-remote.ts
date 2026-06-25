@@ -1,13 +1,13 @@
 /**
  * Remote-config smoke: exercises the full async path
- * `WaterXClient.create("TESTNET")` against the public waterx-config repo.
+ * `PerpClient.create("TESTNET")` against the public waterx-config repo.
  *
  *   tsx scripts/smoke-remote.ts
  *
  * Hits https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
  * by default; pass `WATERX_CONFIG_URL` to override.
  */
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { defaultConfigUrl } from "../src/config.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   loadRepoEnvFiles();
   const t0 = Date.now();
   console.log(`fetching config: ${overrideUrl ?? defaultConfigUrl("TESTNET")}`);
-  const client = await WaterXClient.create("TESTNET", {
+  const client = await PerpClient.create("TESTNET", {
     configUrl: overrideUrl,
     cache: true,
   });
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
 
   console.log("\n=== Cache hit check (2nd create) ===");
   const t1 = Date.now();
-  const client2 = await WaterXClient.create("TESTNET", {
+  const client2 = await PerpClient.create("TESTNET", {
     configUrl: overrideUrl,
     cache: true,
   });

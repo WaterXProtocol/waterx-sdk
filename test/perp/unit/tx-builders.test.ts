@@ -2,7 +2,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/client.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -300,7 +300,7 @@ describe("tx-builders (v3)", () => {
   it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     delete cfg.packages.withdrawal_queue;
-    const noQueue = new WaterXClient("TESTNET", cfg, {
+    const noQueue = new PerpClient("TESTNET", cfg, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>

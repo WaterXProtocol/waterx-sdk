@@ -3,7 +3,7 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { getAccountBalance } from "../../../../src/fetch.ts";
 import { buildMintWlpTx } from "../../../../src/tx-builders.ts";
 import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
@@ -24,7 +24,7 @@ type ExecBuilt = (
 ) => Promise<NormalizedIntegrationTxResult>;
 
 export async function ensureIntegrationMinWlpBalance(args: {
-  client: WaterXClient;
+  client: PerpClient;
   trader: Ed25519Keypair;
   owner: string;
   accountId: string;

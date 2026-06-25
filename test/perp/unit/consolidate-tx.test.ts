@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/client.ts";
 import {
   appendConsolidateAddressCredit,
   appendConsolidateForSpend,
@@ -71,7 +71,7 @@ describe("consolidate tx append helpers", () => {
     it("no-ops when native_custody is not configured", async () => {
       const config = structuredClone(MOCK_TESTNET_CONFIG);
       delete config.packages.native_custody;
-      const bare = new WaterXClient("TESTNET", config, {
+      const bare = new PerpClient("TESTNET", config, {
         grpcUrl: "https://fullnode.test.invalid:443",
       });
       const tx = new Transaction();
@@ -126,7 +126,7 @@ describe("consolidate tx append helpers", () => {
     it("no-ops when waterx_credit is not configured", async () => {
       const config = structuredClone(MOCK_TESTNET_CONFIG);
       delete config.packages.waterx_credit;
-      const bare = new WaterXClient("TESTNET", config, {
+      const bare = new PerpClient("TESTNET", config, {
         grpcUrl: "https://fullnode.test.invalid:443",
       });
       const tx = new Transaction();

@@ -1,7 +1,7 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { getAccountsByOwner } from "../../../../src/fetch.ts";
 import { createAccount, transferToAccount } from "../../../../src/user/account.ts";
 import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
@@ -9,7 +9,7 @@ import { assertIntegrationTxSuccess } from "../../helpers/integration/integratio
 import { integrationGasBudget } from "./integration-gas.ts";
 
 export async function selectWalletCoinsCoveringAmount(
-  client: WaterXClient,
+  client: PerpClient,
   owner: string,
   coinType: string,
   minAmount: bigint,
@@ -57,7 +57,7 @@ export function accountIdFromAccountCreatedEvent(
  * on-chain account, else create via `createAccount`.
  */
 export async function ensureUserAccountForIntegration(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   execTx: (
     tx: Transaction,
@@ -96,7 +96,7 @@ export async function ensureUserAccountForIntegration(
  * UserAccount via TTO (`transferToAccount`). Caller must sign as `owner`.
  */
 export async function buildDepositUsdcFromWalletTx(
-  client: WaterXClient,
+  client: PerpClient,
   owner: string,
   accountId: string,
   amount: bigint,

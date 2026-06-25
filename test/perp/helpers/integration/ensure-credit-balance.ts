@@ -4,7 +4,7 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { getAccountBalance } from "../../../../src/fetch.ts";
 import { mintCreditToAccount } from "../../../../src/user/custody.ts";
 import { selectWalletCoinsCoveringAmount } from "../../integration/helpers/account-bootstrap.ts";
@@ -19,7 +19,7 @@ type ExecTx = (
 ) => Promise<NormalizedIntegrationTxResult>;
 
 export async function ensureIntegrationMinCreditBalance(args: {
-  client: WaterXClient;
+  client: PerpClient;
   trader: Ed25519Keypair;
   owner: string;
   accountId: string;

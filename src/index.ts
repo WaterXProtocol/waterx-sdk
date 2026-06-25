@@ -1,5 +1,5 @@
 // ======== Core ========
-export { WaterXClient } from "./client.ts";
+export { PerpClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
 export {
   PYTH_DEFAULTS,

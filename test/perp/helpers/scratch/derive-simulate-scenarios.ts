@@ -1,6 +1,6 @@
 import type { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import type { BaseAsset } from "../../../../src/constants.ts";
 import {
   buildClosePositionTx,
@@ -31,7 +31,7 @@ export type DerivedTradingMatrixCase = {
   label: string;
   expect: DerivedOpExpect;
   buildTx: (
-    client: WaterXClient,
+    client: PerpClient,
     d: DiscoveredPosition,
     row: LifecycleTestMarketRow,
   ) => Promise<Transaction>;

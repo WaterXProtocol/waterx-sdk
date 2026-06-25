@@ -42,7 +42,7 @@ describe("unified Client — perp representative flow", () => {
   });
 
   it("client.perp pre-binds the same client passed to the facade", () => {
-    expect(client.perpClient).toBe(perpClient);
+    expect(client.perp).toBe(perpClient);
     // Bound method is a wrapper, not the raw free function.
     expect(client.perp.placeOrderRequest).not.toBe(placeOrderRequest);
     expect(client.perp.placeOrderRequest).toBeTypeOf("function");

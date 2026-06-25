@@ -1,8 +1,10 @@
 /**
- * WaterX Protocol client.
+ * WaterX Perp client — the perp product line (trading, orders, WLP, staking).
  *
- * Initialization is async — config is fetched from the canonical
- * `waterx-config` JSON (default: GitHub raw). See `WaterXClient.create()`.
+ * One of the two sub-clients behind the umbrella `WaterXClient`; reachable as
+ * `client.perp` (which also carries the perp builders). Initialization is async —
+ * config is fetched from the canonical `waterx-config` JSON (default: GitHub raw).
+ * See `PerpClient.create()`.
  */
 
 import { SuiGrpcClient } from "@mysten/sui/grpc";
@@ -31,7 +33,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
 }
 
-export class WaterXClient {
+export class PerpClient {
   /** gRPC client — all RPC including `simulateTransaction`. */
   grpcClient: SuiGrpcClient;
   /** Network identifier in upper case (`MAINNET` / `TESTNET`). */
@@ -60,17 +62,17 @@ export class WaterXClient {
    * Async factory: fetches the deployment config for `network` and returns
    * a ready-to-use client. Pass `opts.cache=true` to memoize the JSON.
    */
-  static async create(network: Network, opts: CreateClientOptions = {}): Promise<WaterXClient> {
+  static async create(network: Network, opts: CreateClientOptions = {}): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
-    return new WaterXClient(network, config, { grpcUrl: opts.grpcUrl });
+    return new PerpClient(network, config, { grpcUrl: opts.grpcUrl });
   }
 
-  static mainnet(opts: CreateClientOptions = {}): Promise<WaterXClient> {
-    return WaterXClient.create("MAINNET", opts);
+  static mainnet(opts: CreateClientOptions = {}): Promise<PerpClient> {
+    return PerpClient.create("MAINNET", opts);
   }
 
-  static testnet(opts: CreateClientOptions = {}): Promise<WaterXClient> {
-    return WaterXClient.create("TESTNET", opts);
+  static testnet(opts: CreateClientOptions = {}): Promise<PerpClient> {
+    return PerpClient.create("TESTNET", opts);
   }
 
   // ========================================================

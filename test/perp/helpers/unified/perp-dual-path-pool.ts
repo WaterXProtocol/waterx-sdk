@@ -28,7 +28,7 @@ export const perpPoolDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.stake(tx, {
+      p.perp.stake(tx, {
         accountId: ACCOUNT_ID,
         stakeAlias: "WLP",
         stakeType: WLP_TYPE,
@@ -49,7 +49,7 @@ export const perpPoolDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.unstake(tx, {
+      p.perp.unstake(tx, {
         accountId: ACCOUNT_ID,
         stakeAlias: "WLP",
         stakeType: WLP_TYPE,
@@ -69,7 +69,7 @@ export const perpPoolDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.claimReward(tx, {
+      p.perp.claimReward(tx, {
         accountId: ACCOUNT_ID,
         stakeAlias: "WLP",
         stakeType: WLP_TYPE,
@@ -88,7 +88,7 @@ export const perpPoolDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.mintWlp(tx, {
+      p.perp.mintWlp(tx, {
         accountId: ACCOUNT_ID,
         depositTokenType: COLLATERAL_TYPE,
         depositAmount: 10_000_000n,
@@ -106,7 +106,7 @@ export const perpPoolDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.requestRedeemWlp(tx, {
+      p.perp.requestRedeemWlp(tx, {
         accountId: ACCOUNT_ID,
         redeemTokenType: COLLATERAL_TYPE,
         lpAmount: 1_000_000n,
@@ -116,16 +116,16 @@ export const perpPoolDualPathCases: PerpDualPathCase[] = [
   caseMutate(
     "cancelRedeemWlp",
     (c, tx) => cancelRedeemWlp(c, tx, { requestId: 1n }),
-    (p, tx) => p.cancelRedeemWlp(tx, { requestId: 1n }),
+    (p, tx) => p.perp.cancelRedeemWlp(tx, { requestId: 1n }),
   ),
   caseMutate(
     "settleRedeemWlp",
     (c, tx) => settleRedeemWlp(c, tx, { redeemTokenType: COLLATERAL_TYPE, requestId: 1n }),
-    (p, tx) => p.settleRedeemWlp(tx, { redeemTokenType: COLLATERAL_TYPE, requestId: 1n }),
+    (p, tx) => p.perp.settleRedeemWlp(tx, { redeemTokenType: COLLATERAL_TYPE, requestId: 1n }),
   ),
   caseMutate(
     "updateTokenValue",
     (c, tx) => updateTokenValue(c, tx, { tokenType: COLLATERAL_TYPE }),
-    (p, tx) => p.updateTokenValue(tx, { tokenType: COLLATERAL_TYPE }),
+    (p, tx) => p.perp.updateTokenValue(tx, { tokenType: COLLATERAL_TYPE }),
   ),
 ];

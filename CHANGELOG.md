@@ -8,6 +8,38 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING — `WaterXClient` is now the umbrella entry point.** The class
+  previously named `WaterXClient` (the perp product line) is renamed
+  **`PerpClient`**; the unified facade previously named `Client` is renamed
+  **`WaterXClient`** and is the single main entry. It exposes three namespaces:
+  - `client.account` — the shared `waterx_account` framework **plus** funding
+    (credit + custody) builders. Backed by the perp sub-client config (which
+    carries the shared `AccountRegistry`, bridge, native_custody,
+    withdrawal_queue, credit_registry).
+  - `client.perp` — **is** the `PerpClient` instance with the perp builders/views
+    grafted on (trading / orders / WLP / staking / referral). Signing & config
+    methods (`signAndExecuteTransaction`, `simulate`, `getMarket`, …) sit on the
+    same object. The credit/custody *high-level* `build*Tx` wrappers
+    (`buildRedeemVaaTx`, `buildRequestCreditWithdrawTx`, `buildExecuteWithdrawalTx`)
+    remain here; only the low-level credit/custody builders move to `client.account`.
+  - `client.predict` — **is** the `PredictClient` instance with the prediction
+    builders/views grafted on. Generic account builders (`createAccount`,
+    `requestDeposit`/`deposit`, `requestWithdraw`/`withdraw`, delegate add/remove,
+    `transferCoinToAccount`, `consume*Direct`, `resolveRegistryAccountId`) are
+    dropped from `client.predict`; prediction-specific account ops
+    (`setDelegatePredictionPermission`, `whitelistPredictionProtocol`,
+    `allow`/`disallowPredictionProtocolAsset`) are kept.
+  - There are no longer separate `client.perpClient` / `client.predictClient`
+    accessors — `client.perp` / `client.predict` are the clients.
+  - `Client` remains as a deprecated alias of `WaterXClient` for one major cycle.
+  - **No same-name alias for the old perp `WaterXClient`** — importers of the perp
+    client must switch to `PerpClient` (flat at the root or `perp.PerpClient`).
+  - **Cross-network caveat:** `client.account` follows the **perp** line; on
+    split-network setups (`opts.perp.network !== opts.predict.network`), reach the
+    predict line's generic account builders via the `prediction` namespace.
+
 ## [2.4.1] - 2026-06-24
 
 ### Added

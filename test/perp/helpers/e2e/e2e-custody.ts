@@ -1,7 +1,7 @@
 /**
  * E2E helpers for native-custody (CREDIT PSM) simulate + integration.
  */
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { e2eCanonicalWxaAccountIds } from "./canonical-testnet-account.ts";
 import { resolveE2eNetwork } from "./e2e-client.ts";
 import { getAccountOwnerByAccountId } from "./fetch-read-helpers-for-tests.ts";
@@ -19,7 +19,7 @@ export function e2eSimulateGasBudget(): number {
   return 30_000_000;
 }
 
-export function isCreditPipelineConfigured(client: WaterXClient): boolean {
+export function isCreditPipelineConfigured(client: PerpClient): boolean {
   return Boolean(
     client.config.packages.waterx_credit?.credit_registry &&
     client.config.packages.native_custody?.vault,
@@ -32,7 +32,7 @@ export function creditPipelineSkipReason(): string {
 
 /** Prefer env wxa ids, then built-in testnet canonical account (CI-safe). */
 export async function resolveCustodyWxaRow(
-  client: WaterXClient,
+  client: PerpClient,
 ): Promise<{ accountId: string; owner: string } | null> {
   const accountId =
     process.env.WATERX_E2E_WXA_ACCOUNT_ID?.trim() ||

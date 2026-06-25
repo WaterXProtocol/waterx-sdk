@@ -3,7 +3,7 @@
  * No bucket-aggregator simulate — real oracle refresh happens inside `build*Tx`.
  */
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 
 const TICKER_USD_FALLBACK: Record<string, number> = {
   BTCUSD: 95_000,
@@ -26,7 +26,7 @@ export function getUsdHintForTicker(ticker: string): number {
   return 1;
 }
 
-export function hintCollateralUsdForTicker(client: WaterXClient, collateralTicker: string): bigint {
+export function hintCollateralUsdForTicker(client: PerpClient, collateralTicker: string): bigint {
   if (!collateralTicker) return 1n;
   void client;
   return hintBasePriceUsdForTicker(collateralTicker);

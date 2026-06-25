@@ -39,14 +39,14 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
       cache: true,
       ...(grpcUrl ? { grpcUrl } : {}),
     });
-    expect(unified.perpClient.config.network).toBe(legacyPerpClient.config.network);
+    expect(unified.perp.config.network).toBe(legacyPerpClient.config.network);
   }, 120_000);
 
-  it("Client.create wires the same perp deployment as WaterXClient.create", () => {
-    expect(unified.perpClient.config.packages.waterx_perp.published_at).toBe(
+  it("Client.create wires the same perp deployment as PerpClient.create", () => {
+    expect(unified.perp.config.packages.waterx_perp.published_at).toBe(
       legacyPerpClient.config.packages.waterx_perp.published_at,
     );
-    expect(unified.perpClient.getMarket("BTCUSD").market).toBe(
+    expect(unified.perp.getMarket("BTCUSD").market).toBe(
       legacyPerpClient.getMarket("BTCUSD").market,
     );
   });
@@ -74,11 +74,11 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
     const legacyTx = new Transaction();
     const facadeTx = new Transaction();
     createAccount(legacyPerpClient, legacyTx, { alias });
-    unified.perp.createAccount(facadeTx, { alias });
+    unified.account.createAccount(facadeTx, { alias });
     assertTransactionsEqual(legacyTx, facadeTx, "createAccount");
     facadeTx.setSender(DUMMY_SENDER);
     facadeTx.setGasBudget(50_000_000);
-    const sim = await unified.perpClient.simulate(facadeTx);
+    const sim = await unified.perp.simulate(facadeTx);
     assertSimulateReached(sim);
   }, 60_000);
 
@@ -98,7 +98,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
     });
     assertTransactionsEqual(legacyTx, facadeTx, "liquidate");
     facadeTx.setSender(DUMMY_ACCOUNT);
-    const sim = await unified.perpClient.simulate(facadeTx);
+    const sim = await unified.perp.simulate(facadeTx);
     assertSimulateReached(sim);
   }, 60_000);
 
@@ -131,7 +131,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
     }
     assertTransactionsEqual(legacyTx, facadeTx, "buildPlaceOrderTx");
     facadeTx.setSender(DUMMY_ACCOUNT);
-    const sim = await unified.perpClient.simulate(facadeTx);
+    const sim = await unified.perp.simulate(facadeTx);
     assertSimulateReached(sim);
   }, 120_000);
 
@@ -162,7 +162,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
       throw e;
     }
     facadeTx.setSender(DUMMY_ACCOUNT);
-    const sim = await unified.perpClient.simulate(facadeTx);
+    const sim = await unified.perp.simulate(facadeTx);
     assertSimulateReached(sim);
   }, 120_000);
 });

@@ -4,7 +4,7 @@
 import { toBase64 } from "@mysten/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/client.ts";
 import {
   fetchDepositVaa,
   fetchVaa,

@@ -1,5 +1,5 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { PythCache, updatePythPrices, type WaterXClient } from "@waterx/sdk";
+import { PythCache, updatePythPrices, type PerpClient } from "@waterx/sdk";
 
 import { DUMMY_SENDER } from "./e2e-client.ts";
 import { activeLifecycleTickersForClient } from "./lifecycle-test-markets.ts";
@@ -15,7 +15,7 @@ function normalizeFeedId(hex?: string): string | undefined {
  * Uses configured `pyth_rule.feeds` for lifecycle tickers + pool collateral tickers.
  */
 export async function warmPythHermesForTickers(
-  client: WaterXClient,
+  client: PerpClient,
   cache: PythCache,
   tickers: readonly string[],
 ): Promise<void> {
@@ -49,7 +49,7 @@ export async function warmPythHermesForTickers(
  * Optionally warms Hermes+Pyth once per attempt via {@link warmPythHermesForTickers}.
  */
 export async function lifecycleOracleUsdOrSkip(
-  client: WaterXClient,
+  client: PerpClient,
   ctx: { skip: (reason?: string) => void },
   attempts = 3,
 ): Promise<Record<string, number> | null> {

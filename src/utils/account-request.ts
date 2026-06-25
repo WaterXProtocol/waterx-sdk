@@ -6,7 +6,7 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 import {
   request as accountRequest,
   requestWithAccount as accountRequestWithAccount,
@@ -15,7 +15,7 @@ import {
 export type BucketAccount = string | TransactionArgument | undefined;
 
 export function makeSenderRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   bucketAccount: BucketAccount,
 ): TransactionArgument {

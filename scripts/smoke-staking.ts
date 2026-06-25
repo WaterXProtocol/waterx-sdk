@@ -36,7 +36,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { getAccountBalance } from "../src/fetch.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
@@ -55,7 +55,7 @@ interface SimResult {
 }
 
 async function sim(
-  client: WaterXClient,
+  client: PerpClient,
   address: string,
   tx: Transaction,
   label: string,
@@ -72,7 +72,7 @@ async function sim(
 }
 
 async function execute(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -95,20 +95,20 @@ async function execute(
   return success;
 }
 
-function poolId(client: WaterXClient, alias = "WLP"): string {
+function poolId(client: PerpClient, alias = "WLP"): string {
   const id = client.config.packages.waterx_staking?.pools?.[alias];
   if (!id) throw new Error(`waterx_staking.pools[${alias}] not set in config`);
   return id;
 }
 
-function stakingPkg(client: WaterXClient): string {
+function stakingPkg(client: PerpClient): string {
   const pkg = client.config.packages.waterx_staking?.published_at;
   if (!pkg) throw new Error("waterx_staking.published_at not set in config");
   return pkg;
 }
 
 /** Hand-rolled raw simulate against `waterx_staking::total_stake_amount`. */
-async function readTotalStakeAmount(client: WaterXClient): Promise<bigint> {
+async function readTotalStakeAmount(client: PerpClient): Promise<bigint> {
   const tx = new Transaction();
   totalStakeAmountCall({
     package: stakingPkg(client),
@@ -124,7 +124,7 @@ async function readTotalStakeAmount(client: WaterXClient): Promise<bigint> {
 }
 
 /** Hand-rolled raw simulate against `waterx_staking::stake_exists`. */
-async function readStakeExists(client: WaterXClient, accountId: string): Promise<boolean> {
+async function readStakeExists(client: PerpClient, accountId: string): Promise<boolean> {
   const tx = new Transaction();
   stakeExistsCall({
     package: stakingPkg(client),
@@ -139,7 +139,7 @@ async function readStakeExists(client: WaterXClient, accountId: string): Promise
   return bcs.bool().parse(bytes);
 }
 
-async function snapshot(client: WaterXClient, accountId: string, label: string): Promise<void> {
+async function snapshot(client: PerpClient, accountId: string, label: string): Promise<void> {
   const total = await readTotalStakeAmount(client);
   const exists = await readStakeExists(client, accountId);
   console.log(`  ${label.padEnd(28)} total_stake=${total} stake_exists=${exists}`);
@@ -151,7 +151,7 @@ async function snapshot(client: WaterXClient, accountId: string, label: string):
  * abort with `EProtocolNotWhitelisted` — an admin must first call
  * `account::whitelist_protocol<WaterXStaking>(registry, &AdminCap)`.
  */
-async function readStakingWhitelisted(client: WaterXClient): Promise<boolean> {
+async function readStakingWhitelisted(client: PerpClient): Promise<boolean> {
   const tx = new Transaction();
   const stakingPkgOrig = client.config.packages.waterx_staking?.original_id;
   if (!stakingPkgOrig) throw new Error("waterx_staking.original_id not set in config");
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
   const doExecute = process.env.EXECUTE === "1";

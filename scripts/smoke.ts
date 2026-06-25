@@ -3,7 +3,7 @@
  *
  * 1. Loads `waterx-config/testnet.json` directly from disk (bypasses HTTP
  *    so we don't need the config repo published yet).
- * 2. Constructs a WaterXClient.
+ * 2. Constructs a PerpClient.
  * 3. Builds a representative PTB per builder family.
  * 4. simulate() each one — reports OK / expected-on-chain-error / SDK-broken.
  *
@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import type { WaterXConfig } from "../src/config.ts";
 import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/constants.ts";
 import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/fetch.ts";
@@ -109,7 +109,7 @@ function classifySim(result: SimResult): Outcome {
 }
 
 async function runCase(
-  client: WaterXClient,
+  client: PerpClient,
   name: string,
   build: () => Promise<Transaction> | Transaction,
 ): Promise<void> {
@@ -135,14 +135,14 @@ async function main(): Promise<void> {
   // (local dev), but fall back to fetching the canonical config over HTTP so
   // this works in CI, where the config repo isn't checked out alongside.
   let config: WaterXConfig;
-  let client: WaterXClient;
+  let client: PerpClient;
   if (existsSync(CONFIG_PATH)) {
     console.log(`Loading config from ${CONFIG_PATH}`);
     config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
-    client = new WaterXClient("TESTNET", config);
+    client = new PerpClient("TESTNET", config);
   } else {
     console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
-    client = await WaterXClient.create("TESTNET", { cache: true });
+    client = await PerpClient.create("TESTNET", { cache: true });
     config = client.config;
   }
 

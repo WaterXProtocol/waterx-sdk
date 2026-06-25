@@ -30,7 +30,7 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { getAccountBalance } from "../src/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/tx-builders.ts";
 import { aggregateTickerWithPyth } from "../src/utils/pyth.ts";
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
   const doExecute = process.env.EXECUTE === "1";
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
   const usdType = client.creditType();
   const wlpType = client.wlpType();
 

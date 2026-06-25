@@ -38,7 +38,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.closePositionRequest(tx, {
+      p.perp.closePositionRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -61,7 +61,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.increasePositionRequest(tx, {
+      p.perp.increasePositionRequest(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -85,7 +85,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.decreasePositionRequest(tx, {
+      p.perp.decreasePositionRequest(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -107,7 +107,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.depositCollateralRequest(tx, {
+      p.perp.depositCollateralRequest(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -128,7 +128,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.withdrawCollateralRequest(tx, {
+      p.perp.withdrawCollateralRequest(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -142,7 +142,8 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
     "liquidate",
     (c, tx) =>
       liquidate(c, tx, { collateralType: COLLATERAL_TYPE, ticker: TICKER, positionId: 1n }),
-    (p, tx) => p.liquidate(tx, { collateralType: COLLATERAL_TYPE, ticker: TICKER, positionId: 1n }),
+    (p, tx) =>
+      p.perp.liquidate(tx, { collateralType: COLLATERAL_TYPE, ticker: TICKER, positionId: 1n }),
   ),
   caseMutate(
     "batchLiquidate",
@@ -154,7 +155,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
         pageIndex: 0n,
       }),
     (p, tx) =>
-      p.batchLiquidate(tx, {
+      p.perp.batchLiquidate(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         pageSize: 10n,
@@ -172,7 +173,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
         maxFills: 1n,
       }),
     (p, tx) =>
-      p.matchOrders(tx, {
+      p.perp.matchOrders(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         orderTypeTag: ORDER_LIMIT_BUY,
@@ -183,7 +184,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
   caseMutate(
     "updateFundingRate",
     (c, tx) => updateFundingRate(c, tx, { ticker: TICKER }),
-    (p, tx) => p.updateFundingRate(tx, { ticker: TICKER }),
+    (p, tx) => p.perp.updateFundingRate(tx, { ticker: TICKER }),
   ),
   caseMutate(
     "openPositionByKeeper",
@@ -199,7 +200,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.openPositionByKeeper(tx, {
+      p.perp.openPositionByKeeper(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         accountObjectAddress: ACCOUNT_ID,
@@ -220,7 +221,7 @@ export const perpTradingDualPathCases: PerpDualPathCase[] = [
         acceptablePrice: rawPrice(90_000),
       }),
     (p, tx) =>
-      p.closePositionByKeeper(tx, {
+      p.perp.closePositionByKeeper(tx, {
         collateralType: COLLATERAL_TYPE,
         ticker: TICKER,
         positionId: 1n,

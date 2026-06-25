@@ -6,24 +6,28 @@ TypeScript SDK for the WaterX protocol on Sui — **two product lines in one pac
 
 ## Two lines, one package
 
-The perp and prediction lines expose builder functions with **colliding names** (`placeOrder`, `createAccount`, `deposit`, …), so they are kept in separate namespaces:
+The perp and prediction lines expose builder functions with **colliding names** (`placeOrder`, `deposit`, …), so they are kept in separate namespaces under one umbrella `WaterXClient`:
 
 ```ts
-import { Client } from "@waterx/sdk";
+import { WaterXClient } from "@waterx/sdk";
 
-const client = await Client.create({ network: "TESTNET" });
-client.perp.buildPlaceOrderTx(params);   // perpetuals
-client.predict.placeOrder(tx, params);   // prediction markets
-// raw line clients for signing/executing: client.perpClient / client.predictClient
-// each line can target a different network: Client.create({ perp: { network: "MAINNET" }, predict: { network: "TESTNET" } })
+const client = await WaterXClient.create({ network: "TESTNET" });
+client.account.createAccount(tx, { alias });  // shared waterx_account + funding (credit/custody)
+client.perp.buildPlaceOrderTx(params);        // perpetuals
+client.predict.placeOrder(tx, params);        // prediction markets
+// client.perp / client.predict ARE the line clients — sign/execute on them directly:
+//   await client.perp.signAndExecuteTransaction({ transaction: tx, signer })
+// each line can target a different network: WaterXClient.create({ perp: { network: "MAINNET" }, predict: { network: "TESTNET" } })
 ```
+
+> `WaterXClient` is the umbrella entry point. `Client` is kept as a **deprecated alias** for one major cycle.
 
 Import surfaces:
 
 | Import | What |
 |--------|------|
-| `@waterx/sdk` | `Client` (unified) + `perp` / `prediction` namespaces. Perp's API is also re-exported flat here (**deprecated** — prefer `client.perp` or the `perp` namespace; removed next major). |
-| `@waterx/sdk/perp` | Perp line: `WaterXClient`, builders, fetch, Pyth/Wormhole utils. |
+| `@waterx/sdk` | `WaterXClient` (umbrella) + `perp` / `prediction` namespaces. Perp's API is also re-exported flat here (**deprecated** — prefer `client.perp` or the `perp` namespace; removed next major). |
+| `@waterx/sdk/perp` | Perp line: `PerpClient`, builders, fetch, Pyth/Wormhole utils. |
 | `@waterx/sdk/prediction` | Prediction line: `PredictClient`, builders, fetch, utils. |
 
 ## Install
@@ -37,19 +41,19 @@ Consumers: `pnpm add @waterx/sdk @mysten/sui`
 
 ## Quickstart (unified client)
 
-`Client.create()` loads each line's deployment config from the canonical `waterx-config` JSON and returns a ready client. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (the line client, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
+`WaterXClient.create()` loads each line's deployment config from the canonical `waterx-config` JSON and returns a ready client. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (`client.perp` / `client.predict` are the line clients, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
 
 ```ts
-import { Client, rawPrice } from "@waterx/sdk";
+import { WaterXClient, rawPrice } from "@waterx/sdk";
 import { Transaction } from "@mysten/sui/transactions";
 
-const client = await Client.create({ network: "TESTNET" });
+const client = await WaterXClient.create({ network: "TESTNET" });
 const signer = /* your Ed25519Keypair or wallet Signer */;
 
 // --- Perp: place a market order ---
 const tx = await client.perp.buildPlaceOrderTx({
   ticker: "BTCUSD",
-  collateralType: client.perpClient.creditType(),
+  collateralType: client.perp.creditType(),
   accountId: "0x...", // UserAccount object id (hex)
   main: {
     isLong: true,
@@ -61,25 +65,25 @@ const tx = await client.perp.buildPlaceOrderTx({
   },
   preOrders: [],
 });
-await client.perpClient.signAndExecuteTransaction({ transaction: tx, signer });
+await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
 
 // --- Prediction: same pattern under client.predict ---
 const ptx = new Transaction();
 client.predict.placeOrder(ptx, params);
-await client.predictClient.signAndExecuteTransaction({ transaction: ptx, signer });
+await client.predict.signAndExecuteTransaction({ transaction: ptx, signer });
 ```
 
-> Account creation is shared: both lines build accounts via the same on-chain `waterx_account` system, so an account created through `client.perp.createAccount` is usable by `client.predict.*` (and vice versa).
+> Account creation is shared: `client.account.*` builds accounts via the one on-chain `waterx_account` system (perp-backed), so an account created through `client.account.createAccount` is usable by both `client.perp.*` and `client.predict.*`. (On split-network setups `client.account` follows the perp line — reach the predict line's generic account builders via the `prediction` namespace.)
 
 ## Per-line clients
 
 If you only need one line, construct it directly (both factories are **async** — they fetch deployment config):
 
 ```ts
-import { WaterXClient } from "@waterx/sdk/perp";
+import { PerpClient } from "@waterx/sdk/perp";
 import { PredictClient } from "@waterx/sdk/prediction";
 
-const perp = await WaterXClient.create("TESTNET"); // or WaterXClient.testnet()
+const perp = await PerpClient.create("TESTNET"); // or PerpClient.testnet()
 const predict = await PredictClient.create("TESTNET"); // or PredictClient.testnet()
 ```
 

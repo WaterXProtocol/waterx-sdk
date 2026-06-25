@@ -10,7 +10,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "./client.ts";
+import type { PerpClient } from "./client.ts";
 import { COLLATERAL_DECIMALS, DRY_RUN_SENDER } from "./constants.ts";
 import {
   burnFeeRate as burnFeeRateCall,
@@ -104,7 +104,7 @@ function toBytes(b: Uint8Array | string | undefined): Uint8Array | undefined {
   return new Uint8Array(Object.values(b as Record<string, number>));
 }
 
-async function simulateRaw(client: WaterXClient, tx: Transaction): Promise<SimulationResult> {
+async function simulateRaw(client: PerpClient, tx: Transaction): Promise<SimulationResult> {
   tx.setSender(DRY_RUN_SENDER);
   const sim = (await client.simulate(tx)) as unknown as SimulationResult;
   if (sim.$kind === "FailedTransaction") {
@@ -126,7 +126,7 @@ function extractAt(sim: SimulationResult, commandIndex: number, returnIndex = 0)
 }
 
 async function simulateAndExtract(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   commandIndex = 0,
   returnIndex = 0,
@@ -135,7 +135,7 @@ async function simulateAndExtract(
   return extractAt(sim, commandIndex, returnIndex);
 }
 
-function withLp(client: WaterXClient, lpType?: string): string {
+function withLp(client: PerpClient, lpType?: string): string {
   return lpType ?? client.wlpType();
 }
 
@@ -152,7 +152,7 @@ export type AccountDataView = ReturnType<typeof AccountData.parse>;
  * The underlying view fn returns `Option<AccountData>`.
  */
 export async function getAccountData(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
 ): Promise<AccountDataView | undefined> {
   const tx = new Transaction();
@@ -178,7 +178,7 @@ export type TokenPoolDataView = ReturnType<typeof TokenPoolData.parse>;
 export type GlobalConfigDataView = ReturnType<typeof GlobalConfigData.parse>;
 
 export async function getMarketData(
-  client: WaterXClient,
+  client: PerpClient,
   args: { ticker: string; lpType?: string },
 ): Promise<MarketDataView> {
   const tx = new Transaction();
@@ -194,7 +194,7 @@ export async function getMarketData(
 }
 
 export async function getPoolData(
-  client: WaterXClient,
+  client: PerpClient,
   args: { lpType?: string } = {},
 ): Promise<PoolDataView> {
   const tx = new Transaction();
@@ -207,7 +207,7 @@ export async function getPoolData(
 }
 
 export async function getTokenPoolData(
-  client: WaterXClient,
+  client: PerpClient,
   args: { tokenIndex: bigint | number; lpType?: string },
 ): Promise<TokenPoolDataView> {
   const tx = new Transaction();
@@ -222,7 +222,7 @@ export async function getTokenPoolData(
   return TokenPoolData.parse(await simulateAndExtract(client, tx));
 }
 
-export async function getGlobalConfigData(client: WaterXClient): Promise<GlobalConfigDataView> {
+export async function getGlobalConfigData(client: PerpClient): Promise<GlobalConfigDataView> {
   const tx = new Transaction();
   globalConfigDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
@@ -238,7 +238,7 @@ export async function getGlobalConfigData(client: WaterXClient): Promise<GlobalC
 export type PositionDataView = ReturnType<typeof PositionData.parse>;
 
 export async function positionExists(
-  client: WaterXClient,
+  client: PerpClient,
   args: { ticker: string; positionId: bigint | number; lpType?: string },
 ): Promise<boolean> {
   const tx = new Transaction();
@@ -256,7 +256,7 @@ export async function positionExists(
 }
 
 export async function getPosition(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     ticker: string;
     positionId: bigint | number;
@@ -289,7 +289,7 @@ export async function getPosition(
 export type OrderDataView = ReturnType<typeof OrderData.parse>;
 
 export async function getOrder(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     ticker: string;
     orderId: bigint | number;
@@ -325,7 +325,7 @@ export interface PageOpts {
 }
 
 export async function getMarketOrders(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     ticker: string;
     basePriceUsd?: bigint | number;
@@ -364,7 +364,7 @@ export async function getMarketOrders(
 }
 
 export async function getMarketPositions(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     ticker: string;
     basePriceUsd: bigint | number;
@@ -406,7 +406,7 @@ export async function getMarketPositions(
 }
 
 export async function getAccountPositions(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     ticker: string;
     accountObjectAddress: string;
@@ -433,7 +433,7 @@ export async function getAccountPositions(
 }
 
 export async function getAccountOrders(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     ticker: string;
     accountObjectAddress: string;
@@ -458,7 +458,7 @@ export async function getAccountOrders(
 export type RedeemRequestDataView = ReturnType<typeof RedeemRequestData.parse>;
 
 export async function getRedeemRequests(
-  client: WaterXClient,
+  client: PerpClient,
   args: { lpType?: string } & PageOpts = {},
 ): Promise<{ requests: RedeemRequestDataView[]; nextCursor?: bigint }> {
   const tx = new Transaction();
@@ -490,7 +490,7 @@ export async function getRedeemRequests(
   return { requests, nextCursor };
 }
 
-function requireReferralPackage(client: WaterXClient): { pkg: string; table: string } {
+function requireReferralPackage(client: PerpClient): { pkg: string; table: string } {
   const pkg = client.config.packages.waterx_referral?.published_at;
   const table = client.config.packages.waterx_referral?.referral_table;
   if (!pkg || !table) {
@@ -503,7 +503,7 @@ function requireReferralPackage(client: WaterXClient): { pkg: string; table: str
 
 /** Returns the referrer address bound to `referee`, or `undefined` if none. */
 export async function getRefererFor(
-  client: WaterXClient,
+  client: PerpClient,
   referee: string,
 ): Promise<string | undefined> {
   const { pkg, table } = requireReferralPackage(client);
@@ -518,7 +518,7 @@ export async function getRefererFor(
 }
 
 /** True if `code` is a syntactically valid referral code (matches the contract's char rules). */
-export async function isValidReferralCode(client: WaterXClient, code: string): Promise<boolean> {
+export async function isValidReferralCode(client: PerpClient, code: string): Promise<boolean> {
   const { pkg } = requireReferralPackage(client);
   const tx = new Transaction();
   isValidReferralCodeCall({ package: pkg, arguments: { code } })(tx);
@@ -527,7 +527,7 @@ export async function isValidReferralCode(client: WaterXClient, code: string): P
 }
 
 /** True if `code` is already claimed in the on-chain ReferralTable. */
-export async function referralCodeExists(client: WaterXClient, code: string): Promise<boolean> {
+export async function referralCodeExists(client: PerpClient, code: string): Promise<boolean> {
   const { pkg, table } = requireReferralPackage(client);
   const tx = new Transaction();
   referralCodeExistsCall({
@@ -549,7 +549,7 @@ export async function referralCodeExists(client: WaterXClient, code: string): Pr
  * resolve the `account_id` a cross-chain deposit must target before
  * filling the EVM `suiRecipient` field.
  */
-export async function getAccountsByOwner(client: WaterXClient, owner: string): Promise<string[]> {
+export async function getAccountsByOwner(client: PerpClient, owner: string): Promise<string[]> {
   const tx = new Transaction();
   accountIdsCall({
     package: client.config.packages.waterx_account.published_at,
@@ -568,7 +568,7 @@ export async function getAccountsByOwner(client: WaterXClient, owner: string): P
  * balance available to withdraw. Returns `0n` for an unknown coin type.
  */
 export async function getAccountBalance(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   coinType?: string,
 ): Promise<bigint> {
@@ -610,7 +610,7 @@ export interface SpendableCreditBalance {
 }
 
 export async function getSpendableCreditBalance(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
 ): Promise<SpendableCreditBalance> {
   const creditType = client.creditType();
@@ -635,7 +635,7 @@ export async function getSpendableCreditBalance(
 // Native custody (custody_vault)
 // ============================================================================
 
-function requireCustody(client: WaterXClient): { pkg: string; vault: string; creditType: string } {
+function requireCustody(client: PerpClient): { pkg: string; vault: string; creditType: string } {
   const nc = client.config.packages.native_custody;
   if (!nc?.vault) {
     throw new Error("native_custody not configured — set config.packages.native_custody.vault");
@@ -650,7 +650,7 @@ export interface CustodyVaultData {
 }
 
 /** Reads vault-wide native-custody state via `custody_vault::credit_supply`. */
-export async function getCustodyVaultData(client: WaterXClient): Promise<CustodyVaultData> {
+export async function getCustodyVaultData(client: PerpClient): Promise<CustodyVaultData> {
   const { pkg, vault, creditType } = requireCustody(client);
   const tx = new Transaction();
   creditSupplyCall({
@@ -684,7 +684,7 @@ export interface CustodyAssetData {
  * `&SingleVault<T>` reference, which a PTB simulate cannot read.
  */
 export async function getCustodyAssetData(
-  client: WaterXClient,
+  client: PerpClient,
   assetType: string,
 ): Promise<CustodyAssetData> {
   const { pkg, vault, creditType } = requireCustody(client);
@@ -762,7 +762,7 @@ export interface BridgeLimitsArgs {
  * canonical config — e.g. on a network where the Sui bridge isn't published.
  */
 export async function getBridgeLimits(
-  client: WaterXClient,
+  client: PerpClient,
   args: BridgeLimitsArgs = {},
 ): Promise<BridgeLimitsView> {
   const pkg = client.config.packages.wormhole_bridge;
@@ -850,7 +850,7 @@ export interface BridgeFeeView {
   netAmount: bigint;
 }
 
-function requireWithdrawalQueue(client: WaterXClient): { pkg: string; queue: string } {
+function requireWithdrawalQueue(client: PerpClient): { pkg: string; queue: string } {
   const wq = client.config.packages.withdrawal_queue;
   if (!wq?.queue) {
     throw new Error(
@@ -877,7 +877,7 @@ function requireWithdrawalQueue(client: WaterXClient): { pkg: string; queue: str
  * @param args.creditType         CREDIT coin type; defaults to `client.creditType()`.
  */
 export async function getBridgeFee(
-  client: WaterXClient,
+  client: PerpClient,
   args: { evmDestinationChain: number; amount: bigint | number; creditType?: string },
 ): Promise<BridgeFeeView> {
   const { pkg, queue } = requireWithdrawalQueue(client);

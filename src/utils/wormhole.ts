@@ -16,7 +16,7 @@
 
 import { fromBase64, toBase64, toHex } from "@mysten/bcs";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 
 // ============================================================================
 // Emitter address formatting
@@ -203,7 +203,7 @@ export function vaaBase64ToHex(b64: string): `0x${string}` {
  * source EVM chain's Wormhole chain id.
  */
 export function fetchDepositVaa(
-  client: WaterXClient,
+  client: PerpClient,
   evmWormholeChainId: number,
   evmEmitter: string,
   sequence: number | string | bigint,
@@ -223,7 +223,7 @@ export function fetchDepositVaa(
  * relayer). Requires `packages.wormhole_bridge.emitter_cap` in config.
  */
 export function listBridgeWithdrawalVaas(
-  client: WaterXClient,
+  client: PerpClient,
   opts?: WormholescanOptions & { page?: number; pageSize?: number },
 ): Promise<VaaListItem[]> {
   const emitterCap = client.config.packages.wormhole_bridge?.emitter_cap;

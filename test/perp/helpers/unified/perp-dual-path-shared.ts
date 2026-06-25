@@ -3,8 +3,8 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
-import type { PerpModule } from "../../../../src/unified-client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
+import type { WaterXClient } from "../../../../src/unified-client.ts";
 import { executeTrading, increasePositionRequest } from "../../../../src/user/trading.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import type { DualPathTxCase } from "../../../helpers/unified-dual-path.ts";
@@ -37,7 +37,9 @@ export const baseOrderMain = {
   collateralAmount: 10_000_000n,
 };
 
-export type PerpDualPathCase = DualPathTxCase<WaterXClient, PerpModule>;
+// The facade side is the umbrella client; cases pick `.perp` or `.account`
+// (generic account + credit + custody builders moved to `client.account`).
+export type PerpDualPathCase = DualPathTxCase<PerpClient, WaterXClient>;
 
 export function receivingRef(tx: Transaction) {
   return tx.receivingRef({
@@ -49,8 +51,8 @@ export function receivingRef(tx: Transaction) {
 
 export function caseMutate(
   name: string,
-  legacy: (c: WaterXClient, tx: Transaction) => void,
-  facade: (p: PerpModule, tx: Transaction) => void,
+  legacy: (c: PerpClient, tx: Transaction) => void,
+  facade: (p: WaterXClient, tx: Transaction) => void,
 ): PerpDualPathCase {
   return {
     name,
@@ -69,21 +71,21 @@ export function caseMutate(
 
 export function caseAsyncTx(
   name: string,
-  legacy: (c: WaterXClient) => Promise<Transaction>,
-  facade: (p: PerpModule) => Promise<Transaction>,
+  legacy: (c: PerpClient) => Promise<Transaction>,
+  facade: (p: WaterXClient) => Promise<Transaction>,
 ): PerpDualPathCase {
   return { name, buildLegacy: legacy, buildFacade: facade };
 }
 
 export function caseFactory(
   name: string,
-  legacy: (c: WaterXClient) => Transaction,
-  facade: (p: PerpModule) => Transaction,
+  legacy: (c: PerpClient) => Transaction,
+  facade: (p: WaterXClient) => Transaction,
 ): PerpDualPathCase {
   return { name, buildLegacy: legacy, buildFacade: facade };
 }
 
-export function buildExecuteTradingTx(client: WaterXClient): Transaction {
+export function buildExecuteTradingTx(client: PerpClient): Transaction {
   const tx = new Transaction();
   const req = increasePositionRequest(client, tx, {
     collateralType: COLLATERAL_TYPE,
@@ -102,9 +104,9 @@ export function buildExecuteTradingTx(client: WaterXClient): Transaction {
   return tx;
 }
 
-export function buildExecuteTradingFacade(perp: PerpModule): Transaction {
+export function buildExecuteTradingFacade(client: WaterXClient): Transaction {
   const tx = new Transaction();
-  const req = perp.increasePositionRequest(tx, {
+  const req = client.perp.increasePositionRequest(tx, {
     collateralType: COLLATERAL_TYPE,
     ticker: TICKER,
     accountId: ACCOUNT_ID,
@@ -113,7 +115,7 @@ export function buildExecuteTradingFacade(perp: PerpModule): Transaction {
     size: rawPrice(0.001),
     acceptablePrice: rawPrice(100_000),
   });
-  perp.executeTrading(tx, {
+  client.perp.executeTrading(tx, {
     collateralType: COLLATERAL_TYPE,
     ticker: TICKER,
     request: req,

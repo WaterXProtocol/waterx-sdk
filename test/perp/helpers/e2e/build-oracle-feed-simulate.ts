@@ -4,13 +4,13 @@
  */
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { aggregate as aggregateCall } from "../../../../src/generated/bucket_v2_oracle/aggregator.ts";
 import { _new as collectorNewCall } from "../../../../src/generated/bucket_v2_oracle/collector.ts";
 import { feedPythRule } from "../../../../src/utils/pyth.ts";
 
 export function buildOracleFeedForSimulate(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   tokenType: string,
   aggregatorId: string,

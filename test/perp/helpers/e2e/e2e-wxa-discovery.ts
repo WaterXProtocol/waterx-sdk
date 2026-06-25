@@ -1,7 +1,7 @@
 /**
  * Thin e2e helpers for wxa stored-balance discovery (v3 mint / redeem / stake simulate).
  */
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import {
   discoverPendingRedeemRequest,
   discoverStatefulSimulatePosition,
@@ -29,7 +29,7 @@ export {
 };
 
 export async function loadWxaAccountForWlpMint(
-  client: WaterXClient,
+  client: PerpClient,
 ): Promise<DiscoveredWxaAccount | null> {
   let minUsdc = 1_000_000n;
   try {
@@ -42,7 +42,7 @@ export async function loadWxaAccountForWlpMint(
 }
 
 export async function loadWxaAccountWithWlp(
-  client: WaterXClient,
+  client: PerpClient,
   minWlp = 1n,
 ): Promise<DiscoveredWxaAccount | null> {
   return discoverWxaAccountWithWlpBalance(client, minWlp);

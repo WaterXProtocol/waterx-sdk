@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/client.ts";
 import * as configModule from "../../../src/config.ts";
 import { PYTH_DEFAULTS } from "../../../src/config.ts";
 import type { WlpPackage } from "../../../src/config.ts";
@@ -10,7 +10,7 @@ import {
 } from "../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
-describe("WaterXClient (offline)", () => {
+describe("PerpClient (offline)", () => {
   const client = createUnitTestClient();
 
   it("exposes testnet config and pyth defaults", () => {
@@ -169,14 +169,14 @@ describe("WaterXClient (offline)", () => {
   });
 });
 
-describe("WaterXClient.create", () => {
+describe("PerpClient.create", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it("returns async client with loaded config", async () => {
     const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await WaterXClient.create("TESTNET", { cache: true });
+    const client = await PerpClient.create("TESTNET", { cache: true });
     expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true });
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
     expect(client.network).toBe("TESTNET");
@@ -187,8 +187,8 @@ describe("WaterXClient.create", () => {
       ...MOCK_TESTNET_CONFIG,
       network: network === "MAINNET" ? "mainnet" : "testnet",
     }));
-    const testnet = await WaterXClient.testnet();
-    const mainnet = await WaterXClient.mainnet();
+    const testnet = await PerpClient.testnet();
+    const mainnet = await PerpClient.mainnet();
     expect(testnet.network).toBe("TESTNET");
     expect(mainnet.network).toBe("MAINNET");
     expect(loadConfig).toHaveBeenCalledTimes(2);

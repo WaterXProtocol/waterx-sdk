@@ -21,7 +21,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { getAccountBalance } from "../src/fetch.ts";
 import {
@@ -35,7 +35,7 @@ import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 async function isUsdAllowed(
-  client: WaterXClient,
+  client: PerpClient,
   registry: string,
   perpWitness: string,
   usdType: string,
@@ -63,7 +63,7 @@ async function isUsdAllowed(
   return bcs.bool().parse(bytes);
 }
 
-async function getOwner(client: WaterXClient, objectId: string): Promise<string | undefined> {
+async function getOwner(client: PerpClient, objectId: string): Promise<string | undefined> {
   const r = (await client.grpcClient.getObject({ objectId })) as {
     object?: { owner?: { AddressOwner?: string } };
   };
@@ -71,7 +71,7 @@ async function getOwner(client: WaterXClient, objectId: string): Promise<string 
 }
 
 async function getPriceRefreshThresholdMs(
-  client: WaterXClient,
+  client: PerpClient,
   globalConfigId: string,
 ): Promise<bigint> {
   // Fall back to JSON RPC since grpc getObject doesn't expose parsed Move fields.
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
   // `skipOraclePriceRefresh: true`.
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
 
   const usdType = client.creditType();
   const wlpType = client.wlpType();

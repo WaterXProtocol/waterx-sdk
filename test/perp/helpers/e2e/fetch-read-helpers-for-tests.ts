@@ -6,7 +6,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { getAccountsByOwner } from "../../../../src/fetch.ts";
 import {
   accountBalance,
@@ -95,7 +95,7 @@ function extractSimulateReturnBytesSync(
  * `account_ids(owner)` membership checks using integration / e2e owner hints.
  */
 export async function getAccountOwnerByAccountId(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
 ): Promise<string> {
   const want = normAddr(accountId);
@@ -136,7 +136,7 @@ function parseSimulateBoolReturn(result: unknown, commandIndex = 0): boolean {
 
 /** Registry-level: at least one deposit policy registered for `coinType`. */
 export async function isRegistryDepositPolicyRegistered(
-  client: WaterXClient,
+  client: PerpClient,
   coinType: string,
 ): Promise<boolean> {
   const pkg = client.config.packages.waterx_account.published_at;
@@ -153,7 +153,7 @@ export async function isRegistryDepositPolicyRegistered(
 
 /** `WaterXPerp` may `take<coinType>` from wxa stored balance (mint_wlp / trading gate). */
 export async function isWaterXPerpProtocolAssetAllowed(
-  client: WaterXClient,
+  client: PerpClient,
   coinType: string,
 ): Promise<boolean> {
   const perpWitness = `${client.config.packages.waterx_perp.original_id}::account_data::WaterXPerp`;
@@ -171,7 +171,7 @@ export async function isWaterXPerpProtocolAssetAllowed(
 
 /** Stored balance for `coinType` on wxa account `accountId`. */
 export async function getWxaAccountBalance(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   coinType: string,
 ): Promise<bigint> {
@@ -237,7 +237,7 @@ function pow10(decimals: number): bigint {
 }
 
 export async function getWlpCollateralPoolRow(
-  client: WaterXClient,
+  client: PerpClient,
   poolTokenTicker: string,
 ): Promise<WlpCollateralPoolRow> {
   const want = normalizeCoinTypeForMatch(client.getPoolTokenType(poolTokenTicker));
@@ -292,7 +292,7 @@ export async function getWlpCollateralPoolRow(
 }
 
 export async function getWlpMinDepositForTicker(
-  client: WaterXClient,
+  client: PerpClient,
   poolTokenTicker: string,
 ): Promise<bigint> {
   const row = await getWlpCollateralPoolRow(client, poolTokenTicker);
@@ -301,7 +301,7 @@ export async function getWlpMinDepositForTicker(
 
 /** @deprecated Use {@link getWlpMinDepositForTicker}. */
 export async function getWlpMinDepositForCollateral(
-  client: WaterXClient,
+  client: PerpClient,
   collateral: string,
 ): Promise<bigint> {
   const ticker =
@@ -324,7 +324,7 @@ export function minCollateralRawFromMinCollValueUsd(params: {
 }
 
 export async function getMarketMinCollateralRawAmount(
-  client: WaterXClient,
+  client: PerpClient,
   params: {
     ticker: string;
     poolTokenTicker: string;

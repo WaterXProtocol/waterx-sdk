@@ -13,7 +13,7 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 import * as trading from "../generated/waterx_perp/trading.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
@@ -29,7 +29,7 @@ export interface TradingTypeArgs {
   lpType?: string;
 }
 
-function typeArgs(client: WaterXClient, t: TradingTypeArgs): [string, string] {
+function typeArgs(client: PerpClient, t: TradingTypeArgs): [string, string] {
   return [t.collateralType, t.lpType ?? client.wlpType()];
 }
 
@@ -42,7 +42,7 @@ export interface CommonTradingParams extends TradingTypeArgs {
   bucketAccount?: string | TransactionArgument;
 }
 
-function commonObjects(client: WaterXClient) {
+function commonObjects(client: PerpClient) {
   const perp = client.config.packages.waterx_perp;
   return {
     perpPackage: perp.published_at,
@@ -65,7 +65,7 @@ export interface ClosePositionRequestParams extends CommonTradingParams {
 }
 
 export function closePositionRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: ClosePositionRequestParams,
 ): TransactionArgument {
@@ -104,7 +104,7 @@ export interface IncreasePositionRequestParams extends CommonTradingParams {
 }
 
 export function increasePositionRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: IncreasePositionRequestParams,
 ): TransactionArgument {
@@ -138,7 +138,7 @@ export interface DecreasePositionRequestParams extends CommonTradingParams {
 }
 
 export function decreasePositionRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: DecreasePositionRequestParams,
 ): TransactionArgument {
@@ -172,7 +172,7 @@ export interface DepositCollateralRequestParams extends CommonTradingParams {
 }
 
 export function depositCollateralRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: DepositCollateralRequestParams,
 ): TransactionArgument {
@@ -201,7 +201,7 @@ export interface WithdrawCollateralRequestParams extends CommonTradingParams {
 }
 
 export function withdrawCollateralRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: WithdrawCollateralRequestParams,
 ): TransactionArgument {
@@ -234,7 +234,7 @@ export interface ExecuteTradingParams extends TradingTypeArgs {
 }
 
 export function executeTrading(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: ExecuteTradingParams,
 ): void {
@@ -265,7 +265,7 @@ export interface LiquidateParams extends TradingTypeArgs {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function liquidate(client: WaterXClient, tx: Transaction, params: LiquidateParams): void {
+export function liquidate(client: PerpClient, tx: Transaction, params: LiquidateParams): void {
   const obj = commonObjects(client);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.liquidate({
@@ -292,7 +292,7 @@ export interface BatchLiquidateParams extends TradingTypeArgs {
 }
 
 export function batchLiquidate(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: BatchLiquidateParams,
 ): void {
@@ -325,11 +325,7 @@ export interface MatchOrdersParams extends TradingTypeArgs {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function matchOrders(
-  client: WaterXClient,
-  tx: Transaction,
-  params: MatchOrdersParams,
-): void {
+export function matchOrders(client: PerpClient, tx: Transaction, params: MatchOrdersParams): void {
   const obj = commonObjects(client);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   trading.matchOrders({
@@ -358,7 +354,7 @@ export interface UpdateFundingRateParams {
 }
 
 export function updateFundingRate(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: UpdateFundingRateParams,
 ): void {
@@ -392,7 +388,7 @@ export interface OpenPositionByKeeperParams extends TradingTypeArgs {
 }
 
 export function openPositionByKeeper(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: OpenPositionByKeeperParams,
 ): void {
@@ -426,7 +422,7 @@ export interface ClosePositionByKeeperParams extends TradingTypeArgs {
 }
 
 export function closePositionByKeeper(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: ClosePositionByKeeperParams,
 ): void {

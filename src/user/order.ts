@@ -11,7 +11,7 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 import { newPlaceOrderArgument } from "../generated/waterx_perp/request.ts";
 import * as trading from "../generated/waterx_perp/trading.ts";
@@ -37,7 +37,7 @@ export interface PlaceOrderArgumentParams {
 
 /** Build a `request::PlaceOrderArgument` Move struct in the PTB. */
 export function buildPlaceOrderArgument(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   p: PlaceOrderArgumentParams,
 ): TransactionArgument {
@@ -75,7 +75,7 @@ export interface PlaceOrderRequestParams {
 
 /** Build `trading::place_order_request`. Returns the `TradingRequest<C_TOKEN>` argument. */
 export function placeOrderRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: PlaceOrderRequestParams,
 ): TransactionArgument {
@@ -124,7 +124,7 @@ export interface CancelOrderRequestParams {
 }
 
 export function cancelOrderRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: CancelOrderRequestParams,
 ): TransactionArgument {
@@ -168,7 +168,7 @@ export interface UpdateOrderRequestParams {
 }
 
 export function updateOrderRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: UpdateOrderRequestParams,
 ): TransactionArgument {
@@ -208,7 +208,7 @@ export interface CancelPreOrderRequestParams {
 }
 
 export function cancelPreOrderRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: CancelPreOrderRequestParams,
 ): TransactionArgument {
@@ -241,7 +241,7 @@ export interface AddPreOrderRequestParams {
 }
 
 export function addPreOrderRequest(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: AddPreOrderRequestParams,
 ): TransactionArgument {

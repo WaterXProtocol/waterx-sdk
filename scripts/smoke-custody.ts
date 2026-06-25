@@ -28,7 +28,7 @@ import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { creditSupply, hasAsset } from "../src/generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
@@ -54,7 +54,7 @@ type SimOutcome = "ok" | "aborted" | "error";
 
 /** Dry-run a write PTB; an on-chain abort is reported, not treated as failure. */
 async function sim(
-  client: WaterXClient,
+  client: PerpClient,
   sender: string,
   tx: Transaction,
   label: string,
@@ -77,7 +77,7 @@ async function sim(
 }
 
 async function execute(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -102,7 +102,7 @@ async function execute(
 
 /** Raw simulate of a single getter move call, decoded with `decode`. */
 async function readGetter<T>(
-  client: WaterXClient,
+  client: PerpClient,
   build: (tx: Transaction) => void,
   decode: (bytes: Uint8Array) => T,
 ): Promise<T> {
@@ -122,7 +122,7 @@ async function readGetter<T>(
 
 /** First spendable coin of `coinType` owned by `owner`, or undefined. */
 async function firstCoin(
-  client: WaterXClient,
+  client: PerpClient,
   owner: string,
   coinType: string,
 ): Promise<string | undefined> {
@@ -137,7 +137,7 @@ async function firstCoin(
 
 /** Full object refs of every `coinType` coin owned by `owner` — for `receivingRef`. */
 async function coinRefsOwnedBy(
-  client: WaterXClient,
+  client: PerpClient,
   owner: string,
   coinType: string,
 ): Promise<{ objectId: string; version: string; digest: string }[]> {
@@ -164,7 +164,7 @@ async function coinRefsOwnedBy(
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const address = resolveActiveAddress();
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   const doExecute = process.env.WATERX_CUSTODY_EXECUTE === "1";

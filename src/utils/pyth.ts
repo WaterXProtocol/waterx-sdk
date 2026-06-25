@@ -17,7 +17,7 @@ import { bcs } from "@mysten/sui/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 // ============================================================================
 // Pyth-sponsor flow — pays Pyth update fees from a shared sponsor pool AND
 // attaches the `PythSponsorRule` witness to a TradingRequest. Required when
@@ -209,7 +209,7 @@ function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
  */
 export async function buildPythPriceUpdateCalls(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   updates: Uint8Array[],
   feedIds: string[],
   cache?: PythCache,
@@ -294,7 +294,7 @@ export async function buildPythPriceUpdateCalls(
 /** All-in-one: fetch from Hermes, append update calls. Returns PriceInfoObject IDs. */
 export async function updatePythPrices(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   feedIds: string[],
   cache?: PythCache,
   sponsorFund?: { fund: TransactionArgument; packageId: string },
@@ -319,7 +319,7 @@ export async function updatePythPrices(
  * - **Supra** — fed alongside Pyth when supra is enabled + wired (abstains on-chain
  *   for symbols it has no pair for).
  * - **Constant** — fed when the ticker is a constant ticker
- *   ({@link WaterXClient.isConstantTicker}).
+ *   ({@link PerpClient.isConstantTicker}).
  *
  * "Dual-feed" (Pyth + Constant) and "constant-only" are not special cases — they
  * fall out of which rules the ticker is in: a constant ticker that also has a Pyth
@@ -328,7 +328,7 @@ export async function updatePythPrices(
  */
 export function aggregateTicker(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   args: { ticker: string; priceInfoObjectId?: string },
 ): void {
   const oraclePkg = client.config.packages.waterx_oracle.published_at;
@@ -384,7 +384,7 @@ export function aggregateTicker(
  */
 export function aggregateTickerWithPyth(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   args: { ticker: string; priceInfoObjectId: string },
 ): void {
   aggregateTicker(tx, client, args);
@@ -392,14 +392,10 @@ export function aggregateTickerWithPyth(
 
 /**
  * Append a `supra_rule::feed` on `collector` when the deployment has supra
- * enabled + wired (see {@link WaterXClient.getSupraRule}). No-op otherwise, so
+ * enabled + wired (see {@link PerpClient.getSupraRule}). No-op otherwise, so
  * Pyth-only deployments are unchanged.
  */
-function maybeFeedSupra(
-  tx: Transaction,
-  client: WaterXClient,
-  collector: TransactionArgument,
-): void {
+function maybeFeedSupra(tx: Transaction, client: PerpClient, collector: TransactionArgument): void {
   const supra = client.getSupraRule();
   if (!supra) return;
   supraRuleFeed({
@@ -424,7 +420,7 @@ function maybeFeedSupra(
  */
 export function aggregateTickerWithConstant(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   args: { ticker: string },
 ): void {
   if (client.config.packages.pyth_rule?.feeds?.[args.ticker] !== undefined) {
@@ -444,7 +440,7 @@ export function aggregateTickerWithConstant(
  */
 export async function refreshOraclePrices(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   tickers: string[],
   opts: {
     cache?: PythCache;
@@ -486,7 +482,7 @@ export async function refreshOraclePrices(
  */
 export function openPythSponsorFund(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
 ): { fund: TransactionArgument; packageId: string } {
   const entry = client.config.packages.pyth_sponsor_rule;
   if (!entry?.published_at || !entry.pyth_sponsor) {
@@ -509,7 +505,7 @@ export function openPythSponsorFund(
  */
 export function reimbursePythSponsor(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   fund: TransactionArgument,
   tradingRequest: TransactionArgument,
   collateralType: string,

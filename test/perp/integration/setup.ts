@@ -1,5 +1,5 @@
 /**
- * Integration trader helpers (`pnpm test:integration`). v3 `WaterXClient` + canonical config.
+ * Integration trader helpers (`pnpm test:integration`). v3 `PerpClient` + canonical config.
  *
  * Requires `WATERX_INTEGRATION_PRIVATE_KEY` (Bech32 byte array input) or `.integration-trader.keystore`.
  * Destructive close-one test stays opt-in (`WATERX_INTEGRATION_CLOSE_ONE_POSITION=1`).
@@ -8,7 +8,7 @@ import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { loadRepoEnvFiles } from "../../../scripts/load-repo-env.ts";
-import type { WaterXClient } from "../../../src/client.ts";
+import type { PerpClient } from "../../../src/client.ts";
 import { getAccountsByOwner } from "../../../src/fetch.ts";
 import { createIntegrationWaterXClient } from "../helpers/e2e/integration-client.ts";
 import type { NormalizedIntegrationTxResult } from "../helpers/e2e/integration-tx-result.ts";
@@ -31,7 +31,7 @@ import {
 
 loadRepoEnvFiles();
 
-export let client!: WaterXClient;
+export let client!: PerpClient;
 
 export const clientInit = (async () => {
   const c = await createIntegrationWaterXClient();

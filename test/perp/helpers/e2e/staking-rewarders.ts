@@ -1,4 +1,4 @@
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 
 const REWARDER_KEY_RE = /::waterx_staking::RewarderKey<(.+)>$/;
 
@@ -7,7 +7,7 @@ const REWARDER_KEY_RE = /::waterx_staking::RewarderKey<(.+)>$/;
  * (same approach as `scripts/smoke-staking-claim.ts`).
  */
 export async function discoverStakingRewarderTypes(
-  client: WaterXClient,
+  client: PerpClient,
   stakeAlias = "WLP",
 ): Promise<string[]> {
   const poolId = client.config.packages.waterx_staking?.pools?.[stakeAlias];

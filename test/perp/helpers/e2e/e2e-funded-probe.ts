@@ -1,4 +1,4 @@
-import type { WaterXClient } from "@waterx/sdk";
+import type { PerpClient } from "@waterx/sdk";
 
 import { e2eCanonicalWxaAccountIds, e2eCanonicalWxaOwner } from "./canonical-testnet-account.ts";
 import {
@@ -20,7 +20,7 @@ export type FundedProbe = {
 
 /** Resolve one funded probe owner + TTO account id, or `null` when discovery finds nothing. */
 async function loadFundedProbeFromCanonicalAccount(
-  client: WaterXClient,
+  client: PerpClient,
   extraDiscoverOpts?: Omit<DiscoverActivePositionOpts, "minAccountUsdcBalance">,
 ): Promise<FundedProbe | null> {
   const accountId = e2eCanonicalWxaAccountIds(resolveE2eNetwork())[0];
@@ -47,7 +47,7 @@ async function loadFundedProbeFromCanonicalAccount(
 }
 
 export async function loadFundedProbe(
-  client: WaterXClient,
+  client: PerpClient,
   minAccountUsdcBalance: bigint = PROBE_MIN_ACCOUNT_USDC,
   extraDiscoverOpts?: Omit<DiscoverActivePositionOpts, "minAccountUsdcBalance">,
 ): Promise<FundedProbe | null> {

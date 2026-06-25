@@ -15,19 +15,19 @@ import {
   mintCreditToAccount,
   mintWlp,
   nativeCustodyCalls,
+  PerpClient,
   placeOrderRequest,
   stake,
-  WaterXClient,
 } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
-import { Client, perp, prediction } from "../../../src/sdk.ts";
+import { Client, perp, prediction, WaterXClient } from "../../../src/sdk.ts";
 
 describe("SDK package wiring (v3)", () => {
-  it("exports WaterXClient async factories", () => {
-    expect(WaterXClient).toBeDefined();
-    expect(typeof WaterXClient.create).toBe("function");
-    expect(typeof WaterXClient.testnet).toBe("function");
+  it("exports the perp sub-client PerpClient with async factories", () => {
+    expect(PerpClient).toBeDefined();
+    expect(typeof PerpClient.create).toBe("function");
+    expect(typeof PerpClient.testnet).toBe("function");
   });
 
   it("exports trading request + execute + high-level builders", () => {
@@ -60,13 +60,16 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof fetchDepositVaa).toBe("function");
   });
 
-  it("exports unified Client facade from @waterx/sdk", () => {
-    expect(typeof Client).toBe("function");
-    expect(typeof Client.create).toBe("function");
-    expect(typeof Client.fromClients).toBe("function");
+  it("exports the umbrella WaterXClient (with deprecated Client alias) from @waterx/sdk", () => {
+    expect(typeof WaterXClient).toBe("function");
+    expect(typeof WaterXClient.create).toBe("function");
+    expect(typeof WaterXClient.fromClients).toBe("function");
+    // Deprecated alias kept one major cycle.
+    expect(Client).toBe(WaterXClient);
     expect(typeof perp).toBe("object");
     expect(typeof prediction).toBe("object");
-    expect(perp.WaterXClient).toBe(WaterXClient);
+    // The perp sub-client is reachable flat (`perp.PerpClient`).
+    expect(perp.PerpClient).toBe(PerpClient);
     expect(typeof prediction.buildPlaceOrderTx).toBe("function");
     expect(typeof prediction.buildBatchClaimTx).toBe("function");
   });

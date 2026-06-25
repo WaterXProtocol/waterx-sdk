@@ -8,11 +8,11 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
+import type { PerpClient } from "../client.ts";
 import * as referral from "../generated/waterx_referral/referral_table.ts";
 import { makeSenderRequest } from "../utils/account-request.ts";
 
-function requireReferralConfig(client: WaterXClient): { pkg: string; table: string } {
+function requireReferralConfig(client: PerpClient): { pkg: string; table: string } {
   const pkg = client.config.packages.waterx_referral?.published_at;
   const table = client.config.packages.waterx_referral?.referral_table;
   if (!pkg || !table) {
@@ -30,7 +30,7 @@ export interface SetReferralCodeParams {
 }
 
 export function setReferralCode(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: SetReferralCodeParams,
 ): void {
@@ -53,7 +53,7 @@ export interface UseReferralCodeParams {
 }
 
 export function useReferralCode(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   params: UseReferralCodeParams,
 ): void {

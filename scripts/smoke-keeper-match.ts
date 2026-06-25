@@ -49,7 +49,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
+import { PerpClient } from "../src/client.ts";
 import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/constants.ts";
 import {
   getAccountOrders,
@@ -83,7 +83,7 @@ interface SimResult {
 
 /** (A) Dry-run a write PTB. Returns false if simulate aborts. */
 async function sim(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -100,7 +100,7 @@ async function sim(
 }
 
 async function execute(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -129,7 +129,7 @@ async function execute(
  * parts: build PTB → setSender(zero) → simulate → pull BCS bytes →
  * `MarketData.parse(bytes)`.
  */
-async function readMarketRaw(client: WaterXClient): Promise<MarketDataView> {
+async function readMarketRaw(client: PerpClient): Promise<MarketDataView> {
   const tx = new Transaction();
   marketDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
@@ -198,7 +198,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
   const usdcType = client.getPoolTokenType("USD");
 
   // ============================================================================

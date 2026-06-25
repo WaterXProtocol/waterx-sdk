@@ -1,11 +1,11 @@
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import type { CollateralAsset } from "../../../../src/constants.ts";
 import { buildMintWlpTx } from "../../../../src/tx-builders.ts";
 import { getWlpMinDepositForCollateral } from "./fetch-read-helpers-for-tests.ts";
 
-/** One wallet-level `Coin<T>` row from `WaterXClient.listCoins`. */
+/** One wallet-level `Coin<T>` row from `PerpClient.listCoins`. */
 export type WalletCollateralCoin = { objectId: string; balance: bigint };
 
 function sortCoinsByBalanceDesc(coins: WalletCollateralCoin[]): WalletCollateralCoin[] {
@@ -17,7 +17,7 @@ function sortCoinsByBalanceDesc(coins: WalletCollateralCoin[]): WalletCollateral
  * {@link getWlpMinDepositForCollateral}, then append `buildMintWlpTx`.
  */
 export async function buildMintWlpSimulateTx(
-  client: WaterXClient,
+  client: PerpClient,
   args: {
     recipient: string;
     collateral: CollateralAsset;

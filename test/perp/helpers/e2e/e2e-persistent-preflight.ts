@@ -5,7 +5,7 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/client.ts";
 import { getAccountBalance } from "../../../../src/fetch.ts";
 import { buildMintWlpTx } from "../../../../src/tx-builders.ts";
 import { openPositionByKeeper } from "../../../../src/user/trading.ts";
@@ -88,7 +88,7 @@ function publishWxaAccountIdForDiscovery(accountId: string): void {
 }
 
 async function seedPerpSlot(
-  client: WaterXClient,
+  client: PerpClient,
   trader: Ed25519Keypair,
   owner: string,
   accountId: string,
@@ -184,7 +184,7 @@ async function seedPerpSlot(
 }
 
 async function seedWlp(
-  client: WaterXClient,
+  client: PerpClient,
   trader: Ed25519Keypair,
   owner: string,
   accountId: string,
@@ -247,7 +247,7 @@ async function seedWlp(
 }
 
 async function seedPendingRedeem(
-  client: WaterXClient,
+  client: PerpClient,
   trader: Ed25519Keypair,
   accountId: string,
   wlpSeed: E2ePreflightReport["wlp"],
@@ -325,7 +325,7 @@ async function seedPendingRedeem(
 }
 
 async function seedCreditIfConfigured(
-  client: WaterXClient,
+  client: PerpClient,
   trader: Ed25519Keypair,
   owner: string,
   accountId: string,
@@ -370,7 +370,7 @@ async function seedCreditIfConfigured(
  * Idempotent keeper opens + wxa WLP mint (same as integration persistent-state test).
  * Never throws for expected resource skips — returns a report and logs warnings.
  */
-export async function runE2ePersistentPreflight(client: WaterXClient): Promise<E2ePreflightReport> {
+export async function runE2ePersistentPreflight(client: PerpClient): Promise<E2ePreflightReport> {
   const trader = loadIntegrationTraderKeypair();
   const owner = trader.getPublicKey().toSuiAddress();
   const execTx = (tx: Transaction, signer: Ed25519Keypair, opts?: { gasBudget?: number }) =>
@@ -433,7 +433,7 @@ export async function runE2ePersistentPreflight(client: WaterXClient): Promise<E
 }
 
 export async function runE2ePersistentPreflightIfNeeded(
-  client: WaterXClient,
+  client: PerpClient,
 ): Promise<E2ePreflightReport | null> {
   if (!shouldRunE2ePersistentPreflight()) {
     return null;
