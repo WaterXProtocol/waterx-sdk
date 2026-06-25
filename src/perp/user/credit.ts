@@ -22,19 +22,19 @@ import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 import { normalizeStructTag } from "@mysten/sui/utils";
 
-import type { PerpClient } from "../client.ts";
-import { mint as custodyMintCall } from "../generated/native_custody/custody_vault.ts";
-import { requestWithdraw as requestWithdrawCall } from "../generated/waterx_account/account.ts";
-import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
+import { mint as custodyMintCall } from "../../generated/native_custody/custody_vault.ts";
+import { requestWithdraw as requestWithdrawCall } from "../../generated/waterx_account/account.ts";
+import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
 import {
   enqueue as enqueueCall,
   executeNative as executeNativeCall,
   executeWormhole as executeWormholeCall,
   routeNative as routeNativeCall,
   routeWormhole as routeWormholeCall,
-} from "../generated/withdrawal_queue/withdrawal_queue.ts";
-import { redeemVaa as redeemVaaCall } from "../generated/wormhole_bridge/wormhole_bridge.ts";
-import { makeSenderRequest } from "../utils/account-request.ts";
+} from "../../generated/withdrawal_queue/withdrawal_queue.ts";
+import { redeemVaa as redeemVaaCall } from "../../generated/wormhole_bridge/wormhole_bridge.ts";
+import { makeSenderRequest } from "../../utils/account-request.ts";
+import type { PerpClient } from "../client.ts";
 
 // ============================================================================
 // Byte helpers

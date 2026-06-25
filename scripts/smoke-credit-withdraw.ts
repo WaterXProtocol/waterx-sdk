@@ -15,8 +15,8 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { buildRequestCreditWithdrawTx } from "../src/tx-builders.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { buildRequestCreditWithdrawTx } from "../src/perp/tx-builders.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 /** Default wxa account (deployer's) if WATERX_SMOKE_ACCOUNT_ID is unset. */

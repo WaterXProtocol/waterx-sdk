@@ -11,7 +11,8 @@
  * {@link PerpConfigView}. This class is just the wiring + factory between them.
  */
 
-import { BaseLineClient } from "./base-client.ts";
+import { BaseLineClient } from "../base-client.ts";
+import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
   PYTH_DEFAULTS,
@@ -22,7 +23,6 @@ import {
   type WormholeInfraConfig,
 } from "./config.ts";
 import type { Network } from "./constants.ts";
-import { PerpConfigView } from "./perp-config-view.ts";
 
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;

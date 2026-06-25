@@ -3,9 +3,9 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { executeTrading, increasePositionRequest } from "../../../../src/perp/user/trading.ts";
 import type { WaterXClient } from "../../../../src/unified-client.ts";
-import { executeTrading, increasePositionRequest } from "../../../../src/user/trading.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import type { DualPathTxCase } from "../../../helpers/unified-dual-path.ts";
 import { MOCK_TESTNET_CONFIG, MOCK_USDC_TYPE } from "../fixtures/mock-testnet-config.ts";

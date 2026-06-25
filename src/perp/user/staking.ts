@@ -18,9 +18,9 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import * as staking from "../../generated/waterx_staking/waterx_staking.ts";
+import { makeSenderRequest } from "../../utils/account-request.ts";
 import type { PerpClient } from "../client.ts";
-import * as staking from "../generated/waterx_staking/waterx_staking.ts";
-import { makeSenderRequest } from "../utils/account-request.ts";
 
 function pool(client: PerpClient, stakeAlias: string): string {
   const id = client.config.packages.waterx_staking?.pools?.[stakeAlias];

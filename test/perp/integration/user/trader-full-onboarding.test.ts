@@ -17,9 +17,9 @@ import { Transaction } from "@mysten/sui/transactions";
 import { stake } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { ORDER_TAG_WILDCARD } from "../../../../src/constants.ts";
-import { getAccountBalance, positionExists } from "../../../../src/fetch.ts";
-import { buildCancelOrderTx, buildPlaceOrderTx } from "../../../../src/tx-builders.ts";
+import { ORDER_TAG_WILDCARD } from "../../../../src/perp/constants.ts";
+import { getAccountBalance, positionExists } from "../../../../src/perp/fetch.ts";
+import { buildCancelOrderTx, buildPlaceOrderTx } from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { ensureIntegrationMinCreditBalance } from "../../helpers/integration/ensure-credit-balance.ts";
 import { buildMatchOrdersAfterRefreshTx } from "../../helpers/trading/run-trading-scenario.ts";

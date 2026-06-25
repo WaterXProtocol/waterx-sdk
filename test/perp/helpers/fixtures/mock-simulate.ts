@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 type ReturnValue = { bcs?: Uint8Array; value?: { bcs?: Uint8Array } };
 

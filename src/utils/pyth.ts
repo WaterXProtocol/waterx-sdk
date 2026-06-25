@@ -17,7 +17,6 @@ import { bcs } from "@mysten/sui/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../client.ts";
 // ============================================================================
 // Pyth-sponsor flow — pays Pyth update fees from a shared sponsor pool AND
 // attaches the `PythSponsorRule` witness to a TradingRequest. Required when
@@ -32,6 +31,7 @@ import { feed as constantRuleFeed } from "../generated/waterx_constant_rule/cons
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import { feed as pythRuleFeed } from "../generated/waterx_pyth_rule/pyth_rule.ts";
 import { feed as supraRuleFeed } from "../generated/waterx_supra_rule/supra_rule.ts";
+import type { PerpClient } from "../perp/client.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads

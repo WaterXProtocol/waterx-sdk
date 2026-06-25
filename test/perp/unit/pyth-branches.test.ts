@@ -4,7 +4,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { placeOrderRequest } from "../../../src/user/order.ts";
+import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import {
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,

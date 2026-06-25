@@ -5,9 +5,9 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import { ORDER_LIMIT_BUY, ORDER_LIMIT_SELL } from "../../../../src/constants.ts";
-import { matchOrders } from "../../../../src/user/trading.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { ORDER_LIMIT_BUY, ORDER_LIMIT_SELL } from "../../../../src/perp/constants.ts";
+import { matchOrders } from "../../../../src/perp/user/trading.ts";
 import { DUMMY_SENDER } from "../e2e/e2e-client.ts";
 import {
   simulateWithTransientRetry,

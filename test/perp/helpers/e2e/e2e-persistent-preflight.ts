@@ -5,11 +5,11 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import { getAccountBalance } from "../../../../src/fetch.ts";
-import { buildMintWlpTx } from "../../../../src/tx-builders.ts";
-import { openPositionByKeeper } from "../../../../src/user/trading.ts";
-import { requestRedeemWlp } from "../../../../src/user/wlp.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { getAccountBalance } from "../../../../src/perp/fetch.ts";
+import { buildMintWlpTx } from "../../../../src/perp/tx-builders.ts";
+import { openPositionByKeeper } from "../../../../src/perp/user/trading.ts";
+import { requestRedeemWlp } from "../../../../src/perp/user/wlp.ts";
 import {
   buildDepositUsdcFromWalletTx,
   ensureUserAccountForIntegration,

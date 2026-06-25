@@ -13,7 +13,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildWithdrawCollateralTx } from "../../src/index.ts";
+import { buildWithdrawCollateralTx } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

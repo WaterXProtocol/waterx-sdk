@@ -14,7 +14,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildClosePositionTx, rawPrice } from "../../src/index.ts";
+import { buildClosePositionTx, rawPrice } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

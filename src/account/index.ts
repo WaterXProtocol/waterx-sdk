@@ -22,6 +22,6 @@
  * `test/perp/unit/unified-client.test.ts` only excuses names on that list).
  */
 
-export * from "../user/account.ts"; // generic waterx_account framework builders
-export * from "../user/credit.ts"; // cross-chain CREDIT / bridge builders
-export * from "../user/custody.ts"; // native_custody PSM mint builders
+export * from "../perp/user/account.ts"; // generic waterx_account framework builders
+export * from "../perp/user/credit.ts"; // cross-chain CREDIT / bridge builders
+export * from "../perp/user/custody.ts"; // native_custody PSM mint builders

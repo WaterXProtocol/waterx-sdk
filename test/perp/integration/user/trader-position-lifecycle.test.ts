@@ -1,8 +1,8 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { positionExists } from "../../../../src/fetch.ts";
-import { buildClosePositionTx, buildPlaceOrderTx } from "../../../../src/tx-builders.ts";
+import { positionExists } from "../../../../src/perp/fetch.ts";
+import { buildClosePositionTx, buildPlaceOrderTx } from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import {
   activeLifecycleTestBasesIntegration,

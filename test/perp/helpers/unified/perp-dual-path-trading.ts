@@ -1,4 +1,4 @@
-import { ORDER_LIMIT_BUY } from "../../../../src/constants.ts";
+import { ORDER_LIMIT_BUY } from "../../../../src/perp/constants.ts";
 import {
   batchLiquidate,
   closePositionByKeeper,
@@ -11,7 +11,7 @@ import {
   openPositionByKeeper,
   updateFundingRate,
   withdrawCollateralRequest,
-} from "../../../../src/user/trading.ts";
+} from "../../../../src/perp/user/trading.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {

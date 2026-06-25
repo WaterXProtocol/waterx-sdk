@@ -3,9 +3,9 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import { getAccountBalance } from "../../../../src/fetch.ts";
-import { buildMintWlpTx } from "../../../../src/tx-builders.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { getAccountBalance } from "../../../../src/perp/fetch.ts";
+import { buildMintWlpTx } from "../../../../src/perp/tx-builders.ts";
 import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
 import { buildDepositUsdcFromWalletTx } from "./account-bootstrap.ts";
 import { E2E_PERSISTENT_WLP } from "./e2e-persistent-state.ts";

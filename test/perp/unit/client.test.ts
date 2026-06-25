@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/client.ts";
-import * as configModule from "../../../src/config.ts";
-import { PYTH_DEFAULTS } from "../../../src/config.ts";
-import type { WlpPackage } from "../../../src/config.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
+import * as configModule from "../../../src/perp/config.ts";
+import { PYTH_DEFAULTS } from "../../../src/perp/config.ts";
+import type { WlpPackage } from "../../../src/perp/config.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,

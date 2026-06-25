@@ -1,7 +1,7 @@
 /**
  * E2E helpers for native-custody (CREDIT PSM) simulate + integration.
  */
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import { e2eCanonicalWxaAccountIds } from "./canonical-testnet-account.ts";
 import { resolveE2eNetwork } from "./e2e-client.ts";
 import { getAccountOwnerByAccountId } from "./fetch-read-helpers-for-tests.ts";

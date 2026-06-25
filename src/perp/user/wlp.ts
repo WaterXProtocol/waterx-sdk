@@ -12,9 +12,9 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import * as lp from "../../generated/waterx_perp/lp_pool.ts";
+import { makeSenderRequest } from "../../utils/account-request.ts";
 import type { PerpClient } from "../client.ts";
-import * as lp from "../generated/waterx_perp/lp_pool.ts";
-import { makeSenderRequest } from "../utils/account-request.ts";
 
 // ============================================================================
 // mint_wlp

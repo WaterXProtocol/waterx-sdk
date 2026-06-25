@@ -30,16 +30,16 @@ import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { DRY_RUN_SENDER } from "../src/constants.ts";
-import { getAccountBalance } from "../src/fetch.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
 import {
   realtimeRewardAmount as realtimeRewardAmountCall,
   stakeExists as stakeExistsCall,
   totalStakeAmount as totalStakeAmountCall,
 } from "../src/generated/waterx_staking/waterx_staking.ts";
-import { claimReward, stake, unstake } from "../src/index.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
+import { getAccountBalance } from "../src/perp/fetch.ts";
+import { claimReward, stake, unstake } from "../src/perp/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 

@@ -1,7 +1,7 @@
 import { getMarketSummary, type PerpClient } from "@waterx/sdk";
 import { expect } from "vitest";
 
-import type { BaseAsset } from "../../../../src/constants.ts";
+import type { BaseAsset } from "../../../../src/perp/constants.ts";
 import { computeLeverageDerivedSize } from "../trading/compute-leverage-size.ts";
 
 /**

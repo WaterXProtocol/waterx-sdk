@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as accountOps from "../../../src/account/index.ts";
-import { PerpClient } from "../../../src/client.ts";
-import * as perpFetch from "../../../src/fetch.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
+import * as perpFetch from "../../../src/perp/fetch.ts";
+import * as perpTx from "../../../src/perp/tx-builders.ts";
+import * as perpOrder from "../../../src/perp/user/order.ts";
+import * as perpReferral from "../../../src/perp/user/referral.ts";
+import * as perpStaking from "../../../src/perp/user/staking.ts";
+import * as perpTrading from "../../../src/perp/user/trading.ts";
+import * as perpWlp from "../../../src/perp/user/wlp.ts";
 import {
   allowPredictionProtocolAsset,
   disallowPredictionProtocolAsset,
@@ -15,12 +21,6 @@ import * as predFetch from "../../../src/prediction/fetch.ts";
 import * as predGift from "../../../src/prediction/gift.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
 import { Client, perp, prediction, WaterXClient } from "../../../src/sdk.ts";
-import * as perpTx from "../../../src/tx-builders.ts";
-import * as perpOrder from "../../../src/user/order.ts";
-import * as perpReferral from "../../../src/user/referral.ts";
-import * as perpStaking from "../../../src/user/staking.ts";
-import * as perpTrading from "../../../src/user/trading.ts";
-import * as perpWlp from "../../../src/user/wlp.ts";
 
 const predAccountSpecific = {
   setDelegatePredictionPermission,

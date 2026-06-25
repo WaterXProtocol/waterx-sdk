@@ -6,7 +6,7 @@
  *   WATERX_ACCOUNT_ID=0x... pnpm exec tsx examples/views/view-account-data.ts
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
-import { getAccountData } from "../../src/fetch.ts";
+import { getAccountData } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

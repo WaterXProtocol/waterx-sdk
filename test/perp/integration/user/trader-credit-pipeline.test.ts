@@ -4,8 +4,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { getAccountBalance } from "../../../../src/fetch.ts";
-import { buildRequestCreditWithdrawTx } from "../../../../src/tx-builders.ts";
+import { getAccountBalance } from "../../../../src/perp/fetch.ts";
+import { buildRequestCreditWithdrawTx } from "../../../../src/perp/tx-builders.ts";
 import { isCreditPipelineConfigured } from "../../helpers/e2e/e2e-custody.ts";
 import { ensureIntegrationMinCreditBalance } from "../../helpers/integration/ensure-credit-balance.ts";
 import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";

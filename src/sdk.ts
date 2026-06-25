@@ -27,8 +27,8 @@ export type {
   BuildPlaceOrderTxParams as BuildPredictPlaceOrderTxParams,
 } from "./prediction/tx-builders.ts";
 
-export * as perp from "./index.ts";
+export * as perp from "./perp/index.ts";
 export * as prediction from "./prediction/index.ts";
 
 // DEPRECATED flat perp surface (migration aid from `@waterx/perp-sdk`).
-export * from "./index.ts";
+export * from "./perp/index.ts";

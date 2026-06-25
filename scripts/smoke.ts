@@ -16,10 +16,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import type { WaterXConfig } from "../src/config.ts";
-import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/constants.ts";
-import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/fetch.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import type { WaterXConfig } from "../src/perp/config.ts";
+import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/perp/constants.ts";
+import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/perp/fetch.ts";
 import {
   buildPlaceOrderArgument,
   cancelOrderRequest,
@@ -30,7 +30,7 @@ import {
   placeOrderRequest,
   requestRedeemWlp,
   setReferralCode,
-} from "../src/index.ts";
+} from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";

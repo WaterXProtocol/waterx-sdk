@@ -5,7 +5,7 @@ import {
   buildCancelRedeemAndStakeWlpTx,
   buildMintAndStakeWlpTx,
   buildUnstakeAndRequestRedeemWlpTx,
-} from "../../../src/tx-builders.ts";
+} from "../../../src/perp/tx-builders.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";

@@ -1,8 +1,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import type { CollateralAsset } from "../../../../src/constants.ts";
-import { buildMintWlpTx } from "../../../../src/tx-builders.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { CollateralAsset } from "../../../../src/perp/constants.ts";
+import { buildMintWlpTx } from "../../../../src/perp/tx-builders.ts";
 import { getWlpMinDepositForCollateral } from "./fetch-read-helpers-for-tests.ts";
 
 /** One wallet-level `Coin<T>` row from `PerpClient.listCoins`. */

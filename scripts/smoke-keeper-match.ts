@@ -49,24 +49,24 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/constants.ts";
+import {
+  MarketData,
+  marketData as marketDataCall,
+} from "../src/generated/waterx_perp_view/view.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
 import {
   getAccountOrders,
   getAccountPositions,
   getMarketData,
   type MarketDataView,
-} from "../src/fetch.ts";
-import {
-  MarketData,
-  marketData as marketDataCall,
-} from "../src/generated/waterx_perp_view/view.ts";
+} from "../src/perp/fetch.ts";
 import {
   buildClosePositionTx,
   buildPlaceOrderTx,
   matchOrders,
   updateTokenValue,
-} from "../src/index.ts";
+} from "../src/perp/index.ts";
 import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { refreshOraclePrices } from "../src/utils/pyth.ts";

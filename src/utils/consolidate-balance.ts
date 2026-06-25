@@ -3,8 +3,8 @@
  * {@link getSpendableCreditBalance} — one asset list, one gRPC read pattern,
  * so display totals match what the next async tx-builder would sweep.
  */
-import type { PerpClient } from "../client.ts";
 import { COLLATERAL_DECIMALS } from "../constants.ts";
+import type { PerpClient } from "../perp/client.ts";
 
 /** CREDIT parked at a wxa account's Sui address (funds accumulator + owned coins). */
 export interface AddressCreditBalance {

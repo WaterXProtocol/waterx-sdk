@@ -1,7 +1,7 @@
 /**
  * Thin e2e helpers for wxa stored-balance discovery (v3 mint / redeem / stake simulate).
  */
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import {
   discoverPendingRedeemRequest,
   discoverStatefulSimulatePosition,

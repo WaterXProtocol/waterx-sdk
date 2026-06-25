@@ -13,7 +13,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildIncreasePositionTx, rawPrice } from "../../src/index.ts";
+import { buildIncreasePositionTx, rawPrice } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

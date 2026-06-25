@@ -10,18 +10,16 @@ import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "./client.ts";
-import { COLLATERAL_DECIMALS, DRY_RUN_SENDER } from "./constants.ts";
 import {
   burnFeeRate as burnFeeRateCall,
   creditSupply as creditSupplyCall,
   hasAsset as hasAssetCall,
   mintFeeRate as mintFeeRateCall,
-} from "./generated/native_custody/custody_vault.ts";
+} from "../generated/native_custody/custody_vault.ts";
 import {
   accountBalance as accountBalanceCall,
   accountIds as accountIdsCall,
-} from "./generated/waterx_account/account.ts";
+} from "../generated/waterx_account/account.ts";
 import {
   AccountData,
   accountData as accountDataCall,
@@ -44,7 +42,7 @@ import {
   RedeemRequestData,
   TokenPoolData,
   tokenPoolData as tokenPoolDataCall,
-} from "./generated/waterx_perp_view/view.ts";
+} from "../generated/waterx_perp_view/view.ts";
 // ============================================================================
 // Referral queries (waterx_referral::referral_table)
 // ============================================================================
@@ -53,13 +51,13 @@ import {
   isValidReferralCode as isValidReferralCodeCall,
   referralCodeExists as referralCodeExistsCall,
   tryGetRefer as tryGetReferCall,
-} from "./generated/waterx_referral/referral_table.ts";
+} from "../generated/waterx_referral/referral_table.ts";
 import {
   bridgeFeeAmount as bridgeFeeAmountCall,
   bridgeFeeRate as bridgeFeeRateCall,
   bridgeMinFee as bridgeMinFeeCall,
   wouldExecuteWormhole as wouldExecuteWormholeCall,
-} from "./generated/withdrawal_queue/withdrawal_queue.ts";
+} from "../generated/withdrawal_queue/withdrawal_queue.ts";
 import {
   dailyBurned as dailyBurnedCall,
   dailyBurnLimit as dailyBurnLimitCall,
@@ -71,13 +69,15 @@ import {
   paused as pausedCall,
   personalBurnCapAmount as personalBurnCapAmountCall,
   personalBurned as personalBurnedCall,
-} from "./generated/wormhole_bridge/wormhole_bridge.ts";
+} from "../generated/wormhole_bridge/wormhole_bridge.ts";
 import {
   probeAddressCreditBalance,
   probeParkedBackingAssets,
   sumParkedBackingAsCreditRaw,
   type ParkedBackingAssetBalance,
-} from "./utils/consolidate-balance.ts";
+} from "../utils/consolidate-balance.ts";
+import type { PerpClient } from "./client.ts";
+import { COLLATERAL_DECIMALS, DRY_RUN_SENDER } from "./constants.ts";
 
 // ============================================================================
 // Simulate / decode helpers

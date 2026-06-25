@@ -3,7 +3,7 @@
  * No bucket-aggregator simulate — real oracle refresh happens inside `build*Tx`.
  */
 
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 const TICKER_USD_FALLBACK: Record<string, number> = {
   BTCUSD: 95_000,

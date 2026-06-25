@@ -4,7 +4,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { PerpClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   consumeCreditDeposit,
   custodyMint,
@@ -15,7 +15,7 @@ import {
   requestCreditWithdraw,
   routeNative,
   routeWormhole,
-} from "../../../src/user/credit.ts";
+} from "../../../src/perp/user/credit.ts";
 import {
   MOCK_CREDIT_TYPE,
   MOCK_CUSTODY_ASSET_TYPE,

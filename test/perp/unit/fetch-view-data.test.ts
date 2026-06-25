@@ -24,7 +24,7 @@ import {
   isValidReferralCode,
   positionExists,
   referralCodeExists,
-} from "../../../src/fetch.ts";
+} from "../../../src/perp/fetch.ts";
 import {
   accountDataNoneBytes,
   accountDataSomeBytes,

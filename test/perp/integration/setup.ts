@@ -8,8 +8,8 @@ import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { loadRepoEnvFiles } from "../../../scripts/load-repo-env.ts";
-import type { PerpClient } from "../../../src/client.ts";
-import { getAccountsByOwner } from "../../../src/fetch.ts";
+import type { PerpClient } from "../../../src/perp/client.ts";
+import { getAccountsByOwner } from "../../../src/perp/fetch.ts";
 import { createIntegrationWaterXClient } from "../helpers/e2e/integration-client.ts";
 import type { NormalizedIntegrationTxResult } from "../helpers/e2e/integration-tx-result.ts";
 import { isOracleTransientFailureMessage } from "../helpers/e2e/transient-rpc.ts";

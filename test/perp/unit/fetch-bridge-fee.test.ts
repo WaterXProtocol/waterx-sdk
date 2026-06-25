@@ -9,7 +9,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getBridgeFee } from "../../../src/fetch.ts";
+import { getBridgeFee } from "../../../src/perp/fetch.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const u64Ret = (v: bigint) => ({ bcs: bcs.u64().serialize(v).toBytes() });

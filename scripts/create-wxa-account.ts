@@ -9,8 +9,8 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { createAccount } from "../src/user/account.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { createAccount } from "../src/perp/user/account.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 

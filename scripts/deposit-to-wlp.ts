@@ -21,15 +21,15 @@ import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { DRY_RUN_SENDER } from "../src/constants.ts";
-import { getAccountBalance } from "../src/fetch.ts";
 import {
   allowProtocolAsset,
   isProtocolAssetAllowed,
 } from "../src/generated/waterx_account/account.ts";
 import { setPriceRefreshThresholdMs } from "../src/generated/waterx_perp/global_config.ts";
-import { mintWlp, updateTokenValue } from "../src/user/wlp.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
+import { getAccountBalance } from "../src/perp/fetch.ts";
+import { mintWlp, updateTokenValue } from "../src/perp/user/wlp.ts";
 import { aggregateTickerWithPyth, refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";

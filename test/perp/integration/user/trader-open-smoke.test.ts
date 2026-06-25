@@ -4,8 +4,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { getAccountsByOwner } from "../../../../src/fetch.ts";
-import { openPositionByKeeper } from "../../../../src/user/trading.ts";
+import { getAccountsByOwner } from "../../../../src/perp/fetch.ts";
+import { openPositionByKeeper } from "../../../../src/perp/user/trading.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import {
   activeLifecycleTickersForClient,

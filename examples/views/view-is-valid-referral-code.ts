@@ -6,7 +6,7 @@
  *   WATERX_REFERRAL_CODE=alpha pnpm exec tsx examples/views/view-is-valid-referral-code.ts
  */
 import { buildClient, run } from "../_shared.ts";
-import { isValidReferralCode } from "../../src/fetch.ts";
+import { isValidReferralCode } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

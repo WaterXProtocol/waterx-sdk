@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import {
   DEFAULT_MOCK_PYTH_ROW_TYPE,
   MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT,

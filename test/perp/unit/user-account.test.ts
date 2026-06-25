@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { PERM_ALL_TRADING } from "../../../src/constants.ts";
+import { PERM_ALL_TRADING } from "../../../src/perp/constants.ts";
 import {
   addDelegate,
   createAccount,
@@ -14,7 +14,7 @@ import {
   setAlias,
   setDelegateProtocolPermission,
   transferToAccount,
-} from "../../../src/user/account.ts";
+} from "../../../src/perp/user/account.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import {
   PTB_DUMMY_ACCOUNT_ID,

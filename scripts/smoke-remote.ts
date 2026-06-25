@@ -7,8 +7,8 @@
  * Hits https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
  * by default; pass `WATERX_CONFIG_URL` to override.
  */
-import { PerpClient } from "../src/client.ts";
-import { defaultConfigUrl } from "../src/config.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { defaultConfigUrl } from "../src/perp/config.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const overrideUrl = process.env.WATERX_CONFIG_URL;
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
   console.log("\n=== One simulate (sanity) ===");
   const { Transaction } = await import("@mysten/sui/transactions");
-  const { createAccount } = await import("../src/user/account.ts");
+  const { createAccount } = await import("../src/perp/user/account.ts");
   const tx = new Transaction();
   createAccount(client, tx, { alias: "remote-smoke" });
   tx.setSender("0x0000000000000000000000000000000000000000000000000000000000000abc");

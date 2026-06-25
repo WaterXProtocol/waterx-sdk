@@ -16,8 +16,20 @@
 
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
+import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
+import { getCollateralAssets } from "../utils/config.ts";
+import {
+  probeAddressCreditBalance,
+  probeParkedBackingAssets,
+} from "../utils/consolidate-balance.ts";
+import {
+  openPythSponsorFund,
+  PythCache,
+  refreshOraclePrices,
+  reimbursePythSponsor,
+  updatePythPrices,
+} from "../utils/pyth.ts";
 import type { PerpClient } from "./client.ts";
-import { consumeDepositDirect } from "./generated/waterx_account/direct_rule.ts";
 import { requestDepositFromFunds, requestDepositFromReceivings } from "./user/account.ts";
 import {
   consumeCreditDeposit,
@@ -67,18 +79,6 @@ import {
   type MintWlpParams,
   type RequestRedeemWlpParams,
 } from "./user/wlp.ts";
-import { getCollateralAssets } from "./utils/config.ts";
-import {
-  probeAddressCreditBalance,
-  probeParkedBackingAssets,
-} from "./utils/consolidate-balance.ts";
-import {
-  openPythSponsorFund,
-  PythCache,
-  refreshOraclePrices,
-  reimbursePythSponsor,
-  updatePythPrices,
-} from "./utils/pyth.ts";
 
 // ============================================================================
 // Common opts

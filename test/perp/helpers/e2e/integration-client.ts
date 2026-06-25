@@ -3,8 +3,8 @@
  *
  * Network: {@link resolveIntegrationNetwork} → `PerpClient.create(TESTNET | MAINNET)`.
  */
-import { PerpClient } from "../../../../src/client.ts";
-import type { Network } from "../../../../src/constants.ts";
+import { PerpClient } from "../../../../src/perp/client.ts";
+import type { Network } from "../../../../src/perp/constants.ts";
 import {
   resolveE2eGrpcUrlOverride,
   resolveE2eNetwork,

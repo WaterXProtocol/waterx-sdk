@@ -1,4 +1,4 @@
-import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/constants.ts";
+import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/perp/constants.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -18,7 +18,7 @@ import {
   buildUnstakeAndRequestRedeemWlpTx,
   buildUpdateOrderTx,
   buildWithdrawCollateralTx,
-} from "../../../../src/tx-builders.ts";
+} from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
 import {

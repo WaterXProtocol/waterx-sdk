@@ -7,7 +7,7 @@
  *   WATERX_CURSOR=10 WATERX_PAGE_SIZE=50 ... examples/...
  */
 import { buildClient, dump, run } from "../_shared.ts";
-import { getRedeemRequests } from "../../src/fetch.ts";
+import { getRedeemRequests } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

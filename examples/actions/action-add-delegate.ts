@@ -15,7 +15,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { addDelegate, PERM_ALL_TRADING } from "../../src/index.ts";
+import { addDelegate, PERM_ALL_TRADING } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

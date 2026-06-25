@@ -54,6 +54,16 @@ reference the PR that introduced them.
   generic `include` / `additionalSignatures` / `Uint8Array` form as the predict
   line). A new unit guard asserts no grafted builder name collides with a
   sub-client prototype method.
+- **Internal: symmetric two-line source layout.** (#55) The perp product line
+  moved from the `src/` root into `src/perp/` (`client.ts`, `config.ts`,
+  `config-view.ts`, `constants.ts`, `fetch.ts`, `tx-builders.ts`, `index.ts`,
+  `user/`), mirroring `src/prediction/`. The root now holds only the umbrella
+  (`sdk.ts`, `unified-client.ts`), the shared `base-client.ts`, shared primitive
+  `constants.ts`, and the shared `account/` / `utils/` / `core/` / `generated/`
+  dirs. Public entry points are unchanged: `@waterx/sdk`, `@waterx/sdk/perp`, and
+  `@waterx/sdk/perp/*` resolve as before (the `exports` map now points `./perp`
+  at `dist/src/perp/`). Perp-domain enums split into `perp/constants.ts` (which
+  re-exports the shared primitives), so `@waterx/sdk/perp/constants` is unchanged.
 
 ## [2.4.1] - 2026-06-24
 

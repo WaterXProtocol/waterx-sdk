@@ -30,9 +30,9 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { getAccountBalance } from "../src/fetch.ts";
-import { buildMintAndStakeWlpTx } from "../src/tx-builders.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { getAccountBalance } from "../src/perp/fetch.ts";
+import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
 import { aggregateTickerWithPyth } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";

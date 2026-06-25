@@ -6,14 +6,14 @@ import { fromBase64 } from "@mysten/bcs";
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import { getAccountsByOwner } from "../../../../src/fetch.ts";
 import {
   accountBalance,
   accountOwner,
   isDepositPolicyRegistered,
   isProtocolAssetAllowed,
 } from "../../../../src/generated/waterx_account/account.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { getAccountsByOwner } from "../../../../src/perp/fetch.ts";
 import {
   isIntegrationTraderConfigured,
   loadIntegrationTraderKeypair,
@@ -335,7 +335,7 @@ export async function getMarketMinCollateralRawAmount(
   minCollValueUsdScaled: bigint;
   collateralDecimals: number;
 }> {
-  const { getMarketData } = await import("../../../../src/fetch.ts");
+  const { getMarketData } = await import("../../../../src/perp/fetch.ts");
   const [market, poolRow] = await Promise.all([
     getMarketData(client, { ticker: params.ticker }),
     getWlpCollateralPoolRow(client, params.poolTokenTicker),

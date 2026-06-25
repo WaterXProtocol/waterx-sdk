@@ -1,4 +1,4 @@
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 /** Prefix for {@link deriveTradingMatrixCases} buildTx throws → {@link lifecycle-single-ptb.test.ts} skips the matrix. */
 export const MATRIX_SKIP_PREFIX = "MATRIX_SKIP:";

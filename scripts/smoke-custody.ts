@@ -28,16 +28,16 @@ import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { DRY_RUN_SENDER } from "../src/constants.ts";
 import { creditSupply, hasAsset } from "../src/generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import {
   mintCreditFromRequest,
   mintCreditToAccount,
   requestDepositFromReceivings,
   transferToAccount,
-} from "../src/index.ts";
+} from "../src/perp/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 

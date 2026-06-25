@@ -14,7 +14,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { settleRedeemWlp, updateTokenValue } from "../../src/index.ts";
+import { settleRedeemWlp, updateTokenValue } from "../../src/perp/index.ts";
 import { refreshOraclePrices } from "../../src/utils/pyth.ts";
 
 run(async () => {

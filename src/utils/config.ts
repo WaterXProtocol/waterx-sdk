@@ -1,4 +1,4 @@
-import type { WaterXConfig } from "../config.ts";
+import type { WaterXConfig } from "../perp/config.ts";
 
 /** Returns all registered market tickers (e.g. "BTCUSD") from waterx-config. */
 export function getMarketTickers(config: WaterXConfig): string[] {

@@ -2,7 +2,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -21,8 +21,8 @@ import {
   buildWithdrawCollateralTx,
   openPythSponsorFund,
   reimbursePythSponsor,
-} from "../../../src/tx-builders.ts";
-import { placeOrderRequest } from "../../../src/user/order.ts";
+} from "../../../src/perp/tx-builders.ts";
+import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,

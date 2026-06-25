@@ -24,16 +24,16 @@
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
-import { ORDER_LIMIT_BUY } from "../src/constants.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
 import {
   buildCancelOrderTx,
   buildMintWlpTx,
   buildPlaceOrderTx,
   getAccountBalance,
   requestDeposit,
-} from "../src/index.ts";
+} from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";

@@ -1,4 +1,4 @@
-import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/constants.ts";
+import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/perp/constants.ts";
 import {
   addPreOrderRequest,
   buildPlaceOrderArgument,
@@ -6,7 +6,7 @@ import {
   cancelPreOrderRequest,
   placeOrderRequest,
   updateOrderRequest,
-} from "../../../../src/user/order.ts";
+} from "../../../../src/perp/user/order.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import {
   ACCOUNT_ID,

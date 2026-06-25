@@ -1,5 +1,5 @@
 /** Read pyth_rule Config tolerance map + ListingCap owner. */
-import { PerpClient } from "../src/client.ts";
+import { PerpClient } from "../src/perp/client.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 async function rpc(network: string, method: string, params: unknown[]): Promise<any> {

@@ -10,8 +10,8 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../client.ts";
-import { appendConsolidateForSpend } from "../tx-builders.ts";
+import type { PerpClient } from "../perp/client.ts";
+import { appendConsolidateForSpend } from "../perp/tx-builders.ts";
 import type { PredictClient } from "./client.ts";
 import {
   batchClaim,

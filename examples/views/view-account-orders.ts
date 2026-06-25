@@ -7,7 +7,7 @@
  *   WATERX_TICKER=ETHUSD ... examples/...
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
-import { getAccountOrders } from "../../src/fetch.ts";
+import { getAccountOrders } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

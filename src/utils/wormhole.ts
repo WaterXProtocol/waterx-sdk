@@ -16,7 +16,7 @@
 
 import { fromBase64, toBase64, toHex } from "@mysten/bcs";
 
-import type { PerpClient } from "../client.ts";
+import type { PerpClient } from "../perp/client.ts";
 
 // ============================================================================
 // Emitter address formatting

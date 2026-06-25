@@ -4,8 +4,8 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import { getMarketData } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { getMarketData } from "../../../../src/perp/fetch.ts";
 import {
   integrationGasBudget,
   isInsufficientSuiGasError,

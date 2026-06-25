@@ -14,7 +14,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildUpdateOrderTx, ORDER_LIMIT_BUY, rawPrice } from "../../src/index.ts";
+import { buildUpdateOrderTx, ORDER_LIMIT_BUY, rawPrice } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

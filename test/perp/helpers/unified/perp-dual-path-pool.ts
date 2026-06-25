@@ -1,11 +1,11 @@
-import { claimReward, stake, unstake } from "../../../../src/user/staking.ts";
+import { claimReward, stake, unstake } from "../../../../src/perp/user/staking.ts";
 import {
   cancelRedeemWlp,
   mintWlp,
   requestRedeemWlp,
   settleRedeemWlp,
   updateTokenValue,
-} from "../../../../src/user/wlp.ts";
+} from "../../../../src/perp/user/wlp.ts";
 import {
   ACCOUNT_ID,
   caseMutate,

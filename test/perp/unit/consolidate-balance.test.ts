@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   probeAddressCreditBalance,
   probeParkedBackingAssets,

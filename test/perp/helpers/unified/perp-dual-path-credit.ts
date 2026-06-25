@@ -8,7 +8,7 @@ import {
   requestCreditWithdraw,
   routeNative,
   routeWormhole,
-} from "../../../../src/user/credit.ts";
+} from "../../../../src/perp/user/credit.ts";
 import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {

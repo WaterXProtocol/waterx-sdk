@@ -3,7 +3,7 @@
  * Scratch / sizing helpers use static USD hints from {@link ./oracle-pyth-context.ts}.
  */
 
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import { getUsdHintForTicker } from "./oracle-pyth-context.ts";
 
 export const ORACLE_FLOAT_USD_SCALE = 1_000_000_000;

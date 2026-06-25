@@ -2,9 +2,13 @@
  * On-chain discovery for e2e simulates: paginated `getMarketPositions` + wxa balance gates.
  * Mirrors discovery semantics documented for `pnpm audit:e2e-discovery` histogram labels (`DiscoverPositionGateResult`).
  */
-import type { PerpClient } from "../../../../src/client.ts";
-import type { PositionDataView, RedeemRequestDataView } from "../../../../src/fetch.ts";
-import { getMarketData, getMarketPositions, getRedeemRequests } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { PositionDataView, RedeemRequestDataView } from "../../../../src/perp/fetch.ts";
+import {
+  getMarketData,
+  getMarketPositions,
+  getRedeemRequests,
+} from "../../../../src/perp/fetch.ts";
 import { wxaAccountIdHints } from "./canonical-testnet-account.ts";
 import { resolveE2eNetwork } from "./e2e-client.ts";
 import { resolveDefaultUsdcCoinProbeAttempts } from "./e2e-discovery-caps.ts";

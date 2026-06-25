@@ -4,8 +4,8 @@
  * Run:
  *   pnpm exec tsx scripts/wlp-pool-status.ts
  */
-import { PerpClient } from "../src/client.ts";
-import { getPoolData, getTokenPoolData } from "../src/fetch.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { getPoolData, getTokenPoolData } from "../src/perp/fetch.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const FLOAT_SCALE = 1_000_000_000n; // 1e9 Float scale (src/constants.ts)

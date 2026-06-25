@@ -8,7 +8,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getBridgeLimits } from "../../../src/fetch.ts";
+import { getBridgeLimits } from "../../../src/perp/fetch.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 /** A valid 32-byte account id for the per-account `personalBurned` arg. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../../../src/constants.ts";
+import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../../../src/perp/constants.ts";
 import {
   annualizedApyFromRatio,
   annualizeFundingRate,

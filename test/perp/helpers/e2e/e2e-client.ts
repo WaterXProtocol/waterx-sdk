@@ -6,8 +6,8 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
-import { PerpClient } from "../../../../src/client.ts";
-import type { Network } from "../../../../src/constants.ts";
+import { PerpClient } from "../../../../src/perp/client.ts";
+import type { Network } from "../../../../src/perp/constants.ts";
 import { isGrpcTransientError } from "./transient-rpc.ts";
 
 export type E2eNetwork = "testnet" | "mainnet";

@@ -6,11 +6,11 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../client.ts";
 import {
   request as accountRequest,
   requestWithAccount as accountRequestWithAccount,
 } from "../generated/bucket_v2_framework/account.ts";
+import type { PerpClient } from "../perp/client.ts";
 
 export type BucketAccount = string | TransactionArgument | undefined;
 

@@ -5,7 +5,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { stake, unstake } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { getAccountBalance } from "../../../../src/fetch.ts";
+import { getAccountBalance } from "../../../../src/perp/fetch.ts";
 import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";
 import { ensureIntegrationMinWlpBalance } from "../helpers/ensure-wxa-balances.ts";
 import {

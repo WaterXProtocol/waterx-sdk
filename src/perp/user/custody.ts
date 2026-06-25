@@ -20,9 +20,9 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 import { normalizeStructTag } from "@mysten/sui/utils";
 
+import * as custody from "../../generated/native_custody/custody_vault.ts";
+import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
 import type { PerpClient } from "../client.ts";
-import * as custody from "../generated/native_custody/custody_vault.ts";
-import { consumeDepositDirect } from "../generated/waterx_account/direct_rule.ts";
 
 function requireCredit(client: PerpClient): { credit_registry: string } {
   const credit = client.config.packages.waterx_credit;

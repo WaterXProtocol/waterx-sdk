@@ -1,4 +1,4 @@
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 const REWARDER_KEY_RE = /::waterx_staking::RewarderKey<(.+)>$/;
 

@@ -15,7 +15,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { unstake } from "../../src/index.ts";
+import { unstake } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

@@ -5,7 +5,7 @@
  * `setGasBudget` is an upper cap — the node requires the wallet to hold at least that much SUI
  * to pick gas coins, so high caps hurt low-balance wallets.
  */
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 export type IntegrationGasKind =
   | "default"

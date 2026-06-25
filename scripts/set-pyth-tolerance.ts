@@ -14,8 +14,8 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { PerpClient } from "../src/client.ts";
 import { setToleranceSec } from "../src/generated/waterx_pyth_rule/pyth_rule.ts";
+import { PerpClient } from "../src/perp/client.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import { PredictClient } from "../../../src/prediction/client.ts";
 import { Client } from "../../../src/sdk.ts";
 import { createMockPredictClient } from "../../prediction/helpers/mock-client.ts";

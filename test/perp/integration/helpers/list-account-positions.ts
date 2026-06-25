@@ -1,6 +1,6 @@
-import type { PerpClient } from "../../../../src/client.ts";
-import type { PositionDataView } from "../../../../src/fetch.ts";
-import { getAccountPositions } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { PositionDataView } from "../../../../src/perp/fetch.ts";
+import { getAccountPositions } from "../../../../src/perp/fetch.ts";
 import {
   posAccountObjectAddress,
   posPositionIdBigInt,

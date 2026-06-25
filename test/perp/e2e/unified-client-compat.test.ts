@@ -8,7 +8,7 @@ import {
   getMarketData,
   getPoolData,
   liquidate,
-} from "../../../src/index.ts";
+} from "../../../src/perp/index.ts";
 import { Client } from "../../../src/sdk.ts";
 import {
   assertAsyncResultsEqual,

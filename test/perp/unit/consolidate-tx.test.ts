@@ -1,13 +1,13 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   appendConsolidateAddressCredit,
   appendConsolidateForSpend,
   appendConsolidateToUsd,
   buildConsolidateToUsdTx,
-} from "../../../src/tx-builders.ts";
+} from "../../../src/perp/tx-builders.ts";
 import { probeAddressCreditBalance } from "../../../src/utils/consolidate-balance.ts";
 import { listMoveCalls } from "../../prediction/helpers/ptb.ts";
 import { coinRef, mockConsolidateBalances } from "../helpers/consolidate-mocks.ts";

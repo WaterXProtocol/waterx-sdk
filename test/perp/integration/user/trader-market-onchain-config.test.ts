@@ -3,8 +3,8 @@
  */
 import { beforeAll, describe, expect, it } from "vitest";
 
-import type { MarketDataView } from "../../../../src/fetch.ts";
-import { getMarketData } from "../../../../src/fetch.ts";
+import type { MarketDataView } from "../../../../src/perp/fetch.ts";
+import { getMarketData } from "../../../../src/perp/fetch.ts";
 import { activeLifecycleTickersForClient } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { activeE2ePersistentPerpTickers } from "../helpers/e2e-persistent-state.ts";
 import { client, clientInit } from "../setup.ts";

@@ -4,9 +4,9 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-import type { PerpClient } from "../../../../src/client.ts";
-import { positionExists } from "../../../../src/fetch.ts";
-import type { MarketDataView } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { positionExists } from "../../../../src/perp/fetch.ts";
+import type { MarketDataView } from "../../../../src/perp/fetch.ts";
 import {
   buildClosePositionTx,
   buildDecreasePositionTx,
@@ -14,7 +14,7 @@ import {
   buildIncreasePositionTx,
   buildPlaceOrderTx,
   buildWithdrawCollateralTx,
-} from "../../../../src/tx-builders.ts";
+} from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { integrationGasBudget } from "../../integration/helpers/integration-gas.ts";
 import {

@@ -3,7 +3,7 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import type { ScratchTradingScenario } from "./scratch-trading-scenarios.ts";
 
 export type SimulateScratchCtx = { skip: (reason?: string) => void };

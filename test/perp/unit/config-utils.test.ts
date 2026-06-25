@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { WaterXConfig } from "../../../src/config.ts";
+import type { WaterXConfig } from "../../../src/perp/config.ts";
 import { getCollateralAssets, getMarketTickers } from "../../../src/utils/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 

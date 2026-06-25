@@ -3,7 +3,7 @@
  *
  * Add/remove tickers in `LIFECYCLE_TEST_TICKER_ORDER`; iteration skips unknown deployments via config.
  */
-import type { PerpClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import { getUsdHintForTicker } from "./oracle-pyth-context.ts";
 
 /** Legacy symbol aliases → oracle ticker (for transitional integration imports). */

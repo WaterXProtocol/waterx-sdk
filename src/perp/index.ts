@@ -87,7 +87,7 @@ export {
 export type { Network } from "./constants.ts";
 
 // ======== Utilities ========
-export { getMarketTickers, getCollateralAssets } from "./utils/config.ts";
+export { getMarketTickers, getCollateralAssets } from "../utils/config.ts";
 export {
   annualizedApyFromRatio,
   annualizeFundingRate,
@@ -113,7 +113,7 @@ export {
   calcWlpRedeemOut,
   decodeFundingIndexDelta,
   rawPrice,
-} from "./utils/math.ts";
+} from "../utils/math.ts";
 
 // ======== Transaction builders (user-side) ========
 export * from "./user/index.ts";
@@ -134,7 +134,7 @@ export {
   fetchPriceFeedsUpdateData,
   refreshOraclePrices,
   updatePythPrices,
-} from "./utils/pyth.ts";
+} from "../utils/pyth.ts";
 
 // ======== Wormhole / Wormholescan utilities (credit bridge) ========
 export {
@@ -148,8 +148,8 @@ export {
   vaaBase64ToHex,
   vaaBytesToBase64,
   waitForVaa,
-} from "./utils/wormhole.ts";
-export type { VaaListItem, VaaResponse, WormholescanOptions } from "./utils/wormhole.ts";
+} from "../utils/wormhole.ts";
+export type { VaaListItem, VaaResponse, WormholescanOptions } from "../utils/wormhole.ts";
 
 // ======== Generated BCS types (sui-ts-codegen) ========
 export {
@@ -161,20 +161,20 @@ export {
   PositionData as PositionDataBcs,
   RedeemRequestData as RedeemRequestDataBcs,
   TokenPoolData as TokenPoolDataBcs,
-} from "./generated/waterx_perp_view/view.ts";
-export { Position as PositionBcs, Order as OrderBcs } from "./generated/waterx_perp/position.ts";
-export { Market as MarketBcs } from "./generated/waterx_perp/trading.ts";
-export { MarketConfig as MarketConfigBcs } from "./generated/waterx_perp/market_config.ts";
+} from "../generated/waterx_perp_view/view.ts";
+export { Position as PositionBcs, Order as OrderBcs } from "../generated/waterx_perp/position.ts";
+export { Market as MarketBcs } from "../generated/waterx_perp/trading.ts";
+export { MarketConfig as MarketConfigBcs } from "../generated/waterx_perp/market_config.ts";
 
 // Re-export entire generated namespaces for power users.
-export * as tradingCalls from "./generated/waterx_perp/trading.ts";
-export * as lpPoolCalls from "./generated/waterx_perp/lp_pool.ts";
-export * as viewCalls from "./generated/waterx_perp_view/view.ts";
-export * as wxaAccountCalls from "./generated/waterx_account/account.ts";
-export * as stakingCalls from "./generated/waterx_staking/waterx_staking.ts";
-export * as oracleCalls from "./generated/waterx_oracle/oracle.ts";
-export * as pythRuleCalls from "./generated/waterx_pyth_rule/pyth_rule.ts";
-export * as pythSponsorRuleCalls from "./generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
-export * as referralCalls from "./generated/waterx_referral/referral_table.ts";
-export * as nativeCustodyCalls from "./generated/native_custody/custody_vault.ts";
-export * as withdrawalQueueCalls from "./generated/withdrawal_queue/withdrawal_queue.ts";
+export * as tradingCalls from "../generated/waterx_perp/trading.ts";
+export * as lpPoolCalls from "../generated/waterx_perp/lp_pool.ts";
+export * as viewCalls from "../generated/waterx_perp_view/view.ts";
+export * as wxaAccountCalls from "../generated/waterx_account/account.ts";
+export * as stakingCalls from "../generated/waterx_staking/waterx_staking.ts";
+export * as oracleCalls from "../generated/waterx_oracle/oracle.ts";
+export * as pythRuleCalls from "../generated/waterx_pyth_rule/pyth_rule.ts";
+export * as pythSponsorRuleCalls from "../generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
+export * as referralCalls from "../generated/waterx_referral/referral_table.ts";
+export * as nativeCustodyCalls from "../generated/native_custody/custody_vault.ts";
+export * as withdrawalQueueCalls from "../generated/withdrawal_queue/withdrawal_queue.ts";

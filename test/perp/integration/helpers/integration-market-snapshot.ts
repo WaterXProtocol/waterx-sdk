@@ -1,9 +1,9 @@
 /**
  * Integration market snapshot via v3 view `MarketData`.
  */
-import type { PerpClient } from "../../../../src/client.ts";
-import type { MarketDataView } from "../../../../src/fetch.ts";
-import { getMarketData } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { MarketDataView } from "../../../../src/perp/fetch.ts";
+import { getMarketData } from "../../../../src/perp/fetch.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import type { LifecycleTestTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { lifecycleTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
