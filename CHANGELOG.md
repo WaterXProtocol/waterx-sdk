@@ -64,6 +64,14 @@ reference the PR that introduced them.
   `@waterx/sdk/perp/*` resolve as before (the `exports` map now points `./perp`
   at `dist/src/perp/`). Perp-domain enums split into `perp/constants.ts` (which
   re-exports the shared primitives), so `@waterx/sdk/perp/constants` is unchanged.
+- **Internal: split the two oversized perp files by domain.** (#55)
+  `perp/tx-builders.ts` (992 LOC) and `perp/fetch.ts` (915 LOC) became thin
+  barrels over per-domain modules under `perp/tx-builders/`
+  (common / consolidate / trading / wlp / rewards / credit) and `perp/fetch/`
+  (simulate / market / positions / referral / account / custody / bridge), each
+  ≤ ~285 LOC. The barrels re-export the full public surface unchanged
+  (`@waterx/sdk/perp/tx-builders`, `@waterx/sdk/perp/fetch`, and the flat
+  `@waterx/sdk/perp` namespace resolve as before).
 
 ## [2.4.1] - 2026-06-24
 
