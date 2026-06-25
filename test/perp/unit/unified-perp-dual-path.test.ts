@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import * as accountOps from "../../../src/account/index.ts";
 import * as perpFetch from "../../../src/fetch.ts";
 import { Client } from "../../../src/sdk.ts";
 import * as perpTx from "../../../src/tx-builders.ts";
-import * as perpUser from "../../../src/user/index.ts";
+import * as perpOrder from "../../../src/user/order.ts";
+import * as perpReferral from "../../../src/user/referral.ts";
+import * as perpStaking from "../../../src/user/staking.ts";
+import * as perpTrading from "../../../src/user/trading.ts";
+import * as perpWlp from "../../../src/user/wlp.ts";
 import { assertDualPathTxCase } from "../../helpers/unified-dual-path.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 import {
@@ -29,19 +34,43 @@ const fnNames = (ns: object): string[] =>
     .filter(([, v]) => typeof v === "function")
     .map(([k]) => k);
 
-const expectedPerpPtbBuilders = fnNames({ ...perpUser, ...perpTx }).filter(
-  (n) => !NON_CLIENT_FIRST.has(n) && n !== "PythCache",
-);
+// Builders bound on `client.perp` (trading / order / wlp / staking / referral +
+// high-level tx-builders) vs the shared `client.account` namespace
+// (waterx_account + credit + custody). Tracked separately so the coverage
+// assertion names the right namespace.
+const expectedPerpBuilders = fnNames({
+  ...perpTrading,
+  ...perpOrder,
+  ...perpWlp,
+  ...perpStaking,
+  ...perpReferral,
+  ...perpTx,
+}).filter((n) => !NON_CLIENT_FIRST.has(n) && n !== "PythCache");
+const expectedAccountBuilders = fnNames({ ...accountOps }).filter((n) => !NON_CLIENT_FIRST.has(n));
 
 describe("unified Client — perp dual-path PTB equivalence", () => {
   const perpClient = createUnitTestClient();
   const unified = Client.fromClients(perpClient, {} as never);
 
-  it("case registry covers every client-first perp builder (user + tx-builders)", () => {
-    for (const name of expectedPerpPtbBuilders) {
-      expect(perpDualPathCaseNames.has(name), `missing dual-path case for perp.${name}`).toBe(true);
+  it("case registry covers every client-first perp builder (perp namespace)", () => {
+    for (const name of expectedPerpBuilders) {
+      expect(
+        perpDualPathCaseNames.has(name),
+        `missing dual-path case for client.perp.${name}`,
+      ).toBe(true);
     }
-    expect(perpDualPathCases.length).toBeGreaterThanOrEqual(expectedPerpPtbBuilders.length);
+  });
+
+  it("case registry covers every account builder (account namespace)", () => {
+    for (const name of expectedAccountBuilders) {
+      expect(
+        perpDualPathCaseNames.has(name),
+        `missing dual-path case for client.account.${name}`,
+      ).toBe(true);
+    }
+    expect(perpDualPathCases.length).toBeGreaterThanOrEqual(
+      expectedPerpBuilders.length + expectedAccountBuilders.length,
+    );
   });
 
   it.each(perpDualPathCases.map((c) => [c.name, c] as const))(

@@ -8,9 +8,11 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-06-25
+
 ### Changed
 
-- **BREAKING — `WaterXClient` is now the umbrella entry point.** The class
+- **BREAKING — `WaterXClient` is now the umbrella entry point.** (#55) The class
   previously named `WaterXClient` (the perp product line) is renamed
   **`PerpClient`**; the unified facade previously named `Client` is renamed
   **`WaterXClient`** and is the single main entry. It exposes three namespaces:
