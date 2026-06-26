@@ -34,14 +34,14 @@ export interface CreateAccountParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-/** Build `waterx_account::create_account`. Returns the new account ID via Move return value. */
+/** Build `waterx_account::create_account`. Returns the new account ID (Move return value). */
 export function createAccount(
   client: WxaClientLike,
   tx: Transaction,
   params: CreateAccountParams,
-): void {
+): TransactionArgument {
   const req = makeSenderRequest(client, tx, params.bucketAccount);
-  createAccountCall(
+  return createAccountCall(
     tx,
     {
       packageId: client.config.packages.waterx_account.published_at,
@@ -79,7 +79,8 @@ export function setAlias(client: WxaClientLike, tx: Transaction, params: SetAlia
 // ============================================================================
 
 export interface AddDelegateParams {
-  accountId: string;
+  /** Account ID — an `0x2::object::ID` string or a PTB argument. */
+  accountId: string | TransactionArgument;
   delegateAddress: string;
   alias: string;
   /** Bitmask matching `waterx_account` permission constants. */
@@ -110,7 +111,8 @@ export function addDelegate(
 }
 
 export interface RemoveDelegateParams {
-  accountId: string;
+  /** Account ID — an `0x2::object::ID` string or a PTB argument. */
+  accountId: string | TransactionArgument;
   delegateAddress: string;
   bucketAccount?: string | TransactionArgument;
 }

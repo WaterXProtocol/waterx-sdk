@@ -16,13 +16,16 @@ reference the PR that introduced them.
   need `waterx_account` + `bucket_framework`, so they are retyped to the narrower
   **`WxaClientLike`** (`account/client.ts`), which **both** `PerpClient` and
   `PredictClient` satisfy structurally (CI-enforced by `wxa-capability.test.ts`).
-  `AccountConfig` / `AccountPackages` now extend `WxaConfig` / `WxaPackages`. The
-  prediction line already shares the underlying `createAccountCall` and (post
-  codegen-unify) the shared `generated/waterx_account`, so the wxa **framework** is
-  no longer duplicated; the per-line builder wrappers (prediction's `IdArgument`
-  accountId + `Transaction`-returning ergonomics over the coin deposit/withdraw
-  flow) are kept, since swapping their bodies changes on-chain PTB encoding only
-  verifiable via network-gated integration tests.
+  `AccountConfig` / `AccountPackages` now extend `WxaConfig` / `WxaPackages`.
+  Prediction's pure account-framework ops (`createAccount` / `addDelegate` /
+  `removeDelegate`) now **delegate to the shared `account/` builders** — since
+  `waterx_account` is a single shared contract, the account id / registry are
+  identical across lines. Verified byte-equivalent by the PTB snapshot tests (the
+  only delta is `Result` vs `NestedResult` for the sender-request handle, which is
+  equivalent for a single-return Move call and is the form perp already ships).
+  Prediction keeps its own coin deposit/withdraw/transfer builders (settlement-coin
+  + hot-potato chaining ergonomics) — those are its settlement flow, not the wxa
+  framework.
 - **Account/funding config schema hoisted into `account/config.ts`; `account/`
   now imports nothing from `perp/`.** The account/funding/referral package
   interfaces (`BasePackageEntry`, `WxaAccountPackage`, `WaterxCreditPackage`,
