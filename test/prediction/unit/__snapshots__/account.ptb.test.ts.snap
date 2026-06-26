@@ -238,7 +238,7 @@ exports[`account PTB builders > requestWithdraw 1`] = `
   {
     "argumentKinds": [
       "Input",
-      "NestedResult",
+      "Result",
       "Input",
       "Input",
       "Input",

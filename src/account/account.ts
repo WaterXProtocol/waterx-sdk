@@ -168,8 +168,8 @@ export function setDelegateProtocolPermission(
 // ============================================================================
 
 export interface RequestDepositParams {
-  /** wxa account ID receiving the deposit. */
-  accountId: string;
+  /** wxa account ID receiving the deposit (ID string or PTB argument). */
+  accountId: string | TransactionArgument;
   /** Coin or coin transaction argument to deposit. */
   coin: TransactionArgument;
   /** Fully-qualified coin type. */
@@ -198,8 +198,8 @@ export function requestDeposit(
 }
 
 export interface RequestDepositFromReceivingsParams {
-  /** wxa account ID receiving the deposit. */
-  accountId: string;
+  /** wxa account ID receiving the deposit (ID string or PTB argument). */
+  accountId: string | TransactionArgument;
   /**
    * `Receiving<Coin<T>>` arguments — one per `Coin<T>` previously transferred
    * onto the account's address. Build each with
@@ -293,7 +293,7 @@ export function requestDepositFromFunds(
 // ============================================================================
 
 export interface RequestWithdrawParams {
-  accountId: string;
+  accountId: string | TransactionArgument;
   amount: bigint | number;
   /** Recipient for the eventual coin payout (policy decides exact mechanics). */
   recipient: string;
@@ -331,7 +331,7 @@ export function requestWithdraw(
 // ============================================================================
 
 export interface TransferToAccountParams {
-  accountId: string;
+  accountId: string | TransactionArgument;
   coin: TransactionArgument;
   coinType: string;
 }

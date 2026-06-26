@@ -17,15 +17,19 @@ reference the PR that introduced them.
   **`WxaClientLike`** (`account/client.ts`), which **both** `PerpClient` and
   `PredictClient` satisfy structurally (CI-enforced by `wxa-capability.test.ts`).
   `AccountConfig` / `AccountPackages` now extend `WxaConfig` / `WxaPackages`.
-  Prediction's pure account-framework ops (`createAccount` / `addDelegate` /
-  `removeDelegate`) now **delegate to the shared `account/` builders** — since
-  `waterx_account` is a single shared contract, the account id / registry are
-  identical across lines. Verified byte-equivalent by the PTB snapshot tests (the
-  only delta is `Result` vs `NestedResult` for the sender-request handle, which is
-  equivalent for a single-return Move call and is the form perp already ships).
-  Prediction keeps its own coin deposit/withdraw/transfer builders (settlement-coin
-  + hot-potato chaining ergonomics) — those are its settlement flow, not the wxa
-  framework.
+  The **entire generic wxa account framework** in prediction now **delegates to the
+  shared `account/` builders** — `createAccount`, `addDelegate`, `removeDelegate`,
+  `requestDeposit`, `requestWithdraw`, `transferCoinToAccount`,
+  `requestDepositFromReceivings` (prediction keeps its public wrapper signatures +
+  `settlementCoinType` defaulting). Since `waterx_account` is a single shared
+  contract, these are the same on-chain calls; verified byte-equivalent by the PTB
+  snapshot tests — the only delta is `Result` vs `NestedResult` for the
+  sender-request handle on the request-signed ops, which is equivalent for a
+  single-return Move call and is the form perp already ships. Only genuinely
+  prediction-specific account ops stay line-side: the prediction-protocol permission
+  config (`setDelegatePredictionPermission`, `whitelist`/`allow`/`disallow protocol
+  asset`) and the `direct_rule` same-coin consume helpers (thin wrappers over the
+  shared generated `direct_rule`).
 - **Account/funding config schema hoisted into `account/config.ts`; `account/`
   now imports nothing from `perp/`.** The account/funding/referral package
   interfaces (`BasePackageEntry`, `WxaAccountPackage`, `WaterxCreditPackage`,

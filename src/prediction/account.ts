@@ -5,6 +5,10 @@ import {
   addDelegate as sharedAddDelegate,
   createAccount as sharedCreateAccount,
   removeDelegate as sharedRemoveDelegate,
+  requestDeposit as sharedRequestDeposit,
+  requestDepositFromReceivings as sharedRequestDepositFromReceivings,
+  requestWithdraw as sharedRequestWithdraw,
+  transferToAccount as sharedTransferToAccount,
 } from "../account/account.ts";
 import type { PredictClient } from "./client.ts";
 import { extractReturnBytes } from "./fetch.ts";
@@ -76,14 +80,10 @@ export function transferCoinToAccount(
   tx: Transaction,
   params: TransferCoinToAccountParams,
 ): Transaction {
-  tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::transfer_coin`,
-    typeArguments: [params.coinType ?? client.settlementCoinType()],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      idArg(tx, params.accountId),
-      objectArg(tx, params.coin),
-    ],
+  sharedTransferToAccount(client, tx, {
+    accountId: params.accountId,
+    coin: objectArg(tx, params.coin),
+    coinType: params.coinType ?? client.settlementCoinType(),
   });
   return tx;
 }
@@ -100,17 +100,12 @@ export function requestDeposit(
   tx: Transaction,
   params: RequestDepositParams,
 ): TransactionArgument {
-  const [request] = tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::request_deposit`,
-    typeArguments: [params.coinType ?? client.settlementCoinType()],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      idArg(tx, params.accountId),
-      objectArg(tx, params.coin),
-      tx.pure.vector("u8", Array.from(params.extraData ?? [])),
-    ],
+  return sharedRequestDeposit(client, tx, {
+    accountId: params.accountId,
+    coin: objectArg(tx, params.coin),
+    coinType: params.coinType ?? client.settlementCoinType(),
+    extraData: params.extraData == null ? undefined : Uint8Array.from(params.extraData),
   });
-  return request;
 }
 
 export interface ConsumeDepositDirectParams extends AccountBaseParams {
@@ -166,22 +161,12 @@ export function requestDepositFromReceivings(
   tx: Transaction,
   params: RequestDepositFromReceivingsParams,
 ): TransactionArgument {
-  const coinType = params.coinType ?? client.settlementCoinType();
-  const receivings = params.coins.map((coin) => receivingCoinArg(tx, coin));
-  const [request] = tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::request_deposit_from_receivings`,
-    typeArguments: [coinType],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      idArg(tx, params.accountId),
-      tx.makeMoveVec({
-        type: `0x2::transfer::Receiving<0x2::coin::Coin<${coinType}>>`,
-        elements: receivings,
-      }),
-      tx.pure.vector("u8", Array.from(params.extraData ?? [])),
-    ],
+  return sharedRequestDepositFromReceivings(client, tx, {
+    accountId: params.accountId,
+    receivings: params.coins.map((coin) => receivingCoinArg(tx, coin)),
+    coinType: params.coinType ?? client.settlementCoinType(),
+    extraData: params.extraData == null ? undefined : Uint8Array.from(params.extraData),
   });
-  return request;
 }
 
 export interface RequestWithdrawParams extends AccountBaseParams, AccountIdentityParams {
@@ -197,21 +182,14 @@ export function requestWithdraw(
   tx: Transaction,
   params: RequestWithdrawParams,
 ): TransactionArgument {
-  const senderRequest = createAccountRequest(client, tx, params);
-  const [request] = tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::request_withdraw`,
-    typeArguments: [params.coinType ?? client.settlementCoinType()],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      senderRequest,
-      idArg(tx, params.accountId),
-      tx.pure.u64(toBigInt(params.amount)),
-      tx.pure.address(params.recipient),
-      tx.pure.vector("u8", Array.from(params.extraData ?? [])),
-      clockArg(tx),
-    ],
+  return sharedRequestWithdraw(client, tx, {
+    accountId: params.accountId,
+    amount: toBigInt(params.amount),
+    recipient: params.recipient,
+    coinType: params.coinType ?? client.settlementCoinType(),
+    extraData: params.extraData == null ? undefined : Uint8Array.from(params.extraData),
+    bucketAccount: params.bucketAccount,
   });
-  return request;
 }
 
 export interface ConsumeWithdrawDirectParams extends AccountBaseParams {
