@@ -70,10 +70,8 @@ reference the PR that introduced them.
   re-export them from `account/` — so the main public entry is identical; only the
   un-advertised granular deep paths (`perp/user/<file>`, `utils/{wormhole,
   account-request,consolidate-balance}`) moved. `src/core/waterx-account.ts` folded
-  into `account/`. **Remaining (follow-up):** hoist the funding/account config *schema*
-  out of `perp/config.ts` into `account/config.ts` and unify the per-line
-  `generated/` roots — both gated on a codegen run (`account/client.ts` still
-  type-imports the schema from `perp/config.ts`, the same pattern as `OracleHost`).
+  into `account/`. (The config-schema hoist and the single-`generated/`-root
+  unification that this entry once deferred are now done — see the entries above.)
 
 - **Oracle / rule code split out of `utils/pyth.ts` into a dedicated `src/oracle/`
   module.** The old `utils/pyth.ts` had fused four concerns into one file (Pyth
