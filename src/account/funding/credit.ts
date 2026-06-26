@@ -33,8 +33,8 @@ import {
   routeWormhole as routeWormholeCall,
 } from "../../generated/withdrawal_queue/withdrawal_queue.ts";
 import { redeemVaa as redeemVaaCall } from "../../generated/wormhole_bridge/wormhole_bridge.ts";
-import { makeSenderRequest } from "../../utils/account-request.ts";
-import type { PerpClient } from "../client.ts";
+import { makeSenderRequest } from "../account-request.ts";
+import type { AccountClientLike } from "../client.ts";
 
 // ============================================================================
 // Byte helpers
@@ -62,7 +62,7 @@ function toEvmAddressBytes(
   return bytes;
 }
 
-function creditTypeOf(client: PerpClient, override?: string): string {
+function creditTypeOf(client: AccountClientLike, override?: string): string {
   return normalizeStructTag(override ?? client.creditType());
 }
 
@@ -70,32 +70,32 @@ function creditTypeOf(client: PerpClient, override?: string): string {
 // shared object ids only after the relevant deploy phase has run, so each
 // is optional in the schema. These throw an actionable error rather than
 // letting `tx.object(undefined)` fail opaquely.
-function bridgeId(c: PerpClient): string {
+function bridgeId(c: AccountClientLike): string {
   const id = c.getBridge().bridge;
   if (!id) throw new Error("wormhole_bridge.bridge missing from config (Bridge not initialized)");
   return id;
 }
-function creditRegistryId(c: PerpClient): string {
+function creditRegistryId(c: AccountClientLike): string {
   const id = c.getCredit().credit_registry;
   if (!id) throw new Error("waterx_credit.credit_registry missing from config");
   return id;
 }
-function queuePkg(c: PerpClient): string {
+function queuePkg(c: AccountClientLike): string {
   const q = c.config.packages.withdrawal_queue;
   if (!q) throw new Error("withdrawal_queue not configured for this deployment");
   return q.published_at;
 }
-function queueId(c: PerpClient): string {
+function queueId(c: AccountClientLike): string {
   const q = c.config.packages.withdrawal_queue;
   if (!q?.queue) throw new Error("withdrawal_queue.queue missing from config");
   return q.queue;
 }
-function custodyPkg(c: PerpClient): string {
+function custodyPkg(c: AccountClientLike): string {
   const n = c.config.packages.native_custody;
   if (!n) throw new Error("native_custody not configured for this deployment");
   return n.published_at;
 }
-function custodyVaultId(c: PerpClient): string {
+function custodyVaultId(c: AccountClientLike): string {
   const n = c.config.packages.native_custody;
   if (!n?.vault) throw new Error("native_custody.vault missing from config");
   return n.vault;
@@ -118,7 +118,7 @@ export interface RedeemVaaParams {
  * same PTB (see {@link consumeCreditDeposit} / `redeemVaaTx`).
  */
 export function redeemVaa(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RedeemVaaParams,
 ): TransactionArgument {
@@ -149,7 +149,7 @@ export interface ConsumeCreditDepositParams {
  * as the `redeem_vaa` / custody `mint` that produced the request.
  */
 export function consumeCreditDeposit(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: ConsumeCreditDepositParams,
 ): void {
@@ -178,7 +178,7 @@ export interface RouteWormholeParams {
 
 /** Build `withdrawal_queue::route_wormhole`. Returns the `extra_data` argument. */
 export function routeWormhole(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RouteWormholeParams,
 ): TransactionArgument {
@@ -215,7 +215,7 @@ export interface RouteNativeParams {
 
 /** Build `withdrawal_queue::route_native<T>`. Returns the `extra_data` argument. */
 export function routeNative(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RouteNativeParams,
 ): TransactionArgument {
@@ -248,7 +248,7 @@ export interface RequestCreditWithdrawParams {
  * {@link enqueueWithdrawal} in the same PTB).
  */
 export function requestCreditWithdraw(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RequestCreditWithdrawParams,
 ): TransactionArgument {
@@ -279,7 +279,7 @@ export interface EnqueueWithdrawalParams {
  * argument (also surfaced on-chain via the `Enqueued` event).
  */
 export function enqueueWithdrawal(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: EnqueueWithdrawalParams,
 ): TransactionArgument {
@@ -311,7 +311,7 @@ export interface ExecuteWithdrawalWormholeParams {
 
 /** Build `withdrawal_queue::execute_wormhole<CREDIT>` (keeper / executor-gated). */
 export function executeWithdrawalWormhole(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: ExecuteWithdrawalWormholeParams,
 ): void {
@@ -341,7 +341,7 @@ export interface ExecuteWithdrawalNativeParams {
 
 /** Build `withdrawal_queue::execute_native<T, CREDIT>` (keeper / executor-gated). */
 export function executeWithdrawalNative(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: ExecuteWithdrawalNativeParams,
 ): void {
@@ -386,7 +386,7 @@ export interface CustodyMintParams {
  * {@link consumeCreditDeposit}).
  */
 export function custodyMint(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: CustodyMintParams,
 ): TransactionArgument {

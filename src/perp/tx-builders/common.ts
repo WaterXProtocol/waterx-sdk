@@ -6,6 +6,7 @@
 
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
+import { appendConsolidateForSpend } from "../../account/funding/consolidate.ts";
 import {
   openPythSponsorFund,
   PythCache,
@@ -16,7 +17,6 @@ import { getCollateralAssets } from "../../utils/config.ts";
 import type { PerpClient } from "../client.ts";
 import { executeTrading } from "../user/trading.ts";
 import { updateTokenValue } from "../user/wlp.ts";
-import { appendConsolidateForSpend } from "./consolidate.ts";
 
 export interface CommonBuildOpts {
   /** Append to an existing PTB instead of creating a new one. */

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import * as accountOps from "../../../src/account/index.ts";
+import * as perpReferral from "../../../src/account/referral.ts";
 import * as perpFetch from "../../../src/perp/fetch.ts";
 import * as perpTx from "../../../src/perp/tx-builders.ts";
 import * as perpOrder from "../../../src/perp/user/order.ts";
-import * as perpReferral from "../../../src/perp/user/referral.ts";
 import * as perpStaking from "../../../src/perp/user/staking.ts";
 import * as perpTrading from "../../../src/perp/user/trading.ts";
 import * as perpWlp from "../../../src/perp/user/wlp.ts";

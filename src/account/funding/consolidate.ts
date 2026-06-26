@@ -10,13 +10,10 @@
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
-import {
-  probeAddressCreditBalance,
-  probeParkedBackingAssets,
-} from "../../utils/consolidate-balance.ts";
-import type { PerpClient } from "../client.ts";
-import { requestDepositFromFunds, requestDepositFromReceivings } from "../user/account.ts";
-import { mintCreditFromRequest } from "../user/custody.ts";
+import { requestDepositFromFunds, requestDepositFromReceivings } from "../account.ts";
+import type { AccountClientLike } from "../client.ts";
+import { probeAddressCreditBalance, probeParkedBackingAssets } from "./balance.ts";
+import { mintCreditFromRequest } from "./custody.ts";
 
 /**
  * For every backing asset registered on `native_custody`, append two drain
@@ -32,7 +29,7 @@ import { mintCreditFromRequest } from "../user/custody.ts";
  * for the loaded deployment.
  */
 export async function appendConsolidateToUsd(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
@@ -81,7 +78,7 @@ export async function appendConsolidateToUsd(
  * balance.
  */
 export async function appendConsolidateAddressCredit(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
@@ -132,7 +129,7 @@ export async function appendConsolidateAddressCredit(
  * is enabled (default).
  */
 export async function appendConsolidateForSpend(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
@@ -142,7 +139,7 @@ export async function appendConsolidateForSpend(
 }
 
 function consumeDepositRequest(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   depositRequest: TransactionArgument,
   coinType: string,
@@ -158,7 +155,7 @@ function consumeDepositRequest(
 }
 
 function foldDepositRequestToUsd(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   depositRequest: TransactionArgument,
   assetType: string,
@@ -178,7 +175,7 @@ function foldDepositRequestToUsd(
  * `client.simulate(tx)` to detect a no-op before submitting.
  */
 export async function buildConsolidateToUsdTx(
-  client: PerpClient,
+  client: AccountClientLike,
   accountId: string,
   tx?: Transaction,
 ): Promise<Transaction> {

@@ -1,7 +1,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { createAccountCall } from "../core/waterx-account.ts";
+import { createAccountCall } from "../account/waterx-account.ts";
 import type { PredictClient } from "./client.ts";
 import { extractReturnBytes } from "./fetch.ts";
 import type { AccountIdentityParams, CoinRef, IdArgument, ObjectArgument } from "./types.ts";

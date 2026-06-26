@@ -10,12 +10,12 @@ import {
   request as accountRequest,
   requestWithAccount as accountRequestWithAccount,
 } from "../generated/bucket_v2_framework/account.ts";
-import type { PerpClient } from "../perp/client.ts";
+import type { AccountClientLike } from "./client.ts";
 
 export type BucketAccount = string | TransactionArgument | undefined;
 
 export function makeSenderRequest(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   bucketAccount: BucketAccount,
 ): TransactionArgument {

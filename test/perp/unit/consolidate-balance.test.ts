@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   probeAddressCreditBalance,
   probeParkedBackingAssets,
   rescaleRawAmount,
   sumParkedBackingAsCreditRaw,
-} from "../../../src/utils/consolidate-balance.ts";
+} from "../../../src/account/funding/balance.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,

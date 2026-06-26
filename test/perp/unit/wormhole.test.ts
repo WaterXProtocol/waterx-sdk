@@ -1,10 +1,9 @@
 /**
- * Unit tests for Wormholescan / VAA helpers (`src/utils/wormhole.ts`).
+ * Unit tests for Wormholescan / VAA helpers (`src/account/funding/wormhole.ts`).
  */
 import { toBase64 } from "@mysten/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   fetchDepositVaa,
   fetchVaa,
@@ -16,7 +15,8 @@ import {
   vaaBase64ToHex,
   vaaBytesToBase64,
   waitForVaa,
-} from "../../../src/utils/wormhole.ts";
+} from "../../../src/account/funding/wormhole.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 

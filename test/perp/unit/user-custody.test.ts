@@ -1,12 +1,12 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   mintCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
-} from "../../../src/perp/user/custody.ts";
+} from "../../../src/account/funding/custody.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CREDIT_TYPE,
   MOCK_CUSTODY_ASSET_TYPE,

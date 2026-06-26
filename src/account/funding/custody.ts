@@ -22,9 +22,9 @@ import { normalizeStructTag } from "@mysten/sui/utils";
 
 import * as custody from "../../generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
-import type { PerpClient } from "../client.ts";
+import type { AccountClientLike } from "../client.ts";
 
-function requireCredit(client: PerpClient): { credit_registry: string } {
+function requireCredit(client: AccountClientLike): { credit_registry: string } {
   const credit = client.config.packages.waterx_credit;
   if (!credit?.credit_registry) {
     throw new Error("waterx_credit is not configured — set packages.waterx_credit.credit_registry");
@@ -32,7 +32,7 @@ function requireCredit(client: PerpClient): { credit_registry: string } {
   return { credit_registry: credit.credit_registry };
 }
 
-function requireCustody(client: PerpClient): { published_at: string; vault: string } {
+function requireCustody(client: AccountClientLike): { published_at: string; vault: string } {
   const nc = client.config.packages.native_custody;
   if (!nc?.vault) {
     throw new Error("native_custody is not configured — set packages.native_custody.vault");
@@ -62,7 +62,7 @@ export interface MintCreditParams {
  * argument — consume it in the same PTB (see `mintCreditToAccount`).
  */
 export function mintCredit(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: MintCreditParams,
 ): TransactionArgument {
@@ -105,7 +105,7 @@ export interface MintCreditFromRequestParams {
  * `extraData`. Consume it in the same PTB.
  */
 export function mintCreditFromRequest(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: MintCreditFromRequestParams,
 ): TransactionArgument {
@@ -137,7 +137,7 @@ export function mintCreditFromRequest(
  * Assumes CREDIT's deposit policy is `DirectRule` (the canonical setup).
  */
 export function mintCreditToAccount(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: MintCreditParams,
 ): void {

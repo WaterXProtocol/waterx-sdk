@@ -33,6 +33,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 // Unified account namespace: generic waterx_account framework + funding (credit + custody).
 import * as accountOps from "./account/index.ts";
+import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
@@ -41,7 +42,6 @@ import * as perpTx from "./perp/tx-builders.ts";
 // Perp-only user builders — account/credit/custody are excluded here; they live
 // under `client.account`. trading / order / wlp / staking / referral only.
 import * as perpOrder from "./perp/user/order.ts";
-import * as perpReferral from "./perp/user/referral.ts";
 import * as perpStaking from "./perp/user/staking.ts";
 import * as perpTrading from "./perp/user/trading.ts";
 import * as perpWlp from "./perp/user/wlp.ts";

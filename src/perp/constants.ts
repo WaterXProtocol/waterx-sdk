@@ -63,6 +63,8 @@ export const DRY_RUN_SENDER = "0x00000000000000000000000000000000000000000000000
 /**
  * Well-known address of Sui's native funds-accumulator root shared object
  * (`@0xacc` in the framework). Pass this to `request_deposit_from_funds<T>`
- * to drain `Balance<T>` parked at an account's address.
+ * to drain `Balance<T>` parked at an account's address. Defined in
+ * `account/constants.ts` (account-framework constant); re-exported here for
+ * back-compat.
  */
-export const ACCUMULATOR_ROOT = "0xacc";
+export { ACCUMULATOR_ROOT } from "../account/constants.ts";

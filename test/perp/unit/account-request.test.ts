@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { makeSenderRequest } from "../../../src/utils/account-request.ts";
+import { makeSenderRequest } from "../../../src/account/account-request.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";

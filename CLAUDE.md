@@ -199,8 +199,11 @@ src/
   unified-client.ts  WaterXClient umbrella (account / perp / predict)
   base-client.ts     shared transport base both line clients extend
   constants.ts       shared primitives ONLY (Network, scaling, decimals, MS_PER_YEAR)
-  account/           shared client.account namespace (wxa + credit + custody, perp-backed)
-  utils/  core/  generated/   shared helpers / waterx_account wrapper / codegen
+  account/           THE BASE — wxa framework + funding; both lines depend DOWN here
+    client.ts        AccountClientLike capability interface (PerpClient satisfies it)
+    account.ts  account-request.ts  waterx-account.ts  referral.ts  constants.ts
+    funding/         credit.ts custody.ts wormhole.ts balance.ts consolidate.ts
+  utils/  generated/   shared helpers (math/config/pyth-less) / codegen
   perp/              ← perp product line (was the src/ root)
     client.ts  config.ts  config-view.ts  constants.ts
     fetch.ts  tx-builders.ts  index.ts  user/
@@ -210,7 +213,7 @@ src/
 - **`base-client.ts`** — `BaseLineClient<Cfg>`: the transport half shared by both
   line clients (gRPC construction, read wrappers, `simulate`,
   `signAndExecuteTransaction`, `packageIds()`). `PerpClient` / `PredictClient` extend it.
-- **`unified-client.ts`** — `WaterXClient`, the umbrella entry point (`client.account` / `client.perp` / `client.predict`), with async `static create(opts)` / `fromClients(perp, predict)`. `Client` is a deprecated alias. `account/index.ts` aggregates the shared `waterx_account` + credit + custody builders for `client.account` (imports from `perp/user/`).
+- **`unified-client.ts`** — `WaterXClient`, the umbrella entry point (`client.account` / `client.perp` / `client.predict`), with async `static create(opts)` / `fromClients(perp, predict)`. `Client` is a deprecated alias. `account/index.ts` aggregates the shared `waterx_account` + credit + custody builders for `client.account` from the **`account/` base itself** (re-exports **down** from `account/account.ts` + `account/funding/*`, never up into `perp/`). The builders are typed to the `AccountClientLike` capability interface (`account/client.ts`), which `PerpClient` satisfies structurally; the old `perp/user/{account,credit,custody,referral}` + `utils/{wormhole,account-request,consolidate-balance}` paths remain as thin re-export shims for back-compat.
 - **`constants.ts`** — shared, line-agnostic primitives only: `Network`, scaling (`BPS_SCALE` / `FLOAT_SCALE` / `DOUBLE_SCALE`), decimals, `MS_PER_YEAR`. **Nothing chain-specific.** Perp-domain enums live in `perp/constants.ts`.
 - **`perp/config.ts`** — `WaterXConfig` schema, `loadConfig()`, `defaultConfigUrl()`, `clearConfigCache()`.
 - **`perp/client.ts`** — `PerpClient` (the perp sub-client; formerly `WaterXClient`) with async `static create(network, opts)`. Extends `BaseLineClient`; delegates config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) to `perp/config-view.ts`. Reached as `client.perp` on the umbrella.

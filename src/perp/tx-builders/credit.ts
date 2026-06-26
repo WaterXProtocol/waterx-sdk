@@ -6,7 +6,6 @@
 
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import type { PerpClient } from "../client.ts";
 import {
   consumeCreditDeposit,
   enqueueWithdrawal,
@@ -18,7 +17,8 @@ import {
   routeWormhole,
   type RedeemVaaParams,
   type RouteWormholeParams,
-} from "../user/credit.ts";
+} from "../../account/funding/credit.ts";
+import type { PerpClient } from "../client.ts";
 
 export interface BuildRedeemVaaParams extends RedeemVaaParams {
   /** Append to an existing PTB instead of creating a new one. */

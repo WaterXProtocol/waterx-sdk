@@ -148,8 +148,8 @@ export {
   vaaBase64ToHex,
   vaaBytesToBase64,
   waitForVaa,
-} from "../utils/wormhole.ts";
-export type { VaaListItem, VaaResponse, WormholescanOptions } from "../utils/wormhole.ts";
+} from "../account/funding/wormhole.ts";
+export type { VaaListItem, VaaResponse, WormholescanOptions } from "../account/funding/wormhole.ts";
 
 // ======== Generated BCS types (sui-ts-codegen) ========
 export {

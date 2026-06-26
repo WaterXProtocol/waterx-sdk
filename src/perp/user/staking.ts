@@ -18,8 +18,8 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import { makeSenderRequest } from "../../account/account-request.ts";
 import * as staking from "../../generated/waterx_staking/waterx_staking.ts";
-import { makeSenderRequest } from "../../utils/account-request.ts";
 import type { PerpClient } from "../client.ts";
 
 function pool(client: PerpClient, stakeAlias: string): string {

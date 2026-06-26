@@ -3,8 +3,8 @@
  * {@link getSpendableCreditBalance} — one asset list, one gRPC read pattern,
  * so display totals match what the next async tx-builder would sweep.
  */
-import { COLLATERAL_DECIMALS } from "../constants.ts";
-import type { PerpClient } from "../perp/client.ts";
+import { COLLATERAL_DECIMALS } from "../../constants.ts";
+import type { AccountClientLike } from "../client.ts";
 
 /** CREDIT parked at a wxa account's Sui address (funds accumulator + owned coins). */
 export interface AddressCreditBalance {
@@ -43,7 +43,7 @@ export function rescaleRawAmount(
  * {@link appendConsolidateToUsd}.
  */
 export async function probeParkedBackingAssets(
-  client: PerpClient,
+  client: AccountClientLike,
   accountId: string,
 ): Promise<ParkedBackingAssetBalance[]> {
   if (!client.config.packages.native_custody?.vault) return [];
@@ -83,7 +83,7 @@ export async function probeParkedBackingAssets(
  * address-CREDIT legs inside {@link appendConsolidateAddressCredit}.
  */
 export async function probeAddressCreditBalance(
-  client: PerpClient,
+  client: AccountClientLike,
   accountId: string,
 ): Promise<AddressCreditBalance> {
   if (!client.config.packages.waterx_credit?.credit_type) {

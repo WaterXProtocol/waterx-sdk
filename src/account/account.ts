@@ -17,11 +17,11 @@ import type {
   TransactionObjectArgument,
 } from "@mysten/sui/transactions";
 
-import { createAccountCall } from "../../core/waterx-account.ts";
-import * as wxa from "../../generated/waterx_account/account.ts";
-import { makeSenderRequest } from "../../utils/account-request.ts";
-import type { PerpClient } from "../client.ts";
-import { ACCUMULATOR_ROOT } from "../constants.ts";
+import * as wxa from "../generated/waterx_account/account.ts";
+import { makeSenderRequest } from "./account-request.ts";
+import type { AccountClientLike } from "./client.ts";
+import { ACCUMULATOR_ROOT } from "./constants.ts";
+import { createAccountCall } from "./waterx-account.ts";
 
 // ============================================================================
 // Create account
@@ -36,7 +36,7 @@ export interface CreateAccountParams {
 
 /** Build `waterx_account::create_account`. Returns the new account ID via Move return value. */
 export function createAccount(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: CreateAccountParams,
 ): void {
@@ -61,7 +61,7 @@ export interface SetAliasParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function setAlias(client: PerpClient, tx: Transaction, params: SetAliasParams): void {
+export function setAlias(client: AccountClientLike, tx: Transaction, params: SetAliasParams): void {
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.setAlias({
     package: client.config.packages.waterx_account.published_at,
@@ -89,7 +89,11 @@ export interface AddDelegateParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function addDelegate(client: PerpClient, tx: Transaction, params: AddDelegateParams): void {
+export function addDelegate(
+  client: AccountClientLike,
+  tx: Transaction,
+  params: AddDelegateParams,
+): void {
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.addDelegate({
     package: client.config.packages.waterx_account.published_at,
@@ -112,7 +116,7 @@ export interface RemoveDelegateParams {
 }
 
 export function removeDelegate(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RemoveDelegateParams,
 ): void {
@@ -139,7 +143,7 @@ export interface SetDelegateProtocolPermissionParams {
 }
 
 export function setDelegateProtocolPermission(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: SetDelegateProtocolPermissionParams,
 ): void {
@@ -174,7 +178,7 @@ export interface RequestDepositParams {
 
 /** Build `account::request_deposit<T>`. Returns the `DepositRequest<T>` argument. */
 export function requestDeposit(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RequestDepositParams,
 ): TransactionArgument {
@@ -213,7 +217,7 @@ export interface RequestDepositFromReceivingsParams {
  * `DepositRequest<T>` argument.
  */
 export function requestDepositFromReceivings(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RequestDepositFromReceivingsParams,
 ): TransactionArgument {
@@ -262,7 +266,7 @@ export interface RequestDepositFromFundsParams {
  * skip empty drains.
  */
 export function requestDepositFromFunds(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RequestDepositFromFundsParams,
 ): TransactionArgument {
@@ -300,7 +304,7 @@ export interface RequestWithdrawParams {
 
 /** Build `account::request_withdraw<T>`. Returns the `WithdrawRequest<T>` argument. */
 export function requestWithdraw(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: RequestWithdrawParams,
 ): TransactionArgument {
@@ -331,7 +335,7 @@ export interface TransferToAccountParams {
 }
 
 export function transferToAccount(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: TransferToAccountParams,
 ): void {
@@ -373,7 +377,7 @@ export interface ReceiveParams {
  * tokens / objects) that have no registered deposit policy.
  */
 export function receive(
-  client: PerpClient,
+  client: AccountClientLike,
   tx: Transaction,
   params: ReceiveParams,
 ): TransactionArgument {

@@ -11,9 +11,9 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import { makeSenderRequest } from "../../account/account-request.ts";
 import { newPlaceOrderArgument } from "../../generated/waterx_perp/request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
-import { makeSenderRequest } from "../../utils/account-request.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 

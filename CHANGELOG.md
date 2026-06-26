@@ -10,6 +10,27 @@ reference the PR that introduced them.
 
 ### Changed
 
+- **`account/` is now the real base layer; the prediction→perp dependency edge is
+  cut.** The account framework + funding (credit / custody / bridge / consolidate /
+  wormhole) previously lived under `perp/` and were typed to the concrete
+  `PerpClient`, so `account/index.ts` re-exported **up** into `perp/user/*` and
+  `prediction/tx-builders.ts` imported `perp/` for the wxUSD consolidate sweep
+  (dependency arrows running backwards). The whole cluster now lives under
+  `src/account/` (`account.ts`, `account-request.ts`, `waterx-account.ts`,
+  `referral.ts`, `funding/{credit,custody,wormhole,balance,consolidate}.ts`) and is
+  retyped to a new **`AccountClientLike`** capability interface (`account/client.ts`)
+  that `PerpClient` satisfies structurally — no builder imports `PerpClient`
+  anymore. `prediction/tx-builders.ts` imports the sweep from `account/funding/`
+  and no longer imports `perp/` at all. The `@waterx/sdk/perp` barrel still surfaces
+  all of these builders unchanged — `perp/user/index.ts` and `perp/index.ts` now
+  re-export them from `account/` — so the main public entry is identical; only the
+  un-advertised granular deep paths (`perp/user/<file>`, `utils/{wormhole,
+  account-request,consolidate-balance}`) moved. `src/core/waterx-account.ts` folded
+  into `account/`. **Remaining (follow-up):** hoist the funding/account config *schema*
+  out of `perp/config.ts` into `account/config.ts` and unify the per-line
+  `generated/` roots — both gated on a codegen run (`account/client.ts` still
+  type-imports the schema from `perp/config.ts`, the same pattern as `OracleHost`).
+
 - **Oracle / rule code split out of `utils/pyth.ts` into a dedicated `src/oracle/`
   module.** The old `utils/pyth.ts` had fused four concerns into one file (Pyth
   Hermes/update PTB, the `pyth_sponsor_rule` flow, **and** `supra_rule` /

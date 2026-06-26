@@ -16,7 +16,7 @@
  */
 
 export type { CommonBuildOpts } from "./tx-builders/common.ts";
-export * from "./tx-builders/consolidate.ts";
+export * from "../account/funding/consolidate.ts";
 export * from "./tx-builders/trading.ts";
 export * from "./tx-builders/wlp.ts";
 export * from "./tx-builders/rewards.ts";

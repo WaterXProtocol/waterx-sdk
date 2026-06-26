@@ -1,9 +1,9 @@
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { createAccount, transferToAccount } from "../../../../src/account/account.ts";
 import type { PerpClient } from "../../../../src/perp/client.ts";
 import { getAccountsByOwner } from "../../../../src/perp/fetch.ts";
-import { createAccount, transferToAccount } from "../../../../src/perp/user/account.ts";
 import type { NormalizedIntegrationTxResult } from "../../helpers/e2e/integration-tx-result.ts";
 import { assertIntegrationTxSuccess } from "../../helpers/integration/integration-exec.ts";
 import { integrationGasBudget } from "./integration-gas.ts";

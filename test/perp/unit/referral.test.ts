@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { setReferralCode, useReferralCode } from "../../../src/perp/user/referral.ts";
+import { setReferralCode, useReferralCode } from "../../../src/account/referral.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("Referral PTB builders (v3)", () => {

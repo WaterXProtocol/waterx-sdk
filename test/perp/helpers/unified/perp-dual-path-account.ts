@@ -1,4 +1,3 @@
-import { PERM_ALL_TRADING } from "../../../../src/perp/constants.ts";
 import {
   addDelegate,
   createAccount,
@@ -11,8 +10,9 @@ import {
   setAlias,
   setDelegateProtocolPermission,
   transferToAccount,
-} from "../../../../src/perp/user/account.ts";
-import { setReferralCode, useReferralCode } from "../../../../src/perp/user/referral.ts";
+} from "../../../../src/account/account.ts";
+import { setReferralCode, useReferralCode } from "../../../../src/account/referral.ts";
+import { PERM_ALL_TRADING } from "../../../../src/perp/constants.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {
   ACCOUNT_ID,

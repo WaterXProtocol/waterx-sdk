@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
   console.log("\n=== One simulate (sanity) ===");
   const { Transaction } = await import("@mysten/sui/transactions");
-  const { createAccount } = await import("../src/perp/user/account.ts");
+  const { createAccount } = await import("../src/account/account.ts");
   const tx = new Transaction();
   createAccount(client, tx, { alias: "remote-smoke" });
   tx.setSender("0x0000000000000000000000000000000000000000000000000000000000000abc");

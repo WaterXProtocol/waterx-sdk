@@ -7,15 +7,15 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
 import {
-  accountBalance as accountBalanceCall,
-  accountIds as accountIdsCall,
-} from "../../generated/waterx_account/account.ts";
-import {
   probeAddressCreditBalance,
   probeParkedBackingAssets,
   sumParkedBackingAsCreditRaw,
   type ParkedBackingAssetBalance,
-} from "../../utils/consolidate-balance.ts";
+} from "../../account/funding/balance.ts";
+import {
+  accountBalance as accountBalanceCall,
+  accountIds as accountIdsCall,
+} from "../../generated/waterx_account/account.ts";
 import type { PerpClient } from "../client.ts";
 import { COLLATERAL_DECIMALS } from "../constants.ts";
 import { simulateAndExtract } from "./simulate.ts";

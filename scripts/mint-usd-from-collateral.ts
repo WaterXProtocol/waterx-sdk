@@ -29,8 +29,8 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
+import { mintCreditToAccount } from "../src/account/funding/custody.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { mintCreditToAccount } from "../src/perp/user/custody.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
