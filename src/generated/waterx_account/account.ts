@@ -5,7 +5,7 @@
 
 /**
  * Generalized multi-account framework for the WaterX ecosystem.
- * 
+ *
  * Pure custody layer. Accounts hold per-T `Balance<T>` as dynamic fields keyed by
  * `BalanceKey<T>()`, with a `VecMap<TypeName, u64>` mirror on each `Account` for
  * fast enumeration. External flow in/out is mediated by hot-potato
@@ -13,14 +13,14 @@
  * registered policy module destroys the potato with its own witness and decides
  * what final asset to put back into the account (e.g. a PSM policy turns
  * `Coin<USDC>` into `Balance<USD>` and credits the account via `put<USD, P>`).
- * 
+ *
  * Internal protocol ↔ account flow stays witness-gated via `take<T, P>` /
  * `put<T, P>` with no policy registration involved — the protocol module's witness
  * is the only authority needed, since only that module can construct a value of
  * its witness type.
- * 
+ *
  * Types of T:
- * 
+ *
  * - Has registered deposit policy → `request_deposit<T>` works.
  * - Has registered withdraw policy → `request_withdraw<T>` works.
  * - Neither → "Parkable". Coins can sit on the account address via
@@ -115,7 +115,16 @@ export const ProtocolDataKey = new MoveTuple({ name: `${$moduleName}::ProtocolDa
 export const Delegate = new MoveStruct({ name: `${$moduleName}::Delegate`, fields: {
         delegate_address: bcs.Address,
         alias: bcs.string(),
-        /** Framework-level action bitmap (PERM_WITHDRAW etc). */
+        /**
+         * Framework-level action bitmap (`PERM_WITHDRAW`, `PERM_RECEIVE`,
+         * `PERM_MANAGE_DELEGATES`). **Vestigial — retained for ABI/bitmap stability but no
+         * longer the live authority for any path.** All three bits now gate nothing: the
+         * funds-out paths (`request_withdraw` / `withdraw_from_funds` / `receive`) and
+         * delegate-perm management (`set/unset_delegate_protocol_permission`) are
+         * owner-only. Delegate authority lives entirely in `protocol_permissions` below
+         * plus the per-account `take`/`put` gate. `effective_permissions` /
+         * `has_permission` remain as public views but no internal path consults them.
+         */
         permissions: bcs.u32(),
         /**
          * Per-protocol bitmap. Missing key → delegate cannot drive that protocol. Each
@@ -1717,8 +1726,9 @@ export interface RequestWithdrawOptions {
 }
 /**
  * Debits `amount` of the account's stored `Balance<T>` and packages it into a
- * `WithdrawRequest<T>` for the registered withdraw policy. Auth (`PERM_WITHDRAW`
- * on `T`'s account) and pause are checked here, not in `consume_withdraw`.
+ * `WithdrawRequest<T>` for the registered withdraw policy. Auth (owner-only — see
+ * the gate below; `PERM_WITHDRAW` delegates are rejected) and pause are checked
+ * here, not in `consume_withdraw`.
  */
 export function requestWithdraw(options: RequestWithdrawOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -1799,9 +1809,9 @@ export interface TransferCoinOptions {
  * TTOs a `Coin<T>` to the account's UID address. The coin sits there until someone
  * calls `request_deposit_from_receivings<T>` (which requires a registered deposit
  * policy that then folds the coin into the account's stored balance) or
- * `receive<Coin<T>>` (owner / `PERM_RECEIVE` delegate, no policy needed). Useful
- * for async / cross-PTB deposits and for routing protocol payouts (e.g. reward
- * claims) into an account when `T` has no deposit policy.
+ * `receive<Coin<T>>` (owner-only, no policy needed). Useful for async / cross-PTB
+ * deposits and for routing protocol payouts (e.g. reward claims) into an account
+ * when `T` has no deposit policy.
  */
 export function transferCoin(options: TransferCoinOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -1849,9 +1859,10 @@ export interface ReceiveOptions {
  * `request_deposit_from_receivings<X>` or `request_deposit_from_funds<X>` for
  * inflow when X has a deposit policy.
  *
- * Auth: account owner or a `PERM_RECEIVE` delegate (kept separate from
- * `PERM_WITHDRAW` so reward-collection rights don't imply balance-drain rights).
- * Returns the received object to the caller's PTB.
+ * Auth: account owner only. Receiving a TTO'd object hands it to the caller's PTB
+ * — an off-platform exfil path — so a delegate can never drive it, even one
+ * holding `PERM_RECEIVE`. The `PERM_RECEIVE` bit is retained for ABI stability but
+ * no longer gates any path. Returns the received object to the caller's PTB.
  */
 export function receive(options: ReceiveOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -1894,13 +1905,15 @@ export interface WithdrawFromFundsOptions {
  * native funds accumulator and returns it directly as a `Balance<T>`. Symmetric to
  * `request_deposit_from_funds<T>`, but explicitly for `T` that has **no**
  * registered deposit policy — policy-managed inflow must route through the
- * deposit-policy pipeline instead. The intent is to let owners (or `PERM_WITHDRAW`
- * delegates) pull policy-less inflow (reward tokens TTO'd via `send_funds`,
- * miscellaneous `Balance<T>` the SDK parked at the address) straight out.
+ * deposit-policy pipeline instead. The intent is to let the account owner pull
+ * policy-less inflow (reward tokens TTO'd via `send_funds`, miscellaneous
+ * `Balance<T>` the SDK parked at the address) straight out.
  *
- * Auth: same as `request_withdraw<T>` — `PERM_WITHDRAW` or owner. Aborts
- * `EUseRequestDepositInstead` if `T` has a deposit policy registered. Pause-gated.
- * Returns `Balance::zero<T>()` when the address holds no T.
+ * Auth: same as `request_withdraw<T>` — owner-only. A delegate is rejected even
+ * one holding `PERM_WITHDRAW` (the bit no longer gates this path; retained for ABI
+ * stability only). Aborts `EUseRequestDepositInstead` if `T` has a deposit policy
+ * registered. Pause-gated. Returns `Balance::zero<T>()` when the address holds no
+ * T.
  */
 export function withdrawFromFunds(options: WithdrawFromFundsOptions) {
     const packageAddress = options.package ?? '@waterx/account';
@@ -2079,6 +2092,42 @@ export function isAccountAuthorized(options: IsAccountAuthorizedOptions) {
         package: packageAddress,
         module: 'account',
         function: 'is_account_authorized',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface IsAccountOwnerArguments {
+    registry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    addr: RawTransactionArgument<string>;
+}
+export interface IsAccountOwnerOptions {
+    package?: string;
+    arguments: IsAccountOwnerArguments | [
+        registry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        addr: RawTransactionArgument<string>
+    ];
+}
+/**
+ * Returns `true` only when `addr` is the account's **owner** — delegates are
+ * excluded regardless of their permission bits or expiry. Protocols use this for
+ * owner-only actions that must never be delegate-driven (e.g. collateral
+ * withdrawal): defense-in-depth so a phished or compromised delegate key can never
+ * move funds, only the owner's own signature can. Contrast `is_account_authorized`
+ * (owner OR live delegate).
+ */
+export function isAccountOwner(options: IsAccountOwnerOptions) {
+    const packageAddress = options.package ?? '@waterx/account';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID',
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["registry", "accountId", "addr"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'account',
+        function: 'is_account_owner',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }

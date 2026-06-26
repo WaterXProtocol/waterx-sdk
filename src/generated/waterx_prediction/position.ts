@@ -13,7 +13,7 @@ export const Selection = new MoveEnum({ name: `${$moduleName}::Selection`, field
         No: null,
         Yes: null
     } });
-export const Position: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::Position`, fields: {
+export const Position = new MoveStruct({ name: `${$moduleName}::Position`, fields: {
         /** Canonical waterx_account that owns this broker position. */
         account_id: bcs.Address,
         market_id: bcs.vector(bcs.u8()),

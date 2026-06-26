@@ -26,7 +26,7 @@
 import { MoveStruct } from '../../../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 const $moduleName = '0x2::table';
-export const Table: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::Table<phantom K, phantom V>`, fields: {
+export const Table = new MoveStruct({ name: `${$moduleName}::Table<phantom K, phantom V>`, fields: {
         /** the ID of this table */
         id: bcs.Address,
         /** the number of key-value pairs in the table */

@@ -8,7 +8,7 @@ import * as order_1 from './order.ts';
 import * as position_1 from './position.ts';
 import * as outcome from './outcome.ts';
 const $moduleName = '@waterx/prediction::view';
-export const RegistryView: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::RegistryView`, fields: {
+export const RegistryView = new MoveStruct({ name: `${$moduleName}::RegistryView`, fields: {
         balance: bcs.u64(),
         min_reserve: bcs.u64(),
         order_cancel_cooldown_ms: bcs.u64(),
@@ -19,7 +19,7 @@ export const RegistryView: MoveStruct<any, any> = new MoveStruct({ name: `${$mod
         unresolved_market_count: bcs.u64(),
         resolved_market_count: bcs.u64()
     } });
-export const OrderView: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::OrderView`, fields: {
+export const OrderView = new MoveStruct({ name: `${$moduleName}::OrderView`, fields: {
         order_id: bcs.u64(),
         kind: order_1.OrderKind,
         account_id: bcs.Address,
@@ -36,7 +36,7 @@ export const OrderView: MoveStruct<any, any> = new MoveStruct({ name: `${$module
         created_ts: bcs.u64(),
         by_admin: bcs.bool()
     } });
-export const PositionView: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::PositionView`, fields: {
+export const PositionView = new MoveStruct({ name: `${$moduleName}::PositionView`, fields: {
         position_id: bcs.u64(),
         account_id: bcs.Address,
         market_id: bcs.vector(bcs.u8()),
@@ -63,7 +63,7 @@ export const MarketView: MoveStruct<any, any> = new MoveStruct({ name: `${$modul
         no_shares: bcs.u64(),
         no_cost: bcs.u64()
     } });
-export const AccountDataView: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::AccountDataView`, fields: {
+export const AccountDataView = new MoveStruct({ name: `${$moduleName}::AccountDataView`, fields: {
         account_id: bcs.Address,
         has_data: bcs.bool(),
         order_count: bcs.u64(),

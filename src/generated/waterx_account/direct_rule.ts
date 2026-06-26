@@ -5,14 +5,14 @@
 
 /**
  * Default identity (passthrough) deposit / withdraw policy.
- * 
+ *
  * Folds `Coin<T>` directly into the account's stored `Balance<T>` on deposit, and
  * pays `Coin<T>` straight to the request's recipient on withdraw — no swap, no
  * conversion. This is the "no-op" policy that most CoinTypes will use; PSM-style
  * policies (T_IN → T_OUT) are still authored per-protocol.
- * 
+ *
  * Deploy setup (one-time):
- * 
+ *
  * ```move
  * // Once at deploy:
  * registry.whitelist_protocol<DirectRule>(&admin_cap);
@@ -20,9 +20,9 @@
  * registry.register_deposit_policy<T, DirectRule>(&admin_cap);
  * registry.register_withdraw_policy<T, DirectRule>(&admin_cap);
  * ```
- * 
+ *
  * User flow inside a single PTB:
- * 
+ *
  * ```move
  * let req = registry.request_deposit<T>(account_id, coin, extra_data);
  * direct_rule::consume_deposit_direct<T>(&mut registry, req);

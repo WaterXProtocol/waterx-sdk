@@ -10,6 +10,19 @@ reference the PR that introduced them.
 
 ### Changed
 
+- **Single `generated/` root; `waterx_prediction` is now reproducible by
+  `pnpm codegen`.** The prediction line had its own orphaned `src/prediction/generated/`
+  (`waterx_prediction` + duplicate `bucket_v2_framework` / `waterx_account` / codegen
+  runtime) that was **not** in `sui-codegen.config.mjs`, so `pnpm codegen` could not
+  reproduce it. `waterx_prediction` is now registered in the codegen config +
+  summaries script and emitted into the shared `src/generated/`; `src/prediction/`
+  imports it from there and `src/prediction/generated/` is deleted. Also dropped a
+  duplicate `native_custody` codegen entry and taught `scripts/fix-generated-imports.ts`
+  to annotate the `Market` / `MarketView` structs (TS2883, they embed the `Outcome`
+  MoveEnum). **Note:** regenerating brought all `generated/` packages up to the current
+  contract ABI — this surfaces additive contract features (`pyth_rule` max-confidence-bps
+  config, `waterx_account::isAccountOwner`, …) and drops unused `*ForTesting` bucket
+  helpers; no SDK code referenced the removed symbols.
 - **`account/` is now the real base layer; the prediction→perp dependency edge is
   cut.** The account framework + funding (credit / custody / bridge / consolidate /
   wormhole) previously lived under `perp/` and were typed to the concrete

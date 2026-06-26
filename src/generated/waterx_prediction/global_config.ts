@@ -6,7 +6,7 @@ import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/prediction::global_config';
-export const GlobalConfig: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::GlobalConfig`, fields: {
+export const GlobalConfig = new MoveStruct({ name: `${$moduleName}::GlobalConfig`, fields: {
         id: bcs.Address,
         /** Allowed package versions for keeper-gated operations. */
         allowed_versions: vec_set.VecSet(bcs.u16()),

@@ -10,7 +10,7 @@ export const OrderKind = new MoveEnum({ name: `${$moduleName}::OrderKind`, field
         Open: null,
         Close: null
     } });
-export const Order: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
+export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
         order_id: bcs.u64(),
         kind: OrderKind,
         /**

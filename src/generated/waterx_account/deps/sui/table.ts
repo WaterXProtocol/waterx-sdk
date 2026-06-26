@@ -10,7 +10,7 @@
  * system to retrieve those keys and values. Note that this means that `Table`
  * values with exactly the same key-value mapping will not be equal, with `==`, at
  * runtime. For example
- * 
+ *
  * ```
  * let table1 = table::new<u64, bool>();
  * let table2 = table::new<u64, bool>();

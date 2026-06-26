@@ -11,6 +11,7 @@ const CONTRACTS_ROOT = resolve(REPO_ROOT, "waterx-contract");
 const PACKAGES: Array<{ name: string; root: string; path?: string }> = [
   { name: "waterx_perp", root: CONTRACTS_ROOT },
   { name: "waterx_perp_view", root: CONTRACTS_ROOT },
+  { name: "waterx_prediction", root: CONTRACTS_ROOT },
   { name: "waterx_account", root: CONTRACTS_ROOT },
   { name: "waterx_oracle", root: CONTRACTS_ROOT },
   { name: "waterx_staking", root: CONTRACTS_ROOT },

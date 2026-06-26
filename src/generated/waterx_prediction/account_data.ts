@@ -19,10 +19,10 @@ import { type Transaction, type TransactionArgument } from '@mysten/sui/transact
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
 import * as table from './deps/sui/table.ts';
 const $moduleName = '@waterx/prediction::account_data';
-export const WaterXPrediction: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::WaterXPrediction`, fields: {
+export const WaterXPrediction = new MoveStruct({ name: `${$moduleName}::WaterXPrediction`, fields: {
         dummy_field: bcs.bool()
     } });
-export const WaterXPredictionData: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::WaterXPredictionData`, fields: {
+export const WaterXPredictionData = new MoveStruct({ name: `${$moduleName}::WaterXPredictionData`, fields: {
         /** Pending open/close order IDs for this account. Value = market key. */
         orders: linked_table.LinkedTable(bcs.u64()),
         /** Active position IDs for this account. Value = market key. */

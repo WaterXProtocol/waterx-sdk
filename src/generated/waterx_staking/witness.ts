@@ -5,7 +5,7 @@
 
 /**
  * Protocol witness for `waterx_staking`.
- * 
+ *
  * Lives in its own module so the witness type name `WaterXStaking` stays distinct
  * from the vault struct `StakingPool<STAKE>` in `waterx_staking::waterx_staking` —
  * same package, different modules → distinct TypeNames. Used to gate

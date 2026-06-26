@@ -9,7 +9,7 @@ import * as table from './deps/sui/table.ts';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
 import * as outcome from './outcome.ts';
 const $moduleName = '@waterx/prediction::waterx_prediction';
-export const MarketRegistry: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::MarketRegistry<phantom T>`, fields: {
+export const MarketRegistry = new MoveStruct({ name: `${$moduleName}::MarketRegistry<phantom T>`, fields: {
         id: bcs.Address,
         /** One shared settlement pool for all markets using coin type `T`. */
         balance: balance.Balance,
@@ -57,9 +57,25 @@ export const Market: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleNam
         no_shares: bcs.u64(),
         no_cost: bcs.u64()
     } });
-export const MarketPointer: MoveStruct<any, any> = new MoveStruct({ name: `${$moduleName}::MarketPointer`, fields: {
+export const MarketPointer = new MoveStruct({ name: `${$moduleName}::MarketPointer`, fields: {
         key: bcs.u64(),
         resolved: bcs.bool()
+    } });
+export const PriceSettlement = new MoveStruct({ name: `${$moduleName}::PriceSettlement`, fields: {
+        /** Oracle ticker to read, e.g. "BTCUSD". */
+        settle_ticker: bcs.string(),
+        /**
+         * Exact snapshot timestamp to read (must already be registered on-chain via
+         * `oracle::register_price_at_timestamp`).
+         */
+        settle_timestamp_ms: bcs.u64(),
+        /** 1e9-scaled `Float` raw value the price is compared against. */
+        threshold: bcs.u128(),
+        /** One of CMP_GT / CMP_GTE / CMP_LT / CMP_LTE. */
+        comparison: bcs.u8()
+    } });
+export const PriceSettlementKey = new MoveStruct({ name: `${$moduleName}::PriceSettlementKey`, fields: {
+        market_id: bcs.vector(bcs.u8())
     } });
 export interface CreateMarketRegistryArguments {
     _: RawTransactionArgument<string>;
@@ -286,6 +302,62 @@ export function requestClose(options: RequestCloseOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'request_close',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RequestPartialCloseArguments {
+    globalConfig: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
+    positionId: RawTransactionArgument<number | bigint>;
+    closeShares: RawTransactionArgument<number | bigint>;
+    minProceeds: RawTransactionArgument<number | bigint>;
+    expiryTs: RawTransactionArgument<number | bigint>;
+}
+export interface RequestPartialCloseOptions {
+    package?: string;
+    arguments: RequestPartialCloseArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
+        positionId: RawTransactionArgument<number | bigint>,
+        closeShares: RawTransactionArgument<number | bigint>,
+        minProceeds: RawTransactionArgument<number | bigint>,
+        expiryTs: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Account-backed partial close. Splits `close_shares` off `position_id` into a new
+ * same-account position and runs the close flow on it; the remainder stays `Open`
+ * under `position_id`. Auth `PERM_REQUEST_CLOSE` — value stays in the account, so
+ * unlike `split_position` it is not transfer-equivalent. Emits a dedicated
+ * `PartialCloseRequested` plus `PositionSplit` (from == to) and `CloseRequested`
+ * for the new position. Returns the new PendingClose position id.
+ */
+export function requestPartialClose(options: RequestPartialCloseOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        'u64',
+        'u64',
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "positionId", "closeShares", "minProceeds", "expiryTs"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'request_partial_close',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -911,6 +983,103 @@ export function resolveMarket(options: ResolveMarketOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'resolve_market',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SetPriceSettlementArguments {
+    _: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    marketId: RawTransactionArgument<Array<number>>;
+    settleTicker: RawTransactionArgument<string>;
+    settleTimestampMs: RawTransactionArgument<number | bigint>;
+    threshold: RawTransactionArgument<number | bigint>;
+    comparison: RawTransactionArgument<number>;
+}
+export interface SetPriceSettlementOptions {
+    package?: string;
+    arguments: SetPriceSettlementArguments | [
+        _: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        marketId: RawTransactionArgument<Array<number>>,
+        settleTicker: RawTransactionArgument<string>,
+        settleTimestampMs: RawTransactionArgument<number | bigint>,
+        threshold: RawTransactionArgument<number | bigint>,
+        comparison: RawTransactionArgument<number>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin pre-commits the price-settlement config for a market. Stored as a dynamic
+ * field on the registry; re-calling overwrites (until resolved).
+ */
+export function setPriceSettlement(options: SetPriceSettlementOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        'vector<u8>',
+        '0x1::string::String',
+        'u64',
+        'u128',
+        'u8',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["_", "marketRegistry", "marketId", "settleTicker", "settleTimestampMs", "threshold", "comparison"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'set_price_settlement',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ResolveWithOracleArguments {
+    globalConfig: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
+    marketRegistry: RawTransactionArgument<string>;
+    oracle: RawTransactionArgument<string>;
+    marketId: RawTransactionArgument<Array<number>>;
+}
+export interface ResolveWithOracleOptions {
+    package?: string;
+    arguments: ResolveWithOracleArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
+        marketRegistry: RawTransactionArgument<string>,
+        oracle: RawTransactionArgument<string>,
+        marketId: RawTransactionArgument<Array<number>>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Keeper resolves a price-settled market from an on-chain oracle snapshot. The
+ * price at `settle_timestamp_ms` must already be registered on the oracle (the
+ * keeper PTB submits `waterx_rule::quote_for_timestamp` →
+ * `oracle::register_price_at_timestamp` before calling this). The outcome is
+ * derived from the pre-committed threshold + comparison, so the keeper cannot
+ * influence the result beyond triggering it. Aborts if no settlement is set or the
+ * market is already resolved.
+ */
+export function resolveWithOracle(options: ResolveWithOracleOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'vector<u8>',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "keeperRequest", "marketRegistry", "oracle", "marketId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'resolve_with_oracle',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

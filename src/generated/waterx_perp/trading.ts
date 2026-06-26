@@ -5,14 +5,14 @@
 
 /**
  * Core trading engine for WaterX Perp DEX.
- * 
+ *
  * User-side path uses a hot-potato `TradingRequest<C_TOKEN>` (no abilities),
  * consumed in the same PTB by `trading::execute`. `execute` does the work inline
  * and returns droppable `TradingResponse` receipts — user payouts route through
  * `wxa_account::put`, not back out as a `Coin<C_TOKEN>`.
- * 
+ *
  * PTB flow:
- * 
+ *
  * 1.  let request = trading::place_order_request(...);
  * 2.  // External rules add witnesses: my_rule::check(&mut request, ...);
  * 3.  let responses = trading::execute(global_config, wxa_registry,

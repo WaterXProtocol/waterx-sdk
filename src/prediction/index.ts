@@ -174,12 +174,12 @@ export type {
   GiftView,
 } from "./gift.ts";
 
-export * as bucketFrameworkAccountCalls from "./generated/bucket_v2_framework/account.ts";
-export * as waterxAccountCalls from "./generated/waterx_account/account.ts";
-export * as predictionAccountDataCalls from "./generated/waterx_prediction/account_data.ts";
-export * as predictionGlobalConfigCalls from "./generated/waterx_prediction/global_config.ts";
-export * as predictionOutcomeCalls from "./generated/waterx_prediction/outcome.ts";
-export * as predictionPositionCalls from "./generated/waterx_prediction/position.ts";
-export * as predictionVersionCalls from "./generated/waterx_prediction/version.ts";
-export * as predictionViewCalls from "./generated/waterx_prediction/view.ts";
-export * as predictionCalls from "./generated/waterx_prediction/waterx_prediction.ts";
+export * as bucketFrameworkAccountCalls from "../generated/bucket_v2_framework/account.ts";
+export * as waterxAccountCalls from "../generated/waterx_account/account.ts";
+export * as predictionAccountDataCalls from "../generated/waterx_prediction/account_data.ts";
+export * as predictionGlobalConfigCalls from "../generated/waterx_prediction/global_config.ts";
+export * as predictionOutcomeCalls from "../generated/waterx_prediction/outcome.ts";
+export * as predictionPositionCalls from "../generated/waterx_prediction/position.ts";
+export * as predictionVersionCalls from "../generated/waterx_prediction/version.ts";
+export * as predictionViewCalls from "../generated/waterx_prediction/view.ts";
+export * as predictionCalls from "../generated/waterx_prediction/waterx_prediction.ts";

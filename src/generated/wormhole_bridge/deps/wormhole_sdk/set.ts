@@ -6,7 +6,7 @@
 /**
  * This module implements a custom type that resembles the set data structure.
  * `Set` leverages `sui::table` to store unique keys of the same type.
- * 
+ *
  * NOTE: Items added to this data structure cannot be removed.
  */
 

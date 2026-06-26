@@ -30,6 +30,14 @@ const config = {
       },
     },
     {
+      package: "@waterx/prediction",
+      path: resolve(contracts, "waterx_prediction"),
+      generate: {
+        types: true,
+        functions: true,
+      },
+    },
+    {
       package: "@waterx/account",
       path: resolve(contracts, "waterx_account"),
       generate: {
@@ -138,14 +146,6 @@ const config = {
     {
       package: "@waterx/withdrawal-queue",
       path: resolve(contracts, "waterx_credit/sui/withdrawal_queue"),
-      generate: {
-        types: true,
-        functions: true,
-      },
-    },
-    {
-      package: "@waterx/native-custody",
-      path: resolve(contracts, "waterx_credit/sui/native_custody"),
       generate: {
         types: true,
         functions: true,

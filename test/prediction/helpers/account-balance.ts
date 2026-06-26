@@ -5,13 +5,13 @@ import { bcs } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import type { PredictClient } from "~predict/client.ts";
 import { extractReturnBytes } from "~predict/fetch.ts";
-import { accountBalance } from "~predict/generated/waterx_account/account.ts";
 import {
   resolveAccountPackageId,
   resolveAccountRegistry,
   resolveSettlementCoinType,
 } from "~predict/utils.ts";
 
+import { accountBalance } from "../../../src/generated/waterx_account/account.ts";
 import { SETTLEMENT_USD_SCALE } from "./staging-amounts.ts";
 
 /** Stored settlement balance on wxa `accountId` (`waterx_account::account_balance<T>`). */
