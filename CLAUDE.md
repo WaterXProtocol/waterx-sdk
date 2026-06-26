@@ -163,7 +163,7 @@ pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)
 oracle::aggregate(oracle, collector, clock)
 ```
 
-`utils/pyth.ts::refreshOraclePrices(tx, client, tickers, opts?)` does
+`oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` does
 Hermes fetch + Pyth on-chain update + per-ticker aggregate in one call.
 
 ### WLP pool
@@ -229,12 +229,12 @@ src/
     - Keeper drain: `executeWithdrawalWormhole` / `executeWithdrawalNative` (caller must be on the executor allowlist).
     - PSM direct: `custodyMint` (against the native `CustodyVault`).
     Needs `waterx_credit` + `wormhole_bridge` + `withdrawal_queue` (+ `native_custody` for the native paths) in config.
-  - `referral.ts` — **stub**: contract has no `referral_table` module anymore; functions throw `removed in v3`.
+  - `referral.ts` — referral builders backed by the standalone `waterx_referral` package (`setReferralCode` / `useReferralCode` / …). Requires `config.packages.waterx_referral.{published_at,referral_table}`; each builder throws (config guard) when that is unset so misconfigured deployments fail loudly rather than aborting on-chain.
 - **`perp/fetch.ts`** — barrel over `perp/fetch/` read-only `simulate`-based queries, split by domain: `market.ts` (account data + market / pool / token-pool / global config via `waterx_perp_view`), `positions.ts` (position / order reads + paginated lists + redeem requests), `referral.ts` (`waterx_referral`), `account.ts` (wxa account reads + `getSpendableCreditBalance` inclusive wxUSD read), `custody.ts` (`native_custody` PSM: `getCustodyVaultData` / `getCustodyAssetData`), `bridge.ts` (`getBridgeLimits` rate-limit/cap snapshot + `getBridgeFee` withdrawal-queue estimate). Shared simulate/decode plumbing lives in `fetch/simulate.ts` (internal). Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, `BridgeLimitsView`, etc.).
 - **`perp/tx-builders.ts`** — barrel over `perp/tx-builders/` high-level async `build*Tx` composers, split by domain: `common.ts` (`CommonBuildOpts` + request/execute envelope + WLP oracle refresh), `consolidate.ts` (`appendConsolidate*` parked-balance → wxUSD pre-sweep, `consolidateToUsd` default `true`), `trading.ts` (position lifecycle + collateral + order lifecycle), `wlp.ts` (mint / mint+stake / unstake+redeem / cancel-redeem+restake), `rewards.ts` (claim staking rewards), `credit.ts` (cross-chain bridge). Sync low-level builders never auto-prepend the sweep — apps must call async `build*Tx` (or `buildConsolidateToUsdTx` separately).
 - **`utils/consolidate-balance.ts`** — shared gRPC probe/rescale helpers for `appendConsolidateToUsd` and `getSpendableCreditBalance`.
 - **`prediction/tx-builders.ts`** — async **`buildPlaceOrderTx`** / **`buildBatchClaimTx`** with the same optional pre-sweep (needs `PerpClient` + `PredictClient`). Umbrella `WaterXClient.buildPredictPlaceOrderTx` / `buildPredictBatchClaimTx` wrap both clients. Sync `placeOrder` / `batchClaim` in `prediction.ts` do not auto-sweep.
-- **`utils/pyth.ts`** — Hermes REST, on-chain Pyth update PTB, `aggregateTickerWithPyth`, `refreshOraclePrices`. The single source of truth for oracle freshness.
+- **`oracle/`** — the single source of truth for oracle freshness, split by concern: `pyth.ts` (Hermes REST + on-chain Pyth update PTB + `PythCache`; **no** rule imports), `rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` (one oracle rule per file), `aggregate.ts` (the sole orchestrator — `aggregateTicker` / `aggregateTickerWithPyth` / `refreshOraclePrices`), `host.ts` (`OracleHost` structural interface; `PerpClient` satisfies it, so the oracle code is decoupled from the concrete client). Public surface re-exported from `oracle/index.ts`. Was the monolithic `utils/pyth.ts`.
 - **`generated/`** — `sui-ts-codegen` output for the packages in `sui-codegen.config.mjs` (incl. `native_custody`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen.
 
 ## Naming conventions
