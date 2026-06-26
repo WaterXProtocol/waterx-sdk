@@ -29,4 +29,4 @@ export {
   refreshOraclePrices,
   reimbursePythSponsor,
   updatePythPrices,
-} from "../utils/pyth.ts";
+} from "../oracle/index.ts";

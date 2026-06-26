@@ -30,10 +30,10 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
+import { aggregateTickerWithPyth } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
-import { aggregateTickerWithPyth } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 

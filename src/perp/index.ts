@@ -124,7 +124,7 @@ export * from "./tx-builders.ts";
 // ======== Read-only queries ========
 export * from "./fetch.ts";
 
-// ======== Pyth oracle utilities ========
+// ======== Oracle utilities (Pyth source + rule aggregation) ========
 export {
   PythCache,
   aggregateTicker,
@@ -134,7 +134,7 @@ export {
   fetchPriceFeedsUpdateData,
   refreshOraclePrices,
   updatePythPrices,
-} from "../utils/pyth.ts";
+} from "../oracle/index.ts";
 
 // ======== Wormhole / Wormholescan utilities (credit bridge) ========
 export {

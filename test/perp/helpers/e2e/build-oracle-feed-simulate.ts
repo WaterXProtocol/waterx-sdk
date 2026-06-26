@@ -6,8 +6,8 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { aggregate as aggregateCall } from "../../../../src/generated/bucket_v2_oracle/aggregator.ts";
 import { _new as collectorNewCall } from "../../../../src/generated/bucket_v2_oracle/collector.ts";
+import { feedPythRule } from "../../../../src/oracle/rules/pyth-rule.ts";
 import type { PerpClient } from "../../../../src/perp/client.ts";
-import { feedPythRule } from "../../../../src/utils/pyth.ts";
 
 export function buildOracleFeedForSimulate(
   client: PerpClient,

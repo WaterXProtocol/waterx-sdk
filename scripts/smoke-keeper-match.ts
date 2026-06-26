@@ -53,6 +53,7 @@ import {
   MarketData,
   marketData as marketDataCall,
 } from "../src/generated/waterx_perp_view/view.ts";
+import { refreshOraclePrices } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
 import {
@@ -69,7 +70,6 @@ import {
 } from "../src/perp/index.ts";
 import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { refreshOraclePrices } from "../src/utils/pyth.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 

@@ -8,6 +8,25 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Changed
+
+- **Oracle / rule code split out of `utils/pyth.ts` into a dedicated `src/oracle/`
+  module.** The old `utils/pyth.ts` had fused four concerns into one file (Pyth
+  Hermes/update PTB, the `pyth_sponsor_rule` flow, **and** `supra_rule` /
+  `constant_rule` feeds via the aggregation orchestrator). It is now decomposed:
+  - `oracle/pyth.ts` — Pyth as a price *source* only (Hermes REST + on-chain
+    update PTB + `PythCache`); imports **no** rule package.
+  - `oracle/rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` — one file per
+    oracle rule (Pyth no longer "contains" Supra).
+  - `oracle/aggregate.ts` — the single orchestrator that composes rules into a
+    collector and aggregates (`aggregateTicker` / `refreshOraclePrices` / …).
+  - `oracle/host.ts` — new `OracleHost` structural interface; the oracle code no
+    longer depends on the concrete `PerpClient` (which satisfies `OracleHost`
+    without an `implements` clause). The public API surface (`refreshOraclePrices`,
+    `PythCache`, `openPythSponsorFund`, …) is re-exported unchanged from
+    `oracle/index.ts`; only the internal import path moves
+    (`utils/pyth.ts` → `oracle/`).
+
 ## [3.0.0] - 2026-06-25
 
 ### Changed

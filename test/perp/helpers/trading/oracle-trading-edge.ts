@@ -3,9 +3,9 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 
+import { refreshOraclePrices } from "../../../../src/oracle/index.ts";
 import type { PerpClient } from "../../../../src/perp/client.ts";
 import { updateTokenValue } from "../../../../src/perp/user/wlp.ts";
-import { refreshOraclePrices } from "../../../../src/utils/pyth.ts";
 
 export async function refreshOraclePricesForTradingEdge(
   tx: Transaction,

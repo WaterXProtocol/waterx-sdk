@@ -6,13 +6,13 @@
 
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { getCollateralAssets } from "../../utils/config.ts";
 import {
   openPythSponsorFund,
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
-} from "../../utils/pyth.ts";
+} from "../../oracle/index.ts";
+import { getCollateralAssets } from "../../utils/config.ts";
 import type { PerpClient } from "../client.ts";
 import { executeTrading } from "../user/trading.ts";
 import { updateTokenValue } from "../user/wlp.ts";

@@ -6,7 +6,7 @@
  * account (use `requestDeposit` from `./account.ts`).
  *
  * `mintWlp` / `settleRedeem` require fresh oracle prices; call
- * `refreshOraclePrices` (see `utils/pyth.ts`) for every pool token
+ * `refreshOraclePrices` (see `oracle/`) for every pool token
  * before invoking these builders in the same PTB.
  */
 
