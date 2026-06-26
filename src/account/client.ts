@@ -9,22 +9,22 @@
  * (it `extends BaseLineClient<WaterXConfig>` and carries the config-view slice +
  * the `wormhole` infra block); a future funding-capable client can too.
  *
- * Note: this still type-imports the config *schema* from `perp/config.ts` (the
- * same pattern `OracleHost` uses). Hoisting that schema into `account/config.ts`
- * is the remaining step, tracked with the codegen unification; it is type-only
- * and acyclic (`perp/config.ts` imports nothing from `account/`).
+ * The config schema it reads lives in `account/config.ts` (the base layer), so
+ * this file imports **nothing** from `perp/` — `account/` no longer depends on the
+ * perp line even at the type level. `PerpClient`'s `WaterXConfig` is assignable to
+ * the narrower `AccountConfig` (`WaterXPackages extends AccountPackages`).
  */
 
 import type { BaseLineClient } from "../base-client.ts";
 import type {
+  AccountConfig,
   NativeCustodyAsset,
-  WaterXConfig,
   WaterxCreditPackage,
   WormholeBridgePackage,
   WormholeInfraConfig,
-} from "../perp/config.ts";
+} from "./config.ts";
 
-export interface AccountClientLike extends BaseLineClient<WaterXConfig> {
+export interface AccountClientLike extends BaseLineClient<AccountConfig> {
   /** External Wormhole infra (network default, overridable via config). */
   readonly wormhole: WormholeInfraConfig;
 

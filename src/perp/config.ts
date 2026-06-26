@@ -9,18 +9,30 @@
  * below, keyed by network.
  */
 
+import type { AccountPackages, BasePackageEntry, WormholeInfraConfig } from "../account/config.ts";
 import type { Network } from "./constants.ts";
+
+// The account-layer schema (account / funding / referral package entries +
+// wormhole infra) lives in `account/config.ts` — the base layer. Re-exported
+// here so existing `perp/config` / `@waterx/sdk/perp` type imports keep resolving.
+export type {
+  AccountConfig,
+  AccountPackages,
+  BasePackageEntry,
+  NativeCustodyAsset,
+  NativeCustodyPackage,
+  TrustedEmitterRow,
+  WaterxCreditPackage,
+  WaterxReferralPackage,
+  WithdrawalQueuePackage,
+  WormholeBridgePackage,
+  WormholeInfraConfig,
+  WxaAccountPackage,
+} from "../account/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
 // ============================================================================
-
-export interface BasePackageEntry {
-  published_at: string;
-  original_id: string;
-  version: number;
-  upgrade_capability?: string;
-}
 
 export interface PythRulePackage extends BasePackageEntry {
   config: string;
@@ -77,11 +89,6 @@ export interface SupraRulePackage extends BasePackageEntry {
   enabled?: boolean;
 }
 
-export interface WxaAccountPackage extends BasePackageEntry {
-  admin_cap: string;
-  account_registry: string;
-}
-
 export interface WaterxOraclePackage extends BasePackageEntry {
   listing_cap: string;
   oracle: string;
@@ -131,100 +138,15 @@ export interface WlpPackage extends BasePackageEntry {
   pool_tokens: Record<string, string>;
 }
 
-export interface WaterxReferralPackage extends BasePackageEntry {
-  /** Shared `ReferralTable`. */
-  referral_table: string;
-}
-
 export interface MockCoinPackage extends BasePackageEntry {
   currency?: string;
   treasury_cap?: string;
   metadata_cap?: string;
 }
 
-// ---- Cross-chain credit / bridge stack ------------------------------------
-//
-// Mirrors the canonical credit `waterx-config` JSON 1:1 (snake_case). This
-// is a *credit-only* deployment file — separate from the perp config — so
-// it carries no `network` / perp / oracle / wlp keys. Only `published_at`
-// is guaranteed on each package entry (no `original_id` / `version`), so
-// these do NOT extend `BasePackageEntry`.
-//
-// The CREDIT coin Move type is taken verbatim from
-// `waterx_credit.credit_type` (the legacy `usdx` OTW package /
-// `usdx::USDX` is deprecated and intentionally NOT modeled here).
-
-export interface WaterxCreditPackage {
-  published_at: string;
-  /** Shared `CreditRegistry<CREDIT>` (phase-1 output). */
-  credit_registry?: string;
-  /**
-   * Fully-qualified CREDIT coin Move type, e.g. `0x..::usd::USD`. Required
-   * for any credit/bridge flow — `client.creditType()` returns it as-is.
-   */
-  credit_type?: string;
-}
-
-/** One backing-asset row on the native custody vault (PSM). */
-export interface NativeCustodyAsset {
-  /** Human-readable asset label, e.g. `"MOCK_USDC"` / `"USDC"` (from `add_asset`). */
-  name?: string;
-  /** Fully-qualified backing asset Move type `T`. */
-  type: string;
-  decimal: number;
-  mint_fee_scaled: string;
-  burn_fee_scaled: string;
-  min_burn_amount: string;
-}
-
-export interface NativeCustodyPackage {
-  published_at: string;
-  /** Shared `CustodyVault<CREDIT>` (phase-4 output). */
-  vault?: string;
-  /** Backing assets registered via `add_asset` (array, identified by `type`). */
-  assets: NativeCustodyAsset[];
-}
-
-export interface TrustedEmitterRow {
-  /** Source EVM chain's Wormhole chain id (e.g. 10002 = Sepolia). */
-  chain_id: number;
-  /** 32-byte left-padded EVM bridge address (0x form). */
-  evm_bridge_address_32b: string;
-  /** Whitelisted 20-byte EVM token addresses (0x form). */
-  evm_tokens_20b: string[];
-}
-
-export interface WormholeBridgePackage {
-  published_at: string;
-  /** Shared Sui Wormhole `State` object id for this deployment. */
-  wormhole_state: string;
-  hourly_mint_limit?: string;
-  max_mint_per_tx?: string;
-  hourly_burn_limit?: string;
-  max_burn_per_tx?: string;
-  /**
-   * @deprecated EVM emitter↔token config now lives solely under `evm.bridge.chains`
-   * (deposit_vault = emitter, wormhole_chain_id = chain key). The runtime allowlist is
-   * read from the on-chain `Bridge` object, not from config. Kept optional for back-compat.
-   */
-  trusted_emitters?: TrustedEmitterRow[];
-  /** Shared `Bridge` (phase-5 output). */
-  bridge?: string;
-  /**
-   * The bridge's `EmitterCap` object id (Sui-side Wormhole emitter address
-   * for burn-relay Wormholescan lookups). Not written by the deploy script
-   * — resolve from the on-chain `Bridge` object if absent.
-   */
-  emitter_cap?: string;
-}
-
-export interface WithdrawalQueuePackage {
-  published_at: string;
-  /** Addresses on the queue executor allowlist (keepers). */
-  executors?: string[];
-  /** Shared `Queue<CREDIT>` (phase-6 output). */
-  queue?: string;
-}
+// Cross-chain credit / bridge stack (WaterxCreditPackage, NativeCustody*,
+// WormholeBridgePackage, WithdrawalQueuePackage) lives in `account/config.ts`
+// (the funding base) and is re-exported at the top of this file.
 
 export interface TestnetFaucetPackage {
   published_at: string;
@@ -239,24 +161,18 @@ export interface TestnetFaucetPackage {
 // credit-only config simply never reads them (credit consumers go through
 // the throwing `client.get*()` helpers; `validateConfig` only enforces the
 // package set appropriate to the detected deployment kind).
-export interface WaterXPackages {
-  bucket_framework: BasePackageEntry;
-  waterx_referral?: WaterxReferralPackage;
+export interface WaterXPackages extends AccountPackages {
+  // Account-layer packages (bucket_framework, waterx_account, waterx_referral,
+  // and the credit/bridge stack) are inherited from AccountPackages.
   pyth_rule: PythRulePackage;
   pyth_sponsor_rule?: PythSponsorRulePackage;
   constant_rule?: WaterxConstantRulePackage;
   supra_rule?: SupraRulePackage;
-  waterx_account: WxaAccountPackage;
   waterx_oracle: WaterxOraclePackage;
   waterx_perp: WaterxPerpPackage;
   waterx_perp_view: BasePackageEntry;
   waterx_staking?: WaterxStakingPackage;
   wlp: WlpPackage;
-  // Cross-chain credit / bridge stack (credit-only deployments).
-  waterx_credit?: WaterxCreditPackage;
-  wormhole_bridge?: WormholeBridgePackage;
-  withdrawal_queue?: WithdrawalQueuePackage;
-  native_custody?: NativeCustodyPackage;
   testnet_faucet?: TestnetFaucetPackage;
   // Optional mock coin packages (testnet only).
   mock_usdc?: MockCoinPackage;
@@ -291,22 +207,10 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
   },
 };
 
-/**
- * Wormhole infra for the cross-chain credit bridge. `state_id` is the same
- * shared Sui Wormhole `State` object Pyth uses (kept in sync with
- * `PYTH_DEFAULTS[*].wormhole_state_id`). Override per-deployment via
- * `WaterXConfig.wormhole` if a deployment ever points elsewhere.
- */
-export interface WormholeInfraConfig {
-  /** Shared Sui Wormhole `State` object. */
-  state_id: string;
-  /** Wormhole core package id on Sui. */
-  core_package: string;
-  /** Sui's Wormhole chain id (21 on both mainnet and testnet). */
-  sui_chain_id: number;
-  /** Wormholescan REST base for VAA lookups (no trailing slash). */
-  wormholescan_api: string;
-}
+// `WormholeInfraConfig` is defined in `account/config.ts` (funding base) and
+// re-exported at the top of this file. `state_id` is the same shared Sui
+// Wormhole `State` object Pyth uses (kept in sync with
+// `PYTH_DEFAULTS[*].wormhole_state_id`).
 
 export const WORMHOLE_DEFAULTS: Record<Network, WormholeInfraConfig> = {
   MAINNET: {

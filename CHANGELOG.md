@@ -10,6 +10,17 @@ reference the PR that introduced them.
 
 ### Changed
 
+- **Account/funding config schema hoisted into `account/config.ts`; `account/`
+  now imports nothing from `perp/`.** The account/funding/referral package
+  interfaces (`BasePackageEntry`, `WxaAccountPackage`, `WaterxCreditPackage`,
+  `NativeCustody*`, `WormholeBridgePackage`, `WithdrawalQueuePackage`,
+  `WaterxReferralPackage`, `WormholeInfraConfig`) plus new `AccountPackages` /
+  `AccountConfig` types now live in `src/account/config.ts`. `perp/config.ts`
+  imports + re-exports them (so `@waterx/sdk/perp` type imports are unchanged) and
+  `WaterXPackages extends AccountPackages`. `AccountClientLike` is now typed to
+  `AccountConfig`, removing the last type-only `account → perp` edge — the base
+  layer is fully decoupled (`PerpClient`'s `WaterXConfig` stays assignable to
+  `AccountConfig`). Dependency direction is now strictly `perp → account`.
 - **Single `generated/` root; `waterx_prediction` is now reproducible by
   `pnpm codegen`.** The prediction line had its own orphaned `src/prediction/generated/`
   (`waterx_prediction` + duplicate `bucket_v2_framework` / `waterx_account` / codegen
