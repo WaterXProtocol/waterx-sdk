@@ -10,6 +10,19 @@ reference the PR that introduced them.
 
 ### Changed
 
+- **Generic wxa builders are now line-agnostic (`WxaClientLike`) — shared by both
+  the perp and prediction lines.** The shared `account/` create-account / delegate /
+  alias builders were typed to the funding-capable `AccountClientLike`; they only
+  need `waterx_account` + `bucket_framework`, so they are retyped to the narrower
+  **`WxaClientLike`** (`account/client.ts`), which **both** `PerpClient` and
+  `PredictClient` satisfy structurally (CI-enforced by `wxa-capability.test.ts`).
+  `AccountConfig` / `AccountPackages` now extend `WxaConfig` / `WxaPackages`. The
+  prediction line already shares the underlying `createAccountCall` and (post
+  codegen-unify) the shared `generated/waterx_account`, so the wxa **framework** is
+  no longer duplicated; the per-line builder wrappers (prediction's `IdArgument`
+  accountId + `Transaction`-returning ergonomics over the coin deposit/withdraw
+  flow) are kept, since swapping their bodies changes on-chain PTB encoding only
+  verifiable via network-gated integration tests.
 - **Account/funding config schema hoisted into `account/config.ts`; `account/`
   now imports nothing from `perp/`.** The account/funding/referral package
   interfaces (`BasePackageEntry`, `WxaAccountPackage`, `WaterxCreditPackage`,

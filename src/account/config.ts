@@ -123,11 +123,28 @@ export interface WormholeInfraConfig {
 }
 
 /**
+ * The minimal package slice the **generic wxa builders** (create / delegate /
+ * alias …) read — only the fields BOTH the perp and prediction line configs are
+ * guaranteed to carry (prediction makes `original_id` / `version` / `admin_cap`
+ * optional, so the strict {@link WxaAccountPackage} is too narrow a target here).
+ */
+export interface WxaPackages {
+  bucket_framework: { published_at: string };
+  waterx_account: { published_at: string; account_registry: string };
+  waterx_referral?: { published_at: string; referral_table: string };
+}
+
+/** Narrow config for the generic wxa builders — both line configs are assignable. */
+export interface WxaConfig extends BaseLineConfig {
+  packages: WxaPackages;
+}
+
+/**
  * The package subset the account base + funding builders read. The full
  * line config (`WaterXPackages`) **extends** this, so any line client's config
  * is structurally an account config.
  */
-export interface AccountPackages {
+export interface AccountPackages extends WxaPackages {
   bucket_framework: BasePackageEntry;
   waterx_account: WxaAccountPackage;
   waterx_referral?: WaterxReferralPackage;

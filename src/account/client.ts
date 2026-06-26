@@ -22,7 +22,17 @@ import type {
   WaterxCreditPackage,
   WormholeBridgePackage,
   WormholeInfraConfig,
+  WxaConfig,
 } from "./config.ts";
+
+/**
+ * The slice the **generic wxa builders** (create account / delegates / alias /
+ * deposit-request) read — just the `waterx_account` + `bucket_framework` package
+ * ids and transport. Both `PerpClient` and `PredictClient` satisfy it (their full
+ * configs are assignable to {@link WxaConfig}), so these builders are shared by
+ * both lines. The funding-capable {@link AccountClientLike} is a superset.
+ */
+export type WxaClientLike = BaseLineClient<WxaConfig>;
 
 export interface AccountClientLike extends BaseLineClient<AccountConfig> {
   /** External Wormhole infra (network default, overridable via config). */

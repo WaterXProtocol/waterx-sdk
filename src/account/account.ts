@@ -19,7 +19,7 @@ import type {
 
 import * as wxa from "../generated/waterx_account/account.ts";
 import { makeSenderRequest } from "./account-request.ts";
-import type { AccountClientLike } from "./client.ts";
+import type { WxaClientLike } from "./client.ts";
 import { ACCUMULATOR_ROOT } from "./constants.ts";
 import { createAccountCall } from "./waterx-account.ts";
 
@@ -36,7 +36,7 @@ export interface CreateAccountParams {
 
 /** Build `waterx_account::create_account`. Returns the new account ID via Move return value. */
 export function createAccount(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: CreateAccountParams,
 ): void {
@@ -61,7 +61,7 @@ export interface SetAliasParams {
   bucketAccount?: string | TransactionArgument;
 }
 
-export function setAlias(client: AccountClientLike, tx: Transaction, params: SetAliasParams): void {
+export function setAlias(client: WxaClientLike, tx: Transaction, params: SetAliasParams): void {
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   wxa.setAlias({
     package: client.config.packages.waterx_account.published_at,
@@ -90,7 +90,7 @@ export interface AddDelegateParams {
 }
 
 export function addDelegate(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: AddDelegateParams,
 ): void {
@@ -116,7 +116,7 @@ export interface RemoveDelegateParams {
 }
 
 export function removeDelegate(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: RemoveDelegateParams,
 ): void {
@@ -143,7 +143,7 @@ export interface SetDelegateProtocolPermissionParams {
 }
 
 export function setDelegateProtocolPermission(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: SetDelegateProtocolPermissionParams,
 ): void {
@@ -178,7 +178,7 @@ export interface RequestDepositParams {
 
 /** Build `account::request_deposit<T>`. Returns the `DepositRequest<T>` argument. */
 export function requestDeposit(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: RequestDepositParams,
 ): TransactionArgument {
@@ -217,7 +217,7 @@ export interface RequestDepositFromReceivingsParams {
  * `DepositRequest<T>` argument.
  */
 export function requestDepositFromReceivings(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: RequestDepositFromReceivingsParams,
 ): TransactionArgument {
@@ -266,7 +266,7 @@ export interface RequestDepositFromFundsParams {
  * skip empty drains.
  */
 export function requestDepositFromFunds(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: RequestDepositFromFundsParams,
 ): TransactionArgument {
@@ -304,7 +304,7 @@ export interface RequestWithdrawParams {
 
 /** Build `account::request_withdraw<T>`. Returns the `WithdrawRequest<T>` argument. */
 export function requestWithdraw(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: RequestWithdrawParams,
 ): TransactionArgument {
@@ -335,7 +335,7 @@ export interface TransferToAccountParams {
 }
 
 export function transferToAccount(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: TransferToAccountParams,
 ): void {
@@ -377,7 +377,7 @@ export interface ReceiveParams {
  * tokens / objects) that have no registered deposit policy.
  */
 export function receive(
-  client: AccountClientLike,
+  client: WxaClientLike,
   tx: Transaction,
   params: ReceiveParams,
 ): TransactionArgument {
