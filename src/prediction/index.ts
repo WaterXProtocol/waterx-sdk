@@ -84,10 +84,13 @@ export {
   outcomeArg,
   placeOrder,
   requestClose,
+  requestPartialClose,
   resolveMarket,
   selectionArg,
   selfCancelClose,
   selfCancelOrder,
+  splitPosition,
+  transferPosition,
 } from "./prediction.ts";
 export type {
   AdminPlaceOrderForParams,
@@ -102,9 +105,12 @@ export type {
   ForceClaimParams,
   PlaceOrderParams,
   RequestCloseParams,
+  RequestPartialCloseParams,
   ResolveMarketParams,
   SelfCancelCloseParams,
   SelfCancelOrderParams,
+  SplitPositionParams,
+  TransferPositionParams,
 } from "./prediction.ts";
 
 export { buildBatchClaimTx, buildPlaceOrderTx } from "./tx-builders.ts";

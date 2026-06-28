@@ -223,6 +223,47 @@ export function requestClose(
   return tx;
 }
 
+export interface RequestPartialCloseParams extends BasePredictionParams, AccountIdentityParams {
+  positionId: bigint | number | string;
+  /**
+   * Shares to peel off `positionId` into a new same-account position that is
+   * then closed. Must be `0 < closeShares < filled_shares` of the position.
+   */
+  closeShares: bigint | number | string;
+  minProceeds: bigint | number | string;
+  expiryTs: bigint | number | string;
+}
+
+/**
+ * Account-backed partial sell. Splits `closeShares` off `positionId` into a new
+ * same-account position and runs the close flow on it; the remainder stays
+ * `Open` under `positionId`. The on-chain call returns the new PendingClose
+ * position id (read it from events / the returned move-call result if needed).
+ */
+export function requestPartialClose(
+  client: PredictClient,
+  tx: Transaction,
+  params: RequestPartialCloseParams,
+): Transaction {
+  const senderRequest = createAccountRequest(client, tx, params);
+  tx.moveCall({
+    target: `${resolvePackageId(client, params.packageId)}::waterx_prediction::request_partial_close`,
+    typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
+    arguments: [
+      tx.object(resolveGlobalConfig(client, params.globalConfig)),
+      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
+      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
+      senderRequest,
+      tx.pure.u64(toBigInt(params.positionId)),
+      tx.pure.u64(toBigInt(params.closeShares)),
+      tx.pure.u64(toBigInt(params.minProceeds)),
+      tx.pure.u64(toBigInt(params.expiryTs)),
+      clockArg(tx),
+    ],
+  });
+  return tx;
+}
+
 export interface SelfCancelCloseParams extends BasePredictionParams, AccountIdentityParams {
   positionId: bigint | number | string;
 }
@@ -242,6 +283,79 @@ export function selfCancelClose(
       tx.object(resolveAccountRegistry(client, params.accountRegistry)),
       senderRequest,
       tx.pure.u64(toBigInt(params.positionId)),
+      clockArg(tx),
+    ],
+  });
+  return tx;
+}
+
+export interface TransferPositionParams extends BasePredictionParams, AccountIdentityParams {
+  positionId: bigint | number | string;
+  /** WXA account that receives the position; future close/claim proceeds go there. */
+  recipientAccountId: IdArgument;
+}
+
+/**
+ * Account-backed position transfer. The source account owner moves an open
+ * prediction position to another WXA account. Aborts if the position has a
+ * pending close.
+ */
+export function transferPosition(
+  client: PredictClient,
+  tx: Transaction,
+  params: TransferPositionParams,
+): Transaction {
+  const senderRequest = createAccountRequest(client, tx, params);
+  tx.moveCall({
+    target: `${resolvePackageId(client, params.packageId)}::waterx_prediction::transfer_position`,
+    typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
+    arguments: [
+      tx.object(resolveGlobalConfig(client, params.globalConfig)),
+      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
+      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
+      senderRequest,
+      tx.pure.u64(toBigInt(params.positionId)),
+      idArg(tx, params.recipientAccountId),
+      clockArg(tx),
+    ],
+  });
+  return tx;
+}
+
+export interface SplitPositionParams extends BasePredictionParams, AccountIdentityParams {
+  positionId: bigint | number | string;
+  /** WXA account that receives the new independent position. */
+  recipientAccountId: IdArgument;
+  /**
+   * Shares to split into the recipient's new position. Must be
+   * `0 < splitShares < filled_shares` of the source position.
+   */
+  splitShares: bigint | number | string;
+}
+
+/**
+ * Account-backed partial transfer. Splits an open position into two independent
+ * positions: the source keeps the remainder and the recipient receives a new
+ * position with proportional cost basis. The on-chain call returns the new
+ * position id (read it from events / the returned move-call result if needed).
+ */
+export function splitPosition(
+  client: PredictClient,
+  tx: Transaction,
+  params: SplitPositionParams,
+): Transaction {
+  const senderRequest = createAccountRequest(client, tx, params);
+  tx.moveCall({
+    target: `${resolvePackageId(client, params.packageId)}::waterx_prediction::split_position`,
+    typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
+    arguments: [
+      tx.object(resolveGlobalConfig(client, params.globalConfig)),
+      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
+      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
+      senderRequest,
+      tx.pure.u64(toBigInt(params.positionId)),
+      idArg(tx, params.recipientAccountId),
+      tx.pure.u64(toBigInt(params.splitShares)),
       clockArg(tx),
     ],
   });

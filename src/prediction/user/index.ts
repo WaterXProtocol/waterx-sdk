@@ -29,17 +29,23 @@ export {
   claim,
   placeOrder,
   requestClose,
+  requestPartialClose,
   selectionArg,
   selfCancelClose,
   selfCancelOrder,
+  splitPosition,
+  transferPosition,
 } from "../prediction.ts";
 export type {
   BatchClaimParams,
   ClaimParams,
   PlaceOrderParams,
   RequestCloseParams,
+  RequestPartialCloseParams,
   SelfCancelCloseParams,
   SelfCancelOrderParams,
+  SplitPositionParams,
+  TransferPositionParams,
 } from "../prediction.ts";
 
 export * as gift from "./gift.ts";

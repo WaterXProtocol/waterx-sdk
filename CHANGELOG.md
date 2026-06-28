@@ -8,6 +8,18 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Added
+
+- **Prediction user-side position builders: `requestPartialClose`, `transferPosition`,
+  `splitPosition`.** Fills the gap between the on-chain `waterx_prediction` user
+  entrypoints and the SDK. `requestPartialClose` peels `closeShares` off a position
+  into a new same-account position and runs the close (partial sell) flow on it,
+  leaving the remainder `Open`. `transferPosition` moves an open position to another
+  WXA account; `splitPosition` splits an open position into two independent positions
+  with proportional cost basis for a recipient account. Exposed from
+  `@waterx/sdk/prediction` (root, `user`, and `user.position` namespaces), matching
+  the existing `requestClose` / `selfCancelClose` shape.
+
 ### Changed
 
 - **BREAKING — `WaterXClient` is now the umbrella entry point.** (#55) The class
