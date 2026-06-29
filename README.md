@@ -95,9 +95,9 @@ To avoid doc drift, per-action usage lives in maintained, lint-checked code rath
 
 - **Perp recipes:** [`examples/`](./examples) — ~30 runnable scripts (place orders, WLP mint/redeem, account/delegates, reads). Each uses `buildClient()` + a builder + `simThenMaybeExecute`.
 - **Prediction recipes:** [`test/prediction/e2e/`](./test/prediction/e2e) — the live reference for `client.predict.*` flows.
-- **Authoritative export list:** [`src/index.ts`](./src/index.ts) (perp) and [`src/prediction/index.ts`](./src/prediction/index.ts) — clients, builders, view helpers, BCS types, and `*Calls` generated namespaces.
+- **Authoritative export list:** [`src/perp/index.ts`](./src/perp/index.ts) (perp) and [`src/prediction/index.ts`](./src/prediction/index.ts) — clients, builders, view helpers, BCS types, and `*Calls` generated namespaces. The package root (`.`) is [`src/sdk.ts`](./src/sdk.ts) (umbrella + flat-perp re-export); the shared base is published at `@waterx/sdk/account` and `@waterx/sdk/oracle`.
 
-Perp `build*Tx` helpers are Pyth-backed (`async`; they refresh feeds before the call). Pyth/Wormhole helpers live in [`src/utils/`](./src/utils).
+Perp `build*Tx` helpers are Pyth-backed (`async`; they refresh feeds before the call). Oracle (Pyth/Hermes) helpers live in [`src/oracle/`](./src/oracle).
 
 ## Development
 

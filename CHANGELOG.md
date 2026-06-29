@@ -89,6 +89,35 @@ reference the PR that introduced them.
     `PythCache`, `openPythSponsorFund`, …) is re-exported unchanged from
     `oracle/index.ts`; only the internal import path moves
     (`utils/pyth.ts` → `oracle/`).
+- **Oracle config hoisted into `oracle/config.ts`; the last base→product type
+  edge is gone.** (#55) `oracle/host.ts` imported `WaterXConfig` / `PythInfraConfig`
+  from `perp/config.ts`, leaving one residual oracle→perp type edge. The oracle-rule
+  package schema (`PythRulePackage`, `PythSponsorRulePackage`, `SupraRulePackage`,
+  `WaterxConstantRulePackage` + `ConstantFeedEntry` / `SupraFeedEntry`,
+  `WaterxOraclePackage`) plus `PythInfraConfig` / `PYTH_DEFAULTS` and the new narrow
+  `OracleConfig` / `OraclePackages` now live in `src/oracle/config.ts`.
+  `OracleHost.config` is typed to `OracleConfig`, so the oracle layer imports
+  **nothing** from `perp/`. `perp/config.ts` imports + re-exports them (so
+  `@waterx/sdk/perp` type imports are unchanged) and `WaterXPackages extends
+  AccountPackages, OraclePackages`.
+- **Referral reads consolidated under the `account/` base.** (#55) The referral
+  queries (`getRefererFor` / `isValidReferralCode` / `referralCodeExists`) were
+  split off from their builders and needlessly typed to `PerpClient` in
+  `perp/fetch/referral.ts`. They move to `account/fetch/referral.ts` (co-located
+  with the `account/referral.ts` builders) retyped to `WxaClientLike`, and the perp
+  `fetch.ts` barrel re-exports them — the `@waterx/sdk` / `@waterx/sdk/perp` surface
+  is unchanged. The generic simulate/decode plumbing also moves to the base
+  (`account/fetch/simulate.ts`); `perp/fetch/simulate.ts` re-exports it and keeps
+  only the perp-only `withLp`. `DRY_RUN_SENDER` (the zero-address simulate sender)
+  is hoisted from `perp/constants.ts` to the shared `constants.ts` and re-exported
+  for back-compat.
+
+### Added
+
+- **`@waterx/sdk/account` and `@waterx/sdk/oracle` subpath exports.** (#55) The
+  shared base layer (account framework + funding + referral) and the oracle module
+  are now part of the published surface via `./account`, `./account/*`, `./oracle`,
+  and `./oracle/*` package exports.
 
 ## [3.0.0] - 2026-06-25
 
