@@ -8,7 +8,6 @@ import {
   requestPartialClose,
   selfCancelClose,
   splitPosition,
-  transferPosition,
 } from "~predict/prediction.ts";
 import { beforeAll, describe, it } from "vitest";
 
@@ -36,7 +35,12 @@ async function simulateSuccessOrSkipMissing(
   try {
     await expectSimulateSuccess(client, tx, owner);
   } catch (err) {
-    const message = decodeURIComponent(err instanceof Error ? err.message : String(err));
+    let message = err instanceof Error ? err.message : String(err);
+    try {
+      message = decodeURIComponent(message);
+    } catch {
+      /* keep raw — message wasn't valid percent-encoding */
+    }
     if (message.includes("unable to find function") && message.includes(fnName)) {
       ctx.skip(true, `${fnName} not published on this package yet — republish waterx_prediction.`);
       return;
@@ -147,27 +151,10 @@ describe(`close pipeline PTB simulate (${predictE2eNetwork})`, () => {
     await simulateSuccessOrSkipMissing(ctx, client, tx, owner, "split_position");
   });
 
-  it("transferPosition on a seeded OPEN position (self-recipient no-op)", async (ctx) => {
-    guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
-    guard.skipUnlessAccountReady(ctx);
-    const owner = await guard.skipUnlessAccountOwner(ctx);
-    const positionId = fx.openPositionId ?? fx.positionId;
-    if (positionId === undefined) {
-      guard.skipFixableBySeed(ctx, "openPositionId", { stage: "fill" });
-    }
-
-    const position = await getPosition(client, { positionId });
-    if (position.accountId !== fx.accountId || position.status !== "OPEN") {
-      guard.skipFixableBySeed(ctx, "openPositionId OPEN + owned by accountId", { stage: "fill" });
-    }
-
-    const tx = new Transaction();
-    transferPosition(client, tx, {
-      positionId,
-      recipientAccountId: fx.accountId,
-    });
-    await simulateSuccessOrSkipMissing(ctx, client, tx, owner, "transfer_position");
-  });
+  // transfer_position is intentionally not e2e-tested here: with a self-recipient it
+  // early-returns on-chain (waterx_prediction.move: from_account_id == recipient), so it
+  // would never exercise the real transfer leg. The builder's argument shape is covered by
+  // the dual-path PTB test; genuine transfer coverage needs a second seeded WXA account.
 
   it("selfCancelClose on an expired PENDING_CLOSE position (rescue path)", async (ctx) => {
     guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
