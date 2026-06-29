@@ -10,11 +10,11 @@
 
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
-import type { PythInfraConfig, WaterXConfig } from "../perp/config.ts";
+import type { OracleConfig, PythInfraConfig } from "./config.ts";
 
 export interface OracleHost {
-  /** Parsed canonical `waterx-config` JSON (package object-id maps + per-ticker feeds). */
-  readonly config: WaterXConfig;
+  /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
+  readonly config: OracleConfig;
   /** External Pyth/Wormhole/Hermes infra (network default, overridable via config). */
   readonly pyth: PythInfraConfig;
   /** gRPC client for the on-chain reads the Pyth update path needs. */
