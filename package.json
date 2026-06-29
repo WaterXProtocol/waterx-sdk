@@ -16,6 +16,22 @@
       "types": "./dist/src/sdk.d.ts",
       "import": "./dist/src/sdk.js"
     },
+    "./account": {
+      "types": "./dist/src/account/index.d.ts",
+      "import": "./dist/src/account/index.js"
+    },
+    "./account/*": {
+      "types": "./dist/src/account/*.d.ts",
+      "import": "./dist/src/account/*.js"
+    },
+    "./oracle": {
+      "types": "./dist/src/oracle/index.d.ts",
+      "import": "./dist/src/oracle/index.js"
+    },
+    "./oracle/*": {
+      "types": "./dist/src/oracle/*.d.ts",
+      "import": "./dist/src/oracle/*.js"
+    },
     "./perp": {
       "types": "./dist/src/perp/index.d.ts",
       "import": "./dist/src/perp/index.js"
