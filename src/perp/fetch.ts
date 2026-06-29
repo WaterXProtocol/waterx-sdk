@@ -5,18 +5,20 @@
  * sender), and decodes the BCS return values. Implementations are split by
  * domain under `fetch/`:
  *
- *   simulate.ts   shared simulate/decode plumbing (internal)
+ *   simulate.ts   simulate/decode plumbing (internal; core in account/fetch/)
  *   market.ts     account data + market / pool / token-pool / global-config
  *   positions.ts  position / order reads + paginated lists + redeem requests
- *   referral.ts   waterx_referral queries
  *   account.ts    wxa account reads + inclusive spendable-credit balance
  *   custody.ts    native-custody PSM reads
  *   bridge.ts     wormhole_bridge limits + withdrawal_queue fee estimate
+ *
+ * Referral reads (`waterx_referral`) live in the account base
+ * (`account/fetch/referral.ts`) and are re-exported here for the perp surface.
  */
 
+export * from "../account/fetch/referral.ts";
 export * from "./fetch/market.ts";
 export * from "./fetch/positions.ts";
-export * from "./fetch/referral.ts";
 export * from "./fetch/account.ts";
 export * from "./fetch/custody.ts";
 export * from "./fetch/bridge.ts";

@@ -1,72 +1,23 @@
+import type { PerpClient } from "../client.ts";
+
 /**
- * Shared simulate/decode plumbing for the perp read helpers.
+ * Perp `fetch/` simulate plumbing.
  *
- * Each public read builds a one-shot PTB, runs `client.simulate(tx)` with the
- * zero address as sender, and decodes the command's BCS return values. These
- * helpers are internal to `fetch/` — not part of the public surface.
+ * The generic simulate/decode core (build one-shot PTB → `client.simulate(tx)`
+ * with the zero-address sender → decode BCS) lives in the account base
+ * (`account/fetch/simulate.ts`) so it isn't duplicated per line; re-exported
+ * here unchanged. Only `withLp` (perp's WLP-type default) is perp-specific.
+ * Internal to `fetch/` — not part of the public surface.
  */
 
-import { fromBase64 } from "@mysten/bcs";
-import { Transaction } from "@mysten/sui/transactions";
-
-import type { PerpClient } from "../client.ts";
-import { DRY_RUN_SENDER } from "../constants.ts";
-
-export interface SimulationCommandResult {
-  returnValues?: { bcs?: Uint8Array | string; value?: { bcs?: Uint8Array | string } }[];
-}
-
-export interface SimulationResult {
-  $kind?: string;
-  FailedTransaction?: {
-    status?: { error?: { message?: string } };
-  };
-  commandResults?: SimulationCommandResult[] | null;
-}
-
-export function toBytes(b: Uint8Array | string | undefined): Uint8Array | undefined {
-  if (!b) return undefined;
-  if (typeof b === "string") return fromBase64(b);
-  // gRPC returns Uint8Array; JSON-RPC serialization may turn it into a
-  // numeric-indexed object. Normalize both.
-  if (b instanceof Uint8Array) return b;
-  return new Uint8Array(Object.values(b as Record<string, number>));
-}
-
-export async function simulateRaw(client: PerpClient, tx: Transaction): Promise<SimulationResult> {
-  tx.setSender(DRY_RUN_SENDER);
-  const sim = (await client.simulate(tx)) as unknown as SimulationResult;
-  if (sim.$kind === "FailedTransaction") {
-    const err = sim.FailedTransaction?.status?.error?.message ?? "FailedTransaction";
-    throw new Error(`simulate aborted: ${err}`);
-  }
-  return sim;
-}
-
-export function extractAt(
-  sim: SimulationResult,
-  commandIndex: number,
-  returnIndex = 0,
-): Uint8Array {
-  const ret = sim.commandResults?.[commandIndex]?.returnValues?.[returnIndex];
-  const bytes = toBytes(ret?.bcs) ?? toBytes(ret?.value?.bcs);
-  if (!bytes) {
-    throw new Error(
-      `simulate returned no BCS value at commandResults[${commandIndex}].returnValues[${returnIndex}]`,
-    );
-  }
-  return bytes;
-}
-
-export async function simulateAndExtract(
-  client: PerpClient,
-  tx: Transaction,
-  commandIndex = 0,
-  returnIndex = 0,
-): Promise<Uint8Array> {
-  const sim = await simulateRaw(client, tx);
-  return extractAt(sim, commandIndex, returnIndex);
-}
+export {
+  type SimulationCommandResult,
+  type SimulationResult,
+  extractAt,
+  simulateAndExtract,
+  simulateRaw,
+  toBytes,
+} from "../../account/fetch/simulate.ts";
 
 export function withLp(client: PerpClient, lpType?: string): string {
   return lpType ?? client.wlpType();

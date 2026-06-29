@@ -57,8 +57,8 @@ export const ACTION_CANCEL_PRE_ORDER = 10;
 export const ACTION_ADD_PRE_ORDER = 11;
 
 // ======== Misc ========
-/** Zero-address placeholder used as the sender in dry-run / simulate calls. */
-export const DRY_RUN_SENDER = "0x0000000000000000000000000000000000000000000000000000000000000000";
+// `DRY_RUN_SENDER` (zero-address simulate sender) is a shared primitive defined
+// in `../constants.ts` and re-exported via the `export *` above.
 
 /**
  * Well-known address of Sui's native funds-accumulator root shared object

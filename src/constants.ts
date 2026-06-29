@@ -38,3 +38,11 @@ export const TOKEN_DECIMALS = {
 
 // ======== Time ========
 export const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
+
+// ======== Well-known addresses ========
+/**
+ * Zero-address placeholder used as the sender in dry-run / simulate calls.
+ * Line-agnostic (every read path simulates with it); re-exported from
+ * `perp/constants.ts` for back-compat.
+ */
+export const DRY_RUN_SENDER = "0x0000000000000000000000000000000000000000000000000000000000000000";
