@@ -13,10 +13,13 @@ import {
   outcomeArg,
   placeOrder,
   requestClose,
+  requestPartialClose,
   resolveMarket,
   selectionArg,
   selfCancelClose,
   selfCancelOrder,
+  splitPosition,
+  transferPosition,
 } from "../../../../src/prediction/prediction.ts";
 import { minimalPlaceOrderParams, PTB_DUMMY } from "../../fixtures/ptb-params.ts";
 import {
@@ -75,9 +78,42 @@ export function predictOpsDualPathCases(client: {
       (p, tx) => p.requestClose(tx, { positionId: 8n, minProceeds: 1n, expiryTs: 999n }),
     ),
     caseMutate(
+      "requestPartialClose",
+      (c, tx) =>
+        requestPartialClose(c, tx, {
+          positionId: 8n,
+          closeShares: 3n,
+          minProceeds: 1n,
+          expiryTs: 999n,
+        }),
+      (p, tx) =>
+        p.requestPartialClose(tx, {
+          positionId: 8n,
+          closeShares: 3n,
+          minProceeds: 1n,
+          expiryTs: 999n,
+        }),
+    ),
+    caseMutate(
       "selfCancelClose",
       (c, tx) => selfCancelClose(c, tx, { positionId: 8n }),
       (p, tx) => p.selfCancelClose(tx, { positionId: 8n }),
+    ),
+    caseMutate(
+      "transferPosition",
+      (c, tx) => transferPosition(c, tx, { positionId: 8n, recipientAccountId: acc.accountId }),
+      (p, tx) => p.transferPosition(tx, { positionId: 8n, recipientAccountId: acc.accountId }),
+    ),
+    caseMutate(
+      "splitPosition",
+      (c, tx) =>
+        splitPosition(c, tx, {
+          positionId: 8n,
+          recipientAccountId: acc.accountId,
+          splitShares: 3n,
+        }),
+      (p, tx) =>
+        p.splitPosition(tx, { positionId: 8n, recipientAccountId: acc.accountId, splitShares: 3n }),
     ),
     caseMutate(
       "fillOrder",
