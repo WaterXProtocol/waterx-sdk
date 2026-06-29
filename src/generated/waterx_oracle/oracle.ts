@@ -5,12 +5,12 @@
 
 /**
  * Shared `Oracle` registry. Holds one `PriceAggregator` per ticker as a DOF child.
- * 
+ *
  * PTB flow:
- * 
+ *
  * ```text
  * let collector = oracle::new_collector(b"BTC_USD".to_string());
- * waterx_rule::feed(&mut collector, &waterx_config, &clock, ...);
+ * waterx_rule::feed(&mut collector, &mut waterx_config, &clock, ...);
  * oracle::aggregate(&mut oracle, collector, &clock);
  * // ... later in the same tx:
  * let price = oracle::get_price(&oracle, b"BTC_USD".to_string(), &clock);
@@ -428,6 +428,7 @@ export function getPriceAtTimestamp(options: GetPriceAtTimestampOptions) {
 }
 export interface RemovePriceAtTimestampArguments {
     oracle: RawTransactionArgument<string>;
+    Cap: RawTransactionArgument<string>;
     ticker: RawTransactionArgument<string>;
     timestampMs: RawTransactionArgument<number | bigint>;
 }
@@ -435,6 +436,7 @@ export interface RemovePriceAtTimestampOptions {
     package?: string;
     arguments: RemovePriceAtTimestampArguments | [
         oracle: RawTransactionArgument<string>,
+        Cap: RawTransactionArgument<string>,
         ticker: RawTransactionArgument<string>,
         timestampMs: RawTransactionArgument<number | bigint>
     ];
@@ -442,15 +444,20 @@ export interface RemovePriceAtTimestampOptions {
 /**
  * Removes the exact historical price snapshot at `timestamp_ms` so the caller can
  * reclaim the dynamic-field storage rebate. Latest price is unchanged.
+ *
+ * `ListingCap`-gated (F-012): without it any address could delete any listed
+ * ticker's history snapshots, griefing off-chain reconciliation. The live price
+ * path (`latest_price` / `last_update_ms`) is never touched here.
  */
 export function removePriceAtTimestamp(options: RemovePriceAtTimestampOptions) {
     const packageAddress = options.package ?? '@waterx/oracle';
     const argumentsTypes = [
         null,
+        null,
         '0x1::string::String',
         'u64'
     ] satisfies (string | null)[];
-    const parameterNames = ["oracle", "ticker", "timestampMs"];
+    const parameterNames = ["oracle", "Cap", "ticker", "timestampMs"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'oracle',

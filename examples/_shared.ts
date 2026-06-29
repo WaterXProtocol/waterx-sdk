@@ -1,7 +1,7 @@
 /**
  * Shared helpers for every example under `examples/`.
  *
- *   - `buildClient(network?)` — async WaterXClient constructor (testnet default)
+ *   - `buildClient(network?)` — async PerpClient constructor (testnet default)
  *   - `loadActiveKeypair()` — read the local Sui CLI's active ed25519 keypair
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain
@@ -18,15 +18,15 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
-import { DRY_RUN_SENDER } from "../src/constants.ts";
-import type { Network } from "../src/constants.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
+import type { Network } from "../src/perp/constants.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
-export async function buildClient(network: Network = "TESTNET"): Promise<WaterXClient> {
-  return WaterXClient.create(network, { cache: true });
+export async function buildClient(network: Network = "TESTNET"): Promise<PerpClient> {
+  return PerpClient.create(network, { cache: true });
 }
 
 export function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
@@ -59,7 +59,7 @@ interface SimResult {
 
 /** Dry-run a PTB. Returns `true` if simulate passed, `false` if it aborted. */
 export async function sim(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   label: string,
   sender: string = DRY_RUN_SENDER,
@@ -76,7 +76,7 @@ export async function sim(
 }
 
 export async function execute(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -106,7 +106,7 @@ export function shouldExecute(): boolean {
 
 /** Sim, then optionally execute when `WATERX_EXECUTE=1`. */
 export async function simThenMaybeExecute(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   label: string,
   signer?: Ed25519Keypair,

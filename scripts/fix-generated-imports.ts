@@ -88,6 +88,20 @@ function annotateMoveStructFactory(source: string, functionName: string): string
   return source.replace(pattern, "$1: MoveStruct<any, any> {");
 }
 
+// `export const <Name> = new MoveStruct(...)` whose inferred type references a
+// MoveEnum (e.g. a struct with an enum field) trips TS2883 ("type cannot be named
+// without a reference to EnumInputShape … type annotation necessary"). Annotate
+// the const explicitly. `constName` is a hardcoded literal (no ReDoS), and the
+// literal-string replace only hits the matching declaration.
+function annotateMoveStructConst(source: string, constName: string): string {
+  const needle = `export const ${constName} = new MoveStruct(`;
+  if (!source.includes(needle)) return source;
+  return source.replace(
+    needle,
+    `export const ${constName}: MoveStruct<any, any> = new MoveStruct(`,
+  );
+}
+
 function trimTrailingWhitespace(source: string): string {
   return source
     .split("\n")
@@ -104,6 +118,14 @@ function rewritePortableTypes(source: string, filePath: string): string {
 
   if (normalizedPath.endsWith("/linked_table.ts")) {
     return annotateMoveStructFactory(annotateMoveStructFactory(source, "LinkedTable"), "Node");
+  }
+
+  // waterx_prediction structs that embed the `Outcome` MoveEnum (TS2883).
+  if (normalizedPath.endsWith("/waterx_prediction/waterx_prediction.ts")) {
+    return annotateMoveStructConst(source, "Market");
+  }
+  if (normalizedPath.endsWith("/waterx_prediction/view.ts")) {
+    return annotateMoveStructConst(source, "MarketView");
   }
 
   return source;

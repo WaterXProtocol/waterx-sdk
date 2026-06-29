@@ -4,8 +4,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { getAccountBalance } from "../../../../src/fetch.ts";
-import { mintCreditToAccount } from "../../../../src/user/custody.ts";
+import { mintCreditToAccount } from "../../../../src/account/funding/custody.ts";
+import { getAccountBalance } from "../../../../src/perp/fetch.ts";
 import { isCreditPipelineConfigured } from "../../helpers/e2e/e2e-custody.ts";
 import {
   ensureUserAccountForIntegration,

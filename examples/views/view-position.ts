@@ -7,7 +7,7 @@
  *     pnpm exec tsx examples/views/view-position.ts
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
-import { getPosition } from "../../src/fetch.ts";
+import { getPosition } from "../../src/perp/fetch.ts";
 import { rawPrice } from "../../src/utils/math.ts";
 
 run(async () => {

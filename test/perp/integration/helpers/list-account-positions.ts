@@ -1,6 +1,6 @@
-import type { WaterXClient } from "../../../../src/client.ts";
-import type { PositionDataView } from "../../../../src/fetch.ts";
-import { getAccountPositions } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { PositionDataView } from "../../../../src/perp/fetch.ts";
+import { getAccountPositions } from "../../../../src/perp/fetch.ts";
 import {
   posAccountObjectAddress,
   posPositionIdBigInt,
@@ -18,7 +18,7 @@ export type AccountPositionRow = {
  * Open wxa positions for `accountId` via `view::account_positions`.
  */
 export async function listAccountPositionsInMarket(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   ticker: string,
 ): Promise<AccountPositionRow[]> {
@@ -50,7 +50,7 @@ export async function listAccountPositionsInMarket(
 }
 
 export async function listAllConfiguredAccountPositions(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   tickers: readonly string[],
 ): Promise<AccountPositionRow[]> {

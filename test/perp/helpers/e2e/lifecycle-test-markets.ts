@@ -3,7 +3,7 @@
  *
  * Add/remove tickers in `LIFECYCLE_TEST_TICKER_ORDER`; iteration skips unknown deployments via config.
  */
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import { getUsdHintForTicker } from "./oracle-pyth-context.ts";
 
 /** Legacy symbol aliases → oracle ticker (for transitional integration imports). */
@@ -132,7 +132,7 @@ function resolveTickerKey(symbolOrTicker: string): string {
 }
 
 /** Tickers listed in order that exist on this client's deployment. */
-export function activeLifecycleTickersForClient(client: WaterXClient): string[] {
+export function activeLifecycleTickersForClient(client: PerpClient): string[] {
   const markets = client.config.packages.waterx_perp.markets ?? {};
   return LIFECYCLE_TEST_TICKER_ORDER.filter((t) => markets[t] != null);
 }
@@ -140,12 +140,12 @@ export function activeLifecycleTickersForClient(client: WaterXClient): string[] 
 /**
  * @deprecated Use {@link activeLifecycleTickersForClient}. Returned strings are tickers (`BTCUSD`).
  */
-export function activeLifecycleTestBasesForClient(client: WaterXClient): string[] {
+export function activeLifecycleTestBasesForClient(client: PerpClient): string[] {
   return activeLifecycleTickersForClient(client);
 }
 
 /** Integration helper — same as {@link activeLifecycleTickersForClient}. */
-export function activeLifecycleTestBasesIntegration(client: WaterXClient): string[] {
+export function activeLifecycleTestBasesIntegration(client: PerpClient): string[] {
   return activeLifecycleTickersForClient(client);
 }
 

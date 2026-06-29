@@ -18,7 +18,7 @@ import {
   simThenMaybeExecute,
 } from "../_shared.ts";
 import { consumeDepositDirect } from "../../src/generated/waterx_account/direct_rule.ts";
-import { requestDeposit } from "../../src/index.ts";
+import { requestDeposit } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

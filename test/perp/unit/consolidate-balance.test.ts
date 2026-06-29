@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
 import {
   probeAddressCreditBalance,
   probeParkedBackingAssets,
   rescaleRawAmount,
   sumParkedBackingAsCreditRaw,
-} from "../../../src/utils/consolidate-balance.ts";
+} from "../../../src/account/funding/balance.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
@@ -65,7 +65,7 @@ describe("consolidate-balance utils", () => {
   it("probeAddressCreditBalance returns zeros when waterx_credit is missing", async () => {
     const config = structuredClone(MOCK_TESTNET_CONFIG);
     delete config.packages.waterx_credit;
-    const client = new WaterXClient("TESTNET", config, {
+    const client = new PerpClient("TESTNET", config, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
@@ -103,7 +103,7 @@ describe("consolidate-balance utils", () => {
   it("probeParkedBackingAssets returns [] when native_custody is missing", async () => {
     const config = structuredClone(MOCK_TESTNET_CONFIG);
     delete config.packages.native_custody;
-    const client = new WaterXClient("TESTNET", config, {
+    const client = new PerpClient("TESTNET", config, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     await expect(probeParkedBackingAssets(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual([]);

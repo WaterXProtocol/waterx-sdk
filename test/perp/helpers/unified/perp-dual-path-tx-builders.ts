@@ -1,4 +1,4 @@
-import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/constants.ts";
+import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/perp/constants.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -18,7 +18,7 @@ import {
   buildUnstakeAndRequestRedeemWlpTx,
   buildUpdateOrderTx,
   buildWithdrawCollateralTx,
-} from "../../../../src/tx-builders.ts";
+} from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
 import {
@@ -45,7 +45,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         main: baseOrderMain,
       }),
     (p) =>
-      p.buildPlaceOrderTx({
+      p.perp.buildPlaceOrderTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -65,7 +65,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         acceptablePrice: rawPrice(90_000),
       }),
     (p) =>
-      p.buildClosePositionTx({
+      p.perp.buildClosePositionTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -88,7 +88,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         acceptablePrice: rawPrice(100_000),
       }),
     (p) =>
-      p.buildIncreasePositionTx({
+      p.perp.buildIncreasePositionTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -112,7 +112,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         acceptablePrice: rawPrice(95_000),
       }),
     (p) =>
-      p.buildDecreasePositionTx({
+      p.perp.buildDecreasePositionTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -134,7 +134,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         collateralAmount: 1_000_000n,
       }),
     (p) =>
-      p.buildDepositCollateralTx({
+      p.perp.buildDepositCollateralTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -155,7 +155,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         amount: 500_000n,
       }),
     (p) =>
-      p.buildWithdrawCollateralTx({
+      p.perp.buildWithdrawCollateralTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -177,7 +177,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         triggerPrice: 0n,
       }),
     (p) =>
-      p.buildCancelOrderTx({
+      p.perp.buildCancelOrderTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -202,7 +202,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         newTriggerPrice: rawPrice(96_000),
       }),
     (p) =>
-      p.buildUpdateOrderTx({
+      p.perp.buildUpdateOrderTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -226,7 +226,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         preOrderId: 2n,
       }),
     (p) =>
-      p.buildCancelPreOrderTx({
+      p.perp.buildCancelPreOrderTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -254,7 +254,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         },
       }),
     (p) =>
-      p.buildAddPreOrderTx({
+      p.perp.buildAddPreOrderTx({
         ...commonTxOpts,
         ticker: TICKER,
         accountId: ACCOUNT_ID,
@@ -282,7 +282,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         ...commonTxOpts,
       }),
     (p) =>
-      p.buildMintWlpTx({
+      p.perp.buildMintWlpTx({
         accountId: ACCOUNT_ID,
         depositTokenType: COLLATERAL_TYPE,
         depositTicker: "USDCUSD",
@@ -304,7 +304,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         ...commonTxOpts,
       }),
     (p) =>
-      p.buildMintAndStakeWlpTx({
+      p.perp.buildMintAndStakeWlpTx({
         accountId: ACCOUNT_ID,
         depositTicker: "USDCUSD",
         depositTokenType: COLLATERAL_TYPE,
@@ -325,7 +325,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         ...commonTxOpts,
       }),
     (p) =>
-      p.buildUnstakeAndRequestRedeemWlpTx({
+      p.perp.buildUnstakeAndRequestRedeemWlpTx({
         accountId: ACCOUNT_ID,
         redeemTokenType: COLLATERAL_TYPE,
         withdrawalAmount: 500_000n,
@@ -343,7 +343,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         rewarderTypes: [REWARD_TYPE],
       }),
     (p) =>
-      p.buildCancelRedeemAndStakeWlpTx({
+      p.perp.buildCancelRedeemAndStakeWlpTx({
         accountId: ACCOUNT_ID,
         requestId: 1n,
         stakeAmount: 1_000_000n,
@@ -358,7 +358,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         rewarderTypes: [REWARD_TYPE],
       }),
     (p) =>
-      p.buildClaimRewardsToAccountTx({
+      p.perp.buildClaimRewardsToAccountTx({
         accountId: ACCOUNT_ID,
         rewarderTypes: [REWARD_TYPE],
       }),
@@ -366,7 +366,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
   caseFactory(
     "buildRedeemVaaTx",
     (c) => buildRedeemVaaTx(c, { vaaBytes: new Uint8Array([0x01]) }),
-    (p) => p.buildRedeemVaaTx({ vaaBytes: new Uint8Array([0x01]) }),
+    (p) => p.perp.buildRedeemVaaTx({ vaaBytes: new Uint8Array([0x01]) }),
   ),
   caseFactory(
     "buildRequestCreditWithdrawTx",
@@ -378,7 +378,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
       }),
     (p) =>
-      p.buildRequestCreditWithdrawTx({
+      p.perp.buildRequestCreditWithdrawTx({
         accountId: ACCOUNT_ID,
         amount: 1_000n,
         recipient: ACCOUNT_ID,
@@ -393,7 +393,7 @@ export const perpTxBuilderDualPathCases: PerpDualPathCase[] = [
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
       }),
     (p) =>
-      p.buildExecuteWithdrawalTx({
+      p.perp.buildExecuteWithdrawalTx({
         key: 1n,
         route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
       }),

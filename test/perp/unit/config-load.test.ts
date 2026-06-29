@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearConfigCache, defaultConfigUrl, loadConfig } from "../../../src/config.ts";
+import { clearConfigCache, defaultConfigUrl, loadConfig } from "../../../src/perp/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 
 const MOCK_TESTNET_CONFIG_URL = "https://waterx.test/fixtures/mock-testnet.json";

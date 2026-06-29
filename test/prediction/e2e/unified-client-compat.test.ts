@@ -30,8 +30,8 @@ describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
   }, 120_000);
 
   it("Client.create wires the same prediction deployment as createE2eClient", () => {
-    expect(unified.predictClient.network).toBe(network);
-    expect(unified.predictClient.packageId()).toBe(legacyPredict.packageId());
+    expect(unified.predict.network).toBe(network);
+    expect(unified.predict.packageId()).toBe(legacyPredict.packageId());
   });
 
   it("getRegistry: facade vs legacy", async () => {
@@ -43,9 +43,12 @@ describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
     const legacyTx = new Transaction();
     const facadeTx = new Transaction();
     createAccount(legacyPredict, legacyTx, { alias });
-    unified.predict.createAccount(facadeTx, { alias });
+    // Generic account ops are no longer bound on `client.predict` (single unified
+    // account lives on `client.account`); the predict line reaches them via the
+    // prediction free function with the predict sub-client.
+    createAccount(unified.predict, facadeTx, { alias });
     assertTransactionsEqual(legacyTx, facadeTx, "createAccount");
-    await expectSimulateSuccess(unified.predictClient, facadeTx);
+    await expectSimulateSuccess(unified.predict, facadeTx);
   }, 60_000);
 
   it("placeOrder PTB: facade vs legacy + simulate", async () => {
@@ -55,7 +58,7 @@ describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
     placeOrder(legacyPredict, legacyTx, params);
     unified.predict.placeOrder(facadeTx, params);
     assertTransactionsEqual(legacyTx, facadeTx, "placeOrder");
-    const sim = await unified.predictClient.simulate(facadeTx);
+    const sim = await unified.predict.simulate(facadeTx);
     assertSimulateReached(sim);
   }, 60_000);
 });

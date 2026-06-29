@@ -19,9 +19,8 @@
 
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
-import { type Transaction } from '@mysten/sui/transactions';
+import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
 import * as vec_map from './deps/sui/vec_map.ts';
-import * as vec_map_1 from './deps/sui/vec_map.ts';
 const $moduleName = '@waterx/supra-rule::supra_rule';
 export const SupraRule = new MoveStruct({ name: `${$moduleName}::SupraRule`, fields: {
         dummy_field: bcs.bool()
@@ -31,7 +30,7 @@ export const Config = new MoveStruct({ name: `${$moduleName}::Config`, fields: {
         /** Oracle symbol (e.g. `b"BTC_USD".to_string()`) → Supra pair ID (`u32`). */
         pair_id_map: vec_map.VecMap(bcs.string(), bcs.u32()),
         /** Per-symbol freshness tolerance in ms. Falls back to `DEFAULT_TOLERANCE_MS`. */
-        tolerance_ms_map: vec_map_1.VecMap(bcs.string(), bcs.u64())
+        tolerance_ms_map: vec_map.VecMap(bcs.string(), bcs.u64())
     } });
 export const SupraPairIdSet = new MoveStruct({ name: `${$moduleName}::SupraPairIdSet`, fields: {
         symbol: bcs.string(),
@@ -43,16 +42,16 @@ export const SupraToleranceSet = new MoveStruct({ name: `${$moduleName}::SupraTo
         tolerance_ms: bcs.u64()
     } });
 export interface FeedArguments {
-    collector: RawTransactionArgument<string>;
+    collector: TransactionArgument;
     config: RawTransactionArgument<string>;
-    oracleHolder: RawTransactionArgument<string>;
+    oracleHolder: TransactionArgument;
 }
 export interface FeedOptions {
     package?: string;
     arguments: FeedArguments | [
-        collector: RawTransactionArgument<string>,
+        collector: TransactionArgument,
         config: RawTransactionArgument<string>,
-        oracleHolder: RawTransactionArgument<string>
+        oracleHolder: TransactionArgument
     ];
 }
 /**

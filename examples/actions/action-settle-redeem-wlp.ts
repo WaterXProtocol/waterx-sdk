@@ -14,8 +14,8 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { settleRedeemWlp, updateTokenValue } from "../../src/index.ts";
-import { refreshOraclePrices } from "../../src/utils/pyth.ts";
+import { refreshOraclePrices } from "../../src/oracle/index.ts";
+import { settleRedeemWlp, updateTokenValue } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

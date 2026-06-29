@@ -1,4 +1,4 @@
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 /** Prefix for {@link deriveTradingMatrixCases} buildTx throws → {@link lifecycle-single-ptb.test.ts} skips the matrix. */
 export const MATRIX_SKIP_PREFIX = "MATRIX_SKIP:";
@@ -28,7 +28,7 @@ function bigIntFromJsonField(raw: unknown, label: string): bigint {
  *   remainder can satisfy chain dust rules.
  */
 export async function getMarketTradingSizeConstraints(
-  client: WaterXClient,
+  client: PerpClient,
   marketObjectId: string,
 ): Promise<MarketTradingSizeConstraints> {
   const { object } = await client.grpcClient.getObject({

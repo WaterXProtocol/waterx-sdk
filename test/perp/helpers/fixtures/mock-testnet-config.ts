@@ -2,7 +2,7 @@
  * Minimal canonical testnet-shaped config for offline unit tests.
  * Values mirror `waterx-config/main/testnet.json` (BTCUSD / ETHUSD / USDCUSD).
  */
-import type { WaterXConfig } from "../../../../src/config.ts";
+import type { WaterXConfig } from "../../../../src/perp/config.ts";
 
 export const MOCK_TESTNET_CONFIG: WaterXConfig = {
   network: "testnet",

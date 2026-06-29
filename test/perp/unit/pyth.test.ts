@@ -5,7 +5,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchPriceFeedsUpdateData, PythCache } from "../../../src/utils/pyth.ts";
+import { fetchPriceFeedsUpdateData, PythCache } from "../../../src/oracle/index.ts";
 import { MOCK_HERMES_URL } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -66,7 +66,7 @@ describe("on-chain pyth PTB helpers", () => {
   });
 
   it("aggregateTickerWithPyth appends collector → feed → aggregate", async () => {
-    const { aggregateTickerWithPyth } = await import("../../../src/utils/pyth.ts");
+    const { aggregateTickerWithPyth } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     const tx = new Transaction();
     aggregateTickerWithPyth(tx, client, {
@@ -77,7 +77,7 @@ describe("on-chain pyth PTB helpers", () => {
   });
 
   it("buildPythPriceUpdateCalls appends wormhole + pyth update block", async () => {
-    const { buildPythPriceUpdateCalls } = await import("../../../src/utils/pyth.ts");
+    const { buildPythPriceUpdateCalls } = await import("../../../src/oracle/index.ts");
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const client = createUnitTestClient();
@@ -95,7 +95,7 @@ describe("on-chain pyth PTB helpers", () => {
   });
 
   it("updatePythPrices fetches Hermes then builds on-chain calls", async () => {
-    const { updatePythPrices } = await import("../../../src/utils/pyth.ts");
+    const { updatePythPrices } = await import("../../../src/oracle/index.ts");
     const { attachPythGrpcMocks } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const { mockAccumulatorUpdate } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
     globalThis.fetch = vi.fn(async () => ({
@@ -111,7 +111,7 @@ describe("on-chain pyth PTB helpers", () => {
   });
 
   it("refreshOraclePrices runs update + per-ticker aggregate", async () => {
-    const { refreshOraclePrices } = await import("../../../src/utils/pyth.ts");
+    const { refreshOraclePrices } = await import("../../../src/oracle/index.ts");
     const { attachPythGrpcMocks } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const { mockAccumulatorUpdate } = await import("../helpers/fixtures/pyth-mock-grpc.ts");
     globalThis.fetch = vi.fn(async () => ({
@@ -127,7 +127,7 @@ describe("on-chain pyth PTB helpers", () => {
   });
 
   it("buildPythPriceUpdateCalls throws on empty updates", async () => {
-    const { buildPythPriceUpdateCalls } = await import("../../../src/utils/pyth.ts");
+    const { buildPythPriceUpdateCalls } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     const tx = new Transaction();
     await expect(buildPythPriceUpdateCalls(tx, client, [], ["0x1"])).rejects.toThrow(
@@ -136,7 +136,7 @@ describe("on-chain pyth PTB helpers", () => {
   });
 
   it("openPythSponsorFund throws when sponsor config missing", async () => {
-    const { openPythSponsorFund } = await import("../../../src/utils/pyth.ts");
+    const { openPythSponsorFund } = await import("../../../src/oracle/index.ts");
     const bare = createUnitTestClient();
     delete (bare.config.packages as { pyth_sponsor_rule?: unknown }).pyth_sponsor_rule;
     const tx = new Transaction();
@@ -163,7 +163,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("aggregateTickerWithConstant appends collector → constant_rule::feed → aggregate", async () => {
-    const { aggregateTickerWithConstant } = await import("../../../src/utils/pyth.ts");
+    const { aggregateTickerWithConstant } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
     // Constant-ONLY: drop the Pyth feed so USDCUSD isn't dual.
@@ -178,7 +178,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("aggregateTickerWithConstant throws for a dual-feed ticker (still in pyth_rule.feeds)", async () => {
-    const { aggregateTickerWithConstant } = await import("../../../src/utils/pyth.ts");
+    const { aggregateTickerWithConstant } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     // USDCUSD is in the fixture's pyth_rule.feeds → constant + Pyth = dual. The
     // constant-only wrapper must refuse it (feeding only Constant would abort
@@ -191,7 +191,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("aggregateTickerWithConstant throws when the ticker has no rule (constant rule absent)", async () => {
-    const { aggregateTickerWithConstant } = await import("../../../src/utils/pyth.ts");
+    const { aggregateTickerWithConstant } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     delete client.config.packages.constant_rule;
     // Also constant-only (no Pyth feed) so the dual guard doesn't fire first.
@@ -203,7 +203,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("refreshOraclePrices feeds a constant ticker without hitting Hermes or Pyth", async () => {
-    const { refreshOraclePrices } = await import("../../../src/utils/pyth.ts");
+    const { refreshOraclePrices } = await import("../../../src/oracle/index.ts");
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
@@ -223,7 +223,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("refreshOraclePrices splits a mixed batch: Pyth for BTC, constant for USDC", async () => {
-    const { refreshOraclePrices } = await import("../../../src/utils/pyth.ts");
+    const { refreshOraclePrices } = await import("../../../src/oracle/index.ts");
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const fetchSpy = vi.fn(async () => ({
@@ -248,7 +248,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("aggregateTicker feeds both pyth + constant for a dual ticker", async () => {
-    const { aggregateTicker } = await import("../../../src/utils/pyth.ts");
+    const { aggregateTicker } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     // USDCUSD has a pyth feed (fixture) AND a constant entry → fed by both.
     client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
@@ -265,7 +265,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("aggregateTicker throws when no rule applies to the ticker", async () => {
-    const { aggregateTicker } = await import("../../../src/utils/pyth.ts");
+    const { aggregateTicker } = await import("../../../src/oracle/index.ts");
     const client = createUnitTestClient();
     // No priceInfoObjectId (not Pyth-fed here) and not a constant ticker → nothing to feed.
     const tx = new Transaction();
@@ -273,7 +273,7 @@ describe("constant rule oracle routing", () => {
   });
 
   it("refreshOraclePrices dual-feed ticker runs the Pyth update AND feeds both rules", async () => {
-    const { refreshOraclePrices } = await import("../../../src/utils/pyth.ts");
+    const { refreshOraclePrices } = await import("../../../src/oracle/index.ts");
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");
     const fetchSpy = vi.fn(async () => ({

@@ -8,16 +8,16 @@
  * `waterx_account::Account` object via `wxa::new_data` / `wxa::borrow_data` /
  * `wxa::borrow_data_mut`. No separate `UserAccount` object and no perp-side
  * `AccountRegistry` exist — the wxa account IS the canonical user identity.
- * 
+ *
  * `WaterXPerp` is the witness type that gates every perp-side mutation of the wxa
  * account: the data slot (`new_data` / `borrow_data_mut`) AND fund movement
  * (`wxa_account::take<C, WaterXPerp>` / `wxa_account::put<C, WaterXPerp>`). Only
  * this module can construct `WaterXPerp {}`, so type-construction privacy is the
  * security boundary for both surfaces.
- * 
+ *
  * Deposit flow (no TTO): wxa::deposit<T_U, T_M>(...) // Mirrorable
  * wxa::deposit_raw_coin<T>(...) // Storable
- * 
+ *
  * Trading then draws collateral directly from the user's wxa balance in
  * `trading.move`; payback paths repay via `wxa_account::put`.
  */

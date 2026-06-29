@@ -1,14 +1,14 @@
 import type { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
-import type { BaseAsset } from "../../../../src/constants.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { BaseAsset } from "../../../../src/perp/constants.ts";
 import {
   buildClosePositionTx,
   buildDecreasePositionTx,
   buildDepositCollateralTx,
   buildIncreasePositionTx,
   buildWithdrawCollateralTx,
-} from "../../../../src/tx-builders.ts";
+} from "../../../../src/perp/tx-builders.ts";
 import type { DiscoveredPosition } from "../e2e/discover-on-chain-position.ts";
 import type { LifecycleTestMarketRow } from "../e2e/lifecycle-test-markets.ts";
 import {
@@ -31,7 +31,7 @@ export type DerivedTradingMatrixCase = {
   label: string;
   expect: DerivedOpExpect;
   buildTx: (
-    client: WaterXClient,
+    client: PerpClient,
     d: DiscoveredPosition,
     row: LifecycleTestMarketRow,
   ) => Promise<Transaction>;

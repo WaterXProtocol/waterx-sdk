@@ -1,4 +1,3 @@
-import { PERM_ALL_TRADING } from "../../../../src/constants.ts";
 import {
   addDelegate,
   createAccount,
@@ -11,8 +10,9 @@ import {
   setAlias,
   setDelegateProtocolPermission,
   transferToAccount,
-} from "../../../../src/user/account.ts";
-import { setReferralCode, useReferralCode } from "../../../../src/user/referral.ts";
+} from "../../../../src/account/account.ts";
+import { setReferralCode, useReferralCode } from "../../../../src/account/referral.ts";
+import { PERM_ALL_TRADING } from "../../../../src/perp/constants.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {
   ACCOUNT_ID,
@@ -27,12 +27,12 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
   caseMutate(
     "createAccount",
     (c, tx) => createAccount(c, tx, { alias: "dual-path" }),
-    (p, tx) => p.createAccount(tx, { alias: "dual-path" }),
+    (p, tx) => p.account.createAccount(tx, { alias: "dual-path" }),
   ),
   caseMutate(
     "setAlias",
     (c, tx) => setAlias(c, tx, { accountId: ACCOUNT_ID, alias: "renamed" }),
-    (p, tx) => p.setAlias(tx, { accountId: ACCOUNT_ID, alias: "renamed" }),
+    (p, tx) => p.account.setAlias(tx, { accountId: ACCOUNT_ID, alias: "renamed" }),
   ),
   caseMutate(
     "addDelegate",
@@ -44,7 +44,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
         permissions: PERM_ALL_TRADING,
       }),
     (p, tx) =>
-      p.addDelegate(tx, {
+      p.account.addDelegate(tx, {
         accountId: ACCOUNT_ID,
         delegateAddress: PTB_DUMMY_DEPOSIT_COIN,
         alias: "bot",
@@ -56,7 +56,10 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
     (c, tx) =>
       removeDelegate(c, tx, { accountId: ACCOUNT_ID, delegateAddress: PTB_DUMMY_DEPOSIT_COIN }),
     (p, tx) =>
-      p.removeDelegate(tx, { accountId: ACCOUNT_ID, delegateAddress: PTB_DUMMY_DEPOSIT_COIN }),
+      p.account.removeDelegate(tx, {
+        accountId: ACCOUNT_ID,
+        delegateAddress: PTB_DUMMY_DEPOSIT_COIN,
+      }),
   ),
   caseMutate(
     "setDelegateProtocolPermission",
@@ -68,7 +71,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
         permissions: PERM_ALL_TRADING,
       }),
     (p, tx) =>
-      p.setDelegateProtocolPermission(tx, {
+      p.account.setDelegateProtocolPermission(tx, {
         accountId: ACCOUNT_ID,
         delegateAddress: PTB_DUMMY_DEPOSIT_COIN,
         protocolType: PERP_PROTOCOL_TYPE,
@@ -85,7 +88,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.requestDeposit(tx, {
+      p.account.requestDeposit(tx, {
         accountId: ACCOUNT_ID,
         coinType: COLLATERAL_TYPE,
         coin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
@@ -102,7 +105,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.requestDepositFromReceivings(tx, {
+      p.account.requestDepositFromReceivings(tx, {
         accountId: ACCOUNT_ID,
         coinType: COLLATERAL_TYPE,
         receivings: [receivingRef(tx)],
@@ -115,7 +118,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
       requestDepositFromFunds(c, tx, { accountId: ACCOUNT_ID, coinType: COLLATERAL_TYPE });
     },
     (p, tx) => {
-      p.requestDepositFromFunds(tx, { accountId: ACCOUNT_ID, coinType: COLLATERAL_TYPE });
+      p.account.requestDepositFromFunds(tx, { accountId: ACCOUNT_ID, coinType: COLLATERAL_TYPE });
     },
   ),
   caseMutate(
@@ -129,7 +132,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.requestWithdraw(tx, {
+      p.account.requestWithdraw(tx, {
         accountId: ACCOUNT_ID,
         coinType: COLLATERAL_TYPE,
         amount: 1_000_000n,
@@ -147,7 +150,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.transferToAccount(tx, {
+      p.account.transferToAccount(tx, {
         accountId: ACCOUNT_ID,
         coin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         coinType: COLLATERAL_TYPE,
@@ -164,7 +167,7 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.receive(tx, {
+      p.account.receive(tx, {
         accountId: ACCOUNT_ID,
         receiving: receivingRef(tx),
         receivingType: COLLATERAL_TYPE,
@@ -174,11 +177,11 @@ export const perpAccountDualPathCases: PerpDualPathCase[] = [
   caseMutate(
     "setReferralCode",
     (c, tx) => setReferralCode(c, tx, { code: "DUALPATH" }),
-    (p, tx) => p.setReferralCode(tx, { code: "DUALPATH" }),
+    (p, tx) => p.perp.setReferralCode(tx, { code: "DUALPATH" }),
   ),
   caseMutate(
     "useReferralCode",
     (c, tx) => useReferralCode(c, tx, { code: "REFCODE" }),
-    (p, tx) => p.useReferralCode(tx, { code: "REFCODE" }),
+    (p, tx) => p.perp.useReferralCode(tx, { code: "REFCODE" }),
   ),
 ];

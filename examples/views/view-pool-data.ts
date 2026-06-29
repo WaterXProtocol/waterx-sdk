@@ -5,7 +5,7 @@
  *   pnpm exec tsx examples/views/view-pool-data.ts
  */
 import { buildClient, dump, run } from "../_shared.ts";
-import { getPoolData } from "../../src/fetch.ts";
+import { getPoolData } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

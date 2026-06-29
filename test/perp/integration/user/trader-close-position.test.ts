@@ -5,8 +5,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { getAccountsByOwner, positionExists } from "../../../../src/fetch.ts";
-import { buildClosePositionTx } from "../../../../src/tx-builders.ts";
+import { getAccountsByOwner, positionExists } from "../../../../src/perp/fetch.ts";
+import { buildClosePositionTx } from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import {
   activeLifecycleTickersForClient,

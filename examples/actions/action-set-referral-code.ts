@@ -9,7 +9,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 
 import { buildClient, loadActiveKeypair, run, simThenMaybeExecute } from "../_shared.ts";
-import { setReferralCode } from "../../src/index.ts";
+import { setReferralCode } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

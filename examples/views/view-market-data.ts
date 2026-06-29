@@ -7,7 +7,7 @@
  *   WATERX_TICKER=ETHUSD pnpm exec tsx examples/views/view-market-data.ts
  */
 import { buildClient, dump, run } from "../_shared.ts";
-import { getMarketData } from "../../src/fetch.ts";
+import { getMarketData } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

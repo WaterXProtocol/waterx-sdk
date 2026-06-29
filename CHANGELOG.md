@@ -8,6 +8,178 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING — `WaterXClient` is now the umbrella entry point.** (#55) The class
+  previously named `WaterXClient` (the perp product line) is renamed
+  **`PerpClient`**; the unified facade previously named `Client` is renamed
+  **`WaterXClient`** and is the single main entry. It exposes three namespaces:
+  - `client.account` — the shared `waterx_account` framework **plus** funding
+    (credit + custody) builders. Backed by the perp sub-client config (which
+    carries the shared `AccountRegistry`, bridge, native_custody,
+    withdrawal_queue, credit_registry).
+  - `client.perp` — **is** the `PerpClient` instance with the perp builders/views
+    grafted on (trading / orders / WLP / staking / referral). Signing & config
+    methods (`signAndExecuteTransaction`, `simulate`, `getMarket`, …) sit on the
+    same object. The credit/custody *high-level* `build*Tx` wrappers
+    (`buildRedeemVaaTx`, `buildRequestCreditWithdrawTx`, `buildExecuteWithdrawalTx`)
+    remain here; only the low-level credit/custody builders move to `client.account`.
+  - `client.predict` — **is** the `PredictClient` instance with the prediction
+    builders/views grafted on. Generic account builders (`createAccount`,
+    `requestDeposit`/`deposit`, `requestWithdraw`/`withdraw`, delegate add/remove,
+    `transferCoinToAccount`, `consume*Direct`, `resolveRegistryAccountId`) are
+    dropped from `client.predict`; prediction-specific account ops
+    (`setDelegatePredictionPermission`, `whitelistPredictionProtocol`,
+    `allow`/`disallowPredictionProtocolAsset`) are kept.
+  - There are no longer separate `client.perpClient` / `client.predictClient`
+    accessors — `client.perp` / `client.predict` are the clients.
+  - `Client` remains as a deprecated alias of `WaterXClient` for one major cycle.
+  - **No same-name alias for the old perp `WaterXClient`** — importers of the perp
+    client must switch to `PerpClient` (flat at the root or `perp.PerpClient`).
+  - **Cross-network caveat:** `client.account` follows the **perp** line; on
+    split-network setups (`opts.perp.network !== opts.predict.network`), reach the
+    predict line's generic account builders via the `prediction` namespace.
+    `WaterXClient.create` now emits a `console.warn` in this case so it isn't
+    a silent footgun.
+- **Internal: shared transport extracted to `BaseLineClient`.** (#55)
+  `PerpClient` and `PredictClient` no longer each duplicate the gRPC client
+  construction, the read wrappers, `simulate` / `signAndExecuteTransaction`, and
+  `packageIds()` — these now live on a shared `BaseLineClient` base; the perp
+  config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) move to a
+  `PerpConfigView` that `PerpClient` composes. Public surface is unchanged
+  (`PerpClient` / `PredictClient` keep all their methods); `PerpClient`'s
+  `signAndExecuteTransaction` signature widens additively (now accepts the same
+  generic `include` / `additionalSignatures` / `Uint8Array` form as the predict
+  line). A new unit guard asserts no grafted builder name collides with a
+  sub-client prototype method.
+- **Internal: symmetric two-line source layout.** (#55) The perp product line
+  moved from the `src/` root into `src/perp/` (`client.ts`, `config.ts`,
+  `config-view.ts`, `constants.ts`, `fetch.ts`, `tx-builders.ts`, `index.ts`,
+  `user/`), mirroring `src/prediction/`. The root now holds only the umbrella
+  (`sdk.ts`, `unified-client.ts`), the shared `base-client.ts`, shared primitive
+  `constants.ts`, and the shared `account/` / `utils/` / `core/` / `generated/`
+  dirs. Public entry points are unchanged: `@waterx/sdk`, `@waterx/sdk/perp`, and
+  `@waterx/sdk/perp/*` resolve as before (the `exports` map now points `./perp`
+  at `dist/src/perp/`). Perp-domain enums split into `perp/constants.ts` (which
+  re-exports the shared primitives), so `@waterx/sdk/perp/constants` is unchanged.
+- **Internal: split the two oversized perp files by domain.** (#55)
+  `perp/tx-builders.ts` (992 LOC) and `perp/fetch.ts` (915 LOC) became thin
+  barrels over per-domain modules under `perp/tx-builders/`
+  (common / consolidate / trading / wlp / rewards / credit) and `perp/fetch/`
+  (simulate / market / positions / referral / account / custody / bridge), each
+  ≤ ~285 LOC. The barrels re-export the full public surface unchanged
+  (`@waterx/sdk/perp/tx-builders`, `@waterx/sdk/perp/fetch`, and the flat
+  `@waterx/sdk/perp` namespace resolve as before).
+
+- **Generic wxa builders are now line-agnostic (`WxaClientLike`) — shared by both
+  the perp and prediction lines.** The shared `account/` create-account / delegate /
+  alias builders were typed to the funding-capable `AccountClientLike`; they only
+  need `waterx_account` + `bucket_framework`, so they are retyped to the narrower
+  **`WxaClientLike`** (`account/client.ts`), which **both** `PerpClient` and
+  `PredictClient` satisfy structurally (CI-enforced by `wxa-capability.test.ts`).
+  `AccountConfig` / `AccountPackages` now extend `WxaConfig` / `WxaPackages`.
+  The **entire generic wxa account framework** in prediction now **delegates to the
+  shared `account/` builders** — `createAccount`, `addDelegate`, `removeDelegate`,
+  `requestDeposit`, `requestWithdraw`, `transferCoinToAccount`,
+  `requestDepositFromReceivings` (prediction keeps its public wrapper signatures +
+  `settlementCoinType` defaulting). Since `waterx_account` is a single shared
+  contract, these are the same on-chain calls; verified byte-equivalent by the PTB
+  snapshot tests — the only delta is `Result` vs `NestedResult` for the
+  sender-request handle on the request-signed ops, which is equivalent for a
+  single-return Move call and is the form perp already ships. Only genuinely
+  prediction-specific account ops stay line-side: the prediction-protocol permission
+  config (`setDelegatePredictionPermission`, `whitelist`/`allow`/`disallow protocol
+  asset`) and the `direct_rule` same-coin consume helpers (thin wrappers over the
+  shared generated `direct_rule`).
+- **Account/funding config schema hoisted into `account/config.ts`; `account/`
+  now imports nothing from `perp/`.** The account/funding/referral package
+  interfaces (`BasePackageEntry`, `WxaAccountPackage`, `WaterxCreditPackage`,
+  `NativeCustody*`, `WormholeBridgePackage`, `WithdrawalQueuePackage`,
+  `WaterxReferralPackage`, `WormholeInfraConfig`) plus new `AccountPackages` /
+  `AccountConfig` types now live in `src/account/config.ts`. `perp/config.ts`
+  imports + re-exports them (so `@waterx/sdk/perp` type imports are unchanged) and
+  `WaterXPackages extends AccountPackages`. `AccountClientLike` is now typed to
+  `AccountConfig`, removing the last type-only `account → perp` edge — the base
+  layer is fully decoupled (`PerpClient`'s `WaterXConfig` stays assignable to
+  `AccountConfig`). Dependency direction is now strictly `perp → account`.
+- **Single `generated/` root; `waterx_prediction` is now reproducible by
+  `pnpm codegen`.** The prediction line had its own orphaned `src/prediction/generated/`
+  (`waterx_prediction` + duplicate `bucket_v2_framework` / `waterx_account` / codegen
+  runtime) that was **not** in `sui-codegen.config.mjs`, so `pnpm codegen` could not
+  reproduce it. `waterx_prediction` is now registered in the codegen config +
+  summaries script and emitted into the shared `src/generated/`; `src/prediction/`
+  imports it from there and `src/prediction/generated/` is deleted. Also dropped a
+  duplicate `native_custody` codegen entry and taught `scripts/fix-generated-imports.ts`
+  to annotate the `Market` / `MarketView` structs (TS2883, they embed the `Outcome`
+  MoveEnum). **Note:** regenerating brought all `generated/` packages up to the current
+  contract ABI — this surfaces additive contract features (`pyth_rule` max-confidence-bps
+  config, `waterx_account::isAccountOwner`, …) and drops unused `*ForTesting` bucket
+  helpers; no SDK code referenced the removed symbols.
+- **`account/` is now the real base layer; the prediction→perp dependency edge is
+  cut.** The account framework + funding (credit / custody / bridge / consolidate /
+  wormhole) previously lived under `perp/` and were typed to the concrete
+  `PerpClient`, so `account/index.ts` re-exported **up** into `perp/user/*` and
+  `prediction/tx-builders.ts` imported `perp/` for the wxUSD consolidate sweep
+  (dependency arrows running backwards). The whole cluster now lives under
+  `src/account/` (`account.ts`, `account-request.ts`, `waterx-account.ts`,
+  `referral.ts`, `funding/{credit,custody,wormhole,balance,consolidate}.ts`) and is
+  retyped to a new **`AccountClientLike`** capability interface (`account/client.ts`)
+  that `PerpClient` satisfies structurally — no builder imports `PerpClient`
+  anymore. `prediction/tx-builders.ts` imports the sweep from `account/funding/`
+  and no longer imports `perp/` at all. The `@waterx/sdk/perp` barrel still surfaces
+  all of these builders unchanged — `perp/user/index.ts` and `perp/index.ts` now
+  re-export them from `account/` — so the main public entry is identical; only the
+  un-advertised granular deep paths (`perp/user/<file>`, `utils/{wormhole,
+  account-request,consolidate-balance}`) moved. `src/core/waterx-account.ts` folded
+  into `account/`. (The config-schema hoist and the single-`generated/`-root
+  unification that this entry once deferred are now done — see the entries above.)
+
+- **Oracle / rule code split out of `utils/pyth.ts` into a dedicated `src/oracle/`
+  module.** The old `utils/pyth.ts` had fused four concerns into one file (Pyth
+  Hermes/update PTB, the `pyth_sponsor_rule` flow, **and** `supra_rule` /
+  `constant_rule` feeds via the aggregation orchestrator). It is now decomposed:
+  - `oracle/pyth.ts` — Pyth as a price *source* only (Hermes REST + on-chain
+    update PTB + `PythCache`); imports **no** rule package.
+  - `oracle/rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` — one file per
+    oracle rule (Pyth no longer "contains" Supra).
+  - `oracle/aggregate.ts` — the single orchestrator that composes rules into a
+    collector and aggregates (`aggregateTicker` / `refreshOraclePrices` / …).
+  - `oracle/host.ts` — new `OracleHost` structural interface; the oracle code no
+    longer depends on the concrete `PerpClient` (which satisfies `OracleHost`
+    without an `implements` clause). The public API surface (`refreshOraclePrices`,
+    `PythCache`, `openPythSponsorFund`, …) is re-exported unchanged from
+    `oracle/index.ts`; only the internal import path moves
+    (`utils/pyth.ts` → `oracle/`).
+- **Oracle config hoisted into `oracle/config.ts`; the last base→product type
+  edge is gone.** (#55) `oracle/host.ts` imported `WaterXConfig` / `PythInfraConfig`
+  from `perp/config.ts`, leaving one residual oracle→perp type edge. The oracle-rule
+  package schema (`PythRulePackage`, `PythSponsorRulePackage`, `SupraRulePackage`,
+  `WaterxConstantRulePackage` + `ConstantFeedEntry` / `SupraFeedEntry`,
+  `WaterxOraclePackage`) plus `PythInfraConfig` / `PYTH_DEFAULTS` and the new narrow
+  `OracleConfig` / `OraclePackages` now live in `src/oracle/config.ts`.
+  `OracleHost.config` is typed to `OracleConfig`, so the oracle layer imports
+  **nothing** from `perp/`. `perp/config.ts` imports + re-exports them (so
+  `@waterx/sdk/perp` type imports are unchanged) and `WaterXPackages extends
+  AccountPackages, OraclePackages`.
+- **Referral reads consolidated under the `account/` base.** (#55) The referral
+  queries (`getRefererFor` / `isValidReferralCode` / `referralCodeExists`) were
+  split off from their builders and needlessly typed to `PerpClient` in
+  `perp/fetch/referral.ts`. They move to `account/fetch/referral.ts` (co-located
+  with the `account/referral.ts` builders) retyped to `WxaClientLike`, and the perp
+  `fetch.ts` barrel re-exports them — the `@waterx/sdk` / `@waterx/sdk/perp` surface
+  is unchanged. The generic simulate/decode plumbing also moves to the base
+  (`account/fetch/simulate.ts`); `perp/fetch/simulate.ts` re-exports it and keeps
+  only the perp-only `withLp`. `DRY_RUN_SENDER` (the zero-address simulate sender)
+  is hoisted from `perp/constants.ts` to the shared `constants.ts` and re-exported
+  for back-compat.
+
+### Added
+
+- **`@waterx/sdk/account` and `@waterx/sdk/oracle` subpath exports.** (#55) The
+  shared base layer (account framework + funding + referral) and the oracle module
+  are now part of the published surface via `./account`, `./account/*`, `./oracle`,
+  and `./oracle/*` package exports.
+
 ## [2.4.1] - 2026-06-24
 
 ### Added

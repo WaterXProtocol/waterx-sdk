@@ -12,7 +12,7 @@ exports[`account PTB builders > addDelegate 1`] = `
   {
     "argumentKinds": [
       "Input",
-      "NestedResult",
+      "Result",
       "Input",
       "Input",
       "Input",
@@ -40,7 +40,7 @@ exports[`account PTB builders > addDelegate with expiry timestamp 1`] = `
   {
     "argumentKinds": [
       "Input",
-      "NestedResult",
+      "Result",
       "Input",
       "Input",
       "Input",
@@ -121,7 +121,7 @@ exports[`account PTB builders > createAccount 1`] = `
   {
     "argumentKinds": [
       "Input",
-      "NestedResult",
+      "Result",
       "Input",
     ],
     "function": "create_account",
@@ -175,7 +175,7 @@ exports[`account PTB builders > removeDelegate 1`] = `
   {
     "argumentKinds": [
       "Input",
-      "NestedResult",
+      "Result",
       "Input",
       "Input",
       "Input",
@@ -238,7 +238,7 @@ exports[`account PTB builders > requestWithdraw 1`] = `
   {
     "argumentKinds": [
       "Input",
-      "NestedResult",
+      "Result",
       "Input",
       "Input",
       "Input",

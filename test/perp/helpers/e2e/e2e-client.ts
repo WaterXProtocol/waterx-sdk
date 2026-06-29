@@ -6,8 +6,8 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
-import { WaterXClient } from "../../../../src/client.ts";
-import type { Network } from "../../../../src/constants.ts";
+import { PerpClient } from "../../../../src/perp/client.ts";
+import type { Network } from "../../../../src/perp/constants.ts";
 import { isGrpcTransientError } from "./transient-rpc.ts";
 
 export type E2eNetwork = "testnet" | "mainnet";
@@ -67,15 +67,15 @@ function networkToClientKey(network: E2eNetwork): Network {
 }
 
 /** Shared client — assigned when {@link clientInit} completes. */
-export let client!: WaterXClient;
+export let client!: PerpClient;
 
 /** @alias client */
-export let clientTxBuildersSimulate!: WaterXClient;
+export let clientTxBuildersSimulate!: PerpClient;
 
 /** Resolves once the shared e2e client is ready (Vitest setup awaits this). */
 export const clientInit = (async () => {
   const grpcUrl = resolveE2eGrpcUrlOverride();
-  const c = await WaterXClient.create(networkToClientKey(e2eNetwork), {
+  const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
     cache: true,
     ...(grpcUrl ? { grpcUrl } : {}),
   });
@@ -85,7 +85,7 @@ export const clientInit = (async () => {
   return c;
 })();
 
-export async function getE2eClient(): Promise<WaterXClient> {
+export async function getE2eClient(): Promise<PerpClient> {
   return client ?? clientInit;
 }
 

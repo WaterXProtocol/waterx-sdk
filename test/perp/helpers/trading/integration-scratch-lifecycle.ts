@@ -4,9 +4,9 @@
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-import type { WaterXClient } from "../../../../src/client.ts";
-import { positionExists } from "../../../../src/fetch.ts";
-import type { MarketDataView } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { positionExists } from "../../../../src/perp/fetch.ts";
+import type { MarketDataView } from "../../../../src/perp/fetch.ts";
 import {
   buildClosePositionTx,
   buildDecreasePositionTx,
@@ -14,7 +14,7 @@ import {
   buildIncreasePositionTx,
   buildPlaceOrderTx,
   buildWithdrawCollateralTx,
-} from "../../../../src/tx-builders.ts";
+} from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import { integrationGasBudget } from "../../integration/helpers/integration-gas.ts";
 import {
@@ -34,7 +34,7 @@ import type { ScratchTradingScenario } from "../scratch/scratch-trading-scenario
 import { buildMatchOrdersAfterRefreshTx } from "./run-trading-scenario.ts";
 
 export type ScratchIntegrationDeps = {
-  client: WaterXClient;
+  client: PerpClient;
   trader: Ed25519Keypair;
   execBuiltTxWithCooldownRetries: typeof ExecCooldown;
   execIntegrationOrSkipSupra: typeof ExecOracleSkip;
@@ -48,7 +48,7 @@ function acceptablePriceWide(rowReturn: ReturnType<typeof lifecycleTickerRow>): 
 }
 
 async function waitPrimaryPosition(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
   accountId: string,
   opts?: { attempts?: number; spacingMs?: number },

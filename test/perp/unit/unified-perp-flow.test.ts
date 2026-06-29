@@ -1,8 +1,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
+import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { Client } from "../../../src/sdk.ts";
-import { placeOrderRequest } from "../../../src/user/order.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
@@ -42,7 +42,7 @@ describe("unified Client — perp representative flow", () => {
   });
 
   it("client.perp pre-binds the same client passed to the facade", () => {
-    expect(client.perpClient).toBe(perpClient);
+    expect(client.perp).toBe(perpClient);
     // Bound method is a wrapper, not the raw free function.
     expect(client.perp.placeOrderRequest).not.toBe(placeOrderRequest);
     expect(client.perp.placeOrderRequest).toBeTypeOf("function");

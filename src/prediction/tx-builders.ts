@@ -2,7 +2,7 @@
  * Async high-level prediction PTB builders with optional pre-sweep of parked
  * backing assets into wxUSD credit ({@link appendConsolidateForSpend}).
  *
- * Takes both `WaterXClient` (native_custody / consolidate) and `PredictClient`
+ * Takes both `AccountClientLike` (native_custody / consolidate) and `PredictClient`
  * because sync prediction builders only target the prediction deployment.
  *
  * FE/BE tx services should call these instead of hand-composing
@@ -10,8 +10,8 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../client.ts";
-import { appendConsolidateForSpend } from "../tx-builders.ts";
+import type { AccountClientLike } from "../account/client.ts";
+import { appendConsolidateForSpend } from "../account/funding/consolidate.ts";
 import type { PredictClient } from "./client.ts";
 import {
   batchClaim,
@@ -48,7 +48,7 @@ function newTx(opts?: PredictCommonBuildOpts): Transaction {
 }
 
 async function maybeConsolidate(
-  perpClient: WaterXClient,
+  perpClient: AccountClientLike,
   tx: Transaction,
   accountId: IdArgument,
   opts: PredictCommonBuildOpts | undefined,
@@ -75,7 +75,7 @@ function stripBatchClaimParams(params: BuildBatchClaimTxParams): BatchClaimParam
  * @param predictClient — prediction deployment (place_order MoveCall)
  */
 export async function buildPlaceOrderTx(
-  perpClient: WaterXClient,
+  perpClient: AccountClientLike,
   predictClient: PredictClient,
   params: BuildPlaceOrderTxParams,
 ): Promise<Transaction> {
@@ -89,7 +89,7 @@ export async function buildPlaceOrderTx(
  * Optional pre-sweep + {@link batchClaim} in one PTB.
  */
 export async function buildBatchClaimTx(
-  perpClient: WaterXClient,
+  perpClient: AccountClientLike,
   predictClient: PredictClient,
   params: BuildBatchClaimTxParams,
 ): Promise<Transaction> {

@@ -4,8 +4,8 @@
 import { toBase64 } from "@mysten/bcs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getGlobalConfigData } from "../../../src/fetch.ts";
 import { GlobalConfigData } from "../../../src/generated/waterx_perp_view/view.ts";
+import { getGlobalConfigData } from "../../../src/perp/fetch.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("fetch simulate decode", () => {

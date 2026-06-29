@@ -9,7 +9,7 @@ import { defineConfig } from "vitest/config";
  *   swallowed by the `~predict` prefix.
  */
 const aliases = [
-  { find: "@waterx/sdk", replacement: path.resolve(__dirname, "./src/index.ts") },
+  { find: "@waterx/sdk", replacement: path.resolve(__dirname, "./src/perp/index.ts") },
   {
     find: /^~predict-scripts\//,
     replacement: path.resolve(__dirname, "./test/prediction/scripts") + "/",

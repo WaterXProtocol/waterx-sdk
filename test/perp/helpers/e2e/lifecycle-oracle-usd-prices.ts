@@ -4,7 +4,7 @@
  * E2e setup must **not** batch-simulate legacy bucket aggregators — oracle freshness is per-PTB via Pyth.
  */
 
-import type { WaterXClient } from "@waterx/sdk";
+import type { PerpClient } from "@waterx/sdk";
 
 import { getUsdHintForTicker, hintBasePriceUsdForTicker } from "./oracle-pyth-context.ts";
 
@@ -15,7 +15,7 @@ export function seedLifecycleApproxPricesForUnitTests(): void {
   tickerPriceCache.clear();
 }
 
-export function primeLifecycleOracleUsdPrices(_client: WaterXClient): void {
+export function primeLifecycleOracleUsdPrices(_client: PerpClient): void {
   seedLifecycleApproxPricesForUnitTests();
 }
 
@@ -33,7 +33,7 @@ export function getCachedOracleUsdPriceForBase(base: string): number {
 }
 
 export async function getOracleUsdPriceForTicker(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
 ): Promise<number> {
   void client;

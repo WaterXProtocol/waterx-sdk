@@ -1,4 +1,4 @@
-import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/constants.ts";
+import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../../src/perp/constants.ts";
 import {
   addPreOrderRequest,
   buildPlaceOrderArgument,
@@ -6,7 +6,7 @@ import {
   cancelPreOrderRequest,
   placeOrderRequest,
   updateOrderRequest,
-} from "../../../../src/user/order.ts";
+} from "../../../../src/perp/user/order.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import {
   ACCOUNT_ID,
@@ -24,7 +24,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       buildPlaceOrderArgument(c, tx, baseOrderMain);
     },
     (p, tx) => {
-      p.buildPlaceOrderArgument(tx, baseOrderMain);
+      p.perp.buildPlaceOrderArgument(tx, baseOrderMain);
     },
   ),
   caseMutate(
@@ -38,7 +38,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.placeOrderRequest(tx, {
+      p.perp.placeOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -59,7 +59,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.cancelOrderRequest(tx, {
+      p.perp.cancelOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -84,7 +84,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.updateOrderRequest(tx, {
+      p.perp.updateOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -108,7 +108,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.cancelPreOrderRequest(tx, {
+      p.perp.cancelPreOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,
@@ -136,7 +136,7 @@ export const perpOrderDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.addPreOrderRequest(tx, {
+      p.perp.addPreOrderRequest(tx, {
         ticker: TICKER,
         accountId: ACCOUNT_ID,
         collateralType: COLLATERAL_TYPE,

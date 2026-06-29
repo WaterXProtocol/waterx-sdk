@@ -3,13 +3,13 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
-import { updateTokenValue } from "../../../../src/user/wlp.ts";
-import { refreshOraclePrices } from "../../../../src/utils/pyth.ts";
+import { refreshOraclePrices } from "../../../../src/oracle/index.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { updateTokenValue } from "../../../../src/perp/user/wlp.ts";
 
 export async function refreshOraclePricesForTradingEdge(
   tx: Transaction,
-  client: WaterXClient,
+  client: PerpClient,
   tickers: Iterable<string>,
 ): Promise<void> {
   const pool = Object.keys(client.config.packages.wlp.pool_tokens);

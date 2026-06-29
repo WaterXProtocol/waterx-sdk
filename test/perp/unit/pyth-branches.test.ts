@@ -1,10 +1,9 @@
 /**
- * Branch coverage for src/utils/pyth.ts on-chain helpers and sponsor paths.
+ * Branch coverage for src/oracle/index.ts on-chain helpers and sponsor paths.
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { placeOrderRequest } from "../../../src/user/order.ts";
 import {
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
@@ -12,7 +11,8 @@ import {
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
-} from "../../../src/utils/pyth.ts";
+} from "../../../src/oracle/index.ts";
+import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";

@@ -1,30 +1,57 @@
 /**
- * Unified WaterX SDK client.
+ * Umbrella WaterX SDK client — the main entry point.
  *
- * Wraps the two product-line clients (`WaterXClient` for perp, `PredictClient`
- * for prediction) behind a single object with namespaced modules, so the
- * colliding builder names (`placeOrder`, `createAccount`, `deposit`, …) can be
- * called unambiguously:
+ * Exposes three namespaces over the two product-line sub-clients:
  *
- *   const client = await Client.create({ network: "TESTNET" });
- *   client.perp.openPosition(tx, params);     // -> perp builder
- *   client.predict.placeOrder(tx, params);    // -> prediction builder
+ *   const client = await WaterXClient.create({ network: "TESTNET" });
+ *   client.account.createAccount(tx, { alias });   // -> shared waterx_account + funding
+ *   client.perp.placeOrderRequest(tx, params);     // -> perp builder
+ *   client.predict.placeOrder(tx, params);         // -> prediction builder
  *
- * The modules are thin: each method forwards to the existing free-function
- * builder with the line's client pre-bound as the first argument. Builders are
- * build-only (they return / mutate a `Transaction`); signing & execution stay
- * with the caller (`client.perpClient` / `client.predictClient`, or a wallet),
- * so frontend wallet flows and multi-step Pyth injection keep working.
+ * `client.perp` **is** the `PerpClient` instance with the perp builder/view
+ * methods grafted on, and `client.predict` **is** the `PredictClient` instance
+ * likewise — so signing & execution live on the same object
+ * (`client.perp.signAndExecuteTransaction(...)`) right next to the builders.
+ * There are no separate `.perpClient` / `.predictClient` accessors.
+ *
+ * `client.account` is a thin namespace (no own client) bound to the perp
+ * sub-client: the perp config carries the shared `waterx_account` registry plus
+ * the bridge / native_custody / withdrawal_queue / credit_registry that the
+ * credit & custody builders read. `waterx_account` is one shared on-chain object,
+ * so an account created here serves both lines — except when the two lines target
+ * different networks (`opts.perp.network !== opts.predict.network`), where
+ * `client.account` follows the perp line; split-network callers should reach the
+ * predict line's generic account builders via the `prediction` namespace directly.
+ *
+ * Each namespace method forwards to the existing free-function builder with the
+ * line's client pre-bound as the first argument; builders are build-only (they
+ * return / mutate a `Transaction`), so frontend wallet flows and multi-step Pyth
+ * injection keep working.
  */
 
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient, type CreateClientOptions as PerpCreateOptions } from "./client.ts";
+// Unified account namespace: generic waterx_account framework + funding (credit + custody).
+import * as accountOps from "./account/index.ts";
+import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
+import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
-import * as perpFetch from "./fetch.ts";
-// Prediction builder/view modules (every export takes the client as its first arg).
-import * as predAccount from "./prediction/account.ts";
+import * as perpFetch from "./perp/fetch.ts";
+import * as perpTx from "./perp/tx-builders.ts";
+// Perp-only user builders — account/credit/custody are excluded here; they live
+// under `client.account`. trading / order / wlp / staking / referral only.
+import * as perpOrder from "./perp/user/order.ts";
+import * as perpStaking from "./perp/user/staking.ts";
+import * as perpTrading from "./perp/user/trading.ts";
+import * as perpWlp from "./perp/user/wlp.ts";
+// Prediction-specific account ops (need the prediction package; NOT generic account).
+import {
+  allowPredictionProtocolAsset,
+  disallowPredictionProtocolAsset,
+  setDelegatePredictionPermission,
+  whitelistPredictionProtocol,
+} from "./prediction/account.ts";
 import * as predAdmin from "./prediction/admin.ts";
 import {
   PredictClient,
@@ -39,8 +66,6 @@ import {
   type BuildBatchClaimTxParams,
   type BuildPlaceOrderTxParams,
 } from "./prediction/tx-builders.ts";
-import * as perpTx from "./tx-builders.ts";
-import * as perpUser from "./user/index.ts";
 
 /**
  * Exports from the spread builder/view modules that are NOT client-first — their
@@ -88,12 +113,31 @@ function bindClient<C, NS extends object>(client: C, ns: NS): ClientBound<NS, C>
   return out as ClientBound<NS, C>;
 }
 
-// Frozen, reused for both the runtime binding and the public module types.
-const perpOps = { ...perpUser, ...perpTx, ...perpFetch };
-const predictOps = { ...predAccount, ...predAdmin, ...predOps, ...predFetch, ...predGift };
+// Prediction-specific account ops kept on `client.predict` (generic account ops
+// moved to `client.account`).
+const predAccountSpecific = {
+  setDelegatePredictionPermission,
+  whitelistPredictionProtocol,
+  allowPredictionProtocolAsset,
+  disallowPredictionProtocolAsset,
+};
 
+// Frozen, reused for both the runtime binding and the public module types.
+const perpOps = {
+  ...perpTrading,
+  ...perpOrder,
+  ...perpWlp,
+  ...perpStaking,
+  ...perpReferral,
+  ...perpTx,
+  ...perpFetch,
+};
+const predictOps = { ...predAccountSpecific, ...predAdmin, ...predOps, ...predFetch, ...predGift };
+
+/** Account namespace exposed as `client.account` — generic wxa + credit + custody, perp-backed. */
+export type AccountModule = ClientBound<typeof accountOps, PerpClient>;
 /** Perp namespace exposed as `client.perp` — builder/view methods, client pre-bound. */
-export type PerpModule = ClientBound<typeof perpOps, WaterXClient>;
+export type PerpModule = ClientBound<typeof perpOps, PerpClient>;
 /** Prediction namespace exposed as `client.predict` — builder/view methods, client pre-bound. */
 export type PredictModule = ClientBound<typeof predictOps, PredictClient>;
 
@@ -116,41 +160,57 @@ export interface ClientCreateOptions {
   predict?: PredictLineOptions;
 }
 
-export class Client {
-  /** Underlying perp client — use for signing/executing perp transactions. */
-  readonly perpClient: WaterXClient;
-  /** Underlying prediction client — use for signing/executing prediction transactions. */
-  readonly predictClient: PredictClient;
-  /** Perp builders & views (`client.perp.openPosition(tx, params)`). */
-  readonly perp: PerpModule;
-  /** Prediction builders & views (`client.predict.placeOrder(tx, params)`). */
-  readonly predict: PredictModule;
+export class WaterXClient {
+  /** Shared account namespace (`client.account.createAccount(tx, params)`) — perp-backed. */
+  readonly account: AccountModule;
+  /**
+   * Perp sub-client **with** the perp builders/views grafted on
+   * (`client.perp.placeOrderRequest(...)`, `client.perp.signAndExecuteTransaction(...)`).
+   */
+  readonly perp: PerpClient & PerpModule;
+  /**
+   * Prediction sub-client **with** the prediction builders/views grafted on
+   * (`client.predict.placeOrder(...)`, `client.predict.signAndExecuteTransaction(...)`).
+   */
+  readonly predict: PredictClient & PredictModule;
 
   /**
    * Async prediction builder: optional consolidate + `placeOrder`.
-   * Uses `perpClient` for the sweep and `predictClient` for the bet leg.
+   * Uses the perp client for the sweep and the predict client for the bet leg.
    */
   buildPredictPlaceOrderTx(params: BuildPlaceOrderTxParams): Promise<Transaction> {
-    return buildPredictPlaceOrderTx(this.perpClient, this.predictClient, params);
+    return buildPredictPlaceOrderTx(this.perp, this.predict, params);
   }
 
   /**
    * Async prediction builder: optional consolidate + `batchClaim`.
    */
   buildPredictBatchClaimTx(params: BuildBatchClaimTxParams): Promise<Transaction> {
-    return buildPredictBatchClaimTx(this.perpClient, this.predictClient, params);
+    return buildPredictBatchClaimTx(this.perp, this.predict, params);
   }
 
-  private constructor(perpClient: WaterXClient, predictClient: PredictClient) {
-    this.perpClient = perpClient;
-    this.predictClient = predictClient;
-    this.perp = bindClient(perpClient, perpOps);
-    this.predict = bindClient(predictClient, predictOps);
+  private constructor(perpClient: PerpClient, predictClient: PredictClient) {
+    // Graft the bound builders onto the sub-client instances. No builder name
+    // collides with the client's own (transport/config) methods — enforced by the
+    // "graft guard" unit test (disjoint from the prototype chain), not just a
+    // comment. The instances stay `instanceof PerpClient` / `PredictClient`, so
+    // signing/config methods work.
+    this.perp = Object.assign(perpClient, bindClient(perpClient, perpOps)) as PerpClient &
+      PerpModule;
+    this.predict = Object.assign(
+      predictClient,
+      bindClient(predictClient, predictOps),
+    ) as PredictClient & PredictModule;
+    this.account = bindClient(perpClient, accountOps);
   }
 
-  /** Combine two pre-built line clients (advanced — full control over each). */
-  static fromClients(perpClient: WaterXClient, predictClient: PredictClient): Client {
-    return new Client(perpClient, predictClient);
+  /**
+   * Combine two pre-built line clients (advanced — full control over each).
+   * Note: this grafts the bound builder methods onto the provided client
+   * instances in place.
+   */
+  static fromClients(perpClient: PerpClient, predictClient: PredictClient): WaterXClient {
+    return new WaterXClient(perpClient, predictClient);
   }
 
   /**
@@ -158,23 +218,36 @@ export class Client {
    * `waterx-config` JSON) and returns a ready client. Each line can target a
    * different network via `opts.perp.network` / `opts.predict.network`.
    */
-  static async create(opts: ClientCreateOptions = {}): Promise<Client> {
+  static async create(opts: ClientCreateOptions = {}): Promise<WaterXClient> {
     const baseNetwork: Network = opts.network ?? "TESTNET";
     const { network: perpNetwork, ...perpRest } = opts.perp ?? {};
     const { network: predictNetwork, ...predictRest } = opts.predict ?? {};
 
-    const perpClient = await WaterXClient.create(perpNetwork ?? baseNetwork, {
+    const resolvedPerpNetwork = perpNetwork ?? baseNetwork;
+    const resolvedPredictNetwork = predictNetwork ?? baseNetwork;
+    if (resolvedPerpNetwork !== resolvedPredictNetwork) {
+      // `client.account` always follows the perp line (see the class header).
+      // On a split-network setup a caller reaching for `client.account.*` would
+      // silently build against the perp deployment — warn so it isn't a surprise.
+      console.warn(
+        `[WaterXClient] split-network: perp=${resolvedPerpNetwork} predict=${resolvedPredictNetwork}. ` +
+          `client.account follows the perp line (${resolvedPerpNetwork}); reach the predict line's ` +
+          `generic account builders via the prediction namespace directly.`,
+      );
+    }
+
+    const perpClient = await PerpClient.create(resolvedPerpNetwork, {
       grpcUrl: opts.grpcUrl,
       configUrl: opts.configUrl,
       cache: opts.cache,
       ...perpRest,
     });
-    const predictClient = await PredictClient.create(predictNetwork ?? baseNetwork, {
+    const predictClient = await PredictClient.create(resolvedPredictNetwork, {
       grpcUrl: opts.grpcUrl,
       configUrl: opts.configUrl,
       cache: opts.cache,
       ...predictRest,
     });
-    return new Client(perpClient, predictClient);
+    return new WaterXClient(perpClient, predictClient);
   }
 }

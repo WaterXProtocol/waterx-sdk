@@ -32,7 +32,7 @@ describe("unified Client — prediction representative flow", () => {
   });
 
   it("client.predict pre-binds the same client passed to the facade", () => {
-    expect(client.predictClient).toBe(predictClient);
+    expect(client.predict).toBe(predictClient);
     expect(client.predict.placeOrder).not.toBe(placeOrder);
     expect(client.predict.placeOrder).toBeTypeOf("function");
   });
@@ -60,6 +60,6 @@ describe("unified Client — prediction representative flow", () => {
   it("client.predict exposes gift runtime but not pure crypto helpers", () => {
     expect(client.predict.createGift).toBeTypeOf("function");
     expect(client.predict.getGift).toBeTypeOf("function");
-    expect((client.predict as Record<string, unknown>).encodeGiftUrl).toBeUndefined();
+    expect((client.predict as unknown as Record<string, unknown>).encodeGiftUrl).toBeUndefined();
   });
 });

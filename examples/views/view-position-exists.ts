@@ -5,7 +5,7 @@
  *   WATERX_POSITION_ID=3 pnpm exec tsx examples/views/view-position-exists.ts
  */
 import { buildClient, requireEnv, run } from "../_shared.ts";
-import { positionExists } from "../../src/fetch.ts";
+import { positionExists } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

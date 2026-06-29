@@ -1,7 +1,7 @@
-import { getMarketSummary, type WaterXClient } from "@waterx/sdk";
+import { getMarketSummary, type PerpClient } from "@waterx/sdk";
 import { expect } from "vitest";
 
-import type { BaseAsset } from "../../../../src/constants.ts";
+import type { BaseAsset } from "../../../../src/perp/constants.ts";
 import { computeLeverageDerivedSize } from "../trading/compute-leverage-size.ts";
 
 /**
@@ -14,7 +14,7 @@ import { computeLeverageDerivedSize } from "../trading/compute-leverage-size.ts"
  * `computeValidPartialDecreaseSize` from `market-trading-size-constraints.ts` when needed.
  */
 export async function expectLeverageOpenSizingVsMarket(
-  client: WaterXClient,
+  client: PerpClient,
   base: BaseAsset,
   collateralRaw: bigint,
   leverage: number,

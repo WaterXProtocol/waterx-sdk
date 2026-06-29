@@ -14,7 +14,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildAddPreOrderTx, rawPrice } from "../../src/index.ts";
+import { buildAddPreOrderTx, rawPrice } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

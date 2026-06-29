@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { claimReward, stake, unstake } from "../../../src/user/staking.ts";
+import { claimReward, stake, unstake } from "../../../src/perp/user/staking.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 

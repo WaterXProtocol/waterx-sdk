@@ -1,9 +1,9 @@
 /**
  * Integration market snapshot via v3 view `MarketData`.
  */
-import type { WaterXClient } from "../../../../src/client.ts";
-import type { MarketDataView } from "../../../../src/fetch.ts";
-import { getMarketData } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { MarketDataView } from "../../../../src/perp/fetch.ts";
+import { getMarketData } from "../../../../src/perp/fetch.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import type { LifecycleTestTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
 import { lifecycleTickerRow } from "../../helpers/e2e/lifecycle-test-markets.ts";
@@ -12,7 +12,7 @@ export type IntegrationMarketSnapshotMap = Record<string, MarketDataView>;
 
 /** One `MarketData` per ticker (sequential RPC). */
 export async function fetchIntegrationMarketSummaries(
-  client: WaterXClient,
+  client: PerpClient,
   tickers: readonly string[],
 ): Promise<IntegrationMarketSnapshotMap> {
   const out: Record<string, MarketDataView> = {};

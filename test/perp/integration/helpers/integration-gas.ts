@@ -5,7 +5,7 @@
  * `setGasBudget` is an upper cap — the node requires the wallet to hold at least that much SUI
  * to pick gas coins, so high caps hurt low-balance wallets.
  */
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 
 export type IntegrationGasKind =
   | "default"
@@ -89,7 +89,7 @@ export function insufficientSuiSkipReason(error: unknown, owner?: string): strin
   );
 }
 
-export async function getOwnerSuiBalanceMist(client: WaterXClient, owner: string): Promise<bigint> {
+export async function getOwnerSuiBalanceMist(client: PerpClient, owner: string): Promise<bigint> {
   const { objects } = await client.listCoins({ owner, coinType: "0x2::sui::SUI" });
   let total = 0n;
   for (const o of objects) {

@@ -8,7 +8,7 @@ import {
   requestCreditWithdraw,
   routeNative,
   routeWormhole,
-} from "../../../../src/user/credit.ts";
+} from "../../../../src/account/funding/credit.ts";
 import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {
@@ -26,7 +26,7 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       redeemVaa(c, tx, { vaaBytes: new Uint8Array([0xde, 0xad]) });
     },
     (p, tx) => {
-      p.redeemVaa(tx, { vaaBytes: new Uint8Array([0xde, 0xad]) });
+      p.account.redeemVaa(tx, { vaaBytes: new Uint8Array([0xde, 0xad]) });
     },
   ),
   caseMutate(
@@ -36,8 +36,8 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       consumeCreditDeposit(c, tx, { depositRequest: req });
     },
     (p, tx) => {
-      const req = p.redeemVaa(tx, { vaaBytes: new Uint8Array([0xaa]) });
-      p.consumeCreditDeposit(tx, { depositRequest: req });
+      const req = p.account.redeemVaa(tx, { vaaBytes: new Uint8Array([0xaa]) });
+      p.account.consumeCreditDeposit(tx, { depositRequest: req });
     },
   ),
   caseMutate(
@@ -50,7 +50,7 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.routeWormhole(tx, {
+      p.account.routeWormhole(tx, {
         evmDestinationChain: 10002,
         evmRecipient: EVM_ADDR,
         evmToken: EVM_ADDR_2,
@@ -63,7 +63,7 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       routeNative(c, tx, { assetType: MOCK_CUSTODY_ASSET_TYPE });
     },
     (p, tx) => {
-      p.routeNative(tx, { assetType: MOCK_CUSTODY_ASSET_TYPE });
+      p.account.routeNative(tx, { assetType: MOCK_CUSTODY_ASSET_TYPE });
     },
   ),
   caseMutate(
@@ -82,12 +82,12 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      const route = p.routeWormhole(tx, {
+      const route = p.account.routeWormhole(tx, {
         evmDestinationChain: 10002,
         evmRecipient: EVM_ADDR,
         evmToken: EVM_ADDR_2,
       });
-      p.requestCreditWithdraw(tx, {
+      p.account.requestCreditWithdraw(tx, {
         accountId: ACCOUNT_ID,
         amount: 1_000n,
         recipient: ACCOUNT_ID,
@@ -112,18 +112,18 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       enqueueWithdrawal(c, tx, { withdrawRequest: wreq });
     },
     (p, tx) => {
-      const route = p.routeWormhole(tx, {
+      const route = p.account.routeWormhole(tx, {
         evmDestinationChain: 10002,
         evmRecipient: EVM_ADDR,
         evmToken: EVM_ADDR_2,
       });
-      const wreq = p.requestCreditWithdraw(tx, {
+      const wreq = p.account.requestCreditWithdraw(tx, {
         accountId: ACCOUNT_ID,
         amount: 1_000n,
         recipient: ACCOUNT_ID,
         route,
       });
-      p.enqueueWithdrawal(tx, { withdrawRequest: wreq });
+      p.account.enqueueWithdrawal(tx, { withdrawRequest: wreq });
     },
   ),
   caseMutate(
@@ -135,7 +135,7 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.executeWithdrawalWormhole(tx, {
+      p.account.executeWithdrawalWormhole(tx, {
         key: 1n,
         wormholeFee: tx.object(PTB_DUMMY_DEPOSIT_COIN),
       });
@@ -150,7 +150,7 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.executeWithdrawalNative(tx, {
+      p.account.executeWithdrawalNative(tx, {
         key: 2n,
         assetType: MOCK_CUSTODY_ASSET_TYPE,
       });
@@ -166,7 +166,7 @@ export const perpCreditDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.custodyMint(tx, {
+      p.account.custodyMint(tx, {
         accountId: ACCOUNT_ID,
         assetCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,

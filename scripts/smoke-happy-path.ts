@@ -24,16 +24,16 @@
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
-import { ORDER_LIMIT_BUY } from "../src/constants.ts";
 import { consumeDepositDirect } from "../src/generated/waterx_account/direct_rule.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
 import {
   buildCancelOrderTx,
   buildMintWlpTx,
   buildPlaceOrderTx,
   getAccountBalance,
   requestDeposit,
-} from "../src/index.ts";
+} from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
@@ -43,7 +43,7 @@ interface SimResult {
   FailedTransaction?: { status?: { error?: { message?: string } } };
 }
 
-async function sim(client: WaterXClient, signer: Ed25519Keypair, tx: Transaction, label: string) {
+async function sim(client: PerpClient, signer: Ed25519Keypair, tx: Transaction, label: string) {
   tx.setSender(signer.toSuiAddress());
   const r = (await client.simulate(tx)) as unknown as SimResult;
   if (r.$kind === "FailedTransaction") {
@@ -56,7 +56,7 @@ async function sim(client: WaterXClient, signer: Ed25519Keypair, tx: Transaction
 }
 
 async function execute(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
   const usdcType = client.getPoolTokenType("USD");
 
   // ============================================================================

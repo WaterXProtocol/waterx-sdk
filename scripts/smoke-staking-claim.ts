@@ -30,16 +30,16 @@ import { bcs } from "@mysten/sui/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { WaterXClient } from "../src/client.ts";
-import { DRY_RUN_SENDER } from "../src/constants.ts";
-import { getAccountBalance } from "../src/fetch.ts";
 import { isProtocolWhitelisted } from "../src/generated/waterx_account/account.ts";
 import {
   realtimeRewardAmount as realtimeRewardAmountCall,
   stakeExists as stakeExistsCall,
   totalStakeAmount as totalStakeAmountCall,
 } from "../src/generated/waterx_staking/waterx_staking.ts";
-import { claimReward, stake, unstake } from "../src/index.ts";
+import { PerpClient } from "../src/perp/client.ts";
+import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
+import { getAccountBalance } from "../src/perp/fetch.ts";
+import { claimReward, stake, unstake } from "../src/perp/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
@@ -52,7 +52,7 @@ interface SimResult {
 }
 
 async function sim(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -69,7 +69,7 @@ async function sim(
 }
 
 async function execute(
-  client: WaterXClient,
+  client: PerpClient,
   signer: Ed25519Keypair,
   tx: Transaction,
   label: string,
@@ -92,13 +92,13 @@ async function execute(
   return success;
 }
 
-function poolId(client: WaterXClient, alias = "WLP"): string {
+function poolId(client: PerpClient, alias = "WLP"): string {
   const id = client.config.packages.waterx_staking?.pools?.[alias];
   if (!id) throw new Error(`waterx_staking.pools[${alias}] not set in config`);
   return id;
 }
 
-function stakingPkg(client: WaterXClient): string {
+function stakingPkg(client: PerpClient): string {
   const pkg = client.config.packages.waterx_staking?.published_at;
   if (!pkg) throw new Error("waterx_staking.published_at not set in config");
   return pkg;
@@ -113,7 +113,7 @@ function pullBcs(field: SimplifiedBcs | undefined): Uint8Array {
   return typeof field.bcs === "string" ? fromBase64(field.bcs) : field.bcs;
 }
 
-async function readTotalStake(client: WaterXClient): Promise<bigint> {
+async function readTotalStake(client: PerpClient): Promise<bigint> {
   const tx = new Transaction();
   totalStakeAmountCall({
     package: stakingPkg(client),
@@ -125,7 +125,7 @@ async function readTotalStake(client: WaterXClient): Promise<bigint> {
   return BigInt(bcs.u64().parse(pullBcs(r.commandResults?.[0]?.returnValues?.[0])));
 }
 
-async function readStakeExists(client: WaterXClient, accountId: string): Promise<boolean> {
+async function readStakeExists(client: PerpClient, accountId: string): Promise<boolean> {
   const tx = new Transaction();
   stakeExistsCall({
     package: stakingPkg(client),
@@ -138,7 +138,7 @@ async function readStakeExists(client: WaterXClient, accountId: string): Promise
 }
 
 async function readRealtimeReward(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   rewardType: string,
 ): Promise<bigint> {
@@ -153,7 +153,7 @@ async function readRealtimeReward(
   return BigInt(bcs.u64().parse(pullBcs(r.commandResults?.[0]?.returnValues?.[0])));
 }
 
-async function readStakingWhitelisted(client: WaterXClient): Promise<boolean> {
+async function readStakingWhitelisted(client: PerpClient): Promise<boolean> {
   const tx = new Transaction();
   const stakingOrig = client.config.packages.waterx_staking?.original_id;
   if (!stakingOrig) throw new Error("waterx_staking.original_id not set in config");
@@ -201,7 +201,7 @@ async function discoverRewarderTypes(stakingPool: string): Promise<string[]> {
 }
 
 async function snapshot(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
   rewarderTypes: string[],
   label: string,
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await WaterXClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", { cache: true });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const waitMs = Number(process.env.WATERX_REWARD_WAIT_MS ?? "15000");
   const pollMs = Number(process.env.WATERX_POLL_INTERVAL_MS ?? "1500");

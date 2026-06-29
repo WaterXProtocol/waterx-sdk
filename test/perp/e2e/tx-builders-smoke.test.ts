@@ -7,7 +7,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { buildMintAndStakeWlpTx, buildPlaceOrderTx } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
-import { mintCreditToAccount } from "../../../src/user/custody.ts";
+import { mintCreditToAccount } from "../../../src/account/funding/custody.ts";
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,

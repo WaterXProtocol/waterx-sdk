@@ -8,7 +8,7 @@
  *   WATERX_TOKEN_INDEX=1 pnpm exec tsx examples/views/view-token-pool-data.ts
  */
 import { buildClient, dump, run } from "../_shared.ts";
-import { getTokenPoolData } from "../../src/fetch.ts";
+import { getTokenPoolData } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

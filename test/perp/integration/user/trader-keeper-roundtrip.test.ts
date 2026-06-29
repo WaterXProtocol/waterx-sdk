@@ -6,7 +6,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { closePositionByKeeper, openPositionByKeeper, updateFundingRate } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
-import { getMarketData } from "../../../../src/fetch.ts";
+import { getMarketData } from "../../../../src/perp/fetch.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
 import {
   activeLifecycleTickersForClient,

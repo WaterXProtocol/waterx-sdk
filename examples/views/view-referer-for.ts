@@ -6,7 +6,7 @@
  *   WATERX_REFEREE=0x... pnpm exec tsx examples/views/view-referer-for.ts
  */
 import { buildClient, requireEnv, run } from "../_shared.ts";
-import { getRefererFor } from "../../src/fetch.ts";
+import { getRefererFor } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();

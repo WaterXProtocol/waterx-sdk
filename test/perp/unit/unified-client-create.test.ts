@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import { PredictClient } from "../../../src/prediction/client.ts";
-import { Client } from "../../../src/unified-client.ts";
+import { Client } from "../../../src/sdk.ts";
 import { createMockPredictClient } from "../../prediction/helpers/mock-client.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -14,7 +14,7 @@ describe("Client.create", () => {
   it("loads both line clients with shared defaults", async () => {
     const perpStub = createUnitTestClient();
     const predictStub = createMockPredictClient();
-    const perpCreate = vi.spyOn(WaterXClient, "create").mockResolvedValue(perpStub);
+    const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(perpStub);
     const predictCreate = vi.spyOn(PredictClient, "create").mockResolvedValue(predictStub);
 
     const client = await Client.create({
@@ -34,14 +34,14 @@ describe("Client.create", () => {
       configUrl: "https://waterx.test/testnet.json",
       cache: true,
     });
-    expect(client.perpClient).toBe(perpStub);
-    expect(client.predictClient).toBe(predictStub);
+    expect(client.perp).toBe(perpStub);
+    expect(client.predict).toBe(predictStub);
     expect(client.perp).toBeTypeOf("object");
     expect(client.predict).toBeTypeOf("object");
   });
 
   it("defaults to TESTNET when opts are omitted", async () => {
-    const perpCreate = vi.spyOn(WaterXClient, "create").mockResolvedValue(createUnitTestClient());
+    const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     const predictCreate = vi
       .spyOn(PredictClient, "create")
       .mockResolvedValue(createMockPredictClient());
@@ -61,7 +61,7 @@ describe("Client.create", () => {
   });
 
   it("allows per-line network overrides and extra create options", async () => {
-    const perpCreate = vi.spyOn(WaterXClient, "create").mockResolvedValue(createUnitTestClient());
+    const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     const predictCreate = vi
       .spyOn(PredictClient, "create")
       .mockResolvedValue(createMockPredictClient());
@@ -85,7 +85,7 @@ describe("Client.create", () => {
   });
 
   it("forwards per-line options without clobbering shared opts", async () => {
-    const perpCreate = vi.spyOn(WaterXClient, "create").mockResolvedValue(createUnitTestClient());
+    const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     vi.spyOn(PredictClient, "create").mockResolvedValue(createMockPredictClient());
 
     await Client.create({

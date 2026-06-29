@@ -3,7 +3,7 @@
  */
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { getAccountBalance } from "../../../../src/fetch.ts";
+import { getAccountBalance } from "../../../../src/perp/fetch.ts";
 import { runE2ePersistentPreflight } from "../../helpers/e2e/e2e-persistent-preflight.ts";
 import {
   activeE2ePersistentPerpTickers,

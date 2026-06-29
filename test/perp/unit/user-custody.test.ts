@@ -1,12 +1,12 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { WaterXClient } from "../../../src/client.ts";
 import {
   mintCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
-} from "../../../src/user/custody.ts";
+} from "../../../src/account/funding/custody.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CREDIT_TYPE,
   MOCK_CUSTODY_ASSET_TYPE,
@@ -80,7 +80,7 @@ describe("user/custody PTB builders (native_custody)", () => {
     const noCredit = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCredit.packages.waterx_credit;
     delete noCredit.packages.native_custody;
-    const clientNoCredit = new WaterXClient("TESTNET", noCredit, {
+    const clientNoCredit = new PerpClient("TESTNET", noCredit, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
@@ -96,7 +96,7 @@ describe("user/custody PTB builders (native_custody)", () => {
   it("throws when native_custody vault is missing but credit is present", () => {
     const noCustody = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCustody.packages.native_custody;
-    const clientNoCustody = new WaterXClient("TESTNET", noCustody, {
+    const clientNoCustody = new PerpClient("TESTNET", noCustody, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
@@ -112,7 +112,7 @@ describe("user/custody PTB builders (native_custody)", () => {
   it("mintCreditToAccount throws when waterx_credit is missing", () => {
     const noCredit = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCredit.packages.waterx_credit;
-    const clientNoCredit = new WaterXClient("TESTNET", noCredit, {
+    const clientNoCredit = new PerpClient("TESTNET", noCredit, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
@@ -127,7 +127,7 @@ describe("user/custody PTB builders (native_custody)", () => {
   it("mintCreditToAccount throws when native_custody vault is missing", () => {
     const noCustody = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCustody.packages.native_custody;
-    const clientNoCustody = new WaterXClient("TESTNET", noCustody, {
+    const clientNoCustody = new PerpClient("TESTNET", noCustody, {
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>

@@ -2,9 +2,13 @@
  * On-chain discovery for e2e simulates: paginated `getMarketPositions` + wxa balance gates.
  * Mirrors discovery semantics documented for `pnpm audit:e2e-discovery` histogram labels (`DiscoverPositionGateResult`).
  */
-import type { WaterXClient } from "../../../../src/client.ts";
-import type { PositionDataView, RedeemRequestDataView } from "../../../../src/fetch.ts";
-import { getMarketData, getMarketPositions, getRedeemRequests } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import type { PositionDataView, RedeemRequestDataView } from "../../../../src/perp/fetch.ts";
+import {
+  getMarketData,
+  getMarketPositions,
+  getRedeemRequests,
+} from "../../../../src/perp/fetch.ts";
 import { wxaAccountIdHints } from "./canonical-testnet-account.ts";
 import { resolveE2eNetwork } from "./e2e-client.ts";
 import { resolveDefaultUsdcCoinProbeAttempts } from "./e2e-discovery-caps.ts";
@@ -97,10 +101,7 @@ export function posIsLong(p: PositionDataView): boolean {
 /**
  * Map position collateral `TypeName` string → `wlp.pool_tokens` ticker key (`USDCUSD`, …).
  */
-export function resolveCollateralPoolTicker(
-  client: WaterXClient,
-  collateralFqName: string,
-): string {
+export function resolveCollateralPoolTicker(client: PerpClient, collateralFqName: string): string {
   const target = normalizeMoveType(collateralFqName);
   const pt = client.config.packages.wlp?.pool_tokens ?? {};
   for (const [ticker, ty] of Object.entries(pt)) {
@@ -114,7 +115,7 @@ function cooldownElapsed(updateTimestampMs: bigint, cooldownMs: bigint, slackMs 
   return Date.now() >= eligibleAt;
 }
 
-async function marketCooldownMs(client: WaterXClient, ticker: string): Promise<bigint> {
+async function marketCooldownMs(client: PerpClient, ticker: string): Promise<bigint> {
   try {
     const m = await getMarketData(client, { ticker });
     return BigInt(m.cooldown_ms);
@@ -136,7 +137,7 @@ export type DiscoverPositionGateCtx = {
 export type DiscoverPositionUsdcProbeBudget = { used: number; max: number };
 
 export async function evaluatePositionAgainstDiscoverOpts(
-  client: WaterXClient,
+  client: PerpClient,
   p: PositionDataView,
   opts: DiscoverActivePositionOpts,
   ctx: DiscoverPositionGateCtx,
@@ -363,7 +364,7 @@ export const DISCOVERY_OPTS_STATEFUL_SIMULATE_PARTIAL_DECREASE: DiscoverActivePo
 };
 
 export async function discoverActivePositionFirstMatchingTiers(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
   tiers: readonly DiscoverActivePositionOpts[],
 ): Promise<DiscoveredPosition | null> {
@@ -466,7 +467,7 @@ export function discoveryTiersForStatefulMatrixForBase(baseOrTicker: string) {
 }
 
 export async function discoverActivePositionForNegativeOpen(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
   opts?: Omit<DiscoverActivePositionOpts, "minAccountUsdcBalance">,
 ): Promise<DiscoveredPosition | null> {
@@ -478,7 +479,7 @@ export async function discoverActivePositionForNegativeOpen(
 }
 
 export async function discoverActivePosition(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
   opts?: DiscoverActivePositionOpts,
 ): Promise<DiscoveredPosition | null> {
@@ -573,7 +574,7 @@ function mergeFundedProbeScanOpts(opts: DiscoverActivePositionOpts): DiscoverAct
 }
 
 export async function discoverFundedProbe(
-  client: WaterXClient,
+  client: PerpClient,
   opts: DiscoverActivePositionOpts & { minAccountUsdcBalance: bigint },
 ): Promise<DiscoveredPosition | null> {
   const tickers = activeLifecycleTickersForClient(client);
@@ -605,7 +606,7 @@ export async function discoverFundedProbe(
 }
 
 export async function discoverFundedProbeWithoutPositionOnTicker(
-  client: WaterXClient,
+  client: PerpClient,
   openOnTicker: string,
   opts: DiscoverActivePositionOpts & { minAccountUsdcBalance: bigint },
 ): Promise<DiscoveredPosition | null> {
@@ -627,7 +628,7 @@ export async function discoverFundedProbeWithoutPositionOnTicker(
 
 /** @deprecated Use {@link discoverFundedProbeWithoutPositionOnTicker}. */
 export async function discoverFundedProbeWithoutPositionOnBase(
-  client: WaterXClient,
+  client: PerpClient,
   openOnBase: string,
   opts: DiscoverActivePositionOpts & { minAccountUsdcBalance: bigint },
 ): Promise<DiscoveredPosition | null> {
@@ -643,7 +644,7 @@ function resolveDiscoveryProbeConcurrency(): number {
 }
 
 export async function discoverActivePositionForAccount(
-  client: WaterXClient,
+  client: PerpClient,
   ticker: string,
   accountObjectAddress: string,
   opts?: DiscoverActivePositionOpts,
@@ -724,7 +725,7 @@ export function e2eSkipReasonNoPositionMatchingUsdcCoinSplit(
 }
 
 export async function discoverPositionsForAllActiveMarkets(
-  client: WaterXClient,
+  client: PerpClient,
 ): Promise<Map<string, DiscoveredPosition>> {
   const out = new Map<string, DiscoveredPosition>();
   for (const ticker of activeLifecycleTickersForClient(client)) {
@@ -754,7 +755,7 @@ function envWxaAccountIdHints(): string[] {
 }
 
 /** Prefer integration-maintained wxa account, then redeem queue / market positions / funded probe. */
-export async function collectWxaAccountIdCandidates(client: WaterXClient): Promise<string[]> {
+export async function collectWxaAccountIdCandidates(client: PerpClient): Promise<string[]> {
   const candidates: string[] = [...envWxaAccountIdHints()];
 
   try {
@@ -805,7 +806,7 @@ export type DiscoverWxaStoredBalanceOpts = {
 };
 
 export async function discoverWxaAccountWithStoredBalance(
-  client: WaterXClient,
+  client: PerpClient,
   opts: DiscoverWxaStoredBalanceOpts,
 ): Promise<DiscoveredWxaAccount | null> {
   if (opts.requireDepositPolicy) {
@@ -831,7 +832,7 @@ export async function discoverWxaAccountWithStoredBalance(
 }
 
 export async function discoverWxaAccountWithWlpBalance(
-  client: WaterXClient,
+  client: PerpClient,
   minWlpBalance = 1n,
 ): Promise<DiscoveredWxaAccount | null> {
   return discoverWxaAccountWithStoredBalance(client, {
@@ -841,7 +842,7 @@ export async function discoverWxaAccountWithWlpBalance(
 }
 
 export async function discoverWxaAccountWithUsdcForWlpMint(
-  client: WaterXClient,
+  client: PerpClient,
   minUsdc: bigint,
 ): Promise<DiscoveredWxaAccount | null> {
   let usdcType: string;
@@ -896,7 +897,7 @@ function redeemRecipientAccountCandidates(requests: RedeemRequestDataView[]): st
 
 /** Pending redeem row for a specific wxa `accountId`, if owner resolves. */
 export async function findPendingRedeemForAccount(
-  client: WaterXClient,
+  client: PerpClient,
   accountId: string,
 ): Promise<DiscoveredRedeemRequest | null> {
   const want = normAddr(accountId);
@@ -938,7 +939,7 @@ export async function findPendingRedeemForAccount(
 
 /** First redeem-queue row whose recipient wxa account owner resolves (for cancel simulate). */
 export async function discoverPendingRedeemRequest(
-  client: WaterXClient,
+  client: PerpClient,
 ): Promise<DiscoveredRedeemRequest | null> {
   let cursor = 0n;
   let usdcFallback: string;
@@ -980,7 +981,7 @@ export async function discoverPendingRedeemRequest(
  * then global market scan across lifecycle tickers.
  */
 export async function discoverStatefulSimulatePosition(
-  client: WaterXClient,
+  client: PerpClient,
   opts: DiscoverActivePositionOpts = DISCOVERY_OPTS_STATEFUL_SIMULATE,
 ): Promise<DiscoveredPosition | null> {
   for (const accountId of envWxaAccountIdHints()) {
@@ -1017,7 +1018,7 @@ function redeemRecipientWalletCandidates(requests: RedeemRequestDataView[]): str
 }
 
 export async function discoverWalletOwnerWithCollateralCoin(
-  client: WaterXClient,
+  client: PerpClient,
   opts: {
     collateralPoolTicker: string;
     minBalance: bigint;
@@ -1090,7 +1091,7 @@ export async function discoverWalletOwnerWithCollateralCoin(
 }
 
 export async function discoverWalletOwnerWithWlpCoin(
-  client: WaterXClient,
+  client: PerpClient,
   opts: { probeMinAccountUsdc: bigint },
 ): Promise<string | null> {
   const wlpType = client.wlpType();

@@ -4,7 +4,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, it } from "vitest";
 
-import { cancelRedeemWlp, requestRedeemWlp } from "../../../src/user/wlp.ts";
+import { cancelRedeemWlp, requestRedeemWlp } from "../../../src/perp/user/wlp.ts";
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import { appendWlpPoolOracleRefresh } from "../helpers/e2e/e2e-wlp-oracle.ts";
 import {

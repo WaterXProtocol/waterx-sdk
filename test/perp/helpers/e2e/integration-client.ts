@@ -1,10 +1,10 @@
 /**
  * Integration (sign + execute) WaterX client — same config source as simulate e2e, optional gRPC override.
  *
- * Network: {@link resolveIntegrationNetwork} → `WaterXClient.create(TESTNET | MAINNET)`.
+ * Network: {@link resolveIntegrationNetwork} → `PerpClient.create(TESTNET | MAINNET)`.
  */
-import { WaterXClient } from "../../../../src/client.ts";
-import type { Network } from "../../../../src/constants.ts";
+import { PerpClient } from "../../../../src/perp/client.ts";
+import type { Network } from "../../../../src/perp/constants.ts";
 import {
   resolveE2eGrpcUrlOverride,
   resolveE2eNetwork,
@@ -22,9 +22,9 @@ export function integrationNetworkToClientKey(network: E2eNetwork): Network {
   return network === "mainnet" ? "MAINNET" : "TESTNET";
 }
 
-export async function createIntegrationWaterXClient(): Promise<WaterXClient> {
+export async function createIntegrationWaterXClient(): Promise<PerpClient> {
   const grpcUrl = resolveE2eGrpcUrlOverride();
-  const c = await WaterXClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
+  const c = await PerpClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
     cache: true,
     ...(grpcUrl ? { grpcUrl } : {}),
   });

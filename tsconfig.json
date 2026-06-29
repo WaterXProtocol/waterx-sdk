@@ -8,7 +8,7 @@
     "rewriteRelativeImportExtensions": false,
     "rootDirs": ["src", "test", "tests", "scripts", "examples"],
     "paths": {
-      "@waterx/sdk": ["./src/index.ts"],
+      "@waterx/sdk": ["./src/perp/index.ts"],
       "~predict/*": ["./src/prediction/*"],
       "~predict-scripts/*": ["./test/prediction/scripts/*"],
       "~predict-tests/*": ["./test/prediction/*"]

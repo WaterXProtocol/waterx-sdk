@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import {
   DEFAULT_MOCK_PYTH_ROW_TYPE,
   MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT,
@@ -25,7 +25,7 @@ export function mockAccumulatorUpdate(): Uint8Array {
   return buf;
 }
 
-export function attachPythGrpcMocks(client: WaterXClient) {
+export function attachPythGrpcMocks(client: PerpClient) {
   const upgradeCapJson = { package: MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT };
   const pythStateJson = {
     upgrade_cap: upgradeCapJson,
@@ -58,7 +58,7 @@ export function attachPythGrpcMocks(client: WaterXClient) {
     getDynamicField: vi.fn(async () => ({
       dynamicField: { value: { bcs: feedBytes } },
     })),
-  } as unknown as WaterXClient["grpcClient"];
+  } as unknown as PerpClient["grpcClient"];
 
   client.pyth = {
     ...client.pyth,

@@ -13,7 +13,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildCancelOrderTx, ORDER_TAG_WILDCARD } from "../../src/index.ts";
+import { buildCancelOrderTx, ORDER_TAG_WILDCARD } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

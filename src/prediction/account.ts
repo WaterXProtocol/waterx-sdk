@@ -1,7 +1,15 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
-import { createAccountCall } from "../core/waterx-account.ts";
+import {
+  addDelegate as sharedAddDelegate,
+  createAccount as sharedCreateAccount,
+  removeDelegate as sharedRemoveDelegate,
+  requestDeposit as sharedRequestDeposit,
+  requestDepositFromReceivings as sharedRequestDepositFromReceivings,
+  requestWithdraw as sharedRequestWithdraw,
+  transferToAccount as sharedTransferToAccount,
+} from "../account/account.ts";
 import type { PredictClient } from "./client.ts";
 import { extractReturnBytes } from "./fetch.ts";
 import type { AccountIdentityParams, CoinRef, IdArgument, ObjectArgument } from "./types.ts";
@@ -52,15 +60,13 @@ export function createAccount(
   tx: Transaction,
   params: CreateAccountParams,
 ): TransactionArgument {
-  const senderRequest = createAccountRequest(client, tx, params);
-  return createAccountCall(
-    tx,
-    {
-      packageId: accountPackage(client, params.accountPackageId),
-      registry: resolveAccountRegistry(client, params.accountRegistry),
-    },
-    { senderRequest, alias: params.alias },
-  );
+  // Delegates to the shared account/ builder — `waterx_account` is a single shared
+  // contract, so the account id + registry are identical across lines. (The
+  // per-call package/registry overrides are moot with one package.)
+  return sharedCreateAccount(client, tx, {
+    alias: params.alias,
+    bucketAccount: params.bucketAccount,
+  });
 }
 
 export interface TransferCoinToAccountParams extends AccountBaseParams {
@@ -74,14 +80,10 @@ export function transferCoinToAccount(
   tx: Transaction,
   params: TransferCoinToAccountParams,
 ): Transaction {
-  tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::transfer_coin`,
-    typeArguments: [params.coinType ?? client.settlementCoinType()],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      idArg(tx, params.accountId),
-      objectArg(tx, params.coin),
-    ],
+  sharedTransferToAccount(client, tx, {
+    accountId: params.accountId,
+    coin: objectArg(tx, params.coin),
+    coinType: params.coinType ?? client.settlementCoinType(),
   });
   return tx;
 }
@@ -98,17 +100,12 @@ export function requestDeposit(
   tx: Transaction,
   params: RequestDepositParams,
 ): TransactionArgument {
-  const [request] = tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::request_deposit`,
-    typeArguments: [params.coinType ?? client.settlementCoinType()],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      idArg(tx, params.accountId),
-      objectArg(tx, params.coin),
-      tx.pure.vector("u8", Array.from(params.extraData ?? [])),
-    ],
+  return sharedRequestDeposit(client, tx, {
+    accountId: params.accountId,
+    coin: objectArg(tx, params.coin),
+    coinType: params.coinType ?? client.settlementCoinType(),
+    extraData: params.extraData == null ? undefined : Uint8Array.from(params.extraData),
   });
-  return request;
 }
 
 export interface ConsumeDepositDirectParams extends AccountBaseParams {
@@ -164,22 +161,12 @@ export function requestDepositFromReceivings(
   tx: Transaction,
   params: RequestDepositFromReceivingsParams,
 ): TransactionArgument {
-  const coinType = params.coinType ?? client.settlementCoinType();
-  const receivings = params.coins.map((coin) => receivingCoinArg(tx, coin));
-  const [request] = tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::request_deposit_from_receivings`,
-    typeArguments: [coinType],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      idArg(tx, params.accountId),
-      tx.makeMoveVec({
-        type: `0x2::transfer::Receiving<0x2::coin::Coin<${coinType}>>`,
-        elements: receivings,
-      }),
-      tx.pure.vector("u8", Array.from(params.extraData ?? [])),
-    ],
+  return sharedRequestDepositFromReceivings(client, tx, {
+    accountId: params.accountId,
+    receivings: params.coins.map((coin) => receivingCoinArg(tx, coin)),
+    coinType: params.coinType ?? client.settlementCoinType(),
+    extraData: params.extraData == null ? undefined : Uint8Array.from(params.extraData),
   });
-  return request;
 }
 
 export interface RequestWithdrawParams extends AccountBaseParams, AccountIdentityParams {
@@ -195,21 +182,14 @@ export function requestWithdraw(
   tx: Transaction,
   params: RequestWithdrawParams,
 ): TransactionArgument {
-  const senderRequest = createAccountRequest(client, tx, params);
-  const [request] = tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::request_withdraw`,
-    typeArguments: [params.coinType ?? client.settlementCoinType()],
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      senderRequest,
-      idArg(tx, params.accountId),
-      tx.pure.u64(toBigInt(params.amount)),
-      tx.pure.address(params.recipient),
-      tx.pure.vector("u8", Array.from(params.extraData ?? [])),
-      clockArg(tx),
-    ],
+  return sharedRequestWithdraw(client, tx, {
+    accountId: params.accountId,
+    amount: toBigInt(params.amount),
+    recipient: params.recipient,
+    coinType: params.coinType ?? client.settlementCoinType(),
+    extraData: params.extraData == null ? undefined : Uint8Array.from(params.extraData),
+    bucketAccount: params.bucketAccount,
   });
-  return request;
 }
 
 export interface ConsumeWithdrawDirectParams extends AccountBaseParams {
@@ -266,19 +246,13 @@ export function addDelegate(
   tx: Transaction,
   params: AddDelegateParams,
 ): Transaction {
-  const senderRequest = createAccountRequest(client, tx, params);
-  tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::add_delegate`,
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      senderRequest,
-      idArg(tx, params.accountId),
-      tx.pure.address(params.delegate),
-      tx.pure.string(params.alias),
-      tx.pure.u32(params.permissions),
-      tx.pure.option("u64", params.expiresAtMs == null ? null : toBigInt(params.expiresAtMs)),
-      clockArg(tx),
-    ],
+  sharedAddDelegate(client, tx, {
+    accountId: params.accountId,
+    delegateAddress: params.delegate,
+    alias: params.alias,
+    permissions: params.permissions,
+    expiresAtMs: params.expiresAtMs == null ? undefined : toBigInt(params.expiresAtMs),
+    bucketAccount: params.bucketAccount,
   });
   return tx;
 }
@@ -293,16 +267,10 @@ export function removeDelegate(
   tx: Transaction,
   params: RemoveDelegateParams,
 ): Transaction {
-  const senderRequest = createAccountRequest(client, tx, params);
-  tx.moveCall({
-    target: `${accountPackage(client, params.accountPackageId)}::account::remove_delegate`,
-    arguments: [
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      senderRequest,
-      idArg(tx, params.accountId),
-      tx.pure.address(params.delegate),
-      clockArg(tx),
-    ],
+  sharedRemoveDelegate(client, tx, {
+    accountId: params.accountId,
+    delegateAddress: params.delegate,
+    bucketAccount: params.bucketAccount,
   });
   return tx;
 }

@@ -12,7 +12,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { buildCancelPreOrderTx } from "../../src/index.ts";
+import { buildCancelPreOrderTx } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

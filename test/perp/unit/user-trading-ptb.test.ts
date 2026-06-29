@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { describe, expect, it } from "vitest";
 
-import { ORDER_LIMIT_BUY } from "../../../src/constants.ts";
+import { ORDER_LIMIT_BUY } from "../../../src/perp/constants.ts";
 import {
   batchLiquidate,
   closePositionByKeeper,
@@ -15,7 +15,7 @@ import {
   openPositionByKeeper,
   updateFundingRate,
   withdrawCollateralRequest,
-} from "../../../src/user/trading.ts";
+} from "../../../src/perp/user/trading.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import {

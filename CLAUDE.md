@@ -42,42 +42,51 @@ https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/<network>.js
 The JSON is package-centric — each package nests its own object IDs and
 per-ticker maps. See `waterx-config/README.md` for the canonical schema.
 SDK types (`WaterXConfig`, `WaterxPerpPackage`, `WlpPackage`, etc.) in
-`src/config.ts` mirror that schema 1:1, snake_case included.
+`src/perp/config.ts` mirror that schema 1:1, snake_case included.
 
 External chain infra (Pyth state, Wormhole state, Hermes endpoint) is
-**not** in the JSON — it lives in `PYTH_DEFAULTS[network]` (`src/config.ts`)
+**not** in the JSON — it lives in `PYTH_DEFAULTS[network]` (`src/perp/config.ts`)
 and is exposed on `client.pyth`. Override per-deployment by setting
 `pyth` on the JSON if you ever need to.
 
-The client is **async**:
+`WaterXClient` is the **umbrella** entry point exposing three namespaces:
+`client.account` (shared `waterx_account` + credit/custody), `client.perp` (the
+`PerpClient` instance + perp builders), `client.predict` (the `PredictClient`
+instance + prediction builders). `client.perp` / `client.predict` **are** the
+line clients — config lookups, gRPC, and signing live on them. (The former
+perp-line `WaterXClient` class is now `PerpClient`; `Client` is a deprecated
+alias of the umbrella.) The factory is **async**:
 
 ```ts
 import { WaterXClient } from "@waterx/sdk";
 
-const client = await WaterXClient.create("TESTNET");
-// override URL / gRPC:
-const c2 = await WaterXClient.create("MAINNET", {
+const client = await WaterXClient.create({ network: "TESTNET" });
+// override URL / gRPC (shared, or per-line via { perp: {...}, predict: {...} }):
+const c2 = await WaterXClient.create({
+  network: "MAINNET",
   configUrl: "https://my.cdn/main/mainnet.json",
   grpcUrl: "https://my-fullnode/",
   cache: true, // optional in-process cache, default off
 });
 
-// Pin the canonical config to a specific git ref (commit SHA, branch, or
-// tag) instead of `main`. Ignored when `configUrl` is set.
-const c3 = await WaterXClient.create("TESTNET", { configRef: "a1b2c3d" });
+// Canonical-schema lookups live on the perp sub-client (client.perp):
+client.perp.config.packages.waterx_perp.global_config;  // shared GlobalConfig
+client.perp.config.packages.waterx_perp.markets["BTCUSD"]; // { market, config }
+client.perp.config.packages.wlp.pool_tokens["USDCUSD"];    // pool token Move type
+client.perp.getMarket("BTCUSD");                        // throwing helper
+client.perp.getPythFeed("BTCUSD");                      // { feed_id, price_info_object }
+client.perp.wlpType();                                  // `${wlp.original_id}::wlp::WLP`
+client.perp.pyth.state_id;                              // network default
 
-// Canonical-schema lookups:
-client.config.packages.waterx_perp.global_config;       // shared GlobalConfig
-client.config.packages.waterx_perp.markets["BTCUSD"];   // { market, config }
-client.config.packages.wlp.pool_tokens["USDCUSD"];      // pool token Move type
-client.getMarket("BTCUSD");                              // throwing helper
-client.getPythFeed("BTCUSD");                            // { feed_id, price_info_object }
-client.wlpType();                                        // `${wlp.original_id}::wlp::WLP`
-client.pyth.state_id;                                    // network default
+// Or construct a single line directly:
+import { PerpClient } from "@waterx/sdk/perp";
+const perp = await PerpClient.create("TESTNET", { configRef: "a1b2c3d" });
 ```
 
-`src/constants.ts` only holds enums (`Network`, `PERM_*`, `ORDER_*`,
-`ACTION_*`, `FLOAT_SCALE`, `rawPrice(usd)`, `SENDER`, `CLOCK`).
+`src/constants.ts` holds only shared, line-agnostic primitives (`Network`,
+`FLOAT_SCALE` / `BPS_SCALE` / `DOUBLE_SCALE`, decimals, `MS_PER_YEAR`). Perp-domain
+enums (`PERM_*`, `ORDER_*`, `ACTION_*`, fee rates) live in `src/perp/constants.ts`,
+which re-exports the shared ones. Both stay **chain-agnostic**.
 
 ## Development Commands
 
@@ -154,7 +163,7 @@ pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)
 oracle::aggregate(oracle, collector, clock)
 ```
 
-`utils/pyth.ts::refreshOraclePrices(tx, client, tickers, opts?)` does
+`oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` does
 Hermes fetch + Pyth on-chain update + per-ticker aggregate in one call.
 
 ### WLP pool
@@ -181,10 +190,37 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
 
 ## SDK Layout (src/)
 
-- **`config.ts`** — `WaterXConfig` schema, `loadConfig()`, `defaultConfigUrl()`, `clearConfigCache()`.
-- **`client.ts`** — `WaterXClient` with async `static create(network, opts)`. Holds the resolved config + `SuiGrpcClient`. Exposes `getMarket(symbol)`, `getCollateral(symbol)`, `getPythFeedId(feedKey)`.
-- **`constants.ts`** — enums / permission bitmasks / order tags / action codes / `FLOAT_SCALE` / `rawPrice(usd)`. **Nothing chain-specific.**
-- **`user/`** — low-level builders (one moveCall per file):
+**Symmetric two-line tree** — a thin shared root holds the umbrella + cross-cutting
+infra; each product line is a self-contained folder (`perp/` mirrors `prediction/`):
+
+```
+src/
+  sdk.ts             package root (`.` export) — umbrella + flat-perp + namespaces
+  unified-client.ts  WaterXClient umbrella (account / perp / predict)
+  base-client.ts     shared transport base both line clients extend
+  constants.ts       shared primitives ONLY (Network, scaling, decimals, MS_PER_YEAR)
+  account/           THE BASE — wxa framework + funding; imports NOTHING from perp/
+    client.ts        AccountClientLike capability interface (PerpClient satisfies it)
+    config.ts        account/funding/referral schema + AccountPackages/AccountConfig
+    account.ts  account-request.ts  waterx-account.ts  referral.ts  constants.ts
+    funding/         credit.ts custody.ts wormhole.ts balance.ts consolidate.ts
+  utils/  generated/   shared helpers (math/config/pyth-less) / codegen
+  perp/              ← perp product line (was the src/ root)
+    client.ts  config.ts  config-view.ts  constants.ts
+    fetch.ts  tx-builders.ts  index.ts  user/
+  prediction/        ← prediction product line (client.ts, config.ts, constants.ts, …)
+```
+
+- **`base-client.ts`** — `BaseLineClient<Cfg>`: the transport half shared by both
+  line clients (gRPC construction, read wrappers, `simulate`,
+  `signAndExecuteTransaction`, `packageIds()`). `PerpClient` / `PredictClient` extend it.
+- **`unified-client.ts`** — `WaterXClient`, the umbrella entry point (`client.account` / `client.perp` / `client.predict`), with async `static create(opts)` / `fromClients(perp, predict)`. `Client` is a deprecated alias. `account/index.ts` aggregates the shared `waterx_account` + credit + custody builders for `client.account` from the **`account/` base itself** (re-exports **down** from `account/account.ts` + `account/funding/*`, never up into `perp/`). The builders are typed to the `AccountClientLike` capability interface (`account/client.ts`), which `PerpClient` satisfies structurally. The account/funding/referral builders were **moved** out of perp into the `account/` base (`account/account.ts`, `account/account-request.ts`, `account/referral.ts`, `account/funding/{credit,custody,wormhole,balance,consolidate}.ts`) — there are no leftover `perp/user/*` or `utils/*` re-export shims; consumers import from `account/` (or the `.`/`@waterx/sdk/account` surface) directly.
+- **`constants.ts`** — shared, line-agnostic primitives only: `Network`, scaling (`BPS_SCALE` / `FLOAT_SCALE` / `DOUBLE_SCALE`), decimals, `MS_PER_YEAR`, `DRY_RUN_SENDER` (zero-address simulate sender). **Nothing chain-specific.** Perp-domain enums live in `perp/constants.ts`.
+- **`perp/config.ts`** — `WaterXConfig` schema (perp/wlp/staking packages; `WaterXPackages extends AccountPackages, OraclePackages`), `loadConfig()`, `defaultConfigUrl()`, `clearConfigCache()`. The account/funding/referral package types live in `account/config.ts`; the oracle-rule package types + `PythInfraConfig`/`PYTH_DEFAULTS` live in `oracle/config.ts` (shared infra — `OracleHost` depends on its `OracleConfig`, not on `perp/`). Both are re-exported here for back-compat.
+- **`perp/client.ts`** — `PerpClient` (the perp sub-client; formerly `WaterXClient`) with async `static create(network, opts)`. Extends `BaseLineClient`; delegates config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) to `perp/config-view.ts`. Reached as `client.perp` on the umbrella.
+- **`perp/config-view.ts`** — `PerpConfigView`: the canonical-schema lookups split off the transport client; pure, no gRPC.
+- **`perp/constants.ts`** — perp-domain enums (permission bitmasks / order tags / action codes / fee rates); re-exports the shared primitives from `../constants.ts` (incl. `DRY_RUN_SENDER`, the line-agnostic zero-address simulate sender) and `ACCUMULATOR_ROOT` from `account/constants.ts`.
+- **`perp/user/`** — low-level builders (one moveCall per file):
   - `account.ts` — wxa account: `createAccount`, `setAlias`, delegate management, `requestDeposit`, `requestWithdraw`, `transferToAccount`.
   - `trading.ts` — `closePositionRequest`, `increasePositionRequest`, `decreasePositionRequest`, `depositCollateralRequest`, `withdrawCollateralRequest`, `executeTrading`, keepers (`liquidate`, `batchLiquidate`, `matchOrders`, `updateFundingRate`, `openPositionByKeeper`, `closePositionByKeeper`).
   - `order.ts` — `buildPlaceOrderArgument`, `placeOrderRequest`, `cancelOrderRequest`, `updateOrderRequest`, `cancelPreOrderRequest`, `addPreOrderRequest`.
@@ -197,13 +233,13 @@ by ticker (the rule's `Config.identifier_map` resolves the on-chain
     - Keeper drain: `executeWithdrawalWormhole` / `executeWithdrawalNative` (caller must be on the executor allowlist).
     - PSM direct: `custodyMint` (against the native `CustodyVault`).
     Needs `waterx_credit` + `wormhole_bridge` + `withdrawal_queue` (+ `native_custody` for the native paths) in config.
-  - `referral.ts` — **stub**: contract has no `referral_table` module anymore; functions throw `removed in v3`.
-- **`fetch.ts`** — read-only `simulate`-based queries. Perp reads (positions / orders / market / pool / global config / referrals) go through `waterx_perp_view`; PSM reads (`getCustodyVaultData`, `getCustodyAssetData`) hit `native_custody` directly; bridge rate-limit / cap snapshot (`getBridgeLimits` — daily mint/burn + usage, per-tx caps, optional per-account `personalBurned`, optional `mintedFor` backing per (chain, EVM token)) batches `wormhole_bridge` views in a single simulate. Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, `BridgeLimitsView`, etc.). **`getSpendableCreditBalance`** — inclusive wxUSD read (internal slot + parked backing + CREDIT at account address); same probe as consolidate sweep.
-- **`tx-builders.ts`** — high-level async `build*Tx` wrappers that compose optional `appendConsolidateToUsd` pre-sweep (`consolidateToUsd`, default `true`), oracle refresh + `*Request` + `executeTrading` for perp trading. Sync low-level builders never auto-prepend the sweep — apps must call async `build*Tx` (or `buildConsolidateToUsdTx` separately).
-- **`utils/consolidate-balance.ts`** — shared gRPC probe/rescale helpers for `appendConsolidateToUsd` and `getSpendableCreditBalance`.
-- **`prediction/tx-builders.ts`** — async **`buildPlaceOrderTx`** / **`buildBatchClaimTx`** with the same optional pre-sweep (needs `WaterXClient` + `PredictClient`). Unified `Client.buildPredictPlaceOrderTx` / `buildPredictBatchClaimTx` wrap both clients. Sync `placeOrder` / `batchClaim` in `prediction.ts` do not auto-sweep.
-- **`utils/pyth.ts`** — Hermes REST, on-chain Pyth update PTB, `aggregateTickerWithPyth`, `refreshOraclePrices`. The single source of truth for oracle freshness.
-- **`generated/`** — `sui-ts-codegen` output for the packages in `sui-codegen.config.mjs` (incl. `native_custody`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen.
+  - `referral.ts` — referral builders backed by the standalone `waterx_referral` package (`setReferralCode` / `useReferralCode` / …). Requires `config.packages.waterx_referral.{published_at,referral_table}`; each builder throws (config guard) when that is unset so misconfigured deployments fail loudly rather than aborting on-chain.
+- **`perp/fetch.ts`** — barrel over `perp/fetch/` read-only `simulate`-based queries, split by domain: `market.ts` (account data + market / pool / token-pool / global config via `waterx_perp_view`), `positions.ts` (position / order reads + paginated lists + redeem requests), `account.ts` (wxa account reads + `getSpendableCreditBalance` inclusive wxUSD read), `custody.ts` (`native_custody` PSM: `getCustodyVaultData` / `getCustodyAssetData`), `bridge.ts` (`getBridgeLimits` rate-limit/cap snapshot + `getBridgeFee` withdrawal-queue estimate). Referral reads (`waterx_referral`: `getRefererFor` / `isValidReferralCode` / `referralCodeExists`) live in the **account base** (`account/fetch/referral.ts`, typed to `WxaClientLike`) and are re-exported through this barrel for the perp surface. The generic simulate/decode plumbing also lives in the base (`account/fetch/simulate.ts`); `fetch/simulate.ts` re-exports it and adds the perp-only `withLp` (both internal). Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, `BridgeLimitsView`, etc.).
+- **`perp/tx-builders.ts`** — barrel over `perp/tx-builders/` high-level async `build*Tx` composers, split by domain: `common.ts` (`CommonBuildOpts` + request/execute envelope + WLP oracle refresh), `consolidate.ts` (`appendConsolidate*` parked-balance → wxUSD pre-sweep, `consolidateToUsd` default `true`), `trading.ts` (position lifecycle + collateral + order lifecycle), `wlp.ts` (mint / mint+stake / unstake+redeem / cancel-redeem+restake), `rewards.ts` (claim staking rewards), `credit.ts` (cross-chain bridge). Sync low-level builders never auto-prepend the sweep — apps must call async `build*Tx` (or `buildConsolidateToUsdTx` separately).
+- **`account/funding/balance.ts`** — shared gRPC probe/rescale helpers for `appendConsolidateToUsd` (in `account/funding/consolidate.ts`) and `getSpendableCreditBalance`.
+- **`prediction/tx-builders.ts`** — async **`buildPlaceOrderTx`** / **`buildBatchClaimTx`** with the same optional pre-sweep (needs `PerpClient` + `PredictClient`). Umbrella `WaterXClient.buildPredictPlaceOrderTx` / `buildPredictBatchClaimTx` wrap both clients. Sync `placeOrder` / `batchClaim` in `prediction.ts` do not auto-sweep.
+- **`oracle/`** — the single source of truth for oracle freshness, split by concern: `pyth.ts` (Hermes REST + on-chain Pyth update PTB + `PythCache`; **no** rule imports), `rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` (one oracle rule per file), `aggregate.ts` (the sole orchestrator — `aggregateTicker` / `aggregateTickerWithPyth` / `refreshOraclePrices`), `host.ts` (`OracleHost` structural interface; `PerpClient` satisfies it, so the oracle code is decoupled from the concrete client), `config.ts` (the oracle-rule package schema + `PythInfraConfig`/`PYTH_DEFAULTS` + the narrow `OracleConfig`/`OraclePackages` — hoisted out of `perp/config.ts`, which now re-exports them and `WaterXPackages extends OraclePackages`). Public surface re-exported from `oracle/index.ts`. Was the monolithic `utils/pyth.ts`.
+- **`generated/`** — the **single** `sui-ts-codegen` output root for every package in `sui-codegen.config.mjs` (incl. `native_custody` and `waterx_prediction` — the prediction line imports from here too; there is no longer a separate `src/prediction/generated/`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen **and** annotates the MoveStructs that embed a MoveEnum (`VecSet`/`LinkedTable`/`Node`, `waterx_prediction` `Market`/`MarketView`) with `: MoveStruct<any, any>` to dodge TS2883.
 
 ## Naming conventions
 

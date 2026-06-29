@@ -14,7 +14,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { removeDelegate } from "../../src/index.ts";
+import { removeDelegate } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

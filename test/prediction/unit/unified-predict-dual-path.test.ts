@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import * as predAccount from "../../../src/prediction/account.ts";
 import * as predAdmin from "../../../src/prediction/admin.ts";
 import * as predFetch from "../../../src/prediction/fetch.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
@@ -29,8 +28,16 @@ const fnNames = (ns: object): string[] =>
     .filter(([, v]) => typeof v === "function")
     .map(([k]) => k);
 
+// Generic waterx_account ops moved to the shared `client.account`; only the
+// prediction-specific account ops stay bound on `client.predict`.
+const PREDICT_SPECIFIC_ACCOUNT_OPS = [
+  "setDelegatePredictionPermission",
+  "whitelistPredictionProtocol",
+  "allowPredictionProtocolAsset",
+  "disallowPredictionProtocolAsset",
+];
 const expectedPredictPtbBuilders = [
-  ...fnNames(predAccount).filter((n) => n !== "resolveRegistryAccountId"),
+  ...PREDICT_SPECIFIC_ACCOUNT_OPS,
   ...fnNames(predAdmin),
   ...fnNames(predOps),
 ].filter((n) => !NON_CLIENT_FIRST.has(n));
@@ -57,14 +64,16 @@ describe("unified Client — prediction dual-path PTB equivalence", () => {
 
   it("fetch helpers are bound but distinct wrappers (e2e fetch parity tested separately)", () => {
     for (const name of fnNames(predFetch).filter((n) => !NON_CLIENT_FIRST.has(n))) {
-      expect((unified.predict as Record<string, unknown>)[name]).toBeTypeOf("function");
-      expect((unified.predict as Record<string, unknown>)[name]).not.toBe(
+      expect((unified.predict as unknown as Record<string, unknown>)[name]).toBeTypeOf("function");
+      expect((unified.predict as unknown as Record<string, unknown>)[name]).not.toBe(
         (predFetch as Record<string, unknown>)[name],
       );
     }
   });
 
   it("extractReturnBytes is not bound on the facade", () => {
-    expect((unified.predict as Record<string, unknown>).extractReturnBytes).toBeUndefined();
+    expect(
+      (unified.predict as unknown as Record<string, unknown>).extractReturnBytes,
+    ).toBeUndefined();
   });
 });

@@ -16,7 +16,7 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 import { buildOpenPositionTx, getMarketSummary } from "@waterx/sdk";
-import type { BaseAsset, WaterXClient } from "@waterx/sdk";
+import type { BaseAsset, PerpClient } from "@waterx/sdk";
 
 import { lifecycleRow } from "../e2e/lifecycle-test-markets.ts";
 import {
@@ -48,7 +48,7 @@ export function leverageAboveMax(maxLeverageBps: bigint): number {
  */
 export async function assertOpenAboveMaxLeverageAborts(
   ctx: SimulateCtx,
-  client: WaterXClient,
+  client: PerpClient,
   base: BaseAsset,
   accountId: string,
   owner: string,

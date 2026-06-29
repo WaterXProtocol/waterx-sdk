@@ -1,20 +1,8 @@
-import type { SuiClientTypes } from "@mysten/sui/client";
-import type { Signer } from "@mysten/sui/cryptography";
-import { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction } from "@mysten/sui/transactions";
 
-import {
-  loadConfig,
-  type LoadConfigOptions,
-  type WaterxConfigPackageBase,
-  type WaterxPredictionConfig,
-} from "./config.ts";
+import { BaseLineClient } from "../base-client.ts";
+import { loadConfig, type LoadConfigOptions, type WaterxPredictionConfig } from "./config.ts";
 import type { Network } from "./constants.ts";
-
-const GRPC_URLS: Record<Network, string> = {
-  MAINNET: "https://fullnode.mainnet.sui.io:443",
-  TESTNET: "https://fullnode.testnet.sui.io:443",
-};
 
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
@@ -22,13 +10,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   settlement?: string;
 }
 
-export class PredictClient {
-  /** gRPC client - all RPC including `simulateTransaction`. */
-  grpcClient: SuiGrpcClient;
-  /** Network identifier in upper case (`MAINNET` / `TESTNET`). */
-  network: Network;
-  /** Parsed canonical `waterx-config` JSON. */
-  config: WaterxPredictionConfig;
+export class PredictClient extends BaseLineClient<WaterxPredictionConfig> {
   /** Default settlement alias for prediction registry lookups. */
   settlement: string;
 
@@ -37,15 +19,8 @@ export class PredictClient {
     config: WaterxPredictionConfig,
     opts: { grpcUrl?: string; settlement?: string } = {},
   ) {
-    this.network = network;
-    this.config = config;
+    super(network, config, opts);
     this.settlement = opts.settlement ?? "USD";
-    const baseUrl = opts.grpcUrl ?? config.grpcUrl ?? GRPC_URLS[network];
-
-    this.grpcClient = new SuiGrpcClient({
-      baseUrl,
-      network: network.toLowerCase() as "mainnet" | "testnet",
-    });
   }
 
   static testnet(params: CreateClientOptions = {}): Promise<PredictClient> {
@@ -71,70 +46,18 @@ export class PredictClient {
     });
   }
 
-  getObject(objectId: string) {
-    return this.grpcClient.getObject({ objectId });
-  }
-
-  getObjects(objectIds: string[]) {
-    return this.grpcClient.getObjects({ objectIds });
-  }
-
-  listOwnedObjects(owner: string) {
-    return this.grpcClient.listOwnedObjects({ owner });
-  }
-
-  listCoins(params: { owner: string; coinType?: string }) {
-    return this.grpcClient.listCoins(params);
-  }
-
-  getBalance(params: { owner: string; coinType?: string }) {
-    return this.grpcClient.getBalance(params);
-  }
-
-  listDynamicFields(parentId: string): ReturnType<SuiGrpcClient["listDynamicFields"]> {
-    return this.grpcClient.listDynamicFields({ parentId });
-  }
-
-  getDynamicField(parentId: string, name: { type: string; bcs: Uint8Array }) {
-    return this.grpcClient.getDynamicField({ parentId, name });
-  }
-
-  waitForTransaction(digest: string) {
-    return this.grpcClient.waitForTransaction({ digest });
-  }
-
-  async simulate(tx: Transaction) {
-    return withRpcRetry(() =>
-      this.grpcClient.simulateTransaction({
-        transaction: tx,
-        include: { commandResults: true },
-      }),
-    );
-  }
-
-  async signAndExecuteTransaction<
-    Include extends SuiClientTypes.TransactionInclude = object,
-  >(params: {
-    signer: { toSuiAddress: () => string } & Signer;
-    transaction: Transaction | Uint8Array;
-    additionalSignatures?: string[];
-    include?: Include & SuiClientTypes.TransactionInclude;
-  }) {
-    return this.grpcClient.signAndExecuteTransaction(params);
+  /**
+   * Simulate with rate-limit retry — the prediction line hammers the public
+   * testnet RPC harder (batch claims / dual-path reads), so it backs off on
+   * `RESOURCE_EXHAUSTED` where the base client does not.
+   */
+  override async simulate(tx: Transaction) {
+    return withRpcRetry(() => super.simulate(tx));
   }
 
   // ========================================================
-  // Shorthand accessors (canonical-schema lookups)
+  // Config-schema lookups (prediction-specific)
   // ========================================================
-
-  /** All package IDs (`published_at`) keyed by package name. */
-  packageIds(): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const [name, pkg] of Object.entries(this.config.packages)) {
-      if (isPublishedPackage(pkg)) out[name] = pkg.published_at;
-    }
-    return out;
-  }
 
   packageId(): string {
     return this.config.packages.waterx_prediction.published_at;
@@ -219,15 +142,6 @@ export class PredictClient {
       "packages.waterx_referral.referral_table",
     );
   }
-}
-
-function isPublishedPackage(value: unknown): value is WaterxConfigPackageBase {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    "published_at" in value &&
-    typeof value.published_at === "string"
-  );
 }
 
 function requireConfigValue(map: object | undefined, key: string, path: string): string {

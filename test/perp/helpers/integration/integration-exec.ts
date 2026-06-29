@@ -1,11 +1,11 @@
 /**
- * Sign+execute helpers parameterized by `WaterXClient` (e2e preflight + integration setup).
+ * Sign+execute helpers parameterized by `PerpClient` (e2e preflight + integration setup).
  */
 import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
-import { getMarketData } from "../../../../src/fetch.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
+import { getMarketData } from "../../../../src/perp/fetch.ts";
 import {
   integrationGasBudget,
   isInsufficientSuiGasError,
@@ -20,7 +20,7 @@ import { WATERX_PERP_ABORT } from "../waterx-perp-error-codes.ts";
 let signAndExecuteChain: Promise<void> = Promise.resolve();
 
 async function execTxUnlocked(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   signer: Ed25519Keypair,
   opts?: { gasBudget?: number },
@@ -41,7 +41,7 @@ async function execTxUnlocked(
 }
 
 export async function execTxOnClient(
-  client: WaterXClient,
+  client: PerpClient,
   tx: Transaction,
   signer: Ed25519Keypair,
   opts?: { gasBudget?: number },
@@ -70,7 +70,7 @@ function integrationTradingRetryDelayMs(): number {
 }
 
 async function resolveTradingRetryDelayMs(
-  client: WaterXClient,
+  client: PerpClient,
   opts?: { retryDelayMs?: number; cooldownTickers?: readonly string[] },
 ): Promise<number> {
   if (opts?.retryDelayMs !== undefined) return opts.retryDelayMs;
@@ -96,7 +96,7 @@ function isCooldownNotElapsedError(e: unknown): boolean {
 }
 
 export async function execBuiltTxWithCooldownRetriesOnClient(
-  client: WaterXClient,
+  client: PerpClient,
   build: () => Promise<Transaction>,
   signer: Ed25519Keypair,
   opts?: {

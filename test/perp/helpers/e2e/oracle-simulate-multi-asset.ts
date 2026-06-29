@@ -3,7 +3,7 @@
  * Scratch / sizing helpers use static USD hints from {@link ./oracle-pyth-context.ts}.
  */
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import { getUsdHintForTicker } from "./oracle-pyth-context.ts";
 
 export const ORACLE_FLOAT_USD_SCALE = 1_000_000_000;
@@ -66,7 +66,7 @@ function resolveTickerKey(symbolOrTicker: string): string {
 
 /** Hint table USD per symbol/ticker (legacy `bases` array supported). */
 export async function fetchSimulatedUsdPricesForBases(
-  client: WaterXClient,
+  client: PerpClient,
   bases: readonly string[],
   _opts?: { pythCache?: unknown },
 ): Promise<Record<string, number>> {
@@ -81,7 +81,7 @@ export async function fetchSimulatedUsdPricesForBases(
 }
 
 export async function fetchSimulatedCollateralUsdPrice(
-  client: WaterXClient,
+  client: PerpClient,
   collateralKey: string,
 ): Promise<bigint> {
   void client;

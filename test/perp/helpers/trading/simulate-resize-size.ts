@@ -12,7 +12,7 @@ import {
   PythCache,
   type BaseAsset,
   type CollateralAsset,
-  type WaterXClient,
+  type PerpClient,
 } from "@waterx/sdk";
 
 import { DUMMY_SENDER } from "../e2e/testnet.ts";
@@ -66,7 +66,7 @@ function extractReturnBytes(result: unknown, commandIndex: number, returnIndex =
  * for {@link parseResizeSizingProbeResult}.
  */
 export async function buildResizeSizingProbeTransaction(
-  client: WaterXClient,
+  client: PerpClient,
   bases: readonly BaseAsset[],
   params: ResizeSizingProbeParams,
   opts?: BuildResizeSizingProbeOptions,
@@ -130,7 +130,7 @@ export function parseResizeSizingProbeResult(
  * `bases`. Throws if simulation fails (caller can inspect the message and skip on oracle flakes).
  */
 export async function simulateResizeDerivedSizesForBases(
-  client: WaterXClient,
+  client: PerpClient,
   bases: readonly BaseAsset[],
   params: ResizeSizingProbeParams,
   opts?: BuildResizeSizingProbeOptions,
@@ -147,7 +147,7 @@ export async function simulateResizeDerivedSizesForBases(
 
 /** Convenience for a single market. */
 export async function simulateResizeDerivedSize(
-  client: WaterXClient,
+  client: PerpClient,
   base: BaseAsset,
   params: ResizeSizingProbeParams,
   opts?: BuildResizeSizingProbeOptions,
@@ -168,7 +168,7 @@ export type ResolveOrderSizingProbeParams = {
  * Dry-run `trading::resolve_order_size` at a trigger price: Hermes + feeds + `resolve_order_size`.
  */
 export async function simulateResolveOrderDerivedSize(
-  client: WaterXClient,
+  client: PerpClient,
   base: BaseAsset,
   params: ResolveOrderSizingProbeParams,
   opts?: BuildResizeSizingProbeOptions,

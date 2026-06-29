@@ -15,7 +15,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { requestRedeemWlp } from "../../src/index.ts";
+import { requestRedeemWlp } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

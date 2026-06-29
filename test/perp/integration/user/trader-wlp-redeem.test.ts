@@ -4,8 +4,8 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { getAccountBalance, getRedeemRequests } from "../../../../src/fetch.ts";
-import { cancelRedeemWlp, requestRedeemWlp } from "../../../../src/user/wlp.ts";
+import { getAccountBalance, getRedeemRequests } from "../../../../src/perp/fetch.ts";
+import { cancelRedeemWlp, requestRedeemWlp } from "../../../../src/perp/user/wlp.ts";
 import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";
 import { ensureIntegrationMinWlpBalance } from "../helpers/ensure-wxa-balances.ts";
 import {

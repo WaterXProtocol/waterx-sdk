@@ -13,7 +13,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { setAlias } from "../../src/index.ts";
+import { setAlias } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

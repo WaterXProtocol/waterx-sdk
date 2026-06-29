@@ -2,7 +2,7 @@ import {
   mintCredit,
   mintCreditFromRequest,
   mintCreditToAccount,
-} from "../../../../src/user/custody.ts";
+} from "../../../../src/account/funding/custody.ts";
 import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import { ACCOUNT_ID, caseMutate, type PerpDualPathCase } from "./perp-dual-path-shared.ts";
@@ -18,7 +18,7 @@ export const perpCustodyDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.mintCredit(tx, {
+      p.account.mintCredit(tx, {
         accountId: ACCOUNT_ID,
         assetCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,
@@ -34,7 +34,7 @@ export const perpCustodyDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.mintCreditFromRequest(tx, {
+      p.account.mintCreditFromRequest(tx, {
         depositRequest: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,
       });
@@ -50,7 +50,7 @@ export const perpCustodyDualPathCases: PerpDualPathCase[] = [
       });
     },
     (p, tx) => {
-      p.mintCreditToAccount(tx, {
+      p.account.mintCreditToAccount(tx, {
         accountId: ACCOUNT_ID,
         assetCoin: tx.object(PTB_DUMMY_DEPOSIT_COIN),
         assetType: MOCK_CUSTODY_ASSET_TYPE,

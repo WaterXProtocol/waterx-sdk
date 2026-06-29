@@ -3,7 +3,7 @@
  */
 import type { Transaction } from "@mysten/sui/transactions";
 
-import type { WaterXClient } from "../../../../src/client.ts";
+import type { PerpClient } from "../../../../src/perp/client.ts";
 import type { ScratchTradingScenario } from "./scratch-trading-scenarios.ts";
 
 export type SimulateScratchCtx = { skip: (reason?: string) => void };
@@ -16,7 +16,7 @@ async function skip(ctx: SimulateScratchCtx): Promise<void> {
 
 export async function scratchSimulateOpenApproxOracle(
   ctx: SimulateScratchCtx,
-  _client: WaterXClient,
+  _client: PerpClient,
   _accountId: string,
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
@@ -26,7 +26,7 @@ export async function scratchSimulateOpenApproxOracle(
 
 export async function scratchSimulateOpenExplicitSizeWithFee(
   ctx: SimulateScratchCtx,
-  _client: WaterXClient,
+  _client: PerpClient,
   _accountId: string,
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
@@ -36,7 +36,7 @@ export async function scratchSimulateOpenExplicitSizeWithFee(
 
 export async function scratchSimulateOpenResize(
   ctx: SimulateScratchCtx,
-  _client: WaterXClient,
+  _client: PerpClient,
   _accountId: string,
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
@@ -46,7 +46,7 @@ export async function scratchSimulateOpenResize(
 
 export async function scratchSimulateOpenTableApproxPrice(
   ctx: SimulateScratchCtx,
-  _client: WaterXClient,
+  _client: PerpClient,
   _accountId: string,
   _scenario: ScratchTradingScenario,
   _setSender: (tx: Transaction) => void,
@@ -57,7 +57,7 @@ export async function scratchSimulateOpenTableApproxPrice(
 
 export async function scratchSimulateStatefulOps(
   ctx: SimulateScratchCtx,
-  _client: WaterXClient,
+  _client: PerpClient,
   _accountId: string,
   _scenario: ScratchTradingScenario,
   _positionId: number,

@@ -16,7 +16,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { transferToAccount } from "../../src/index.ts";
+import { transferToAccount } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();

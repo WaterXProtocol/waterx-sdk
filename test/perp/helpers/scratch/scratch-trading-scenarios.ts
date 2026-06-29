@@ -4,7 +4,7 @@
  *
  * To add a market: extend {@link LIFECYCLE_TEST_MARKETS}; iteration uses {@link activeLifecycleTestBasesForClient}.
  */
-import type { WaterXClient } from "@waterx/sdk";
+import type { PerpClient } from "@waterx/sdk";
 
 import {
   activeLifecycleTestBasesForClient,
@@ -72,7 +72,7 @@ export type ScratchTradingScenario = {
 /**
  * All scratch scenarios for lifecycle bases that exist on this client's network.
  */
-export function scratchTradingScenarios(client: WaterXClient): ScratchTradingScenario[] {
+export function scratchTradingScenarios(client: PerpClient): ScratchTradingScenario[] {
   return activeLifecycleTestBasesForClient(client).map((base) => {
     const row = lifecycleRow(base);
     const levSim = row.simulateLeverage ?? row.leverage;

@@ -7,7 +7,8 @@ import { defineConfig } from "vitest/config";
  */
 const repoRoot = path.resolve(__dirname, "../..");
 const aliases = [
-  { find: "@waterx/sdk", replacement: path.resolve(repoRoot, "./src/index.ts") },
+  // Keep in sync with root `vitest.config.ts` (`@waterx/sdk` → `src/perp/index.ts`).
+  { find: "@waterx/sdk", replacement: path.resolve(repoRoot, "./src/perp/index.ts") },
   {
     find: /^~predict-scripts\//,
     replacement: path.resolve(repoRoot, "./test/prediction/scripts") + "/",
