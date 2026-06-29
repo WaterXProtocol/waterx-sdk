@@ -10,6 +10,67 @@ reference the PR that introduced them.
 
 ### Changed
 
+- **BREAKING — `WaterXClient` is now the umbrella entry point.** (#55) The class
+  previously named `WaterXClient` (the perp product line) is renamed
+  **`PerpClient`**; the unified facade previously named `Client` is renamed
+  **`WaterXClient`** and is the single main entry. It exposes three namespaces:
+  - `client.account` — the shared `waterx_account` framework **plus** funding
+    (credit + custody) builders. Backed by the perp sub-client config (which
+    carries the shared `AccountRegistry`, bridge, native_custody,
+    withdrawal_queue, credit_registry).
+  - `client.perp` — **is** the `PerpClient` instance with the perp builders/views
+    grafted on (trading / orders / WLP / staking / referral). Signing & config
+    methods (`signAndExecuteTransaction`, `simulate`, `getMarket`, …) sit on the
+    same object. The credit/custody *high-level* `build*Tx` wrappers
+    (`buildRedeemVaaTx`, `buildRequestCreditWithdrawTx`, `buildExecuteWithdrawalTx`)
+    remain here; only the low-level credit/custody builders move to `client.account`.
+  - `client.predict` — **is** the `PredictClient` instance with the prediction
+    builders/views grafted on. Generic account builders (`createAccount`,
+    `requestDeposit`/`deposit`, `requestWithdraw`/`withdraw`, delegate add/remove,
+    `transferCoinToAccount`, `consume*Direct`, `resolveRegistryAccountId`) are
+    dropped from `client.predict`; prediction-specific account ops
+    (`setDelegatePredictionPermission`, `whitelistPredictionProtocol`,
+    `allow`/`disallowPredictionProtocolAsset`) are kept.
+  - There are no longer separate `client.perpClient` / `client.predictClient`
+    accessors — `client.perp` / `client.predict` are the clients.
+  - `Client` remains as a deprecated alias of `WaterXClient` for one major cycle.
+  - **No same-name alias for the old perp `WaterXClient`** — importers of the perp
+    client must switch to `PerpClient` (flat at the root or `perp.PerpClient`).
+  - **Cross-network caveat:** `client.account` follows the **perp** line; on
+    split-network setups (`opts.perp.network !== opts.predict.network`), reach the
+    predict line's generic account builders via the `prediction` namespace.
+    `WaterXClient.create` now emits a `console.warn` in this case so it isn't
+    a silent footgun.
+- **Internal: shared transport extracted to `BaseLineClient`.** (#55)
+  `PerpClient` and `PredictClient` no longer each duplicate the gRPC client
+  construction, the read wrappers, `simulate` / `signAndExecuteTransaction`, and
+  `packageIds()` — these now live on a shared `BaseLineClient` base; the perp
+  config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) move to a
+  `PerpConfigView` that `PerpClient` composes. Public surface is unchanged
+  (`PerpClient` / `PredictClient` keep all their methods); `PerpClient`'s
+  `signAndExecuteTransaction` signature widens additively (now accepts the same
+  generic `include` / `additionalSignatures` / `Uint8Array` form as the predict
+  line). A new unit guard asserts no grafted builder name collides with a
+  sub-client prototype method.
+- **Internal: symmetric two-line source layout.** (#55) The perp product line
+  moved from the `src/` root into `src/perp/` (`client.ts`, `config.ts`,
+  `config-view.ts`, `constants.ts`, `fetch.ts`, `tx-builders.ts`, `index.ts`,
+  `user/`), mirroring `src/prediction/`. The root now holds only the umbrella
+  (`sdk.ts`, `unified-client.ts`), the shared `base-client.ts`, shared primitive
+  `constants.ts`, and the shared `account/` / `utils/` / `core/` / `generated/`
+  dirs. Public entry points are unchanged: `@waterx/sdk`, `@waterx/sdk/perp`, and
+  `@waterx/sdk/perp/*` resolve as before (the `exports` map now points `./perp`
+  at `dist/src/perp/`). Perp-domain enums split into `perp/constants.ts` (which
+  re-exports the shared primitives), so `@waterx/sdk/perp/constants` is unchanged.
+- **Internal: split the two oversized perp files by domain.** (#55)
+  `perp/tx-builders.ts` (992 LOC) and `perp/fetch.ts` (915 LOC) became thin
+  barrels over per-domain modules under `perp/tx-builders/`
+  (common / consolidate / trading / wlp / rewards / credit) and `perp/fetch/`
+  (simulate / market / positions / referral / account / custody / bridge), each
+  ≤ ~285 LOC. The barrels re-export the full public surface unchanged
+  (`@waterx/sdk/perp/tx-builders`, `@waterx/sdk/perp/fetch`, and the flat
+  `@waterx/sdk/perp` namespace resolve as before).
+
 - **Generic wxa builders are now line-agnostic (`WxaClientLike`) — shared by both
   the perp and prediction lines.** The shared `account/` create-account / delegate /
   alias builders were typed to the funding-capable `AccountClientLike`; they only
@@ -118,71 +179,6 @@ reference the PR that introduced them.
   shared base layer (account framework + funding + referral) and the oracle module
   are now part of the published surface via `./account`, `./account/*`, `./oracle`,
   and `./oracle/*` package exports.
-
-## [3.0.0] - 2026-06-25
-
-### Changed
-
-- **BREAKING — `WaterXClient` is now the umbrella entry point.** (#55) The class
-  previously named `WaterXClient` (the perp product line) is renamed
-  **`PerpClient`**; the unified facade previously named `Client` is renamed
-  **`WaterXClient`** and is the single main entry. It exposes three namespaces:
-  - `client.account` — the shared `waterx_account` framework **plus** funding
-    (credit + custody) builders. Backed by the perp sub-client config (which
-    carries the shared `AccountRegistry`, bridge, native_custody,
-    withdrawal_queue, credit_registry).
-  - `client.perp` — **is** the `PerpClient` instance with the perp builders/views
-    grafted on (trading / orders / WLP / staking / referral). Signing & config
-    methods (`signAndExecuteTransaction`, `simulate`, `getMarket`, …) sit on the
-    same object. The credit/custody *high-level* `build*Tx` wrappers
-    (`buildRedeemVaaTx`, `buildRequestCreditWithdrawTx`, `buildExecuteWithdrawalTx`)
-    remain here; only the low-level credit/custody builders move to `client.account`.
-  - `client.predict` — **is** the `PredictClient` instance with the prediction
-    builders/views grafted on. Generic account builders (`createAccount`,
-    `requestDeposit`/`deposit`, `requestWithdraw`/`withdraw`, delegate add/remove,
-    `transferCoinToAccount`, `consume*Direct`, `resolveRegistryAccountId`) are
-    dropped from `client.predict`; prediction-specific account ops
-    (`setDelegatePredictionPermission`, `whitelistPredictionProtocol`,
-    `allow`/`disallowPredictionProtocolAsset`) are kept.
-  - There are no longer separate `client.perpClient` / `client.predictClient`
-    accessors — `client.perp` / `client.predict` are the clients.
-  - `Client` remains as a deprecated alias of `WaterXClient` for one major cycle.
-  - **No same-name alias for the old perp `WaterXClient`** — importers of the perp
-    client must switch to `PerpClient` (flat at the root or `perp.PerpClient`).
-  - **Cross-network caveat:** `client.account` follows the **perp** line; on
-    split-network setups (`opts.perp.network !== opts.predict.network`), reach the
-    predict line's generic account builders via the `prediction` namespace.
-    `WaterXClient.create` now emits a `console.warn` in this case so it isn't
-    a silent footgun.
-- **Internal: shared transport extracted to `BaseLineClient`.** (#55)
-  `PerpClient` and `PredictClient` no longer each duplicate the gRPC client
-  construction, the read wrappers, `simulate` / `signAndExecuteTransaction`, and
-  `packageIds()` — these now live on a shared `BaseLineClient` base; the perp
-  config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) move to a
-  `PerpConfigView` that `PerpClient` composes. Public surface is unchanged
-  (`PerpClient` / `PredictClient` keep all their methods); `PerpClient`'s
-  `signAndExecuteTransaction` signature widens additively (now accepts the same
-  generic `include` / `additionalSignatures` / `Uint8Array` form as the predict
-  line). A new unit guard asserts no grafted builder name collides with a
-  sub-client prototype method.
-- **Internal: symmetric two-line source layout.** (#55) The perp product line
-  moved from the `src/` root into `src/perp/` (`client.ts`, `config.ts`,
-  `config-view.ts`, `constants.ts`, `fetch.ts`, `tx-builders.ts`, `index.ts`,
-  `user/`), mirroring `src/prediction/`. The root now holds only the umbrella
-  (`sdk.ts`, `unified-client.ts`), the shared `base-client.ts`, shared primitive
-  `constants.ts`, and the shared `account/` / `utils/` / `core/` / `generated/`
-  dirs. Public entry points are unchanged: `@waterx/sdk`, `@waterx/sdk/perp`, and
-  `@waterx/sdk/perp/*` resolve as before (the `exports` map now points `./perp`
-  at `dist/src/perp/`). Perp-domain enums split into `perp/constants.ts` (which
-  re-exports the shared primitives), so `@waterx/sdk/perp/constants` is unchanged.
-- **Internal: split the two oversized perp files by domain.** (#55)
-  `perp/tx-builders.ts` (992 LOC) and `perp/fetch.ts` (915 LOC) became thin
-  barrels over per-domain modules under `perp/tx-builders/`
-  (common / consolidate / trading / wlp / rewards / credit) and `perp/fetch/`
-  (simulate / market / positions / referral / account / custody / bridge), each
-  ≤ ~285 LOC. The barrels re-export the full public surface unchanged
-  (`@waterx/sdk/perp/tx-builders`, `@waterx/sdk/perp/fetch`, and the flat
-  `@waterx/sdk/perp` namespace resolve as before).
 
 ## [2.4.1] - 2026-06-24
 
