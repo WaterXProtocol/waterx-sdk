@@ -126,7 +126,7 @@ Endpoint matrix: [`helpers/api-endpoints.ts`](helpers/api-endpoints.ts).
 | `pendingClosePositionId`               | PENDING_CLOSE position (for `selfCancelClose`)       | seed fixture, then position cursor      |
 | `claimablePositionId`                  | OPEN position whose market is RESOLVED (for `claim`) | seed fixture, then resolved-market scan |
 | `openMarketIdHex` / `claimMarketIdHex` | unresolved / resolved test markets                   | seed fixture, then cursors              |
-| `usdCoinObjectId`                      | settlement coin object for payment PTBs              | `listCoins(owner)`                      |
+| `usdCoinObjectId` / `walletCoin`         | wallet coin for deposit PTBs (settlement USD, else MOCK_USDC) | env / `listCoins(owner)` |
 
 The seed fixture file (`fixtures/testnet-seeded.json`) is **git-ignored** and refreshed by `pnpm seed:testnet`.
 

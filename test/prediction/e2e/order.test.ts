@@ -143,10 +143,11 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
       guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
     }
     if (!fx.adminUsdCoinObjectId) {
-      guard.skipPermanent(
-        ctx,
-        `adminPlaceOrderFor dry-run requires a settlement coin owned by the AdminCap holder. Transfer USD to that wallet (see scripts/probe-admin-coins.ts).`,
-      );
+      const hint =
+        fx.adminWalletCoin?.source === "mock-usdc"
+          ? "AdminCap holder has MOCK_USDC but adminPlaceOrderFor requires Coin<::usd::USD>."
+          : "adminPlaceOrderFor dry-run requires Coin<::usd::USD> owned by the AdminCap holder (see test/prediction/scripts/probe-admin-coins.ts).";
+      guard.skipPermanent(ctx, hint);
     }
     const adminCap = requirePredictionAdminCap(client);
     const adminOwner = await resolveObjectOwner(client, adminCap);

@@ -2,10 +2,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import {
   addDelegate,
   createAccount,
-  deposit,
   removeDelegate,
   setDelegatePredictionPermission,
-  transferCoinToAccount,
   whitelistPredictionProtocol,
   withdraw,
 } from "~predict/account.ts";
@@ -13,6 +11,10 @@ import type { PredictClient } from "~predict/client.ts";
 import { beforeAll, describe, it } from "vitest";
 
 import { PTB_DUMMY } from "../fixtures/ptb-params.ts";
+import {
+  appendE2eAccountDeposit,
+  appendE2eTransferCoinToAccount,
+} from "../helpers/e2e-account-deposit.ts";
 import {
   createE2eClient,
   discoverFixtures,
@@ -22,7 +24,7 @@ import {
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import {
   expectSimulateSuccess,
-  expectSimulateSuccessAsCoinOwner,
+  expectSimulateSuccessAsAccountOwner,
   resolveObjectOwner,
 } from "../helpers/simulate.ts";
 
@@ -47,18 +49,18 @@ describe(`account PTB simulate (${predictE2eNetwork})`, () => {
 
   it("transferCoinToAccount", async (ctx) => {
     guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
-    const coin = guard.skipUnlessUsdCoin(ctx);
+    const walletCoin = guard.skipUnlessWalletCoin(ctx);
     const tx = new Transaction();
-    transferCoinToAccount(client, tx, { accountId: fx.accountId, coin });
-    await expectSimulateSuccessAsCoinOwner(client, tx, coin);
+    appendE2eTransferCoinToAccount(client, tx, { accountId: fx.accountId, walletCoin });
+    await expectSimulateSuccessAsAccountOwner(client, tx, fx.accountId);
   });
 
-  it("deposit (request_deposit + consume_deposit_direct)", async (ctx) => {
+  it("deposit (direct USD or PSM MOCK_USDC → consume_deposit_direct)", async (ctx) => {
     guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
-    const coin = guard.skipUnlessUsdCoin(ctx);
+    const walletCoin = guard.skipUnlessWalletCoin(ctx);
     const tx = new Transaction();
-    deposit(client, tx, { accountId: fx.accountId, coin });
-    await expectSimulateSuccessAsCoinOwner(client, tx, coin);
+    appendE2eAccountDeposit(client, tx, { accountId: fx.accountId, walletCoin });
+    await expectSimulateSuccessAsAccountOwner(client, tx, fx.accountId);
   });
 
   it("requestWithdraw", async (ctx) => {

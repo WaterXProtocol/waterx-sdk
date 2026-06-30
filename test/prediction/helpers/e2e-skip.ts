@@ -3,6 +3,7 @@ import type { TestContext } from "vitest";
 
 import { tryResolveAccountOwner } from "./account-owner.ts";
 import type { E2eFixtures } from "./e2e-discovery.ts";
+import type { DiscoveredWalletCoin } from "./wallet-coin-discovery.ts";
 
 /** Skip the current test with a visible reason instead of silently passing. */
 export function skipUnlessDefined<T>(
@@ -40,15 +41,22 @@ export function skipPermanent(ctx: TestContext, reason: string): never {
   throw new Error("unreachable");
 }
 
-/** Skip when discovery did not find a settlement coin object for payment/deposit PTBs. */
-export function skipUnlessUsdCoin(ctx: TestContext, fx: E2eFixtures): string {
-  if (!fx.usdCoinObjectId) {
+/** Skip when discovery did not find a wallet coin for deposit / transfer PTBs. */
+export function skipUnlessWalletCoin(ctx: TestContext, fx: E2eFixtures): DiscoveredWalletCoin {
+  const coin = fx.walletCoin;
+  if (!coin) {
     ctx.skip(
       true,
-      `No settlement coin object discovered for dry-run payment tests. Discovery: ${fixtureSummary(fx)}`,
+      `No wallet coin discovered (settlement USD or MOCK_USDC). Discovery: ${fixtureSummary(fx)}`,
     );
+    throw new Error("unreachable");
   }
-  return fx.usdCoinObjectId as string;
+  return coin;
+}
+
+/** @deprecated Prefer {@link skipUnlessWalletCoin} — returns object id for legacy callers. */
+export function skipUnlessUsdCoin(ctx: TestContext, fx: E2eFixtures): string {
+  return skipUnlessWalletCoin(ctx, fx).objectId;
 }
 
 /** Skip when discovery did not find an account with `hasData=true` (delegate / withdraw). */
@@ -82,6 +90,7 @@ export function fixtureSummary(fx: E2eFixtures): string {
     openMarketIdHex: fx.openMarketIdHex ?? null,
     claimMarketIdHex: fx.claimMarketIdHex ?? null,
     usdCoinObjectId: fx.usdCoinObjectId ?? null,
+    walletCoinSource: fx.walletCoin?.source ?? null,
     meta: fx.meta,
   });
 }
@@ -128,6 +137,9 @@ export function fixtureGuards(fx: E2eFixtures, client?: PredictClient) {
     },
     skipUnlessAccountReady(ctx: TestContext): void {
       skipUnlessAccountReady(ctx, fx);
+    },
+    skipUnlessWalletCoin(ctx: TestContext) {
+      return skipUnlessWalletCoin(ctx, fx);
     },
     skipUnlessUsdCoin(ctx: TestContext): string {
       return skipUnlessUsdCoin(ctx, fx);

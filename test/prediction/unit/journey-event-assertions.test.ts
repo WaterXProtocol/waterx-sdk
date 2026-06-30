@@ -12,6 +12,7 @@ const ORDER: OrderView = {
   orderId: 42n,
   kind: "OPEN",
   accountId: `0x${"a".repeat(64)}`,
+  receiverAccountId: `0x${"a".repeat(64)}`,
   marketId: new Uint8Array(Buffer.from("pred-e2e-open-v1", "utf8")),
   marketIdHex: `0x${Buffer.from("pred-e2e-open-v1", "utf8").toString("hex")}`,
   selection: "YES",

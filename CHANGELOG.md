@@ -20,7 +20,18 @@ reference the PR that introduced them.
   `@waterx/sdk/prediction` (root, `user`, and `user.position` namespaces), matching
   the existing `requestClose` / `selfCancelClose` shape.
 
+### Fixed
+
+- **`OrderView` BCS decode missing `receiver_account_id`.** `getOrder` and all
+  order-cursor discovery now match the on-chain `view::OrderView` shape (added in
+  bet-sharing); fixes testnet e2e `fetch.getOrder` and order-id fixture resolution.
+
 ### Changed
+
+- **Predict/perp E2E discovery prefers runnable fixtures over skip.** Wallet coin
+  discovery falls back from settlement `::usd::USD` to MOCK_USDC + PSM deposit path;
+  perp custody resolves canonical wxa rows; order/position scans walk recent cursors
+  and upgrade to `filledShares >= 2` positions when available.
 
 - **BREAKING — `WaterXClient` is now the umbrella entry point.** (#55) The class
   previously named `WaterXClient` (the perp product line) is renamed
