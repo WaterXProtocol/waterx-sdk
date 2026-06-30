@@ -27,7 +27,6 @@ export interface OrderView {
   orderId: bigint;
   kind: OrderKind;
   accountId: string;
-  receiverAccountId: string;
   marketId: Uint8Array;
   marketIdHex: string;
   selection: Selection;

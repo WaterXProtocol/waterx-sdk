@@ -16,7 +16,6 @@ import {
   getAccountData,
   getAccountIds,
   getMarketById,
-  getOrder,
   getOrderCursor,
   getPosition,
   getPositionCursor,
@@ -44,6 +43,7 @@ import {
   resolveMockUsdcCoinType,
   resolveOwnerRegistryAccountId,
 } from "../../helpers/account-funding.ts";
+import { getChainOrderView } from "../../helpers/chain-order-view.ts";
 import {
   assertSuccessfulExecution,
   registryAccountIdFromAccountCreated,
@@ -151,7 +151,7 @@ async function scanAccountOpenOrders(
   const back = cursor.back ?? cursor.front;
   for (let id = cursor.front; id <= back; id += 1n) {
     try {
-      const o = await getOrder(client, { orderId: id });
+      const o = await getChainOrderView(client, { orderId: id });
       if (o.accountId === accountId && o.kind === "OPEN") {
         out.push({ id: o.orderId, marketIdHex: o.marketIdHex });
       }
@@ -620,7 +620,9 @@ export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
   // Re-use existing expired order if present.
   if (ctx.fixture.expiredOpenOrderId) {
     try {
-      const o = await getOrder(ctx.client, { orderId: BigInt(ctx.fixture.expiredOpenOrderId) });
+      const o = await getChainOrderView(ctx.client, {
+        orderId: BigInt(ctx.fixture.expiredOpenOrderId),
+      });
       if (
         o.accountId === accountId &&
         o.kind === "OPEN" &&

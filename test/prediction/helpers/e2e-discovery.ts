@@ -8,7 +8,6 @@ import {
   getAccountPositionIdsByMarketId,
   getMarketById,
   getMarketByKey,
-  getOrder,
   getOrderCursor,
   getPosition,
   getPositionCursor,
@@ -20,6 +19,7 @@ import type { CursorView, OrderView, PositionView } from "~predict/types.ts";
 import { toBigInt } from "~predict/utils.ts";
 
 import { E2E_DEFAULT_ACCOUNT_ID } from "../fixtures/e2e-fixtures.ts";
+import { getChainOrderView } from "./chain-order-view.ts";
 import { readFixtureOverrides } from "./e2e-env.ts";
 import { KEEPER_FILL_GRACE_MS } from "./prediction-protocol-constants.ts";
 import { resolveAccountOwner } from "./simulate.ts";
@@ -141,7 +141,7 @@ function sampleIdsFromCursor(cursor: CursorView, maxSamples = 8): bigint[] {
 
 async function loadOrder(client: PredictClient, orderId: bigint): Promise<OrderView | undefined> {
   try {
-    return await getOrder(client, { orderId });
+    return await getChainOrderView(client, { orderId });
   } catch {
     return undefined;
   }

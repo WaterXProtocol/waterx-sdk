@@ -2,9 +2,9 @@ import { PredictClient } from "../../../src/prediction/client.ts";
 import {
   getAccountOrderIds,
   getMarketById,
-  getOrder,
   getOrderCursor,
 } from "../../../src/prediction/fetch.ts";
+import { getChainOrderView } from "../helpers/chain-order-view.ts";
 
 const accountId = "0x602bce5950460623ab406feed9e668196c2177c5dc97a781853a6589b2c3f471";
 
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   const probe = [1067n, cursor.back, cursor.front].filter((id): id is bigint => id != null);
   for (const id of probe) {
     try {
-      const o = await getOrder(client, { orderId: id });
+      const o = await getChainOrderView(client, { orderId: id });
       console.log("order", id.toString(), o.kind, o.accountId);
     } catch (e) {
       console.log("order", id.toString(), "ERR", String(e).slice(0, 200));
