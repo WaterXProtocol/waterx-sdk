@@ -18,7 +18,10 @@ import {
   type E2eFixtures,
 } from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
-import { E_ORDER_EXPIRED } from "../helpers/prediction-protocol-constants.ts";
+import {
+  E_MARKET_ALREADY_RESOLVED,
+  E_ORDER_EXPIRED,
+} from "../helpers/prediction-protocol-constants.ts";
 import {
   expectSimulateSuccess,
   parseMoveAbortCode,
@@ -182,17 +185,22 @@ describe(`close pipeline PTB simulate (${predictE2eNetwork})`, () => {
     }
     const txConfirm = new Transaction();
     confirmClose(client, txConfirm, { positionId: fx.pendingClosePositionId, proceeds: 1n });
-    // Stale-seed guard: the seeded close order can expire on-chain after it was seeded, so
-    // `confirm_close` aborts EOrderExpired (18). That's a testnet-state condition, not a code
-    // bug — skip (re-seed to refresh) rather than fail. Any other failure is a real error.
+    // Stale-seed guard: a seeded close order drifts out of confirmability as testnet state moves —
+    // its expiry+grace passes (EOrderExpired 18) or the underlying market resolves
+    // (EMarketAlreadyResolved 12). Both are testnet-state conditions, not code bugs — skip
+    // (re-seed to refresh) rather than fail. The proceeds asserts (ECloseProceedsBelowMin/
+    // ExceedShares) stay unguarded — they're seed-deterministic. Any other failure is a real error.
     const confirm = await simulateWithSender(client, txConfirm);
-    if (
-      confirm.$kind === "FailedTransaction" &&
-      parseMoveAbortCode(simulateErrorMessage(confirm)) === E_ORDER_EXPIRED
-    ) {
-      guard.skipFixableBySeed(ctx, "a PENDING_CLOSE position whose close order has not expired", {
-        stage: "request-close",
-      });
+    const confirmAbortCode =
+      confirm.$kind === "FailedTransaction"
+        ? parseMoveAbortCode(simulateErrorMessage(confirm))
+        : undefined;
+    if (confirmAbortCode === E_ORDER_EXPIRED || confirmAbortCode === E_MARKET_ALREADY_RESOLVED) {
+      guard.skipFixableBySeed(
+        ctx,
+        "a PENDING_CLOSE position with a live close order (seeded close order expired or market resolved)",
+        { stage: "request-close" },
+      );
     }
     if (confirm.$kind === "FailedTransaction") {
       throw new Error(`Expected confirm_close simulate success: ${simulateErrorMessage(confirm)}`);
