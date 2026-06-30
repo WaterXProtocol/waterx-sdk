@@ -16,6 +16,22 @@ reference the PR that introduced them.
   "Offset is outside the bounds of the DataView". Added the field to the BCS
   struct, surfaced it as `OrderView.receiverAccountId`, and mapped it in
   `mapOrderView`. (#68)
+- **`getRegistry` (prediction) silent mis-decode** — `RegistryViewBcs` was
+  missing the `next_position_id` field the deployed `view::RegistryView` returns
+  (between `next_order_id` and `order_count`), so `getRegistry` decoded
+  `orderCount` / `positionCount` / `unresolvedMarketCount` / `resolvedMarketCount`
+  from the wrong offsets (shifted by one) and returned wrong values without
+  erroring. Added the field to the BCS struct and `RegistryView.nextPositionId`.
+  (#68)
+
+### Added
+
+- **Prediction BCS parity guard.** New offline unit test
+  (`test/prediction/unit/bcs-generated-parity.test.ts`) asserts every
+  hand-written `src/prediction/bcs.ts` struct/enum stays byte-identical to the
+  codegen output in `src/generated/waterx_prediction/*`, so a future Move ABI
+  change that isn't mirrored into the hand-written schemas fails CI instead of
+  silently mis-decoding. (#68)
 
 ## [3.0.0] - 2026-06-30
 

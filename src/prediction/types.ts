@@ -17,6 +17,7 @@ export interface RegistryView {
   minReserve: bigint;
   orderCancelCooldownMs: bigint;
   nextOrderId: bigint;
+  nextPositionId: bigint;
   orderCount: bigint;
   positionCount: bigint;
   unresolvedMarketCount: bigint;
