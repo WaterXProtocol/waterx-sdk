@@ -70,10 +70,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/cache/restore@v5
+      - id: cache-nm
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
   build:
@@ -86,10 +90,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/cache/restore@v5
+      - id: cache-nm
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Vitest — post-build package exports smoke
         run: pnpm exec vitest run --project post-build --reporter=dot
@@ -105,10 +113,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - uses: actions/cache/restore@v5
+      - id: cache-nm
+        uses: actions/cache/restore@v5
         with:
           path: node_modules
           key: nm-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies (cache miss)
+        if: steps.cache-nm.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - name: Vitest — unit (perp + prediction) + coverage + JUnit
         run: pnpm exec vitest run --project unit --project predict-unit --coverage --reporter=dot --reporter=junit --outputFile=test-results-unit.xml
       - name: Test report (unit)
