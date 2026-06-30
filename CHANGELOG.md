@@ -10,6 +10,12 @@ reference the PR that introduced them.
 
 ### Added
 
+- **Prediction config `configRef` (#65).** `prediction` `loadConfig` /
+  `defaultConfigUrl` / `PredictClient.create` now accept `configRef?: string` to
+  pin the canonical `waterx-config` JSON to a specific git ref (commit SHA, branch,
+  or tag), reaching parity with the perp line. The umbrella `WaterXClient.create`
+  also gains a shared top-level `configRef` (symmetric with `configUrl`, forwarded
+  to both lines). `configUrl` still takes precedence when both are set.
 - **Prediction user-side position builders: `requestPartialClose`, `transferPosition`,
   `splitPosition`.** Fills the gap between the on-chain `waterx_prediction` user
   entrypoints and the SDK. `requestPartialClose` peels `closeShares` off a position

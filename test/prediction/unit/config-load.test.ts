@@ -52,6 +52,34 @@ describe("waterx-config loader", () => {
     );
   });
 
+  it("defaultConfigUrl pins to a custom git ref (B-08)", () => {
+    expect(defaultConfigUrl("TESTNET", "abc123")).toBe(
+      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/abc123/testnet.json",
+    );
+  });
+
+  it("loadConfig honors configRef when configUrl is unset (B-08)", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
+    await loadConfig("TESTNET", {
+      configRef: "feature-branch",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/feature-branch/testnet.json",
+      expect.anything(),
+    );
+  });
+
+  it("configUrl takes precedence over configRef (B-08)", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
+    await loadConfig("TESTNET", {
+      configUrl: "https://waterx.test/override.json",
+      configRef: "ignored-ref",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("https://waterx.test/override.json", expect.anything());
+  });
+
   it("loads and caches the remote prediction config", async () => {
     const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
     const opts = {
