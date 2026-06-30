@@ -118,6 +118,7 @@
     "smoke:chain": "tsx scripts/run-smoke-chain.ts",
     "smoke:chain:dry": "tsx scripts/run-smoke-chain.ts --dry-run",
     "seed:testnet": "tsx test/prediction/scripts/seed-testnet.ts",
+    "seed:testnet:perp": "tsx test/perp/scripts/seed-testnet.ts",
     "predict:list-accounts": "tsx test/prediction/scripts/list-accounts.ts",
     "predict:bootstrap-stress-accounts": "tsx test/prediction/scripts/bootstrap-stress-accounts.ts",
     "predict:bootstrap-stress-deposits": "tsx test/prediction/scripts/bootstrap-stress-deposits.ts",
