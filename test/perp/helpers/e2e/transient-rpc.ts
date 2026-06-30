@@ -47,9 +47,17 @@ function isNetworkTypeError(err: TypeError): boolean {
 
 /**
  * Oracle feed/aggregate failures that are environment-dependent on testnet (not SDK regressions).
+ * Covers on-chain rule aborts (`pyth_rule`/`supra_rule`) AND off-chain Hermes REST blips
+ * (`fetchPriceFeedsUpdateData` throws before the tx builds when hermes-beta returns 5xx/429 or
+ * empty data) — both are Pyth infra transients, so callers skip instead of hard-failing.
  */
 export function isOracleTransientFailureMessage(msg: string): boolean {
-  return msg.includes("::supra_rule::feed") || msg.includes("::pyth_rule::feed");
+  return (
+    msg.includes("::supra_rule::feed") ||
+    msg.includes("::pyth_rule::feed") ||
+    msg.includes("Hermes price fetch failed") ||
+    msg.includes("Hermes returned no binary price data")
+  );
 }
 
 /** gRPC / Hermes / explicit network blips during e2e (not Move logic or SDK TypeErrors). */

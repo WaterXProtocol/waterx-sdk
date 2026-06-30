@@ -10,6 +10,7 @@ import type { ApiEnvironment } from "./api-env.ts";
 import { discoverCatalogContext } from "./api-smoke.ts";
 import { INTEGRATION_FAR_FUTURE, INTEGRATION_OPEN_MARKET_BYTES } from "./integration-positions.ts";
 import { assertSimulateSucceeded } from "./journey-assertions.ts";
+import { E_ORDER_EXPIRED } from "./prediction-protocol-constants.ts";
 import {
   expectSimulateSuccess,
   parseMoveAbortCode,
@@ -19,8 +20,7 @@ import {
 
 type SimulateResult = Awaited<ReturnType<PredictClient["simulate"]>>;
 
-/** `waterx_prediction::fill_order` abort when the order expiry has passed (stale seed). */
-export const E_ORDER_EXPIRED = 18;
+export { E_ORDER_EXPIRED } from "./prediction-protocol-constants.ts";
 
 export interface CatalogDiscovery {
   segment: "crypto" | "sport";

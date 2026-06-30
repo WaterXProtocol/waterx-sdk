@@ -9,7 +9,6 @@ import {
   getKeeperAddresses,
   getMarketById,
   getMarketByKey,
-  getOrder,
   getOrderCursor,
   getPosition,
   getPositionCursor,
@@ -20,6 +19,7 @@ import {
 } from "~predict/fetch.ts";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { getChainOrderView } from "../helpers/chain-order-view.ts";
 import {
   createE2eClient,
   discoverFixtures,
@@ -67,9 +67,9 @@ describe(`fetch helpers (${predictE2eNetwork} simulate)`, () => {
     expect(m.marketIdHex).toBeTruthy();
   });
 
-  it("getOrder when order id discovered", async (ctx) => {
+  it("getChainOrderView (test decoder) when order id discovered", async (ctx) => {
     guard.skipUnlessDefined(ctx, fx.orderId, "orderId");
-    const o = await getOrder(client, { orderId: fx.orderId });
+    const o = await getChainOrderView(client, { orderId: fx.orderId });
     expect(o.orderId).toBe(fx.orderId);
   });
 

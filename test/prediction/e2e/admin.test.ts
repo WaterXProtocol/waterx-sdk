@@ -52,10 +52,11 @@ describe(`admin PTB simulate (${predictE2eNetwork})`, () => {
 
   it("depositSettlement", async (ctx) => {
     if (!fx.adminUsdCoinObjectId) {
-      guard.skipPermanent(
-        ctx,
-        `depositSettlement dry-run requires a settlement coin owned by the AdminCap holder. Transfer USD to that wallet (see scripts/probe-admin-coins.ts to confirm).`,
-      );
+      const hint =
+        fx.adminWalletCoin?.source === "mock-usdc"
+          ? "AdminCap holder has MOCK_USDC but admin PTBs require Coin<::usd::USD> — transfer settlement USD or mint via faucet."
+          : "depositSettlement dry-run requires Coin<::usd::USD> owned by the AdminCap holder (see test/prediction/scripts/probe-admin-coins.ts).";
+      guard.skipPermanent(ctx, hint);
     }
     const adminOwner = await resolveObjectOwner(client, cap);
     const tx = new Transaction();

@@ -1,12 +1,17 @@
 /**
- * Developer CLI — prints the AdminCap holder address plus its USD and SUI coin objects.
+ * Developer CLI — prints the AdminCap holder address plus settlement / MOCK_USDC / SUI coins.
  *
- * Useful when the `depositSettlement` / `adminPlaceOrderFor` E2E tests skip with
- * "AdminCap holder has no settlement coin" — confirm whether a USD transfer landed.
+ * Useful when `depositSettlement` / `adminPlaceOrderFor` E2E tests skip — admin PTBs need
+ * `Coin<::usd::USD>`, not MOCK_USDC (use account E2E for PSM deposit coverage).
  *
- *   pnpm exec tsx scripts/probe-admin-coins.ts
+ *   pnpm exec tsx test/prediction/scripts/probe-admin-coins.ts
  */
+import { resolveMockUsdcCoinType } from "~predict-tests/helpers/account-funding.ts";
 import { createE2eClient } from "~predict-tests/helpers/e2e-context.ts";
+import {
+  discoverBestWalletCoin,
+  E2E_WALLET_COIN_MIN_BALANCE,
+} from "~predict-tests/helpers/wallet-coin-discovery.ts";
 
 async function main() {
   const client = await createE2eClient();
@@ -20,14 +25,23 @@ async function main() {
   }
   const adminAddr = owner.AddressOwner;
   console.log("AdminCap holder:", adminAddr);
+  console.log("settlement coin type (admin PTB payment):", client.settlementCoinType());
+  console.log("MOCK_USDC type (PSM backing, not admin payment):", resolveMockUsdcCoinType(client));
 
-  const usd = await client.listCoins({
-    owner: adminAddr,
-    coinType: client.settlementCoinType(),
-  });
+  const walletCoin = await discoverBestWalletCoin(client, adminAddr, E2E_WALLET_COIN_MIN_BALANCE);
   console.log(
-    "Admin's USD coins:",
-    JSON.stringify(usd, (_, v) => (typeof v === "bigint" ? v.toString() : v), 2),
+    "discovered wallet coin:",
+    walletCoin
+      ? {
+          objectId: walletCoin.objectId,
+          source: walletCoin.source,
+          balance: walletCoin.balance.toString(),
+        }
+      : null,
+  );
+  console.log(
+    "adminUsdCoinObjectId (settlement USD only):",
+    walletCoin && walletCoin.source !== "mock-usdc" ? walletCoin.objectId : null,
   );
 
   const sui = await client.listCoins({ owner: adminAddr, coinType: "0x2::sui::SUI" });
