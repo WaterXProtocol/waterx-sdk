@@ -152,8 +152,6 @@ export interface ClientCreateOptions {
   grpcUrl?: string;
   /** Default `waterx-config` JSON URL for both lines. */
   configUrl?: string;
-  /** Default `waterx-config` git ref (commit SHA / branch / tag) for both lines. `configUrl` wins when both are set. */
-  configRef?: string;
   /** Memoize the fetched config JSON. */
   cache?: boolean;
   /** Perp-line overrides (network, grpcUrl, configUrl, cache, …). */
@@ -241,14 +239,12 @@ export class WaterXClient {
     const perpClient = await PerpClient.create(resolvedPerpNetwork, {
       grpcUrl: opts.grpcUrl,
       configUrl: opts.configUrl,
-      configRef: opts.configRef,
       cache: opts.cache,
       ...perpRest,
     });
     const predictClient = await PredictClient.create(resolvedPredictNetwork, {
       grpcUrl: opts.grpcUrl,
       configUrl: opts.configUrl,
-      configRef: opts.configRef,
       cache: opts.cache,
       ...predictRest,
     });
