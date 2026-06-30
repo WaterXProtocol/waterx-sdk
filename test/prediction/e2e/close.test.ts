@@ -18,7 +18,13 @@ import {
   type E2eFixtures,
 } from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
-import { expectSimulateSuccess } from "../helpers/simulate.ts";
+import { E_ORDER_EXPIRED } from "../helpers/prediction-protocol-constants.ts";
+import {
+  expectSimulateSuccess,
+  parseMoveAbortCode,
+  simulateErrorMessage,
+  simulateWithSender,
+} from "../helpers/simulate.ts";
 
 /**
  * Skip (instead of fail) when the simulate target function is not present on the
@@ -176,7 +182,21 @@ describe(`close pipeline PTB simulate (${predictE2eNetwork})`, () => {
     }
     const txConfirm = new Transaction();
     confirmClose(client, txConfirm, { positionId: fx.pendingClosePositionId, proceeds: 1n });
-    await expectSimulateSuccess(client, txConfirm);
+    // Stale-seed guard: the seeded close order can expire on-chain after it was seeded, so
+    // `confirm_close` aborts EOrderExpired (18). That's a testnet-state condition, not a code
+    // bug — skip (re-seed to refresh) rather than fail. Any other failure is a real error.
+    const confirm = await simulateWithSender(client, txConfirm);
+    if (
+      confirm.$kind === "FailedTransaction" &&
+      parseMoveAbortCode(simulateErrorMessage(confirm)) === E_ORDER_EXPIRED
+    ) {
+      guard.skipFixableBySeed(ctx, "a PENDING_CLOSE position whose close order has not expired", {
+        stage: "request-close",
+      });
+    }
+    if (confirm.$kind === "FailedTransaction") {
+      throw new Error(`Expected confirm_close simulate success: ${simulateErrorMessage(confirm)}`);
+    }
 
     const txCancel = new Transaction();
     cancelClose(client, txCancel, { positionId: fx.pendingClosePositionId });
