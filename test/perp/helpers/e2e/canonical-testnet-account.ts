@@ -9,7 +9,7 @@
 import type { E2eNetwork } from "./e2e-client.ts";
 
 export const E2E_CANONICAL_TESTNET_WXA_ACCOUNT_ID =
-  "0x4e7598c3c095fbd274f4b04f6dd3715ab59bff744730f9b56d7312cedba4f054";
+  "0x602bce5950460623ab406feed9e668196c2177c5dc97a781853a6589b2c3f471";
 
 export const E2E_CANONICAL_TESTNET_WXA_OWNER =
   "0x26266b1381bcf03ab3acc37c1e87beffb52d49f345248bc3efb9114176990ae4";

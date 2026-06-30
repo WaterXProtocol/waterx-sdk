@@ -20,6 +20,8 @@ import {
 
 type SimulateResult = Awaited<ReturnType<PredictClient["simulate"]>>;
 
+export { E_ORDER_EXPIRED } from "./prediction-protocol-constants.ts";
+
 export interface CatalogDiscovery {
   segment: "crypto" | "sport";
   slug: string;

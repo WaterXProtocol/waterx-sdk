@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 import type { PredictClient } from "~predict/client.ts";
 import {
   getAccountData,
+  getAccountOrderIds,
   getAccountOrderIdsByMarketId,
   getAccountPositionIdsByMarketId,
   getMarketById,
   getMarketByKey,
-  getOrder,
   getOrderCursor,
   getPosition,
   getPositionCursor,
@@ -19,9 +19,15 @@ import type { CursorView, OrderView, PositionView } from "~predict/types.ts";
 import { toBigInt } from "~predict/utils.ts";
 
 import { E2E_DEFAULT_ACCOUNT_ID } from "../fixtures/e2e-fixtures.ts";
+import { getChainOrderView } from "./chain-order-view.ts";
 import { readFixtureOverrides } from "./e2e-env.ts";
 import { KEEPER_FILL_GRACE_MS } from "./prediction-protocol-constants.ts";
 import { resolveAccountOwner } from "./simulate.ts";
+import {
+  discoverBestWalletCoin,
+  type DiscoveredWalletCoin,
+  type WalletCoinSource,
+} from "./wallet-coin-discovery.ts";
 
 /** Where each fixture field was resolved (for skip messages and debugging). */
 export interface E2eDiscoveryMeta {
@@ -32,6 +38,7 @@ export interface E2eDiscoveryMeta {
   marketKey?: string;
   marketId?: string;
   usdCoinObjectId?: string;
+  walletCoinSource?: WalletCoinSource;
   openPositionId?: string;
   pendingClosePositionId?: string;
   claimMarketId?: string;
@@ -55,6 +62,8 @@ export interface E2eFixtures {
   marketIdBytes?: Uint8Array;
   /** Settlement coin object for deposit / payment PTBs (discovered via `listCoins` when possible). */
   usdCoinObjectId?: string;
+  /** Rich wallet coin discovery (settlement USD or MOCK_USDC + coin type). */
+  walletCoin?: DiscoveredWalletCoin;
 
   /** Order id that is currently OPEN on an unresolved market (selfCancelOrder, keeper-style sims). */
   openOrderId?: bigint;
@@ -76,6 +85,8 @@ export interface E2eFixtures {
   expiredPendingClosePositionId?: bigint;
   /** A settlement coin object **owned by the AdminCap holder** — used by depositSettlement / adminPlaceOrderFor dry-run. */
   adminUsdCoinObjectId?: string;
+  /** AdminCap-holder wallet coin (settlement USD only — admin PTBs require `Coin<::usd::USD>`). */
+  adminWalletCoin?: DiscoveredWalletCoin;
 
   meta: E2eDiscoveryMeta;
 }
@@ -130,7 +141,7 @@ function sampleIdsFromCursor(cursor: CursorView, maxSamples = 8): bigint[] {
 
 async function loadOrder(client: PredictClient, orderId: bigint): Promise<OrderView | undefined> {
   try {
-    return await getOrder(client, { orderId });
+    return await getChainOrderView(client, { orderId });
   } catch {
     return undefined;
   }
@@ -168,41 +179,103 @@ async function isMarketResolved(
   }
 }
 
-async function discoverSettlementCoin(
+/** Matches `self_cancel_order` preconditions (`expiry_ts + KEEPER_FILL_GRACE_MS`, cooldown). */
+function orderEligibleForSelfCancelRescue(order: OrderView, nowMs: bigint): boolean {
+  return (
+    order.kind === "OPEN" &&
+    order.selfCancelAfterTs <= nowMs &&
+    order.expiryTs + KEEPER_FILL_GRACE_MS <= nowMs
+  );
+}
+
+/** Matches `self_cancel_close` preconditions (close order expiry + grace, cooldown). */
+function positionEligibleForSelfCancelCloseRescue(position: PositionView, nowMs: bigint): boolean {
+  return (
+    position.status === "PENDING_CLOSE" &&
+    position.closeSelfCancelAfterTs <= nowMs &&
+    position.closeExpiryTs + KEEPER_FILL_GRACE_MS <= nowMs
+  );
+}
+
+async function discoverAnyOrderId(client: PredictClient): Promise<bigint | undefined> {
+  const cursor = await getOrderCursor(client);
+  if (cursor.count === 0n || cursor.front == null) return undefined;
+  const back = cursor.back ?? cursor.front;
+  const fromBack = await loadOrder(client, back);
+  if (fromBack) return back;
+  for (const id of sampleIdsFromCursor(cursor, 32)) {
+    const o = await loadOrder(client, id);
+    if (o) return id;
+  }
+  const stop = back - 32n > cursor.front ? back - 32n : cursor.front;
+  for (let id = back; id >= stop; id -= 1n) {
+    const o = await loadOrder(client, id);
+    if (o) return id;
+    if (id === 0n) break;
+  }
+  return undefined;
+}
+
+/** Any order id belonging to `accountId` (OPEN or historical — for fetch read tests). */
+async function discoverAnyOrderIdForAccount(
   client: PredictClient,
   accountId: string,
-): Promise<string | undefined> {
+  marketKey?: bigint,
+): Promise<bigint | undefined> {
+  if (marketKey !== undefined) {
+    try {
+      const ids = await getAccountOrderIds(client, { accountId, marketKey });
+      if (ids.length > 0) {
+        const last = ids[ids.length - 1]!;
+        if (await loadOrder(client, last)) return last;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const cursor = await getOrderCursor(client);
+  if (cursor.count === 0n || cursor.front == null) return undefined;
+  const back = cursor.back ?? cursor.front;
+  const stop = back - 64n > cursor.front ? back - 64n : cursor.front;
+  for (let id = back; id >= stop; id -= 1n) {
+    const o = await loadOrder(client, id);
+    if (o && o.accountId === accountId) return id;
+    if (id === 0n) break;
+  }
+  return undefined;
+}
+
+async function discoverWalletCoinForAccount(
+  client: PredictClient,
+  accountId: string,
+): Promise<DiscoveredWalletCoin | undefined> {
   try {
     const owner = await resolveAccountOwner(client, accountId);
-    const page = await client.listCoins({
-      owner,
-      coinType: client.settlementCoinType(),
-    });
-    const objects = (page as { objects?: { objectId?: string; coinObjectId?: string }[] }).objects;
-    const first = objects?.[0];
-    return first?.objectId ?? first?.coinObjectId;
+    return discoverBestWalletCoin(client, owner);
   } catch {
     return undefined;
   }
 }
 
-/** Look up a settlement coin owned by the AdminCap holder (for admin-side dry-run sims). */
-async function discoverAdminSettlementCoin(client: PredictClient): Promise<string | undefined> {
+/** Look up a settlement `Coin<USD>` or MOCK_USDC owned by the AdminCap holder. */
+async function discoverAdminWalletCoin(
+  client: PredictClient,
+): Promise<DiscoveredWalletCoin | undefined> {
   try {
     const cap = client.predictionAdminCap();
     const res = await client.grpcClient.getObject({ objectId: cap });
     const owner = res.object?.owner;
     if (!owner || owner.$kind !== "AddressOwner") return undefined;
-    const page = await client.listCoins({
-      owner: owner.AddressOwner,
-      coinType: client.settlementCoinType(),
-    });
-    const objects = (page as { objects?: { objectId?: string; coinObjectId?: string }[] }).objects;
-    const first = objects?.[0];
-    return first?.objectId ?? first?.coinObjectId;
+    return discoverBestWalletCoin(client, owner.AddressOwner);
   } catch {
     return undefined;
   }
+}
+
+function settlementPaymentCoinId(coin: DiscoveredWalletCoin | undefined): string | undefined {
+  if (!coin) return undefined;
+  if (coin.source === "mock-usdc") return undefined;
+  return coin.objectId;
 }
 
 /** Scan up to `maxSamples` recent positions for the active account, bucketed by status. */
@@ -396,30 +469,13 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     const nowMs = BigInt(Date.now());
     if (seed?.expiredOpenOrderId) {
       const o = await loadOrder(client, BigInt(seed.expiredOpenOrderId));
-      if (
-        o &&
-        o.accountId === accountId &&
-        o.kind === "OPEN" &&
-        // self_cancel_order is gated by `now >= expiry_ts + KEEPER_FILL_GRACE_MS` (M02), not
-        // bare expiry — only surface the id once the grace window has elapsed so the rescue
-        // test runs (and passes) instead of aborting EOrderNotExpired (19) on a too-fresh order.
-        o.expiryTs + KEEPER_FILL_GRACE_MS <= nowMs &&
-        o.selfCancelAfterTs < nowMs
-      ) {
+      if (o && o.accountId === accountId && orderEligibleForSelfCancelRescue(o, nowMs)) {
         expiredOpenOrderId = o.orderId;
       }
     }
     if (seed?.expiredPendingClosePositionId) {
       const p = await loadPosition(client, BigInt(seed.expiredPendingClosePositionId));
-      if (
-        p &&
-        p.accountId === accountId &&
-        p.status === "PENDING_CLOSE" &&
-        // self_cancel_close is gated by `now >= close_expiry_ts + KEEPER_FILL_GRACE_MS` (M02),
-        // not bare expiry — only surface once the grace window has elapsed (see open-order note).
-        p.closeExpiryTs + KEEPER_FILL_GRACE_MS <= nowMs &&
-        p.closeSelfCancelAfterTs < nowMs
-      ) {
+      if (p && p.accountId === accountId && positionEligibleForSelfCancelCloseRescue(p, nowMs)) {
         expiredPendingClosePositionId = p.positionId;
       }
     }
@@ -429,11 +485,21 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
       openOrderId === undefined ||
       openPositionId === undefined ||
       pendingClosePositionId === undefined ||
-      claimablePositionId === undefined;
+      claimablePositionId === undefined ||
+      expiredOpenOrderId === undefined ||
+      expiredPendingClosePositionId === undefined;
     if (needsCursorScan) {
       const positions = await scanAccountPositions(client, accountId);
-      if (openPositionId === undefined && positions.open[0])
-        openPositionId = positions.open[0].positionId;
+      if (openPositionId === undefined && positions.open.length > 0) {
+        const preferred = positions.open.find((p) => p.filledShares >= 2n) ?? positions.open[0]!;
+        openPositionId = preferred.positionId;
+      } else if (openPositionId !== undefined && positions.open.length > 0) {
+        const current = await loadPosition(client, openPositionId);
+        const preferred = positions.open.find((p) => p.filledShares >= 2n);
+        if (current && current.filledShares < 2n && preferred && preferred.filledShares >= 2n) {
+          openPositionId = preferred.positionId;
+        }
+      }
       if (pendingClosePositionId === undefined && positions.pendingClose[0])
         pendingClosePositionId = positions.pendingClose[0].positionId;
       if (claimablePositionId === undefined && positions.claimable[0]) {
@@ -453,6 +519,31 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
           }
         }
       }
+      if (expiredOpenOrderId === undefined) {
+        const nowMs = BigInt(Date.now());
+        const cursor = await getOrderCursor(client);
+        const back = cursor.back ?? cursor.front;
+        if (back != null && cursor.front != null) {
+          const stop = back - 32n > cursor.front ? back - 32n : cursor.front;
+          for (let id = back; id >= stop; id -= 1n) {
+            const o = await loadOrder(client, id);
+            if (o && o.accountId === accountId && orderEligibleForSelfCancelRescue(o, nowMs)) {
+              expiredOpenOrderId = o.orderId;
+              break;
+            }
+            if (id === 0n) break;
+          }
+        }
+      }
+      if (expiredPendingClosePositionId === undefined) {
+        const nowMs = BigInt(Date.now());
+        for (const p of positions.pendingClose) {
+          if (positionEligibleForSelfCancelCloseRescue(p, nowMs)) {
+            expiredPendingClosePositionId = p.positionId;
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -460,7 +551,11 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
   const envOrderId = env.orderId !== undefined ? toBigInt(env.orderId) : undefined;
   const envPositionId = env.positionId !== undefined ? toBigInt(env.positionId) : undefined;
   const envMarketKey = env.marketKey !== undefined ? toBigInt(env.marketKey) : undefined;
-  const orderId = envOrderId ?? openOrderId;
+  let orderId = envOrderId ?? openOrderId;
+  if (orderId === undefined && seed?.openOrderId) {
+    const seeded = await loadOrder(client, BigInt(seed.openOrderId));
+    if (seeded) orderId = seeded.orderId;
+  }
   const positionId =
     envPositionId ?? openPositionId ?? pendingClosePositionId ?? claimablePositionId;
 
@@ -487,12 +582,31 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     }
   }
 
-  // ----- Settlement coin -----------------------------------------------------
-  let usdCoinObjectId = env.usdCoinObjectId;
-  if (!usdCoinObjectId) {
-    usdCoinObjectId = await discoverSettlementCoin(client, accountId);
+  if (orderId === undefined) {
+    orderId = await discoverAnyOrderIdForAccount(client, accountId, marketKey);
   }
-  const adminUsdCoinObjectId = await discoverAdminSettlementCoin(client);
+  if (orderId === undefined) {
+    orderId = await discoverAnyOrderId(client);
+  }
+
+  // ----- Wallet coins (settlement USD, else MOCK_USDC for PSM deposit) ---------
+  let walletCoin: DiscoveredWalletCoin | undefined;
+  if (env.usdCoinObjectId) {
+    walletCoin = await discoverWalletCoinForAccount(client, accountId);
+    if (!walletCoin || walletCoin.objectId !== env.usdCoinObjectId) {
+      walletCoin = {
+        objectId: env.usdCoinObjectId,
+        coinType: client.settlementCoinType(),
+        source: "env-override",
+        balance: 1_000_000n,
+      };
+    }
+  } else {
+    walletCoin = await discoverWalletCoinForAccount(client, accountId);
+  }
+  const usdCoinObjectId = walletCoin?.objectId;
+  const adminWalletCoin = await discoverAdminWalletCoin(client);
+  const adminUsdCoinObjectId = settlementPaymentCoinId(adminWalletCoin);
 
   // ----- Fallback for accounts with pinned env but unscanned content --------
   if (env.accountId && marketIdBytes) {
@@ -553,9 +667,12 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
         : undefined,
     usdCoinObjectId: env.usdCoinObjectId
       ? "override:E2E_USD_COIN_OBJECT_ID"
-      : usdCoinObjectId !== undefined
-        ? "discovered:listCoins"
+      : walletCoin !== undefined
+        ? walletCoin.source === "mock-usdc"
+          ? "discovered:listCoins:mock-usdc"
+          : "discovered:listCoins:settlement-usd"
         : undefined,
+    walletCoinSource: walletCoin?.source,
     openPositionId:
       openPositionId !== undefined
         ? seed?.openPositionId
@@ -591,6 +708,7 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     marketIdHex,
     marketIdBytes,
     usdCoinObjectId,
+    walletCoin,
     openOrderId,
     openPositionId,
     pendingClosePositionId,
@@ -602,6 +720,7 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     expiredOpenOrderId,
     expiredPendingClosePositionId,
     adminUsdCoinObjectId,
+    adminWalletCoin,
     meta,
   };
 }

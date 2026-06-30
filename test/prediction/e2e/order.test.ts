@@ -21,6 +21,7 @@ import {
   E_FILL_ABOVE_PRICE_CAP,
   E_FILL_BELOW_MIN_PRICE,
   E_ORDER_EXPIRED,
+  E_ORDER_NOT_EXPIRED,
 } from "../helpers/prediction-protocol-constants.ts";
 import {
   expectSimulateSuccess,
@@ -108,7 +109,23 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     }
     const tx = new Transaction();
     selfCancelOrder(client, tx, { orderId: fx.expiredOpenOrderId });
-    await expectSimulateSuccess(client, tx, owner);
+    const result = await simulateWithSender(client, tx, owner);
+    const abortCode =
+      result.$kind === "FailedTransaction"
+        ? parseMoveAbortCode(simulateErrorMessage(result))
+        : undefined;
+    if (abortCode === E_ORDER_NOT_EXPIRED) {
+      guard.skipFixableBySeed(
+        ctx,
+        "expiredOpenOrderId past expiry_ts + KEEPER_FILL_GRACE_MS (order still in grace window)",
+        { stage: "expired-rescue" },
+      );
+    }
+    if (result.$kind === "FailedTransaction") {
+      throw new Error(
+        `Expected selfCancelOrder simulate success, got: ${simulateErrorMessage(result)}`,
+      );
+    }
   });
 
   it("keeper fillOrder + cancelOrder on a seeded OPEN order", async (ctx) => {
@@ -120,10 +137,9 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     fillOrder(client, txFill, { orderId, filledShares: 1n, filledCost: 1n });
     const fill = await simulateWithSender(client, txFill);
     // Stale-seed guard: a seeded open order drifts out of fillability as testnet state moves —
-    // its expiry passes (EOrderExpired) or the live market quote crosses the order's fixed price
-    // cap so the keeper fill is rejected (EFillAbovePriceCap / EFillBelowMinPrice). All three are
-    // testnet-state conditions, not code bugs — skip (re-seed to refresh) rather than fail.
-    // Any other failure is a real error.
+    // expiry passes (EOrderExpired) or the live market quote crosses the order's fixed price
+    // cap (EFillAbovePriceCap / EFillBelowMinPrice). All are testnet-state conditions, not code
+    // bugs — skip (re-seed to refresh) rather than fail.
     const fillAbortCode =
       fill.$kind === "FailedTransaction"
         ? parseMoveAbortCode(simulateErrorMessage(fill))
@@ -153,10 +169,11 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
       guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
     }
     if (!fx.adminUsdCoinObjectId) {
-      guard.skipPermanent(
-        ctx,
-        `adminPlaceOrderFor dry-run requires a settlement coin owned by the AdminCap holder. Transfer USD to that wallet (see scripts/probe-admin-coins.ts).`,
-      );
+      const hint =
+        fx.adminWalletCoin?.source === "mock-usdc"
+          ? "AdminCap holder has MOCK_USDC but adminPlaceOrderFor requires Coin<::usd::USD>."
+          : "adminPlaceOrderFor dry-run requires Coin<::usd::USD> owned by the AdminCap holder (see test/prediction/scripts/probe-admin-coins.ts).";
+      guard.skipPermanent(ctx, hint);
     }
     const adminCap = requirePredictionAdminCap(client);
     const adminOwner = await resolveObjectOwner(client, adminCap);
