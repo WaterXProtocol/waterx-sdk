@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
+## [Unreleased]
+
+### Fixed
+
+- **`getOrder` (prediction) BCS decode** — `OrderViewBcs` was missing the
+  `receiver_account_id` field the deployed `view::OrderView` returns (between
+  `account_id` and `market_id`), so every `getOrder` call aborted with
+  "Offset is outside the bounds of the DataView". Added the field to the BCS
+  struct, surfaced it as `OrderView.receiverAccountId`, and mapped it in
+  `mapOrderView`. (#68)
+
 ## [3.0.0] - 2026-06-30
 
 ### Added

@@ -16,6 +16,7 @@ export const orderFixture = {
   order_id: 11n,
   kind: "Open",
   account_id: "0xb036ca849843fab73fa08376ca87dc43389fc94606cb245046886722953fbc55",
+  receiver_account_id: "0xb036ca849843fab73fa08376ca87dc43389fc94606cb245046886722953fbc55",
   market_id: new Uint8Array([1, 2, 3]),
   selection: "Yes",
   position_id: null,
