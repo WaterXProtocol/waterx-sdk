@@ -22,7 +22,7 @@ reference the PR that introduced them.
 
 ### Changed
 
-- **Predict/perp E2E discovery prefers runnable fixtures over skip.** Wallet coin
+- **Predict/perp E2E discovery prefers runnable fixtures over skip.** (#66) Wallet coin
   discovery falls back from settlement `::usd::USD` to MOCK_USDC + PSM deposit path;
   perp custody resolves canonical wxa rows; order/position scans walk recent cursors
   and upgrade to `filledShares >= 2` positions when available. Order reads in e2e/seed
@@ -40,7 +40,7 @@ reference the PR that introduced them.
   - `client.perp` — **is** the `PerpClient` instance with the perp builders/views
     grafted on (trading / orders / WLP / staking / referral). Signing & config
     methods (`signAndExecuteTransaction`, `simulate`, `getMarket`, …) sit on the
-    same object. The credit/custody *high-level* `build*Tx` wrappers
+    same object. The credit/custody _high-level_ `build*Tx` wrappers
     (`buildRedeemVaaTx`, `buildRequestCreditWithdrawTx`, `buildExecuteWithdrawalTx`)
     remain here; only the low-level credit/custody builders move to `client.account`.
   - `client.predict` — **is** the `PredictClient` instance with the prediction
@@ -108,7 +108,7 @@ reference the PR that introduced them.
   single-return Move call and is the form perp already ships. Only genuinely
   prediction-specific account ops stay line-side: the prediction-protocol permission
   config (`setDelegatePredictionPermission`, `whitelist`/`allow`/`disallow protocol
-  asset`) and the `direct_rule` same-coin consume helpers (thin wrappers over the
+asset`) and the `direct_rule` same-coin consume helpers (thin wrappers over the
   shared generated `direct_rule`).
 - **Account/funding config schema hoisted into `account/config.ts`; `account/`
   now imports nothing from `perp/`.** The account/funding/referral package
@@ -149,7 +149,7 @@ reference the PR that introduced them.
   all of these builders unchanged — `perp/user/index.ts` and `perp/index.ts` now
   re-export them from `account/` — so the main public entry is identical; only the
   un-advertised granular deep paths (`perp/user/<file>`, `utils/{wormhole,
-  account-request,consolidate-balance}`) moved. `src/core/waterx-account.ts` folded
+account-request,consolidate-balance}`) moved. `src/core/waterx-account.ts` folded
   into `account/`. (The config-schema hoist and the single-`generated/`-root
   unification that this entry once deferred are now done — see the entries above.)
 
@@ -157,7 +157,7 @@ reference the PR that introduced them.
   module.** The old `utils/pyth.ts` had fused four concerns into one file (Pyth
   Hermes/update PTB, the `pyth_sponsor_rule` flow, **and** `supra_rule` /
   `constant_rule` feeds via the aggregation orchestrator). It is now decomposed:
-  - `oracle/pyth.ts` — Pyth as a price *source* only (Hermes REST + on-chain
+  - `oracle/pyth.ts` — Pyth as a price _source_ only (Hermes REST + on-chain
     update PTB + `PythCache`); imports **no** rule package.
   - `oracle/rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` — one file per
     oracle rule (Pyth no longer "contains" Supra).
@@ -179,7 +179,7 @@ reference the PR that introduced them.
   `OracleHost.config` is typed to `OracleConfig`, so the oracle layer imports
   **nothing** from `perp/`. `perp/config.ts` imports + re-exports them (so
   `@waterx/sdk/perp` type imports are unchanged) and `WaterXPackages extends
-  AccountPackages, OraclePackages`.
+AccountPackages, OraclePackages`.
 - **Referral reads consolidated under the `account/` base.** (#55) The referral
   queries (`getRefererFor` / `isValidReferralCode` / `referralCodeExists`) were
   split off from their builders and needlessly typed to `PerpClient` in
@@ -275,7 +275,7 @@ reference the PR that introduced them.
     `withdrawCollateralRequest` `amount` via
     `floor((usd / collateralPriceUsd) * 10 ** collateralDecimal)`.
 - **Dual-feed transition routing for constant tickers.** A new `waterx_constant_rule.dual_feed`
-  list (subset of `prices`) marks tickers mid-migration: `refreshOraclePrices` feeds them via *both*
+  list (subset of `prices`) marks tickers mid-migration: `refreshOraclePrices` feeds them via _both_
   `pyth_rule::feed` and `constant_rule::feed` into one collector (new `aggregateTickerWithDual`), so
   the aggregator can hold the `{Pyth, Constant}` weight set without an `EMissingPriceSource` window
   while rule weights are flipped (on-chain `aggregator::remove_outliers` requires every weighted rule
@@ -306,8 +306,8 @@ reference the PR that introduced them.
 
 ### Migration
 
-| Old import | New import |
-|------------|------------|
-| `@waterx/perp-sdk` | `@waterx/sdk` (flat perp re-export deprecated) |
-| `@waterx/perp-sdk/perp` | `@waterx/sdk/perp` |
-| `@waterx/predict-sdk` | `@waterx/sdk/prediction` |
+| Old import              | New import                                     |
+| ----------------------- | ---------------------------------------------- |
+| `@waterx/perp-sdk`      | `@waterx/sdk` (flat perp re-export deprecated) |
+| `@waterx/perp-sdk/perp` | `@waterx/sdk/perp`                             |
+| `@waterx/predict-sdk`   | `@waterx/sdk/prediction`                       |

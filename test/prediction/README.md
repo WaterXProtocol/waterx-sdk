@@ -118,15 +118,15 @@ Endpoint matrix: [`helpers/api-endpoints.ts`](helpers/api-endpoints.ts).
 
 `discoverFixtures()` (in [`helpers/e2e-discovery.ts`](helpers/e2e-discovery.ts)) returns rich per-state ids:
 
-| Field                                  | Meaning                                              | Sourced from                            |
-| -------------------------------------- | ---------------------------------------------------- | --------------------------------------- |
-| `accountId`, `accountReady`            | active registry account + whether it has data        | env / seed fixture / chain scan         |
-| `openOrderId`                          | OPEN unfilled order belonging to the account         | seed fixture, then order cursor         |
-| `openPositionId`                       | OPEN position belonging to the account               | seed fixture, then position cursor      |
-| `pendingClosePositionId`               | PENDING_CLOSE position (for `selfCancelClose`)       | seed fixture, then position cursor      |
-| `claimablePositionId`                  | OPEN position whose market is RESOLVED (for `claim`) | seed fixture, then resolved-market scan |
-| `openMarketIdHex` / `claimMarketIdHex` | unresolved / resolved test markets                   | seed fixture, then cursors              |
-| `usdCoinObjectId` / `walletCoin`         | wallet coin for deposit PTBs (settlement USD, else MOCK_USDC) | env / `listCoins(owner)` |
+| Field                                  | Meaning                                                       | Sourced from                            |
+| -------------------------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| `accountId`, `accountReady`            | active registry account + whether it has data                 | env / seed fixture / chain scan         |
+| `openOrderId`                          | OPEN unfilled order belonging to the account                  | seed fixture, then order cursor         |
+| `openPositionId`                       | OPEN position belonging to the account                        | seed fixture, then position cursor      |
+| `pendingClosePositionId`               | PENDING_CLOSE position (for `selfCancelClose`)                | seed fixture, then position cursor      |
+| `claimablePositionId`                  | OPEN position whose market is RESOLVED (for `claim`)          | seed fixture, then resolved-market scan |
+| `openMarketIdHex` / `claimMarketIdHex` | unresolved / resolved test markets                            | seed fixture, then cursors              |
+| `usdCoinObjectId` / `walletCoin`       | wallet coin for deposit PTBs (settlement USD, else MOCK_USDC) | env / `listCoins(owner)`                |
 
 The seed fixture file (`fixtures/testnet-seeded.json`) is **git-ignored** and refreshed by `pnpm seed:testnet`.
 
