@@ -6,6 +6,7 @@ export const registryFixture = {
   min_reserve: 50n,
   order_cancel_cooldown_ms: 60n,
   next_order_id: 12n,
+  next_position_id: 9n,
   order_count: 10n,
   position_count: 8n,
   unresolved_market_count: 3n,

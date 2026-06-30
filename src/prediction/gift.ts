@@ -25,7 +25,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { deriveObjectID, fromBase64, toBase64 } from "@mysten/sui/utils";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { SelectionBcs } from "./bcs.ts";
+import { mapSelection, SelectionBcs } from "./bcs.ts";
 import type { PredictClient } from "./client.ts";
 import {
   GIFT_DOMAIN_CLAIM,
@@ -474,13 +474,7 @@ export async function getGift(
   const id = () => bcs.Address.parse(extractReturnBytes(result, i++));
   const u64 = () => BigInt(bcs.u64().parse(extractReturnBytes(result, i++)));
   const bytes = () => new Uint8Array(bcs.vector(bcs.u8()).parse(extractReturnBytes(result, i++)));
-  const sel = (): Selection => {
-    const parsed = SelectionBcs.parse(extractReturnBytes(result, i++));
-    const variant = parsed?.$kind ?? parsed; // bcs.enum returns { $kind } in v2
-    if (variant === "Yes" || variant === "YES") return "YES";
-    if (variant === "No" || variant === "NO") return "NO";
-    throw new Error(`Unrecognized Selection variant: ${JSON.stringify(parsed)}`);
-  };
+  const sel = (): Selection => mapSelection(SelectionBcs.parse(extractReturnBytes(result, i++)));
   const addrs = () => bcs.vector(bcs.Address).parse(extractReturnBytes(result, i++));
   const optString = () => bcs.option(bcs.string()).parse(extractReturnBytes(result, i++));
 
