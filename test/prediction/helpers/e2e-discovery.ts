@@ -21,6 +21,7 @@ import { toBigInt } from "~predict/utils.ts";
 
 import { E2E_DEFAULT_ACCOUNT_ID } from "../fixtures/e2e-fixtures.ts";
 import { readFixtureOverrides } from "./e2e-env.ts";
+import { KEEPER_FILL_GRACE_MS } from "./prediction-protocol-constants.ts";
 import { resolveAccountOwner } from "./simulate.ts";
 import {
   discoverBestWalletCoin,
@@ -78,9 +79,9 @@ export interface E2eFixtures {
   /** Resolved market id hex (claim target). */
   claimMarketIdHex?: string;
   claimMarketIdBytes?: Uint8Array;
-  /** OPEN order whose expiry + cooldown have BOTH elapsed (selfCancelOrder rescue precondition). */
+  /** OPEN order past `expiry_ts + KEEPER_FILL_GRACE_MS` and cooldown (selfCancelOrder rescue precondition). */
   expiredOpenOrderId?: bigint;
-  /** PENDING_CLOSE position whose close-order expiry + cooldown have elapsed (selfCancelClose rescue). */
+  /** PENDING_CLOSE position past close `expiry_ts + KEEPER_FILL_GRACE_MS` and cooldown (selfCancelClose rescue). */
   expiredPendingClosePositionId?: bigint;
   /** A settlement coin object **owned by the AdminCap holder** — used by depositSettlement / adminPlaceOrderFor dry-run. */
   adminUsdCoinObjectId?: string;
@@ -176,6 +177,24 @@ async function isMarketResolved(
   } catch {
     return false;
   }
+}
+
+/** Matches `self_cancel_order` preconditions (`expiry_ts + KEEPER_FILL_GRACE_MS`, cooldown). */
+function orderEligibleForSelfCancelRescue(order: OrderView, nowMs: bigint): boolean {
+  return (
+    order.kind === "OPEN" &&
+    order.selfCancelAfterTs <= nowMs &&
+    order.expiryTs + KEEPER_FILL_GRACE_MS <= nowMs
+  );
+}
+
+/** Matches `self_cancel_close` preconditions (close order expiry + grace, cooldown). */
+function positionEligibleForSelfCancelCloseRescue(position: PositionView, nowMs: bigint): boolean {
+  return (
+    position.status === "PENDING_CLOSE" &&
+    position.closeSelfCancelAfterTs <= nowMs &&
+    position.closeExpiryTs + KEEPER_FILL_GRACE_MS <= nowMs
+  );
 }
 
 async function discoverAnyOrderId(client: PredictClient): Promise<bigint | undefined> {
@@ -450,25 +469,13 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     const nowMs = BigInt(Date.now());
     if (seed?.expiredOpenOrderId) {
       const o = await loadOrder(client, BigInt(seed.expiredOpenOrderId));
-      if (
-        o &&
-        o.accountId === accountId &&
-        o.kind === "OPEN" &&
-        o.expiryTs < nowMs &&
-        o.selfCancelAfterTs < nowMs
-      ) {
+      if (o && o.accountId === accountId && orderEligibleForSelfCancelRescue(o, nowMs)) {
         expiredOpenOrderId = o.orderId;
       }
     }
     if (seed?.expiredPendingClosePositionId) {
       const p = await loadPosition(client, BigInt(seed.expiredPendingClosePositionId));
-      if (
-        p &&
-        p.accountId === accountId &&
-        p.status === "PENDING_CLOSE" &&
-        p.closeExpiryTs < nowMs &&
-        p.closeSelfCancelAfterTs < nowMs
-      ) {
+      if (p && p.accountId === accountId && positionEligibleForSelfCancelCloseRescue(p, nowMs)) {
         expiredPendingClosePositionId = p.positionId;
       }
     }
@@ -520,13 +527,7 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
           const stop = back - 32n > cursor.front ? back - 32n : cursor.front;
           for (let id = back; id >= stop; id -= 1n) {
             const o = await loadOrder(client, id);
-            if (
-              o &&
-              o.accountId === accountId &&
-              o.kind === "OPEN" &&
-              o.expiryTs < nowMs &&
-              o.selfCancelAfterTs < nowMs
-            ) {
+            if (o && o.accountId === accountId && orderEligibleForSelfCancelRescue(o, nowMs)) {
               expiredOpenOrderId = o.orderId;
               break;
             }
@@ -537,7 +538,7 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
       if (expiredPendingClosePositionId === undefined) {
         const nowMs = BigInt(Date.now());
         for (const p of positions.pendingClose) {
-          if (p.closeExpiryTs < nowMs && p.closeSelfCancelAfterTs < nowMs) {
+          if (positionEligibleForSelfCancelCloseRescue(p, nowMs)) {
             expiredPendingClosePositionId = p.positionId;
             break;
           }

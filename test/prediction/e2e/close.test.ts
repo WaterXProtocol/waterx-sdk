@@ -18,7 +18,13 @@ import {
   type E2eFixtures,
 } from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
-import { expectSimulateSuccess } from "../helpers/simulate.ts";
+import { E_ORDER_EXPIRED, E_ORDER_NOT_EXPIRED } from "../helpers/prediction-protocol-constants.ts";
+import {
+  expectSimulateSuccess,
+  parseMoveAbortCode,
+  simulateErrorMessage,
+  simulateWithSender,
+} from "../helpers/simulate.ts";
 
 /**
  * Skip (instead of fail) when the simulate target function is not present on the
@@ -167,7 +173,23 @@ describe(`close pipeline PTB simulate (${predictE2eNetwork})`, () => {
     }
     const tx = new Transaction();
     selfCancelClose(client, tx, { positionId: fx.expiredPendingClosePositionId });
-    await expectSimulateSuccess(client, tx, owner);
+    const result = await simulateWithSender(client, tx, owner);
+    const abortCode =
+      result.$kind === "FailedTransaction"
+        ? parseMoveAbortCode(simulateErrorMessage(result))
+        : undefined;
+    if (abortCode === E_ORDER_NOT_EXPIRED) {
+      guard.skipFixableBySeed(
+        ctx,
+        "expiredPendingClosePositionId past close expiry_ts + KEEPER_FILL_GRACE_MS",
+        { stage: "expired-rescue" },
+      );
+    }
+    if (result.$kind === "FailedTransaction") {
+      throw new Error(
+        `Expected selfCancelClose simulate success, got: ${simulateErrorMessage(result)}`,
+      );
+    }
   });
 
   it("keeper confirmClose + cancelClose on a seeded PENDING_CLOSE position", async (ctx) => {
@@ -176,7 +198,18 @@ describe(`close pipeline PTB simulate (${predictE2eNetwork})`, () => {
     }
     const txConfirm = new Transaction();
     confirmClose(client, txConfirm, { positionId: fx.pendingClosePositionId, proceeds: 1n });
-    await expectSimulateSuccess(client, txConfirm);
+    const confirm = await simulateWithSender(client, txConfirm);
+    if (
+      confirm.$kind === "FailedTransaction" &&
+      parseMoveAbortCode(simulateErrorMessage(confirm)) === E_ORDER_EXPIRED
+    ) {
+      guard.skipFixableBySeed(ctx, "a PENDING_CLOSE position whose close order has not expired", {
+        stage: "request-close",
+      });
+    }
+    if (confirm.$kind === "FailedTransaction") {
+      throw new Error(`Expected confirm_close simulate success: ${simulateErrorMessage(confirm)}`);
+    }
 
     const txCancel = new Transaction();
     cancelClose(client, txCancel, { positionId: fx.pendingClosePositionId });

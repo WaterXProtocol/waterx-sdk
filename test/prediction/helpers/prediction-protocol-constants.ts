@@ -1,0 +1,20 @@
+/**
+ * On-chain `waterx_prediction` protocol constants mirrored for e2e discovery + skip logic.
+ * The Move contract (`waterx_prediction.move`) is the source of truth — keep these in sync.
+ */
+
+/**
+ * Keeper fill grace window past an order's expiry (audit M02). `self_cancel_order` /
+ * `self_cancel_close` abort `EOrderNotExpired` (19) until `now >= expiry_ts + KEEPER_FILL_GRACE_MS`,
+ * so e2e discovery must not surface a rescue id before this window elapses.
+ */
+export const KEEPER_FILL_GRACE_MS = 300_000n;
+
+/** `fill_order` / keeper close abort when the order's expiry has already passed. */
+export const E_ORDER_EXPIRED = 18;
+/** `self_cancel_order` / `self_cancel_close` abort before `expiry_ts + KEEPER_FILL_GRACE_MS`. */
+export const E_ORDER_NOT_EXPIRED = 19;
+/** `fill_order` abort when the keeper fill price exceeds the order's price cap. */
+export const E_FILL_ABOVE_PRICE_CAP = 20;
+/** `fill_order` abort when the keeper fill price is below the order's min price. */
+export const E_FILL_BELOW_MIN_PRICE = 21;
