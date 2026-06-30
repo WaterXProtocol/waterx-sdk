@@ -18,6 +18,11 @@ import {
 } from "../helpers/e2e-context.ts";
 import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import {
+  E_FILL_ABOVE_PRICE_CAP,
+  E_FILL_BELOW_MIN_PRICE,
+  E_ORDER_EXPIRED,
+} from "../helpers/prediction-protocol-constants.ts";
+import {
   expectSimulateSuccess,
   parseMoveAbortCode,
   resolveObjectOwner,
@@ -25,8 +30,6 @@ import {
   simulateWithSender,
 } from "../helpers/simulate.ts";
 
-/** `waterx_prediction::fill_order` abort code when the order's expiry has already passed. */
-const E_ORDER_EXPIRED = 18;
 /** `waterx_prediction::place_order` abort code when `receiver_account_id` is not registered. */
 const E_NOT_ACCOUNT_POSITION = 16;
 /** Valid address shape, never registered in the wxa AccountRegistry. */
@@ -116,14 +119,21 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     const txFill = new Transaction();
     fillOrder(client, txFill, { orderId, filledShares: 1n, filledCost: 1n });
     const fill = await simulateWithSender(client, txFill);
-    // Stale-seed guard: the discovered open order can expire on-chain after it was seeded,
-    // making `fill_order` abort EOrderExpired. That's a testnet-state condition, not a code
-    // bug — skip (re-seed to refresh) rather than fail. Any other failure is a real error.
+    // Stale-seed guard: a seeded open order drifts out of fillability as testnet state moves —
+    // its expiry passes (EOrderExpired) or the live market quote crosses the order's fixed price
+    // cap so the keeper fill is rejected (EFillAbovePriceCap / EFillBelowMinPrice). All three are
+    // testnet-state conditions, not code bugs — skip (re-seed to refresh) rather than fail.
+    // Any other failure is a real error.
+    const fillAbortCode =
+      fill.$kind === "FailedTransaction"
+        ? parseMoveAbortCode(simulateErrorMessage(fill))
+        : undefined;
     if (
-      fill.$kind === "FailedTransaction" &&
-      parseMoveAbortCode(simulateErrorMessage(fill)) === E_ORDER_EXPIRED
+      fillAbortCode === E_ORDER_EXPIRED ||
+      fillAbortCode === E_FILL_ABOVE_PRICE_CAP ||
+      fillAbortCode === E_FILL_BELOW_MIN_PRICE
     ) {
-      guard.skipFixableBySeed(ctx, "a non-expired open order (seeded order has expired)", {
+      guard.skipFixableBySeed(ctx, "a fillable open order (seeded order drifted out of range)", {
         stage: "place-open",
       });
     }

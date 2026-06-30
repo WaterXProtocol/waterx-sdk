@@ -20,6 +20,7 @@ import { toBigInt } from "~predict/utils.ts";
 
 import { E2E_DEFAULT_ACCOUNT_ID } from "../fixtures/e2e-fixtures.ts";
 import { readFixtureOverrides } from "./e2e-env.ts";
+import { KEEPER_FILL_GRACE_MS } from "./prediction-protocol-constants.ts";
 import { resolveAccountOwner } from "./simulate.ts";
 
 /** Where each fixture field was resolved (for skip messages and debugging). */
@@ -69,9 +70,9 @@ export interface E2eFixtures {
   /** Resolved market id hex (claim target). */
   claimMarketIdHex?: string;
   claimMarketIdBytes?: Uint8Array;
-  /** OPEN order whose expiry + cooldown have BOTH elapsed (selfCancelOrder rescue precondition). */
+  /** OPEN order past `expiry_ts + KEEPER_FILL_GRACE_MS` and cooldown (selfCancelOrder rescue precondition). */
   expiredOpenOrderId?: bigint;
-  /** PENDING_CLOSE position whose close-order expiry + cooldown have elapsed (selfCancelClose rescue). */
+  /** PENDING_CLOSE position past close `expiry_ts + KEEPER_FILL_GRACE_MS` and cooldown (selfCancelClose rescue). */
   expiredPendingClosePositionId?: bigint;
   /** A settlement coin object **owned by the AdminCap holder** — used by depositSettlement / adminPlaceOrderFor dry-run. */
   adminUsdCoinObjectId?: string;
@@ -399,7 +400,10 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
         o &&
         o.accountId === accountId &&
         o.kind === "OPEN" &&
-        o.expiryTs < nowMs &&
+        // self_cancel_order is gated by `now >= expiry_ts + KEEPER_FILL_GRACE_MS` (M02), not
+        // bare expiry — only surface the id once the grace window has elapsed so the rescue
+        // test runs (and passes) instead of aborting EOrderNotExpired (19) on a too-fresh order.
+        o.expiryTs + KEEPER_FILL_GRACE_MS <= nowMs &&
         o.selfCancelAfterTs < nowMs
       ) {
         expiredOpenOrderId = o.orderId;
@@ -411,7 +415,9 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
         p &&
         p.accountId === accountId &&
         p.status === "PENDING_CLOSE" &&
-        p.closeExpiryTs < nowMs &&
+        // self_cancel_close is gated by `now >= close_expiry_ts + KEEPER_FILL_GRACE_MS` (M02),
+        // not bare expiry — only surface once the grace window has elapsed (see open-order note).
+        p.closeExpiryTs + KEEPER_FILL_GRACE_MS <= nowMs &&
         p.closeSelfCancelAfterTs < nowMs
       ) {
         expiredPendingClosePositionId = p.positionId;
