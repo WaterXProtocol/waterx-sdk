@@ -25,7 +25,7 @@ export function assertOrderPlacedEventMatchesOrderView(
 ): void {
   expectEventShape(event, EVENT_CONTRACT.OrderPlaced);
   expect(event.json.account_id).toBe(order.accountId);
-  expect(event.json.receiver_account_id).toBe(order.accountId);
+  expect(event.json.receiver_account_id).toBe(order.receiverAccountId);
   expect(BigInt(String(event.json.order_id))).toBe(order.orderId);
   expect(normalizeEnumField(event.json.selection)).toBe(order.selection);
   expect(BigInt(String(event.json.max_spend))).toBe(order.maxSpend);

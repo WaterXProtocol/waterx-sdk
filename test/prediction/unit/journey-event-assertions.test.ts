@@ -12,7 +12,9 @@ const ORDER: OrderView = {
   orderId: 42n,
   kind: "OPEN",
   accountId: `0x${"a".repeat(64)}`,
-  receiverAccountId: `0x${"a".repeat(64)}`,
+  // Distinct from accountId (bet-sharing) so the assertion actually verifies the
+  // event's receiver_account_id is matched against receiverAccountId, not accountId.
+  receiverAccountId: `0x${"c".repeat(64)}`,
   marketId: new Uint8Array(Buffer.from("pred-e2e-open-v1", "utf8")),
   marketIdHex: `0x${Buffer.from("pred-e2e-open-v1", "utf8").toString("hex")}`,
   selection: "YES",
@@ -57,7 +59,7 @@ describe("journey-event-assertions", () => {
           market_registry_id: `0x${"b".repeat(64)}`,
           order_id: "42",
           account_id: ORDER.accountId,
-          receiver_account_id: ORDER.accountId,
+          receiver_account_id: ORDER.receiverAccountId,
           market_id: ORDER.marketIdHex,
           selection: "YES",
           max_spend: "1000",
@@ -96,7 +98,7 @@ describe("journey-event-assertions", () => {
           json: {
             market_registry_id: `0x${"b".repeat(64)}`,
             order_id: "42",
-            receiver_account_id: ORDER.accountId,
+            receiver_account_id: ORDER.receiverAccountId,
             market_id: ORDER.marketIdHex,
             selection: "YES",
             max_spend: "1000",
