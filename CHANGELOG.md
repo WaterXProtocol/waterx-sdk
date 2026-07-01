@@ -25,6 +25,17 @@ reference the PR that introduced them.
 
 ### Fixed
 
+- **Dual ESM + CJS exports so CommonJS consumers can `require()` the SDK.** The
+  package was published ESM-only — the `exports` map declared only the `import`
+  condition — so any `require("@waterx/sdk")` (e.g. a webpack/NestJS backend
+  emitting CommonJS) crashed at resolution with `ERR_PACKAGE_PATH_NOT_EXPORTED`,
+  even though it type-checked and built. The build now emits a real CommonJS
+  output (`tsconfig.cjs.json` → `dist/cjs/`, with a `"type": "commonjs"` marker)
+  alongside the ESM one, and every `exports` entry gains `require` + `default`
+  conditions — each with its own CJS-flavored `.d.ts` — pointing at it. No public
+  subpath or exported symbol changed; the only surface change is the added
+  conditions. A `publint` + `@arethetypeswrong/cli` check runs in CI (`pnpm
+  check:exports`) so an import-only exports map can never ship again. (#71)
 - **`getOrder` (prediction) BCS decode** — `OrderViewBcs` was missing the
   `receiver_account_id` field the deployed `view::OrderView` returns (between
   `account_id` and `market_id`), so every `getOrder` call aborted with

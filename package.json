@@ -1,6 +1,6 @@
 {
   "name": "@waterx/sdk",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "WaterX SDK — perpetuals and prediction markets on Sui",
   "license": "MIT",
   "author": "WaterX",
@@ -9,64 +9,149 @@
     "url": "https://github.com/WaterXProtocol/waterx-sdk.git"
   },
   "type": "module",
-  "main": "dist/src/sdk.js",
+  "main": "dist/cjs/src/sdk.js",
+  "module": "dist/src/sdk.js",
   "types": "dist/src/sdk.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/sdk.d.ts",
-      "import": "./dist/src/sdk.js"
+      "import": {
+        "types": "./dist/src/sdk.d.ts",
+        "default": "./dist/src/sdk.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/sdk.d.ts",
+        "default": "./dist/cjs/src/sdk.js"
+      }
     },
     "./account": {
-      "types": "./dist/src/account/index.d.ts",
-      "import": "./dist/src/account/index.js"
+      "import": {
+        "types": "./dist/src/account/index.d.ts",
+        "default": "./dist/src/account/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/account/index.d.ts",
+        "default": "./dist/cjs/src/account/index.js"
+      }
     },
     "./account/*": {
-      "types": "./dist/src/account/*.d.ts",
-      "import": "./dist/src/account/*.js"
+      "import": {
+        "types": "./dist/src/account/*.d.ts",
+        "default": "./dist/src/account/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/account/*.d.ts",
+        "default": "./dist/cjs/src/account/*.js"
+      }
     },
     "./oracle": {
-      "types": "./dist/src/oracle/index.d.ts",
-      "import": "./dist/src/oracle/index.js"
+      "import": {
+        "types": "./dist/src/oracle/index.d.ts",
+        "default": "./dist/src/oracle/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/oracle/index.d.ts",
+        "default": "./dist/cjs/src/oracle/index.js"
+      }
     },
     "./oracle/*": {
-      "types": "./dist/src/oracle/*.d.ts",
-      "import": "./dist/src/oracle/*.js"
+      "import": {
+        "types": "./dist/src/oracle/*.d.ts",
+        "default": "./dist/src/oracle/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/oracle/*.d.ts",
+        "default": "./dist/cjs/src/oracle/*.js"
+      }
     },
     "./perp": {
-      "types": "./dist/src/perp/index.d.ts",
-      "import": "./dist/src/perp/index.js"
+      "import": {
+        "types": "./dist/src/perp/index.d.ts",
+        "default": "./dist/src/perp/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/perp/index.d.ts",
+        "default": "./dist/cjs/src/perp/index.js"
+      }
     },
     "./perp/*": {
-      "types": "./dist/src/perp/*.d.ts",
-      "import": "./dist/src/perp/*.js"
+      "import": {
+        "types": "./dist/src/perp/*.d.ts",
+        "default": "./dist/src/perp/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/perp/*.d.ts",
+        "default": "./dist/cjs/src/perp/*.js"
+      }
     },
     "./prediction": {
-      "types": "./dist/src/prediction/index.d.ts",
-      "import": "./dist/src/prediction/index.js"
+      "import": {
+        "types": "./dist/src/prediction/index.d.ts",
+        "default": "./dist/src/prediction/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/prediction/index.d.ts",
+        "default": "./dist/cjs/src/prediction/index.js"
+      }
     },
     "./prediction/user": {
-      "types": "./dist/src/prediction/user/index.d.ts",
-      "import": "./dist/src/prediction/user/index.js"
+      "import": {
+        "types": "./dist/src/prediction/user/index.d.ts",
+        "default": "./dist/src/prediction/user/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/prediction/user/index.d.ts",
+        "default": "./dist/cjs/src/prediction/user/index.js"
+      }
     },
     "./prediction/user/*": {
-      "types": "./dist/src/prediction/user/*.d.ts",
-      "import": "./dist/src/prediction/user/*.js"
+      "import": {
+        "types": "./dist/src/prediction/user/*.d.ts",
+        "default": "./dist/src/prediction/user/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/prediction/user/*.d.ts",
+        "default": "./dist/cjs/src/prediction/user/*.js"
+      }
     },
     "./prediction/utils": {
-      "types": "./dist/src/prediction/utils/index.d.ts",
-      "import": "./dist/src/prediction/utils/index.js"
+      "import": {
+        "types": "./dist/src/prediction/utils/index.d.ts",
+        "default": "./dist/src/prediction/utils/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/prediction/utils/index.d.ts",
+        "default": "./dist/cjs/src/prediction/utils/index.js"
+      }
     },
     "./prediction/utils/*": {
-      "types": "./dist/src/prediction/utils/*.d.ts",
-      "import": "./dist/src/prediction/utils/*.js"
+      "import": {
+        "types": "./dist/src/prediction/utils/*.d.ts",
+        "default": "./dist/src/prediction/utils/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/prediction/utils/*.d.ts",
+        "default": "./dist/cjs/src/prediction/utils/*.js"
+      }
     },
     "./prediction/*": {
-      "types": "./dist/src/prediction/*.d.ts",
-      "import": "./dist/src/prediction/*.js"
+      "import": {
+        "types": "./dist/src/prediction/*.d.ts",
+        "default": "./dist/src/prediction/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/prediction/*.d.ts",
+        "default": "./dist/cjs/src/prediction/*.js"
+      }
     },
     "./generated/*": {
-      "types": "./dist/src/generated/*.d.ts",
-      "import": "./dist/src/generated/*.js"
+      "import": {
+        "types": "./dist/src/generated/*.d.ts",
+        "default": "./dist/src/generated/*.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/generated/*.d.ts",
+        "default": "./dist/cjs/src/generated/*.js"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -76,7 +161,8 @@
     "package.json"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias && tsc -p tsconfig.cjs.json && node scripts/finalize-cjs.mjs",
+    "check:exports": "publint --strict && attw --pack . --profile node16",
     "codegen": "tsx scripts/codegen-summaries.ts && npx sui-ts-codegen generate && tsx scripts/fix-generated-imports.ts",
     "lint": "pnpm lint:eslint && pnpm lint:prettier",
     "lint:eslint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" \"vitest.config.ts\"",
@@ -153,6 +239,7 @@
     "@mysten/sui": "^2.9.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.4",
     "@eslint/js": "10.0.1",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@mysten/bcs": "1.9.2",
@@ -167,6 +254,7 @@
     "eslint-config-prettier": "10.1.8",
     "globals": "17.6.0",
     "prettier": "3.8.3",
+    "publint": "^0.3.21",
     "tsc-alias": "1.8.17",
     "tsconfig-paths": "4.2.0",
     "tsx": "4.22.4",
