@@ -603,8 +603,14 @@ export async function stagePlaceAndResolve(ctx: SeedContext): Promise<void> {
 /**
  * Produces a "rescue" precondition for `selfCancelOrder` / `selfCancelClose`. Both Move
  * functions require `now >= self_cancel_after_ts` (cooldown, default 30s after place) AND
- * `now >= expiry_ts` (user-provided). We place with a 1s expiry, then sleep just over the
- * cooldown. Keeper key is required only for the close-rescue arm.
+ * `now >= expiry_ts + KEEPER_FILL_GRACE_MS` (5 min keeper grace, audit M02). We place with a
+ * short expiry and sleep just over the cooldown — we do NOT sleep out the full 5-min grace
+ * (too slow for a seed). So the rescue id is recorded but only becomes self-cancellable once
+ * it ages past the grace window: e2e discovery (`e2e-discovery.ts`) gates on
+ * `expiry + KEEPER_FILL_GRACE_MS`, so the rescue tests SKIP on a fresh seed and run (pass) on a
+ * later e2e run once the order has aged. The reuse-guard below intentionally keeps any
+ * past-bare-expiry order (not past-grace) so it can age in place instead of churning. Keeper
+ * key is required only for the close-rescue arm.
  */
 export async function stageExpiredRescue(ctx: SeedContext): Promise<void> {
   const accountId = ctx.fixture.accountId;

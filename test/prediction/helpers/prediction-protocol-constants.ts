@@ -10,6 +10,8 @@
  */
 export const KEEPER_FILL_GRACE_MS = 300_000n;
 
+/** `confirm_close` abort when the underlying market resolved before the close was confirmed. */
+export const E_MARKET_ALREADY_RESOLVED = 12;
 /** `fill_order` / keeper close abort when the order's expiry has already passed. */
 export const E_ORDER_EXPIRED = 18;
 /** `self_cancel_order` / `self_cancel_close` abort before `expiry_ts + KEEPER_FILL_GRACE_MS`. */
