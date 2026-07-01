@@ -36,6 +36,7 @@ describe("package subpath imports", () => {
       min_reserve: live.minReserve,
       order_cancel_cooldown_ms: live.orderCancelCooldownMs,
       next_order_id: live.nextOrderId,
+      next_position_id: live.nextPositionId,
       order_count: live.orderCount,
       position_count: live.positionCount,
       unresolved_market_count: live.unresolvedMarketCount,
