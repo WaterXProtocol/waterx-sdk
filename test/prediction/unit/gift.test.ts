@@ -152,6 +152,65 @@ describe("deriveGiftAddress", () => {
   it("rejects wrong-length pubkey", () => {
     expect(() => deriveGiftAddress(client, new Uint8Array(31))).toThrow(/32 bytes/);
   });
+
+  // The GiftKey type tag must key on the gift package's *original* id, which
+  // Sui pins across upgrades — not `published_at`, which advances on every
+  // upgrade. Otherwise the off-chain gift_id diverges from the on-chain
+  // `derive_gift_address` after the first upgrade.
+  it("is invariant to a package upgrade when original_id is set", () => {
+    const pubkey = deriveGiftKeypair(FIXED_SEED).getPublicKey().toRawBytes();
+    const originalId = "0x" + "a".repeat(64);
+
+    // Fresh deploy: published_at == original id.
+    const beforeUpgrade = createMockPredictClient({
+      packages: {
+        waterx_prediction_gift: {
+          published_at: originalId,
+          claimable_link_config: TESTNET_FIXTURE_IDS.claimableLinkConfig,
+        },
+      },
+    });
+
+    // After an upgrade: published_at advances, original_id stays put.
+    const afterUpgrade = createMockPredictClient({
+      packages: {
+        waterx_prediction_gift: {
+          published_at: "0x" + "b".repeat(64),
+          original_id: originalId,
+          claimable_link_config: TESTNET_FIXTURE_IDS.claimableLinkConfig,
+        },
+      },
+    });
+
+    expect(deriveGiftAddress(afterUpgrade, pubkey)).toBe(deriveGiftAddress(beforeUpgrade, pubkey));
+  });
+
+  it("falls back to published_at when original_id is absent", () => {
+    const pubkey = deriveGiftKeypair(FIXED_SEED).getPublicKey().toRawBytes();
+    const cfg = (publishedAt: string) => ({
+      packages: {
+        waterx_prediction_gift: {
+          published_at: publishedAt,
+          claimable_link_config: TESTNET_FIXTURE_IDS.claimableLinkConfig,
+        },
+      },
+    });
+    const a = createMockPredictClient(cfg("0x" + "a".repeat(64)));
+    const b = createMockPredictClient(cfg("0x" + "b".repeat(64)));
+    expect(deriveGiftAddress(a, pubkey)).not.toBe(deriveGiftAddress(b, pubkey));
+  });
+
+  it("giftTypeOriginId overrides the type tag independently of giftPackageId", () => {
+    const pubkey = deriveGiftKeypair(FIXED_SEED).getPublicKey().toRawBytes();
+    const originalId = "0x" + "c".repeat(64);
+    // Derivation keyed on originalId regardless of the runtime giftPackageId.
+    const withOrigin = deriveGiftAddress(client, pubkey, {
+      giftTypeOriginId: originalId,
+      giftPackageId: "0x" + "d".repeat(64),
+    });
+    const baseline = deriveGiftAddress(client, pubkey, { giftPackageId: originalId });
+    expect(withOrigin).toBe(baseline);
+  });
 });
 
 describe("gift PTB builders", () => {
