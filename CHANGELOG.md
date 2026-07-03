@@ -25,6 +25,21 @@ reference the PR that introduced them.
 
 ### Fixed
 
+- **`deriveGiftAddress` (prediction gift links) now survives a package
+  upgrade.** The off-chain `gift_id` derivation built the `GiftKey` type tag
+  from `packages.waterx_prediction_gift.published_at`, but Sui pins a struct's
+  type identity to its defining package's _original_ id — the on-chain
+  `derive_gift_address` always hashes `GiftKey` under that original id, which
+  never advances across upgrades. So after the first gift-package upgrade (once
+  `published_at` moved off `original_id`), `deriveGiftAddress` computed the
+  wrong address for **every** gift — old share links and freshly created ones
+  alike — even though on-chain state was fine. The type tag now resolves via a
+  new `PredictClient.waterxPredictionGiftTypeOriginId()` (config `original_id`,
+  falling back to `published_at` when absent), matching the existing
+  `wlpType()` convention; moveCall targets correctly stay on `published_at`. A
+  `giftTypeOriginId` override was added to `GiftBaseParams` for offline
+  derivation against custom deployments. The share URL/seed was never affected
+  (no package id in it). (#72)
 - **Dual ESM + CJS exports so CommonJS consumers can `require()` the SDK.** The
   package was published ESM-only — the `exports` map declared only the `import`
   condition — so any `require("@waterx/sdk")` (e.g. a webpack/NestJS backend
@@ -35,7 +50,7 @@ reference the PR that introduced them.
   conditions — each with its own CJS-flavored `.d.ts` — pointing at it. No public
   subpath or exported symbol changed; the only surface change is the added
   conditions. A `publint` + `@arethetypeswrong/cli` check runs in CI (`pnpm
-  check:exports`) so an import-only exports map can never ship again. (#71)
+check:exports`) so an import-only exports map can never ship again. (#71)
 - **`getOrder` (prediction) BCS decode** — `OrderViewBcs` was missing the
   `receiver_account_id` field the deployed `view::OrderView` returns (between
   `account_id` and `market_id`), so every `getOrder` call aborted with

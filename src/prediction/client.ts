@@ -127,6 +127,25 @@ export class PredictClient extends BaseLineClient<WaterxPredictionConfig> {
     );
   }
 
+  /**
+   * Original (first-published) id of the gift package. Used ONLY for the
+   * `GiftKey` type tag in derived-object address computation
+   * (`deriveGiftAddress`). Sui pins a struct's type identity to its
+   * defining package's *original* id — it never advances across upgrades,
+   * unlike `published_at`. So the off-chain `gift_id` derivation must key
+   * on this, or it diverges from the on-chain `derive_gift_address` after
+   * the first upgrade. Falls back to `published_at` when `original_id` is
+   * absent (fresh deployments where the two are equal).
+   */
+  waterxPredictionGiftTypeOriginId(): string {
+    const origin = (
+      this.config.packages.waterx_prediction_gift as { original_id?: string } | undefined
+    )?.original_id;
+    return typeof origin === "string" && origin.length > 0
+      ? origin
+      : this.waterxPredictionGiftPackageId();
+  }
+
   waterxReferralPackageId(): string {
     return requireConfigValue(
       this.config.packages.waterx_referral,

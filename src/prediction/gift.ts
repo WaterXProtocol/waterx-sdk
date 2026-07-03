@@ -54,6 +54,16 @@ import {
 export interface GiftBaseParams {
   /** `waterx_prediction_gift` package id. Defaults to `client.waterxPredictionGiftPackageId()`. */
   giftPackageId?: string;
+  /**
+   * `waterx_prediction_gift` *original* (first-published) package id, used
+   * ONLY for the `GiftKey` type tag in {@link deriveGiftAddress}. Defaults to
+   * `client.waterxPredictionGiftTypeOriginId()` (config `original_id`, falling
+   * back to `giftPackageId`/`published_at`). Distinct from `giftPackageId`,
+   * which selects the *runtime* package for moveCall targets — after a package
+   * upgrade the two diverge, and only the original id reproduces the on-chain
+   * `gift_id`. Override only for offline derivation against a custom deploy.
+   */
+  giftTypeOriginId?: string;
   /** `ClaimableLinkConfig` object id. Defaults to `client.claimableLinkConfigId()`. */
   claimableLinkConfig?: string;
   /** Collateral / settlement coin type for the position's `Gift<T>`. Defaults to `client.settlementCoinType()`. */
@@ -71,6 +81,25 @@ function resolveGiftPackageId(client: PredictClient, override?: string): string 
   return override === undefined || override === ""
     ? client.waterxPredictionGiftPackageId()
     : override;
+}
+
+/**
+ * Resolve the package id for the `GiftKey` type tag in
+ * {@link deriveGiftAddress}. Precedence: explicit `giftTypeOriginId`, then
+ * the runtime `giftPackageId` override (a self-contained deploy where
+ * original == published), then the client's config `original_id` (falling
+ * back to `published_at`). This must key on the *original* id so the
+ * off-chain derivation matches the on-chain type identity, which never
+ * advances across package upgrades.
+ */
+function resolveGiftTypeOriginId(
+  client: PredictClient,
+  originOverride?: string,
+  pkgOverride?: string,
+): string {
+  if (originOverride !== undefined && originOverride !== "") return originOverride;
+  if (pkgOverride !== undefined && pkgOverride !== "") return pkgOverride;
+  return client.waterxPredictionGiftTypeOriginId();
 }
 
 function resolveClaimableLinkConfig(client: PredictClient, override?: string): string {
@@ -216,6 +245,15 @@ const GiftKeyBcs = bcs.struct("GiftKey", {
 /**
  * Compute the `gift_id` that `create_gift` will produce for the given
  * pubkey, offline. No RPC. Mirrors `claimable_link::derive_gift_address`.
+ *
+ * The `GiftKey` type tag is keyed on the gift package's *original* id
+ * (via {@link resolveGiftTypeOriginId}), NOT `published_at`. On Sui a
+ * struct's type identity stays pinned to its defining package's original
+ * id and never advances across upgrades, so `derive_gift_address`
+ * hashes `GiftKey` under that original id. Using `published_at` here would
+ * silently diverge from the chain after the first package upgrade, yielding
+ * the wrong `gift_id` for every gift. The moveCall targets elsewhere in
+ * this module correctly stay on `published_at` (latest code).
  */
 export function deriveGiftAddress(
   client: PredictClient,
@@ -225,7 +263,7 @@ export function deriveGiftAddress(
   if (pubkey.length !== GIFT_PUBKEY_LEN) {
     throw new Error(`Gift pubkey must be ${GIFT_PUBKEY_LEN} bytes, got ${pubkey.length}`);
   }
-  const giftPkg = resolveGiftPackageId(client, params.giftPackageId);
+  const giftPkg = resolveGiftTypeOriginId(client, params.giftTypeOriginId, params.giftPackageId);
   const configId = resolveClaimableLinkConfig(client, params.claimableLinkConfig);
   const keyBytes = GiftKeyBcs.serialize({ pubkey: Array.from(pubkey) }).toBytes();
   return deriveObjectID(configId, `${giftPkg}::claimable_link::GiftKey`, keyBytes);
