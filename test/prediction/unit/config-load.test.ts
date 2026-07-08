@@ -1,11 +1,6 @@
 import { PredictClient } from "~predict/client.ts";
-import {
-  clearConfigCache,
-  defaultConfigUrl,
-  loadConfig,
-  type WaterxPredictionConfig,
-} from "~predict/config.ts";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { clearConfigCache, loadConfig, type WaterxPredictionConfig } from "~predict/config.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const remoteConfig = {
   network: "testnet",
@@ -46,38 +41,13 @@ describe("waterx-config loader", () => {
     clearConfigCache();
   });
 
-  it("defaultConfigUrl points at waterx-config raw JSON", () => {
-    expect(defaultConfigUrl("TESTNET")).toBe(
-      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
-    );
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
-  it("defaultConfigUrl pins to a custom git ref (B-08)", () => {
-    expect(defaultConfigUrl("TESTNET", "abc123")).toBe(
-      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/abc123/testnet.json",
-    );
-  });
-
-  it("loadConfig honors configRef when configUrl is unset (B-08)", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
-    await loadConfig("TESTNET", {
-      configRef: "feature-branch",
-      fetchImpl: fetchMock as unknown as typeof fetch,
-    });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/feature-branch/testnet.json",
-      expect.anything(),
-    );
-  });
-
-  it("configUrl takes precedence over configRef (B-08)", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
-    await loadConfig("TESTNET", {
-      configUrl: "https://waterx.test/override.json",
-      configRef: "ignored-ref",
-      fetchImpl: fetchMock as unknown as typeof fetch,
-    });
-    expect(fetchMock).toHaveBeenCalledWith("https://waterx.test/override.json", expect.anything());
+  it("throws when no config URL is set (no default fallback)", async () => {
+    vi.stubEnv("WATERX_CONFIG_URL", "");
+    await expect(loadConfig("TESTNET")).rejects.toThrow(/no config URL/);
   });
 
   it("loads and caches the remote prediction config", async () => {
@@ -94,6 +64,31 @@ describe("waterx-config loader", () => {
     expect(first).toBe(remoteConfig);
     expect(second).toBe(remoteConfig);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses WATERX_CONFIG_URL env var (as-is) when no configUrl is passed", async () => {
+    vi.stubEnv("WATERX_CONFIG_URL", "https://env.test/custom.json");
+    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
+    try {
+      await loadConfig("TESTNET", { fetchImpl: fetchMock as unknown as typeof fetch });
+      expect(fetchMock).toHaveBeenCalledWith("https://env.test/custom.json", expect.anything());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("explicit configUrl wins over WATERX_CONFIG_URL env var", async () => {
+    vi.stubEnv("WATERX_CONFIG_URL", "https://env.test/custom.json");
+    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
+    try {
+      await loadConfig("TESTNET", {
+        configUrl: "https://explicit.test/opts.json",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      });
+      expect(fetchMock).toHaveBeenCalledWith("https://explicit.test/opts.json", expect.anything());
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("rejects config missing packages object", async () => {

@@ -1,23 +1,44 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearConfigCache, defaultConfigUrl, loadConfig } from "../../../src/perp/config.ts";
+import { clearConfigCache, CONFIG_URL_ENV, loadConfig } from "../../../src/perp/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 
 const MOCK_TESTNET_CONFIG_URL = "https://waterx.test/fixtures/mock-testnet.json";
+const ENV_CONFIG_URL = "https://env.test/from-env.json";
 
 describe("loadConfig validation", () => {
   beforeEach(() => {
     clearConfigCache();
+    // Most tests below stub the global `fetch` and don't pass a configUrl —
+    // they rely on the URL coming from the env var (there is no default now).
+    vi.stubEnv(CONFIG_URL_ENV, ENV_CONFIG_URL);
   });
 
   afterEach(() => {
     clearConfigCache();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
-  it("defaultConfigUrl points at waterx-config raw JSON", () => {
-    expect(defaultConfigUrl("TESTNET")).toContain("waterx-config");
-    expect(defaultConfigUrl("TESTNET")).toContain("testnet.json");
+  it("throws when no config URL is set (no default fallback)", async () => {
+    vi.stubEnv(CONFIG_URL_ENV, "");
+    await expect(loadConfig("TESTNET")).rejects.toThrow(/no config URL/);
+  });
+
+  it("uses WATERX_CONFIG_URL env var (as-is) when no configUrl is passed", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => MOCK_TESTNET_CONFIG }));
+    vi.stubGlobal("fetch", fetchMock);
+    await loadConfig("TESTNET");
+    expect(fetchMock).toHaveBeenCalledWith(ENV_CONFIG_URL, expect.anything());
+  });
+
+  it("explicit configUrl wins over WATERX_CONFIG_URL env var", async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => MOCK_TESTNET_CONFIG }));
+    await loadConfig("TESTNET", {
+      configUrl: "https://explicit.test/opts.json",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("https://explicit.test/opts.json", expect.anything());
   });
 
   it("throws when fetch is unavailable", async () => {

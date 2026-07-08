@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
+## [Unreleased]
+
+### Added
+
+- **`WATERX_CONFIG_URL` env var supplies the config URL.** When set, both the perp
+  (`perp/config.ts`) and prediction (`prediction/config.ts`) `loadConfig` fetch it
+  **as-is** (no `network`/`ref` appended). Precedence: explicit `opts.configUrl` →
+  `WATERX_CONFIG_URL`. Exported as `CONFIG_URL_ENV` from `@waterx/sdk/perp` and
+  `@waterx/sdk/prediction`. (#73)
+
+### Changed
+
+- **BREAKING — the config URL no longer defaults to the GitHub-raw repo.** The
+  `defaultConfigUrl()` helper (both lines) and the perp `configRef` load option are
+  removed. `loadConfig` now requires a URL from `opts.configUrl` or the
+  `WATERX_CONFIG_URL` env var and throws when neither is set. Migrate any code that
+  relied on the implicit default (or `configRef` pinning) by passing an explicit
+  `configUrl` / setting `WATERX_CONFIG_URL`. (#73)
+
 ## [3.1.0] - 2026-07-03
 
 ### Changed

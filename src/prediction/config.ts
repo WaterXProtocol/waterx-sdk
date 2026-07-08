@@ -56,17 +56,10 @@ export interface WaterxPredictionConfig {
 
 export interface LoadConfigOptions {
   /**
-   * Override the default waterx-config raw JSON URL. Use this to point at a
-   * local mirror during development. Takes precedence over {@link configRef}.
+   * Config URL to fetch. Takes precedence over the `WATERX_CONFIG_URL` env var.
+   * When neither is set, {@link loadConfig} throws — there is no default fallback.
    */
   configUrl?: string;
-  /**
-   * Pin the canonical config to a specific git ref — a commit SHA, branch, or
-   * tag — instead of the default `main` branch. Resolves to
-   * `https://raw.githubusercontent.com/WaterXProtocol/waterx-config/<ref>/<network>.json`.
-   * Ignored when {@link configUrl} is set.
-   */
-  configRef?: string;
   /** Reuse a previously fetched config in memory. Default: false. */
   cache?: boolean;
   /** Optional fetch implementation for tests or runtimes without global fetch. */
@@ -75,17 +68,17 @@ export interface LoadConfigOptions {
   timeoutMs?: number;
 }
 
-const CONFIG_REPO_RAW_BASE = "https://raw.githubusercontent.com/WaterXProtocol/waterx-config";
-
-/** Default git ref for the canonical config when none is pinned. */
-const DEFAULT_CONFIG_REF = "main";
-
 /**
- * Build the canonical config URL for `network`, optionally pinned to a
- * specific git `ref` (commit SHA, branch, or tag). Defaults to `main`.
+ * Environment variable holding the config URL. When set (and no explicit
+ * `configUrl` is passed to {@link loadConfig}), it is fetched **as-is** —
+ * `network` is not appended.
  */
-export function defaultConfigUrl(network: Network, ref: string = DEFAULT_CONFIG_REF): string {
-  return `${CONFIG_REPO_RAW_BASE}/${ref}/${network.toLowerCase()}.json`;
+export const CONFIG_URL_ENV = "WATERX_CONFIG_URL";
+
+/** Read {@link CONFIG_URL_ENV} from the environment, if available. */
+function configUrlFromEnv(): string | undefined {
+  const url = globalThis.process?.env?.[CONFIG_URL_ENV];
+  return url && url.length > 0 ? url : undefined;
 }
 
 const configCache = new Map<string, WaterxPredictionConfig>();
@@ -98,7 +91,12 @@ export async function loadConfig(
   network: Network,
   opts: LoadConfigOptions = {},
 ): Promise<WaterxPredictionConfig> {
-  const url = opts.configUrl ?? defaultConfigUrl(network, opts.configRef);
+  const url = opts.configUrl ?? configUrlFromEnv();
+  if (!url) {
+    throw new Error(
+      `loadConfig: no config URL — set the ${CONFIG_URL_ENV} env var or pass opts.configUrl`,
+    );
+  }
   if (opts.cache && configCache.has(url)) {
     return configCache.get(url)!;
   }

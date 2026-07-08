@@ -2,10 +2,10 @@
 export { PerpClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
 export {
+  CONFIG_URL_ENV,
   PYTH_DEFAULTS,
   WORMHOLE_DEFAULTS,
   clearConfigCache,
-  defaultConfigUrl,
   loadConfig,
 } from "./config.ts";
 export type {
