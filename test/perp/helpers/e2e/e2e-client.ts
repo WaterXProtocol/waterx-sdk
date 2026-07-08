@@ -8,9 +8,13 @@
  */
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
+import { resolveE2eNetwork, type E2eNetwork } from "./e2e-network.ts";
 import { isGrpcTransientError } from "./transient-rpc.ts";
 
-export type E2eNetwork = "testnet" | "mainnet";
+// Re-export the pure network resolver so existing `e2e-client` importers keep
+// working; pure helpers should import it from `./e2e-network.ts` directly to
+// avoid dragging in the eager `clientInit` below.
+export { resolveE2eNetwork, type E2eNetwork };
 
 const GRPC_RETRY_MAX_ATTEMPTS = (() => {
   const raw = process.env.WATERX_E2E_GRPC_RETRY_ATTEMPTS;
@@ -51,15 +55,6 @@ export function wrapGrpcClientForE2eRetry<T extends object>(grpc: T): T {
   }) as T;
 }
 
-export function resolveE2eNetwork(): E2eNetwork {
-  const argv = process.argv ?? [];
-  if (argv.includes("--testnet")) return "testnet";
-  if (argv.includes("--mainnet")) return "mainnet";
-  const raw = process.env.WATERX_E2E_NETWORK?.trim().toLowerCase();
-  if (raw === "testnet" || raw === "mainnet") return raw;
-  return "testnet";
-}
-
 export const e2eNetwork: E2eNetwork = resolveE2eNetwork();
 
 function networkToClientKey(network: E2eNetwork): Network {
@@ -72,21 +67,35 @@ export let client!: PerpClient;
 /** @alias client */
 export let clientTxBuildersSimulate!: PerpClient;
 
-/** Resolves once the shared e2e client is ready (Vitest setup awaits this). */
-export const clientInit = (async () => {
-  const grpcUrl = resolveE2eGrpcUrlOverride();
-  const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
-    cache: true,
-    ...(grpcUrl ? { grpcUrl } : {}),
-  });
-  c.grpcClient = wrapGrpcClientForE2eRetry(c.grpcClient);
-  client = c;
-  clientTxBuildersSimulate = c;
-  return c;
-})();
+let clientInitPromise: Promise<PerpClient> | undefined;
+
+/**
+ * Lazily build (once) the shared e2e client and resolve when it is ready
+ * (Vitest e2e setup awaits this). Kept lazy — as a function, not an eager
+ * top-level IIFE — so that merely importing this module has NO side effects:
+ * pure helpers can pull in `resolveE2eGrpcUrlOverride` / `pythFeedIdsForE2e`
+ * etc. without triggering a `PerpClient.create` (and its `loadConfig`, which
+ * now requires a config URL). The config load happens only on first call.
+ */
+export function clientInit(): Promise<PerpClient> {
+  if (!clientInitPromise) {
+    clientInitPromise = (async () => {
+      const grpcUrl = resolveE2eGrpcUrlOverride();
+      const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
+        cache: true,
+        ...(grpcUrl ? { grpcUrl } : {}),
+      });
+      c.grpcClient = wrapGrpcClientForE2eRetry(c.grpcClient);
+      client = c;
+      clientTxBuildersSimulate = c;
+      return c;
+    })();
+  }
+  return clientInitPromise;
+}
 
 export async function getE2eClient(): Promise<PerpClient> {
-  return client ?? clientInit;
+  return client ?? clientInit();
 }
 
 export function pythFeedIdsForE2e(c = client): Record<string, string> {

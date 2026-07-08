@@ -43,8 +43,8 @@ import {
 } from "../integration/integration-trader-key.ts";
 import { refreshOraclePricesForTradingEdge } from "../trading/oracle-trading-edge.ts";
 import { findPendingRedeemForAccount } from "./discover-on-chain-position.ts";
-import { resolveE2eNetwork } from "./e2e-client.ts";
 import { isCreditPipelineConfigured } from "./e2e-custody.ts";
+import { resolveE2eNetwork } from "./e2e-network.ts";
 import { lifecycleTickerRow } from "./lifecycle-test-markets.ts";
 
 export type E2ePreflightSlotResult =
