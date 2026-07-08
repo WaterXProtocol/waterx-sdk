@@ -187,6 +187,9 @@ jobs:
           # Testnet feed ids are on Hermes Beta (prod Hermes 404s them). Uses PYTH_DEFAULTS.TESTNET;
           # SDK single-fetch only — e2e skips Hermes 429/5xx via skipHermesIfFeedUnavailable.
           WATERX_E2E_NETWORK: testnet
+          # `loadConfig` has no built-in default; supply the canonical testnet config
+          # (override via the `WATERX_CONFIG_URL` repo variable for a pinned mirror).
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json' }}
         run: pnpm exec vitest run --project e2e --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
       - name: Test report (e2e)
         uses: dorny/test-reporter@4a2e97665d5fa767581ef38eca97b9694bd4eef4 # v2
@@ -220,6 +223,9 @@ jobs:
       - name: Vitest predict-e2e (dot + JUnit)
         env:
           NODE_NO_WARNINGS: "1"
+          # `loadConfig` has no built-in default; supply the canonical testnet config
+          # (override via the `WATERX_CONFIG_URL` repo variable for a pinned mirror).
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json' }}
         run: pnpm exec vitest run --project predict-e2e --reporter=dot --reporter=junit --outputFile=test-results-predict-e2e.xml
       - name: Test report (predict-e2e)
         uses: dorny/test-reporter@4a2e97665d5fa767581ef38eca97b9694bd4eef4 # v2
@@ -261,6 +267,9 @@ jobs:
           # Optional override; empty falls back to the committed default signer.
           SUI_ACTIVE_ADDRESS: ${{ vars.SUI_SMOKE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ vars.WATERX_SMOKE_ACCOUNT_ID }}
+          # `loadConfig` (and smoke-remote step 0) has no built-in default; supply the
+          # canonical testnet config (override via the `WATERX_CONFIG_URL` repo variable).
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json' }}
         run: pnpm smoke:chain:dry
 
   trivy:

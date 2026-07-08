@@ -1,5 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { PredictClient } from "~predict/client.ts";
+import { CONFIG_URL_ENV } from "~predict/config.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TESTNET_FIXTURE_CONFIG, TESTNET_FIXTURE_IDS } from "../fixtures/testnet-config.ts";
@@ -8,6 +9,7 @@ import { createMockPredictClient } from "../helpers/mock-client.ts";
 describe("PredictClient", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it("testnet() fetches config and wires gRPC client", async () => {
@@ -19,6 +21,7 @@ describe("PredictClient", () => {
 
     const client = await PredictClient.testnet({
       grpcUrl: "https://fullnode.testnet.sui.io:443",
+      configUrl: "https://waterx.test/testnet-prediction.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
@@ -30,10 +33,12 @@ describe("PredictClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() fetches waterx-config mainnet.json by default", async () => {
+  it("mainnet() fetches the WATERX_CONFIG_URL config (as-is) when no configUrl is passed", async () => {
     const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
+    const envUrl = "https://env.test/mainnet-prediction.json";
+    vi.stubEnv(CONFIG_URL_ENV, envUrl);
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toContain("mainnet.json");
+      expect(url).toBe(envUrl);
       return {
         ok: true,
         status: 200,
