@@ -1,6 +1,6 @@
 /** Read pyth_rule Config tolerance map + ListingCap owner. */
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 
 async function rpc(network: string, method: string, params: unknown[]): Promise<any> {
   const url =
@@ -17,7 +17,10 @@ async function rpc(network: string, method: string, params: unknown[]): Promise<
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
   const configId = client.config.packages.pyth_rule.config;
   const listingCap = client.config.packages.waterx_oracle.listing_cap;
 

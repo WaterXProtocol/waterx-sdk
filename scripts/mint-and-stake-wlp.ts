@@ -34,7 +34,7 @@ import { aggregateTickerWithPyth } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 const TICKER = "USDCUSD"; // WLP pool's only token's ticker
@@ -53,7 +53,10 @@ async function main(): Promise<void> {
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
   const doExecute = process.env.EXECUTE === "1";
 
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
   const usdType = client.creditType();
   const wlpType = client.wlpType();
 

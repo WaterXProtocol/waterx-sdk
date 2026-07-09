@@ -11,7 +11,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { createAccount } from "../src/account/account.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 async function main(): Promise<void> {
@@ -20,7 +20,10 @@ async function main(): Promise<void> {
   const alias = process.argv[2] ?? "sdk-smoke";
   const doExecute = process.env.EXECUTE === "1";
 
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
 
   console.log(`sender:   ${address}`);
   console.log(`alias:    ${alias}`);

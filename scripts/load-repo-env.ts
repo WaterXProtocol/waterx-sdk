@@ -35,3 +35,15 @@ export function loadRepoEnvFiles(opts?: { repoRoot?: string }): void {
     }
   }
 }
+
+/**
+ * Read the canonical config URL from `WATERX_CONFIG_URL` at this script (harness)
+ * boundary, to pass as the SDK's `waterxConfigUrl` opt. `loadConfig` itself no
+ * longer reads env — scripts must supply the URL — so every CLI/smoke script
+ * sources it here. Call {@link loadRepoEnvFiles} first so `.env` values are
+ * visible. Returns `undefined` when unset (client `create` then throws).
+ */
+export function waterxConfigUrlFromEnv(): string | undefined {
+  const url = process.env.WATERX_CONFIG_URL?.trim();
+  return url || undefined;
+}

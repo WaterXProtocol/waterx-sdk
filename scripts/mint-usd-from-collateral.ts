@@ -31,7 +31,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { mintCreditToAccount } from "../src/account/funding/custody.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 /** First spendable coin of `coinType` owned by `owner`, with its balance. */
@@ -78,7 +78,10 @@ async function main(): Promise<void> {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
 
   const custody = client.config.packages.native_custody;
   const credit = client.config.packages.waterx_credit;
