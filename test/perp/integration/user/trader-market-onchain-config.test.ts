@@ -20,7 +20,7 @@ function saneMarket(md: MarketDataView, ticker: string): void {
 
 describe("Integration: on-chain MarketData smoke (read-only)", () => {
   beforeAll(async () => {
-    await clientInit;
+    await clientInit();
   });
 
   it("lifecycle + persistent tickers (when deployed)", async () => {

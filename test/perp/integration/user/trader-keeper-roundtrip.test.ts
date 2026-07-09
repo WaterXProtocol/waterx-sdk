@@ -34,7 +34,7 @@ import {
 
 describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper roundtrip + funding", () => {
   it("updateFundingRate executes on BTCUSD", async (ctx) => {
-    await clientInit;
+    await clientInit();
     const trader = loadIntegrationTraderKeypair();
     const ticker = activeLifecycleTickersForClient(client)[0];
     if (!ticker) {
@@ -58,7 +58,7 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper roundtrip
   }, 180_000);
 
   it("openPositionByKeeper then closePositionByKeeper on an empty ticker slot", async (ctx) => {
-    await clientInit;
+    await clientInit();
 
     const trader = loadIntegrationTraderKeypair();
     const owner = trader.getPublicKey().toSuiAddress();

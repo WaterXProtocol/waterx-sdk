@@ -33,7 +33,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     let creditType = "";
 
     beforeAll(async () => {
-      await clientInit;
+      await clientInit();
       if (!isCreditPipelineConfigured(client)) return;
       assetType = client.getNativeAssets()[0]?.type ?? "";
       creditType = client.creditType();

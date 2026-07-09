@@ -9,5 +9,5 @@ import { clientInit } from "./setup.ts";
 seedLifecycleApproxPricesForUnitTests();
 
 beforeAll(async () => {
-  await clientInit;
+  await clientInit();
 }, 120_000);

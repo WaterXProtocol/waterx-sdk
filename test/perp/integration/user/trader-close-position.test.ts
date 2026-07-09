@@ -92,7 +92,7 @@ describe.skipIf(!integrationCloseOneEnabled)(
   "Integration: close one open perp position (opt-in destructive)",
   () => {
     it("closes a single position (pinned or newest across lifecycle tickers)", async (ctx) => {
-      await clientInit;
+      await clientInit();
 
       const trader = loadIntegrationTraderKeypair();
 
