@@ -3,6 +3,7 @@
  * Copy stress harness helpers from waterx-sdk test/prediction into this package.
  * Run from packages/predict-stress: pnpm sync
  */
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +22,9 @@ const HELPER_FILES = [
   "api-env.ts",
   "catalog-cli.ts",
   "catalog-fill-policy.ts",
-  "e2e-discovery.ts",
+  // NOT `e2e-discovery.ts`: the stress harness ships a slim `e2e-context.ts`
+  // with no fixture walk (see below), and the discovery helper pulls in a chain
+  // of helpers this package does not vendor.
   "e2e-env.ts",
   "env.ts",
   "events-core.ts",
@@ -50,9 +53,32 @@ const OTHER_FILES = [
 ];
 
 function rewriteSdkImports(content) {
-  return content
-    .replace(/from "~predict\/([^"]+)\.ts"/g, 'from "@waterx/sdk/prediction/$1"')
-    .replace(/from '\~predict\/([^']+)\.ts'/g, "from '@waterx/sdk/prediction/$1'");
+  return (
+    content
+      .replace(/from "~predict\/([^"]+)\.ts"/g, 'from "@waterx/sdk/prediction/$1"')
+      .replace(/from '\~predict\/([^']+)\.ts'/g, "from '@waterx/sdk/prediction/$1'")
+      // Codegen lives at `src/generated/`, exported as `@waterx/sdk/generated/*`.
+      // There is no `prediction/generated` subpath — the prediction line imports
+      // from the single shared root.
+      .replace(/from "(?:\.\.\/)+src\/generated\/([^"]+)\.ts"/g, 'from "@waterx/sdk/generated/$1"')
+      .replace(/from '(?:\.\.\/)+src\/generated\/([^']+)\.ts'/g, "from '@waterx/sdk/generated/$1'")
+  );
+}
+
+/**
+ * `packages/predict-stress` is standalone — it consumes the SDK through the
+ * `@waterx/sdk` export map, never through relative paths into `src/`. A helper
+ * that picks up such an import upstream would otherwise be copied verbatim and
+ * silently reach outside the package. Fail the sync instead of shipping it.
+ */
+function assertNoSdkSourceEscape(label, content) {
+  const escapes = content.match(/from ["'](?:\.\.\/)+src\/[^"']+["']/g);
+  if (escapes) {
+    throw new Error(
+      `${label}: import(s) escape the standalone package: ${escapes.join(", ")}\n` +
+        `Add a rewrite rule in rewriteSdkImports() mapping them onto the @waterx/sdk export map.`,
+    );
+  }
 }
 
 function rewritePaths(content) {
@@ -81,6 +107,7 @@ function copyHelper(name) {
   let content = readFileSync(src, "utf8");
   content = rewriteSdkImports(content);
   content = rewritePaths(content);
+  assertNoSdkSourceEscape(`helpers/${name}`, content);
   writeFileSync(dest, content);
   console.log(`helpers/${name}`);
 }
@@ -103,6 +130,7 @@ function copyOther([relSrc, relDest]) {
   content = content.replace(/from "\.\.\/helpers\//g, 'from "../helpers/');
   content = content.replace(/from "\.\.\/contract\//g, 'from "../contract/');
   content = content.replace(/from "\.\.\/fixtures\//g, 'from "../fixtures/');
+  assertNoSdkSourceEscape(relDest, content);
   writeFileSync(dest, content);
   console.log(relDest);
 }
@@ -151,4 +179,17 @@ export function createE2eClient(): Promise<PredictClient> {
 );
 
 console.log("helpers/e2e-context.ts (slim)");
+
+// Rewriting import specifiers reorders them under the repo's import-sort rules,
+// so the raw copies land unformatted and `pnpm lint` fails on generated files.
+// Format in place with the root prettier so a fresh sync leaves a clean tree.
+const fmt = spawnSync(
+  "npx",
+  ["--no-install", "prettier", "--write", "--log-level", "warn", "packages/predict-stress/src"],
+  { cwd: SDK_ROOT, stdio: "inherit" },
+);
+if (fmt.status !== 0) {
+  throw new Error(`prettier failed on the synced tree (exit ${fmt.status ?? "signal"})`);
+}
+console.log("prettier --write src");
 console.log("Done.");

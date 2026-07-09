@@ -9,16 +9,41 @@
  *   SEED_DEPOSIT_AMOUNT=5000000 pnpm predict:bootstrap-stress-deposits
  */
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
+import { fromBase64 } from "@mysten/bcs";
+import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { Ed25519Keypair as Ed25519KeypairClass } from "@mysten/sui/keypairs/ed25519";
 
 import { formatSettlementBase, getAccountSettlementBalance } from "../helpers/account-balance.ts";
-import { forceDepositAllAvailable, forceDepositToAccount } from "../helpers/account-funding.ts";
+import {
+  ensureAccountFunded,
+  forceDepositAllAvailable,
+  forceDepositToAccount,
+} from "../helpers/account-funding.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
 import { optionalEnv } from "../helpers/e2e-env.ts";
 import { readSeedDepositAmount } from "../helpers/env.ts";
-import { resolveStressSigner, type StressWalletRow } from "../helpers/resolve-stress-signer.ts";
+import type { StressWalletEntry } from "../helpers/stress-wallets.ts";
 
+const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const WALLETS_FILE = resolve(process.cwd(), "config/wallets.json");
+
+interface StressWalletRow extends StressWalletEntry {
+  owner?: string;
+}
+
+function loadKeystoreKeypairs(): Map<string, Ed25519Keypair> {
+  const keystore = JSON.parse(readFileSync(KEYSTORE, "utf8")) as string[];
+  const byAddress = new Map<string, Ed25519Keypair>();
+  for (const encoded of keystore) {
+    const raw = fromBase64(encoded);
+    if (raw.length !== 33 || raw[0] !== 0x00) continue;
+    const kp = Ed25519KeypairClass.fromSecretKey(raw.slice(1));
+    byAddress.set(kp.toSuiAddress().toLowerCase(), kp);
+  }
+  return byAddress;
+}
 
 function readWalletRows(): StressWalletRow[] {
   const parsed = JSON.parse(readFileSync(WALLETS_FILE, "utf8")) as unknown;
@@ -35,8 +60,9 @@ async function main(): Promise<void> {
   const sweepAll = depositAllEnabled();
   const amount = readSeedDepositAmount();
   const client = await createE2eClient();
+  const keypairs = loadKeystoreKeypairs();
   const rows = readWalletRows();
-  if (rows.length === 0) throw new Error("config/wallets.json is empty");
+  if (rows.length === 0) throw new Error("stress-wallets.json is empty");
 
   console.log(
     sweepAll
@@ -45,12 +71,21 @@ async function main(): Promise<void> {
   );
 
   for (const row of rows) {
+    const owner = row.owner?.trim();
+    if (!owner?.startsWith("0x")) {
+      throw new Error(`${row.label ?? "wallet"}: missing owner address`);
+    }
     if (!row.accountId?.startsWith("0x")) {
-      throw new Error(`${row.label ?? "wallet"}: missing accountId — run pnpm accounts first`);
+      throw new Error(
+        `${row.label ?? owner}: missing accountId — run predict:bootstrap-stress-accounts first`,
+      );
     }
 
-    const signer = resolveStressSigner(row);
-    const owner = signer.toSuiAddress();
+    const signer = keypairs.get(owner.toLowerCase());
+    if (!signer) {
+      throw new Error(`${row.label ?? owner}: no keystore key for ${owner}`);
+    }
+
     const label = row.label ?? owner;
     const before = await getAccountSettlementBalance(client, row.accountId);
     process.stdout.write(`  ${label} … `);

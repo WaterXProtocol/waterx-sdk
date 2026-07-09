@@ -329,7 +329,7 @@ async function main(): Promise<void> {
   console.log(
     "Wallets:     ",
     wallets.length,
-    `(file: ${optionalEnv("E2E_STRESS_WALLETS_FILE") ?? "config/wallets.json"})`,
+    `(file: ${optionalEnv("E2E_STRESS_WALLETS_FILE") ?? "stress-wallets.json"})`,
   );
   if (hammer) {
     console.log("Hammer:      ", `${rounds} round(s) × ${phases[0]} parallel place`);
