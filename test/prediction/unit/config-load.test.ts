@@ -1,6 +1,6 @@
 import { PredictClient } from "~predict/client.ts";
 import { clearConfigCache, loadConfig, type WaterxPredictionConfig } from "~predict/config.ts";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const remoteConfig = {
   network: "testnet",
@@ -41,19 +41,14 @@ describe("waterx-config loader", () => {
     clearConfigCache();
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("throws when no config URL is set (no default fallback)", async () => {
-    vi.stubEnv("WATERX_CONFIG_URL", "");
+  it("throws when no config URL is passed (no env fallback / default)", async () => {
     await expect(loadConfig("TESTNET")).rejects.toThrow(/no config URL/);
   });
 
   it("loads and caches the remote prediction config", async () => {
     const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
     const opts = {
-      configUrl: "https://waterx.test/testnet.json",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
       cache: true,
     };
@@ -66,36 +61,20 @@ describe("waterx-config loader", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("uses WATERX_CONFIG_URL env var (as-is) when no configUrl is passed", async () => {
-    vi.stubEnv("WATERX_CONFIG_URL", "https://env.test/custom.json");
+  it("fetches the waterxConfigUrl as-is", async () => {
     const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
-    try {
-      await loadConfig("TESTNET", { fetchImpl: fetchMock as unknown as typeof fetch });
-      expect(fetchMock).toHaveBeenCalledWith("https://env.test/custom.json", expect.anything());
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("explicit configUrl wins over WATERX_CONFIG_URL env var", async () => {
-    vi.stubEnv("WATERX_CONFIG_URL", "https://env.test/custom.json");
-    const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
-    try {
-      await loadConfig("TESTNET", {
-        configUrl: "https://explicit.test/opts.json",
-        fetchImpl: fetchMock as unknown as typeof fetch,
-      });
-      expect(fetchMock).toHaveBeenCalledWith("https://explicit.test/opts.json", expect.anything());
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    await loadConfig("TESTNET", {
+      waterxConfigUrl: "https://explicit.test/opts.json",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(fetchMock).toHaveBeenCalledWith("https://explicit.test/opts.json", expect.anything());
   });
 
   it("rejects config missing packages object", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ network: "testnet" }));
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/has no packages object/);
@@ -107,7 +86,7 @@ describe("waterx-config loader", () => {
     const fetchMock = vi.fn(async () => jsonResponse(bad));
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/account_registry/);
@@ -119,7 +98,7 @@ describe("waterx-config loader", () => {
     const fetchMock = vi.fn(async () => jsonResponse(bad));
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/global_config/);
@@ -131,7 +110,7 @@ describe("waterx-config loader", () => {
     const fetchMock = vi.fn(async () => jsonResponse(bad));
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/market_registries/);
@@ -143,7 +122,7 @@ describe("waterx-config loader", () => {
     const fetchMock = vi.fn(async () => jsonResponse(bad));
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/bucket_framework.*published_at/);
@@ -155,7 +134,7 @@ describe("waterx-config loader", () => {
     delete globalThis.fetch;
     try {
       await expect(
-        loadConfig("TESTNET", { configUrl: "https://waterx.test/x.json" }),
+        loadConfig("TESTNET", { waterxConfigUrl: "https://waterx.test/x.json" }),
       ).rejects.toThrow(/no global fetch/);
     } finally {
       globalThis.fetch = saved;
@@ -166,7 +145,7 @@ describe("waterx-config loader", () => {
     const fetchMock = vi.fn(async () => ({ ok: false, status: 503 }) as Response);
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/HTTP 503/);
@@ -182,7 +161,7 @@ describe("waterx-config loader", () => {
 
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/mainnet.json",
+        waterxConfigUrl: "https://waterx.test/mainnet.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/declares network=mainnet/);
@@ -193,7 +172,7 @@ describe("waterx-config loader", () => {
 
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/no packages object/);
@@ -214,7 +193,7 @@ describe("waterx-config loader", () => {
 
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/account_registry/);
@@ -236,7 +215,7 @@ describe("waterx-config loader", () => {
 
     await expect(
       loadConfig("TESTNET", {
-        configUrl: "https://waterx.test/bad.json",
+        waterxConfigUrl: "https://waterx.test/bad.json",
         fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     ).rejects.toThrow(/global_config/);
@@ -248,7 +227,7 @@ describe("PredictClient remote config", () => {
     const fetchMock = vi.fn(async () => jsonResponse(remoteConfig));
 
     const client = await PredictClient.create("TESTNET", {
-      configUrl: "https://waterx.test/testnet.json",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 

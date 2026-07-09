@@ -8,22 +8,21 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
-### Added
-
-- **`WATERX_CONFIG_URL` env var supplies the config URL.** When set, both the perp
-  (`perp/config.ts`) and prediction (`prediction/config.ts`) `loadConfig` fetch it
-  **as-is** (no `network`/`ref` appended). Precedence: explicit `opts.configUrl` →
-  `WATERX_CONFIG_URL`. Exported as `CONFIG_URL_ENV` from `@waterx/sdk/perp` and
-  `@waterx/sdk/prediction`. (#73)
-
 ### Changed
 
-- **BREAKING — the config URL no longer defaults to the GitHub-raw repo.** The
-  `defaultConfigUrl()` helper (both lines) and the perp `configRef` load option are
-  removed. `loadConfig` now requires a URL from `opts.configUrl` or the
-  `WATERX_CONFIG_URL` env var and throws when neither is set. Migrate any code that
-  relied on the implicit default (or `configRef` pinning) by passing an explicit
-  `configUrl` / setting `WATERX_CONFIG_URL`. (#73)
+- **BREAKING — the config URL is supplied only via the `waterxConfigUrl` option.**
+  `loadConfig` (both `perp/config.ts` and `prediction/config.ts`) reads the URL
+  solely from `opts.waterxConfigUrl`, fetches it **as-is** (no `<network>.json` /
+  git ref appended), and **throws** when unset. There is **no `WATERX_CONFIG_URL`
+  env-var fallback and no built-in default** — the SDK never reads `process.env`.
+  The load option was **renamed `configUrl` → `waterxConfigUrl`** across
+  `loadConfig`, `PerpClient` / `PredictClient` `create` / `testnet` / `mainnet`,
+  and `WaterXClient.create` (shared + per-line). The `defaultConfigUrl()` helper
+  and the perp `configRef` option (removed in this cycle) stay gone; the
+  `CONFIG_URL_ENV` export is also removed. Migrate by passing an explicit
+  `waterxConfigUrl` (apps that want env-driven config read `process.env` themselves
+  and pass it through, e.g.
+  `create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL })`). (#73)
 
 ## [3.1.0] - 2026-07-03
 

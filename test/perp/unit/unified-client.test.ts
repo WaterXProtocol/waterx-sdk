@@ -233,7 +233,7 @@ describe("umbrella WaterXClient", () => {
 
     const unified = await WaterXClient.create({
       network: "TESTNET",
-      configUrl: "https://waterx.test/testnet.json",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
       perp: { cache: true },
       predict: { grpcUrl: "https://rpc.test:443" },
     });
@@ -242,12 +242,12 @@ describe("umbrella WaterXClient", () => {
     expect(unified.predict).toBe(predictClient);
     expect(perpSpy).toHaveBeenCalledWith(
       "TESTNET",
-      expect.objectContaining({ configUrl: "https://waterx.test/testnet.json", cache: true }),
+      expect.objectContaining({ waterxConfigUrl: "https://waterx.test/testnet.json", cache: true }),
     );
     expect(predictSpy).toHaveBeenCalledWith(
       "TESTNET",
       expect.objectContaining({
-        configUrl: "https://waterx.test/testnet.json",
+        waterxConfigUrl: "https://waterx.test/testnet.json",
         grpcUrl: "https://rpc.test:443",
       }),
     );

@@ -33,15 +33,16 @@ inside `MarketRegistry`.
 
 All chain-specific values are fetched at client init from the canonical
 [`waterx-config`](https://github.com/WaterXProtocol/waterx-config) JSON. The URL is
-**required** — there is no built-in default. Supply it either via the
-`WATERX_CONFIG_URL` env var or the explicit `configUrl` option; the URL is fetched
-**as-is** (no `<network>.json` / git ref appended). Resolution precedence: explicit
-`configUrl` opt → `WATERX_CONFIG_URL` → **throw** (`loadConfig` errors when neither is
-set). Applies to both line loaders (`perp/config.ts`, `prediction/config.ts`), e.g.:
+**required** and must be supplied via the explicit `waterxConfigUrl` option — there
+is **no env-var fallback and no built-in default**. `loadConfig` reads the URL solely
+from `opts.waterxConfigUrl`, fetches it **as-is** (no `<network>.json` / git ref
+appended), and **throws** when it is unset. Applies to both line loaders
+(`perp/config.ts`, `prediction/config.ts`).
 
-```
-WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
-```
+Callers that want an env-driven URL read it themselves and pass it through, e.g.
+`PerpClient.create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL })`.
+The repo test/smoke harnesses do exactly this at their boundary (e2e client,
+`scripts/smoke-remote.ts`); the SDK itself never touches `process.env`.
 
 The JSON is package-centric — each package nests its own object IDs and
 per-ticker maps. See `waterx-config/README.md` for the canonical schema.
@@ -64,11 +65,14 @@ alias of the umbrella.) The factory is **async**:
 ```ts
 import { WaterXClient } from "@waterx/sdk";
 
-const client = await WaterXClient.create({ network: "TESTNET" });
+const client = await WaterXClient.create({
+  network: "TESTNET",
+  waterxConfigUrl: "https://my.cdn/main/testnet.json", // required — no default
+});
 // override URL / gRPC (shared, or per-line via { perp: {...}, predict: {...} }):
 const c2 = await WaterXClient.create({
   network: "MAINNET",
-  configUrl: "https://my.cdn/main/mainnet.json",
+  waterxConfigUrl: "https://my.cdn/main/mainnet.json",
   grpcUrl: "https://my-fullnode/",
   cache: true, // optional in-process cache, default off
 });
@@ -84,7 +88,7 @@ client.perp.pyth.state_id;                              // network default
 
 // Or construct a single line directly:
 import { PerpClient } from "@waterx/sdk/perp";
-const perp = await PerpClient.create("TESTNET", { configUrl: process.env.WATERX_CONFIG_URL });
+const perp = await PerpClient.create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL });
 ```
 
 `src/constants.ts` holds only shared, line-agnostic primitives (`Network`,
@@ -220,7 +224,7 @@ src/
   `signAndExecuteTransaction`, `packageIds()`). `PerpClient` / `PredictClient` extend it.
 - **`unified-client.ts`** — `WaterXClient`, the umbrella entry point (`client.account` / `client.perp` / `client.predict`), with async `static create(opts)` / `fromClients(perp, predict)`. `Client` is a deprecated alias. `account/index.ts` aggregates the shared `waterx_account` + credit + custody builders for `client.account` from the **`account/` base itself** (re-exports **down** from `account/account.ts` + `account/funding/*`, never up into `perp/`). The builders are typed to the `AccountClientLike` capability interface (`account/client.ts`), which `PerpClient` satisfies structurally. The account/funding/referral builders were **moved** out of perp into the `account/` base (`account/account.ts`, `account/account-request.ts`, `account/referral.ts`, `account/funding/{credit,custody,wormhole,balance,consolidate}.ts`) — there are no leftover `perp/user/*` or `utils/*` re-export shims; consumers import from `account/` (or the `.`/`@waterx/sdk/account` surface) directly.
 - **`constants.ts`** — shared, line-agnostic primitives only: `Network`, scaling (`BPS_SCALE` / `FLOAT_SCALE` / `DOUBLE_SCALE`), decimals, `MS_PER_YEAR`, `DRY_RUN_SENDER` (zero-address simulate sender). **Nothing chain-specific.** Perp-domain enums live in `perp/constants.ts`.
-- **`perp/config.ts`** — `WaterXConfig` schema (perp/wlp/staking packages; `WaterXPackages extends AccountPackages, OraclePackages`), `loadConfig()` (URL from `configUrl` opt or `CONFIG_URL_ENV` / `WATERX_CONFIG_URL` — no default), `clearConfigCache()`. The account/funding/referral package types live in `account/config.ts`; the oracle-rule package types + `PythInfraConfig`/`PYTH_DEFAULTS` live in `oracle/config.ts` (shared infra — `OracleHost` depends on its `OracleConfig`, not on `perp/`). Both are re-exported here for back-compat.
+- **`perp/config.ts`** — `WaterXConfig` schema (perp/wlp/staking packages; `WaterXPackages extends AccountPackages, OraclePackages`), `loadConfig()` (URL from the `waterxConfigUrl` opt only — no env fallback, no default; throws when unset), `clearConfigCache()`. The account/funding/referral package types live in `account/config.ts`; the oracle-rule package types + `PythInfraConfig`/`PYTH_DEFAULTS` live in `oracle/config.ts` (shared infra — `OracleHost` depends on its `OracleConfig`, not on `perp/`). Both are re-exported here for back-compat.
 - **`perp/client.ts`** — `PerpClient` (the perp sub-client; formerly `WaterXClient`) with async `static create(network, opts)`. Extends `BaseLineClient`; delegates config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) to `perp/config-view.ts`. Reached as `client.perp` on the umbrella.
 - **`perp/config-view.ts`** — `PerpConfigView`: the canonical-schema lookups split off the transport client; pure, no gRPC.
 - **`perp/constants.ts`** — perp-domain enums (permission bitmasks / order tags / action codes / fee rates); re-exports the shared primitives from `../constants.ts` (incl. `DRY_RUN_SENDER`, the line-agnostic zero-address simulate sender) and `ACCUMULATOR_ROOT` from `account/constants.ts`.

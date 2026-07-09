@@ -56,29 +56,18 @@ export interface WaterxPredictionConfig {
 
 export interface LoadConfigOptions {
   /**
-   * Config URL to fetch. Takes precedence over the `WATERX_CONFIG_URL` env var.
-   * When neither is set, {@link loadConfig} throws — there is no default fallback.
+   * Canonical `waterx-config` JSON URL to fetch, **as-is** (no `<network>.json`
+   * / git ref appended). Required — {@link loadConfig} reads the URL only from
+   * this option (there is no env-var fallback and no built-in default) and
+   * throws when it is unset.
    */
-  configUrl?: string;
+  waterxConfigUrl?: string;
   /** Reuse a previously fetched config in memory. Default: false. */
   cache?: boolean;
   /** Optional fetch implementation for tests or runtimes without global fetch. */
   fetchImpl?: typeof fetch;
   /** Request timeout in ms. Default: 10_000. */
   timeoutMs?: number;
-}
-
-/**
- * Environment variable holding the config URL. When set (and no explicit
- * `configUrl` is passed to {@link loadConfig}), it is fetched **as-is** —
- * `network` is not appended.
- */
-export const CONFIG_URL_ENV = "WATERX_CONFIG_URL";
-
-/** Read {@link CONFIG_URL_ENV} from the environment, if available. */
-function configUrlFromEnv(): string | undefined {
-  const url = globalThis.process?.env?.[CONFIG_URL_ENV];
-  return url && url.length > 0 ? url : undefined;
 }
 
 const configCache = new Map<string, WaterxPredictionConfig>();
@@ -91,11 +80,9 @@ export async function loadConfig(
   network: Network,
   opts: LoadConfigOptions = {},
 ): Promise<WaterxPredictionConfig> {
-  const url = opts.configUrl ?? configUrlFromEnv();
+  const url = opts.waterxConfigUrl;
   if (!url) {
-    throw new Error(
-      `loadConfig: no config URL — set the ${CONFIG_URL_ENV} env var or pass opts.configUrl`,
-    );
+    throw new Error("loadConfig: no config URL — pass opts.waterxConfigUrl");
   }
   if (opts.cache && configCache.has(url)) {
     return configCache.get(url)!;

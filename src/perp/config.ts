@@ -199,11 +199,13 @@ export interface WaterXConfig {
 
 export interface LoadConfigOptions {
   /**
-   * Config URL to fetch. Use this to point at a staging deployment or a local
-   * mirror. Takes precedence over the `WATERX_CONFIG_URL` env var. When neither
-   * is set, {@link loadConfig} throws — there is no default fallback.
+   * Canonical `waterx-config` JSON URL to fetch, **as-is** (no `<network>.json`
+   * / git ref appended). Required — {@link loadConfig} reads the URL only from
+   * this option (there is no env-var fallback and no built-in default) and
+   * throws when it is unset. Point it at a staging deployment or local mirror
+   * as needed.
    */
-  configUrl?: string;
+  waterxConfigUrl?: string;
   /**
    * Reuse a previously-fetched config from the in-memory cache (keyed by
    * the effective URL). Default: false (always fetch fresh).
@@ -213,19 +215,6 @@ export interface LoadConfigOptions {
   fetchImpl?: typeof fetch;
   /** Optional request timeout in ms. Default 10_000. */
   timeoutMs?: number;
-}
-
-/**
- * Environment variable holding the config URL. When set (and no explicit
- * `configUrl` is passed to {@link loadConfig}), it is fetched **as-is** —
- * `network` is not appended.
- */
-export const CONFIG_URL_ENV = "WATERX_CONFIG_URL";
-
-/** Read {@link CONFIG_URL_ENV} from the environment, if available. */
-function configUrlFromEnv(): string | undefined {
-  const url = globalThis.process?.env?.[CONFIG_URL_ENV];
-  return url && url.length > 0 ? url : undefined;
 }
 
 const cache = new Map<string, WaterXConfig>();
@@ -238,11 +227,9 @@ export async function loadConfig(
   network: Network,
   opts: LoadConfigOptions = {},
 ): Promise<WaterXConfig> {
-  const url = opts.configUrl ?? configUrlFromEnv();
+  const url = opts.waterxConfigUrl;
   if (!url) {
-    throw new Error(
-      `loadConfig: no config URL — set the ${CONFIG_URL_ENV} env var or pass opts.configUrl`,
-    );
+    throw new Error("loadConfig: no config URL — pass opts.waterxConfigUrl");
   }
   if (opts.cache && cache.has(url)) {
     return cache.get(url)!;

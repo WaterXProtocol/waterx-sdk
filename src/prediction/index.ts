@@ -1,6 +1,6 @@
 export { PredictClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { CONFIG_URL_ENV, clearConfigCache, loadConfig } from "./config.ts";
+export { clearConfigCache, loadConfig } from "./config.ts";
 export type {
   LoadConfigOptions,
   WaterxAccountPackage,

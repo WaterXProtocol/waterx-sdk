@@ -27,6 +27,17 @@ export function resolveE2eGrpcUrlOverride(): string | undefined {
   return raw || undefined;
 }
 
+/**
+ * Canonical `waterx-config` URL for e2e, sourced from `WATERX_CONFIG_URL` at
+ * this harness boundary. `loadConfig` no longer reads env — it only takes the
+ * `waterxConfigUrl` opt — so the e2e client must pass it explicitly. Unset →
+ * `PerpClient.create` throws (the e2e job sets it; see `.github/workflows`).
+ */
+export function resolveE2eWaterxConfigUrl(): string | undefined {
+  const raw = process.env.WATERX_CONFIG_URL?.trim();
+  return raw || undefined;
+}
+
 async function withGrpcRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt < GRPC_RETRY_MAX_ATTEMPTS; attempt++) {
     try {
@@ -83,6 +94,7 @@ export function clientInit(): Promise<PerpClient> {
       const grpcUrl = resolveE2eGrpcUrlOverride();
       const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
         cache: true,
+        waterxConfigUrl: resolveE2eWaterxConfigUrl(),
         ...(grpcUrl ? { grpcUrl } : {}),
       });
       c.grpcClient = wrapGrpcClientForE2eRetry(c.grpcClient);

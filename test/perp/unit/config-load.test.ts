@@ -1,41 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearConfigCache, CONFIG_URL_ENV, loadConfig } from "../../../src/perp/config.ts";
+import { clearConfigCache, loadConfig } from "../../../src/perp/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 
 const MOCK_TESTNET_CONFIG_URL = "https://waterx.test/fixtures/mock-testnet.json";
-const ENV_CONFIG_URL = "https://env.test/from-env.json";
+// Shared URL for the tests that only stub `fetch` — the URL now comes solely
+// from the `waterxConfigUrl` opt (there is no env-var fallback / default).
+const BASE_URL = "https://waterx.test/testnet.json";
 
 describe("loadConfig validation", () => {
   beforeEach(() => {
     clearConfigCache();
-    // Most tests below stub the global `fetch` and don't pass a configUrl —
-    // they rely on the URL coming from the env var (there is no default now).
-    vi.stubEnv(CONFIG_URL_ENV, ENV_CONFIG_URL);
   });
 
   afterEach(() => {
     clearConfigCache();
     vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
   });
 
-  it("throws when no config URL is set (no default fallback)", async () => {
-    vi.stubEnv(CONFIG_URL_ENV, "");
+  it("throws when no config URL is passed (no env fallback / default)", async () => {
     await expect(loadConfig("TESTNET")).rejects.toThrow(/no config URL/);
   });
 
-  it("uses WATERX_CONFIG_URL env var (as-is) when no configUrl is passed", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => MOCK_TESTNET_CONFIG }));
-    vi.stubGlobal("fetch", fetchMock);
-    await loadConfig("TESTNET");
-    expect(fetchMock).toHaveBeenCalledWith(ENV_CONFIG_URL, expect.anything());
-  });
-
-  it("explicit configUrl wins over WATERX_CONFIG_URL env var", async () => {
+  it("fetches the waterxConfigUrl as-is", async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => MOCK_TESTNET_CONFIG }));
     await loadConfig("TESTNET", {
-      configUrl: "https://explicit.test/opts.json",
+      waterxConfigUrl: "https://explicit.test/opts.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
     expect(fetchMock).toHaveBeenCalledWith("https://explicit.test/opts.json", expect.anything());
@@ -43,7 +33,9 @@ describe("loadConfig validation", () => {
 
   it("throws when fetch is unavailable", async () => {
     vi.stubGlobal("fetch", undefined);
-    await expect(loadConfig("TESTNET")).rejects.toThrow(/no global `fetch`/);
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
+      /no global `fetch`/,
+    );
   });
 
   it("throws on HTTP error", async () => {
@@ -51,7 +43,7 @@ describe("loadConfig validation", () => {
       "fetch",
       vi.fn(async () => ({ ok: false, status: 404, json: async () => ({}) })),
     );
-    await expect(loadConfig("TESTNET")).rejects.toThrow(/HTTP 404/);
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(/HTTP 404/);
   });
 
   it("throws when network mismatches", async () => {
@@ -62,7 +54,9 @@ describe("loadConfig validation", () => {
         json: async () => ({ ...MOCK_TESTNET_CONFIG, network: "mainnet" }),
       })),
     );
-    await expect(loadConfig("TESTNET")).rejects.toThrow(/declares network=mainnet/);
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
+      /declares network=mainnet/,
+    );
   });
 
   it("accepts credit-only config shape (no waterx_perp)", async () => {
@@ -78,7 +72,7 @@ describe("loadConfig validation", () => {
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => creditOnly })),
     );
-    const cfg = await loadConfig("TESTNET");
+    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
     expect(cfg.packages.waterx_credit?.credit_registry).toMatch(/^0x/);
     expect(cfg.packages.waterx_perp).toBeUndefined();
   });
@@ -88,7 +82,9 @@ describe("loadConfig validation", () => {
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => ({ network: "testnet" }) })),
     );
-    await expect(loadConfig("TESTNET")).rejects.toThrow(/has no packages object/);
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
+      /has no packages object/,
+    );
   });
 
   it("accepts account-only minimal config (no perp, no credit)", async () => {
@@ -103,7 +99,7 @@ describe("loadConfig validation", () => {
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => minimal })),
     );
-    const cfg = await loadConfig("TESTNET");
+    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
     expect(cfg.packages.waterx_account.account_registry).toMatch(/^0x/);
     expect(cfg.packages.waterx_perp).toBeUndefined();
     expect(cfg.packages.waterx_credit).toBeUndefined();
@@ -116,12 +112,14 @@ describe("loadConfig validation", () => {
       "fetch",
       vi.fn(async () => ({ ok: true, json: async () => bad })),
     );
-    await expect(loadConfig("TESTNET")).rejects.toThrow(/missing packages\.waterx_perp/);
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
+      /missing packages\.waterx_perp/,
+    );
   });
 
   it("fetches and parses canonical-shaped testnet JSON", async () => {
     const cfg = await loadConfig("TESTNET", {
-      configUrl: MOCK_TESTNET_CONFIG_URL,
+      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
       fetchImpl: (async () => ({
         ok: true,
         json: async () => MOCK_TESTNET_CONFIG,
@@ -139,12 +137,12 @@ describe("loadConfig validation", () => {
       return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
     }) as unknown as typeof fetch;
     await loadConfig("TESTNET", {
-      configUrl: MOCK_TESTNET_CONFIG_URL,
+      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
       cache: true,
       fetchImpl,
     });
     await loadConfig("TESTNET", {
-      configUrl: MOCK_TESTNET_CONFIG_URL,
+      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
       cache: true,
       fetchImpl,
     });

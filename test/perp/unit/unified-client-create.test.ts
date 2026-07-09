@@ -20,18 +20,18 @@ describe("Client.create", () => {
     const client = await Client.create({
       network: "TESTNET",
       grpcUrl: "https://grpc.test:443",
-      configUrl: "https://waterx.test/testnet.json",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
       cache: true,
     });
 
     expect(perpCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: "https://grpc.test:443",
-      configUrl: "https://waterx.test/testnet.json",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
       cache: true,
     });
     expect(predictCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: "https://grpc.test:443",
-      configUrl: "https://waterx.test/testnet.json",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
       cache: true,
     });
     expect(client.perp).toBe(perpStub);
@@ -50,12 +50,12 @@ describe("Client.create", () => {
 
     expect(perpCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: undefined,
-      configUrl: undefined,
+      waterxConfigUrl: undefined,
       cache: undefined,
     });
     expect(predictCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: undefined,
-      configUrl: undefined,
+      waterxConfigUrl: undefined,
       cache: undefined,
     });
   });
@@ -69,17 +69,17 @@ describe("Client.create", () => {
     await Client.create({
       network: "TESTNET",
       perp: { network: "MAINNET", cache: false },
-      predict: { network: "TESTNET", configUrl: "https://waterx.test/predict.json" },
+      predict: { network: "TESTNET", waterxConfigUrl: "https://waterx.test/predict.json" },
     });
 
     expect(perpCreate).toHaveBeenCalledWith("MAINNET", {
       grpcUrl: undefined,
-      configUrl: undefined,
+      waterxConfigUrl: undefined,
       cache: false,
     });
     expect(predictCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: undefined,
-      configUrl: "https://waterx.test/predict.json",
+      waterxConfigUrl: "https://waterx.test/predict.json",
       cache: undefined,
     });
   });
@@ -90,12 +90,12 @@ describe("Client.create", () => {
 
     await Client.create({
       grpcUrl: "https://shared.grpc:443",
-      perp: { configUrl: "https://waterx.test/perp.json" },
+      perp: { waterxConfigUrl: "https://waterx.test/perp.json" },
     });
 
     expect(perpCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: "https://shared.grpc:443",
-      configUrl: "https://waterx.test/perp.json",
+      waterxConfigUrl: "https://waterx.test/perp.json",
       cache: undefined,
     });
   });

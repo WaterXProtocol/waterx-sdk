@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const t0 = Date.now();
   console.log(`fetching config: ${configUrl}`);
   const client = await PerpClient.create("TESTNET", {
-    configUrl,
+    waterxConfigUrl: configUrl,
     cache: true,
   });
   const dt = Date.now() - t0;
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
   console.log("\n=== Cache hit check (2nd create) ===");
   const t1 = Date.now();
   const client2 = await PerpClient.create("TESTNET", {
-    configUrl,
+    waterxConfigUrl: configUrl,
     cache: true,
   });
   const dt2 = Date.now() - t1;
