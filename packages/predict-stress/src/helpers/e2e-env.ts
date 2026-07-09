@@ -8,14 +8,20 @@ export function optionalEnv(key: string): string | undefined {
   return v === undefined || v === "" ? undefined : v;
 }
 
-/** Client options (falls back to waterx-config defaults). */
-export function readTestnetClientOverrides() {
+/** Client options for the prediction e2e client. `loadConfig` no longer reads
+ *  env — it only takes the `waterxConfigUrl` opt — so this harness sources the
+ *  URL from `E2E_CONFIG_URL` (line-specific), falling back to the shared
+ *  `WATERX_CONFIG_URL` that CI sets, and passes it as the opt. */
+export function readE2eClientOverrides() {
   return {
-    configUrl: optionalEnv("E2E_CONFIG_URL"),
+    waterxConfigUrl: optionalEnv("E2E_CONFIG_URL") ?? optionalEnv("WATERX_CONFIG_URL"),
     grpcUrl: optionalEnv("E2E_GRPC_URL"),
     settlement: optionalEnv("E2E_SETTLEMENT_ASSET") === "USD" ? ("USD" as const) : undefined,
   };
 }
+
+/** @deprecated Use {@link readE2eClientOverrides}. */
+export const readTestnetClientOverrides = readE2eClientOverrides;
 
 /** Static fixture overrides (otherwise discovered on-chain). */
 export function readFixtureOverrides() {
