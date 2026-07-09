@@ -9,7 +9,10 @@ import { getChainOrderView } from "../helpers/chain-order-view.ts";
 const accountId = "0x602bce5950460623ab406feed9e668196c2177c5dc97a781853a6589b2c3f471";
 
 async function main(): Promise<void> {
-  const client = await PredictClient.create("TESTNET");
+  // `loadConfig` no longer reads env — source the URL at this script boundary.
+  const client = await PredictClient.create("TESTNET", {
+    waterxConfigUrl: process.env.E2E_CONFIG_URL ?? process.env.WATERX_CONFIG_URL,
+  });
   const cursor = await getOrderCursor(client);
   console.log("cursor", {
     count: cursor.count.toString(),

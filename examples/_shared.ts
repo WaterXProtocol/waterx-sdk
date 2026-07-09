@@ -1,7 +1,8 @@
 /**
  * Shared helpers for every example under `examples/`.
  *
- *   - `buildClient(network?)` — async PerpClient constructor (testnet default)
+ *   - `buildClient(network?)` — async PerpClient constructor (testnet default);
+ *     reads the config URL from `WATERX_CONFIG_URL` (required — the SDK has no default)
  *   - `loadActiveKeypair()` — read the local Sui CLI's active ed25519 keypair
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain
@@ -26,7 +27,14 @@ const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
 export async function buildClient(network: Network = "TESTNET"): Promise<PerpClient> {
-  return PerpClient.create(network, { cache: true });
+  const waterxConfigUrl = process.env.WATERX_CONFIG_URL;
+  if (!waterxConfigUrl) {
+    throw new Error(
+      "buildClient: set WATERX_CONFIG_URL to a waterx-config JSON URL " +
+        "(e.g. https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json)",
+    );
+  }
+  return PerpClient.create(network, { cache: true, waterxConfigUrl });
 }
 
 export function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {

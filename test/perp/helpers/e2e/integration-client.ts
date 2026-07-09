@@ -8,6 +8,7 @@ import type { Network } from "../../../../src/perp/constants.ts";
 import {
   resolveE2eGrpcUrlOverride,
   resolveE2eNetwork,
+  resolveE2eWaterxConfigUrl,
   wrapGrpcClientForE2eRetry,
   type E2eNetwork,
 } from "./e2e-client.ts";
@@ -26,6 +27,7 @@ export async function createIntegrationWaterXClient(): Promise<PerpClient> {
   const grpcUrl = resolveE2eGrpcUrlOverride();
   const c = await PerpClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
     cache: true,
+    waterxConfigUrl: resolveE2eWaterxConfigUrl(),
     ...(grpcUrl ? { grpcUrl } : {}),
   });
   c.grpcClient = wrapGrpcClientForE2eRetry(c.grpcClient);

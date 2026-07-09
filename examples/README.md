@@ -4,6 +4,14 @@ Single-file, runnable TypeScript examples for every public SDK entry point.
 Each file demonstrates **one** function. Read the top docstring to see
 required env vars; run with `pnpm exec tsx examples/<path>`.
 
+**Required:** set `WATERX_CONFIG_URL` to a canonical `waterx-config` JSON URL —
+`buildClient()` reads it and passes it to the SDK as `waterxConfigUrl` (the SDK
+has no default). e.g.
+
+```
+export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
+```
+
 ## Defaults
 
 - **Views** (read-only): no signing, no gas. Sender is the zero address.
@@ -91,7 +99,7 @@ Higher-level smokes that chain multiple steps live under `scripts/`:
 
 `examples/_shared.ts` exports:
 
-- `buildClient(network?)` — async `WaterXClient.create` wrapper
+- `buildClient(network?)` — async `PerpClient.create` wrapper (reads `WATERX_CONFIG_URL`)
 - `loadActiveKeypair()` — read the local CLI's active ed25519 keypair
 - `sim(client, tx, label, sender?)` — dry-run, returns `true`/`false`
 - `execute(client, signer, tx, label)` — sign + dispatch
