@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
- * Create wxa accounts for every entry in stress-wallets.json (skips owners that already have one).
- * Loads signers from the local Sui CLI keystore by matching `owner` address.
+ * Create wxa accounts for every entry in the stress wallets file (skips owners that already
+ * have one). Loads signers from the local Sui CLI keystore by matching `owner` address.
  *
  * Usage:
  *   pnpm predict:bootstrap-stress-accounts
@@ -18,6 +18,7 @@ import { getAccountIds } from "~predict/fetch.ts";
 
 import { resolveOwnerRegistryAccountId } from "../helpers/account-funding.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
+import { optionalEnv } from "../helpers/e2e-env.ts";
 import type { StressWalletEntry } from "../helpers/stress-wallets.ts";
 import {
   assertSuccessfulExecution,
@@ -43,7 +44,10 @@ function loadKeystoreKeypairs(): Map<string, Ed25519Keypair> {
   return byAddress;
 }
 
-const WALLETS_FILE = resolve(process.cwd(), "test/prediction/fixtures/stress-wallets.json");
+const WALLETS_FILE = resolve(
+  process.cwd(),
+  optionalEnv("E2E_STRESS_WALLETS_FILE") ?? "test/prediction/fixtures/stress-wallets.json",
+);
 
 function readWalletRows(): StressWalletRow[] {
   const parsed = JSON.parse(readFileSync(WALLETS_FILE, "utf8")) as unknown;
@@ -112,7 +116,7 @@ async function ensureAccountForWallet(
 async function main(): Promise<void> {
   const keypairs = loadKeystoreKeypairs();
   const rows = readWalletRows();
-  if (rows.length === 0) throw new Error("stress-wallets.json is empty");
+  if (rows.length === 0) throw new Error(`${WALLETS_FILE} is empty`);
 
   console.log(`Bootstrapping ${rows.length} stress wallet account(s)…\n`);
   let updated = 0;
@@ -120,7 +124,7 @@ async function main(): Promise<void> {
   for (const row of rows) {
     const owner = row.owner?.trim();
     if (!owner?.startsWith("0x")) {
-      throw new Error(`${row.label ?? "wallet"}: missing owner address in stress-wallets.json`);
+      throw new Error(`${row.label ?? "wallet"}: missing owner address in ${WALLETS_FILE}`);
     }
     const signer = keypairs.get(owner.toLowerCase());
     if (!signer) {
@@ -136,7 +140,7 @@ async function main(): Promise<void> {
   }
 
   writeWalletRows(rows);
-  console.log(`\nDone. Updated ${updated} accountId(s) in stress-wallets.json`);
+  console.log(`\nDone. Updated ${updated} accountId(s) in ${WALLETS_FILE}`);
 }
 
 main().catch((err) => {

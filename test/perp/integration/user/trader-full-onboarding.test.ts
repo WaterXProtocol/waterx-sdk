@@ -56,7 +56,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
   "Integration: full onboarding (mint USD → WLP → stake → trade → keeper)",
   () => {
     beforeAll(async () => {
-      await clientInit;
+      await clientInit();
     }, 180_000);
 
     it("end-to-end onboarding chain", async (ctx) => {

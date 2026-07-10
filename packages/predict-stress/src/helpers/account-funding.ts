@@ -83,7 +83,7 @@ function resolveCreditRegistryId(client: PredictClient): string | undefined {
     ?.credit_registry;
 }
 
-function psmConfigReady(client: PredictClient): boolean {
+export function psmConfigReady(client: PredictClient): boolean {
   return Boolean(
     resolveNativeCustodyPackageId(client) &&
     resolveCustodyVaultId(client) &&

@@ -45,7 +45,7 @@ import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { stake, unstake } from "../src/perp/index.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 interface SimResult {
@@ -183,7 +183,10 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
   const doExecute = process.env.EXECUTE === "1";

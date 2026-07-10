@@ -118,6 +118,9 @@ jobs:
           # Dry: empty → orchestrator uses committed defaults. Execute: the secrets.
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
+          # `loadConfig` (and smoke-remote step 0) has no built-in default; supply the
+          # staging testnet config (override via the `WATERX_CONFIG_URL` repo variable).
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging.waterx-config.pages.dev/testnet.json' }}
         run: |
           if [ "$SMOKE_MODE" = "execute" ]; then
             pnpm smoke:chain

@@ -33,7 +33,7 @@ import {
 
 describe.skipIf(!isIntegrationTraderConfigured())("Integration: keeper open smoke (v3)", () => {
   it("single openPositionByKeeper when a lifecycle ticker has zero position", async (ctx) => {
-    await clientInit;
+    await clientInit();
 
     const tickers = activeLifecycleTickersForClient(client);
     if (!tickers.length) {

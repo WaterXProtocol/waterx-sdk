@@ -29,6 +29,22 @@ reference the PR that introduced them.
   `market_by_key` walk (58 serial round-trips) — roughly **20–140× faster**,
   and the gap widens as the market/position count grows. (`waterx-contract#105`)
 
+### Changed
+
+- **BREAKING — the config URL is supplied only via the `waterxConfigUrl` option.**
+  `loadConfig` (both `perp/config.ts` and `prediction/config.ts`) reads the URL
+  solely from `opts.waterxConfigUrl`, fetches it **as-is** (no `<network>.json` /
+  git ref appended), and **throws** when unset. There is **no `WATERX_CONFIG_URL`
+  env-var fallback and no built-in default** — the SDK never reads `process.env`.
+  The load option was **renamed `configUrl` → `waterxConfigUrl`** across
+  `loadConfig`, `PerpClient` / `PredictClient` `create` / `testnet` / `mainnet`,
+  and `WaterXClient.create` (shared + per-line). The `defaultConfigUrl()` helper
+  and the perp `configRef` option (removed in this cycle) stay gone; the
+  `CONFIG_URL_ENV` export is also removed. Migrate by passing an explicit
+  `waterxConfigUrl` (apps that want env-driven config read `process.env` themselves
+  and pass it through, e.g.
+  `create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL })`). (#73)
+
 ## [3.1.0] - 2026-07-03
 
 ### Changed

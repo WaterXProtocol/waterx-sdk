@@ -17,6 +17,7 @@ import {
   predictE2eNetwork,
   predictE2eNetworkKey,
 } from "../helpers/e2e-context.ts";
+import { readE2eClientOverrides } from "../helpers/e2e-env.ts";
 import { expectSimulateSuccess } from "../helpers/simulate.ts";
 
 describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
@@ -25,7 +26,11 @@ describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
   const network = predictE2eNetworkKey();
 
   beforeAll(async () => {
-    unified = await Client.create({ network, cache: true });
+    unified = await Client.create({
+      network,
+      cache: true,
+      waterxConfigUrl: readE2eClientOverrides().waterxConfigUrl,
+    });
     legacyPredict = await createE2eClient();
   }, 120_000);
 

@@ -53,7 +53,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     let marketAtStart: IntegrationMarketSnapshotMap;
 
     beforeAll(async () => {
-      await clientInit;
+      await clientInit();
       const deployed = new Set(activeLifecycleTestBasesIntegration(client));
       const want = INTEGRATION_LIFECYCLE_VITEST_TICKERS.filter((t) => deployed.has(t));
       const bases = want.length > 0 ? want : [...deployed];
@@ -72,7 +72,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
 
     describe.each(INTEGRATION_LIFECYCLE_VITEST_TICKERS)("%s — full chain", (ticker) => {
       it("open → deposit → withdraw → increase → decrease → close", async (ctx) => {
-        await clientInit;
+        await clientInit();
 
         const deployed = activeLifecycleTestBasesIntegration(client);
         if (!deployed.includes(ticker)) {
@@ -112,7 +112,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     it.skipIf(!approxPriceChainSmoke)(
       "opt-in: smallest scenario — simulate place + match sanity on first env-selected ticker",
       async (ctx) => {
-        await clientInit;
+        await clientInit();
 
         const deployed = activeLifecycleTestBasesIntegration(client);
         const ticker =

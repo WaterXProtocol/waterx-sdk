@@ -18,7 +18,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const client = await PredictClient.testnet();
+  // `loadConfig` no longer reads env — source the URL at this script boundary.
+  const client = await PredictClient.testnet({
+    waterxConfigUrl: process.env.E2E_CONFIG_URL ?? process.env.WATERX_CONFIG_URL,
+  });
   const ids = await getAccountIds(client, { owner });
 
   if (ids.length === 0) {

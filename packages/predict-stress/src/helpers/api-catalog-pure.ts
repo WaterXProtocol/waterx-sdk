@@ -312,6 +312,8 @@ async function listAllFeedBrowseItems(
 
   for (let page = 0; page < maxPages; page += 1) {
     const sep = listPath.includes("?") ? "&" : "?";
+    // Not `path`: `cursor` is reassigned from `envelope` below, so naming this
+    // `path` makes TS see path -> cursor -> envelope -> path and bail with TS7022.
     const requestPath: string =
       cursor != null && cursor !== ""
         ? `${listPath}${sep}cursor=${encodeURIComponent(cursor)}`

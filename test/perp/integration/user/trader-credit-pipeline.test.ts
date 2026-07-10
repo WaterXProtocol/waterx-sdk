@@ -31,7 +31,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     let assetType = "";
 
     beforeAll(async () => {
-      await clientInit;
+      await clientInit();
       if (!isCreditPipelineConfigured(client)) return;
       assetType = client.getNativeAssets()[0]?.type ?? "";
       const trader = loadIntegrationTraderKeypair();

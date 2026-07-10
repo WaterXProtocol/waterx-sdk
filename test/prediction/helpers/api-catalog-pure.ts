@@ -312,11 +312,13 @@ async function listAllFeedBrowseItems(
 
   for (let page = 0; page < maxPages; page += 1) {
     const sep = listPath.includes("?") ? "&" : "?";
-    const path =
+    // Not `path`: `cursor` is reassigned from `envelope` below, so naming this
+    // `path` makes TS see path -> cursor -> envelope -> path and bail with TS7022.
+    const requestPath: string =
       cursor != null && cursor !== ""
         ? `${listPath}${sep}cursor=${encodeURIComponent(cursor)}`
         : listPath;
-    const { status, envelope } = await apiGet<FeedBrowseListData>(env, path);
+    const { status, envelope } = await apiGet<FeedBrowseListData>(env, requestPath);
     if (status !== 200 || !envelope.success) break;
     items.push(...envelope.data.items);
     cursor = envelope.data.nextCursor ?? null;

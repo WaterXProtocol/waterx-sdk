@@ -19,7 +19,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     let configuredTickers: string[] = [];
 
     beforeAll(async () => {
-      await clientInit;
+      await clientInit();
       configuredTickers = e2ePersistentPerpTickersForClient(
         client.config.packages.waterx_perp.markets ?? {},
       );

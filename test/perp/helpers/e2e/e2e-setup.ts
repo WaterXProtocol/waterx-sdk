@@ -6,4 +6,4 @@
  */
 import { clientInit } from "./e2e-client.ts";
 
-await clientInit;
+await clientInit();

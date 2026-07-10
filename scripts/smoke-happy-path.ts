@@ -35,7 +35,7 @@ import {
   requestDeposit,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 interface SimResult {
@@ -119,7 +119,10 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
   const usdcType = client.getPoolTokenType("USD");
 
   // ============================================================================

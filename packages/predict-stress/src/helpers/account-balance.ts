@@ -3,9 +3,9 @@
  */
 import { bcs } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
+import { accountBalance } from "@waterx/sdk/generated/waterx_account/account";
 import type { PredictClient } from "@waterx/sdk/prediction/client";
 import { extractReturnBytes } from "@waterx/sdk/prediction/fetch";
-import { accountBalance } from "@waterx/sdk/prediction/generated/waterx_account/account";
 import {
   resolveAccountPackageId,
   resolveAccountRegistry,

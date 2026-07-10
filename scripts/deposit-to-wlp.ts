@@ -29,9 +29,9 @@ import { setPriceRefreshThresholdMs } from "../src/generated/waterx_perp/global_
 import { aggregateTickerWithPyth, refreshOraclePrices } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
-import { getAccountBalance } from "../src/perp/fetch.ts";
+import { getAccountBalance, getGlobalConfigData } from "../src/perp/fetch.ts";
 import { mintWlp, updateTokenValue } from "../src/perp/user/wlp.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 async function isUsdAllowed(
@@ -70,30 +70,9 @@ async function getOwner(client: PerpClient, objectId: string): Promise<string | 
   return r.object?.owner?.AddressOwner;
 }
 
-async function getPriceRefreshThresholdMs(
-  client: PerpClient,
-  globalConfigId: string,
-): Promise<bigint> {
-  // Fall back to JSON RPC since grpc getObject doesn't expose parsed Move fields.
-  const res = await fetch(
-    client.config.network === "mainnet"
-      ? "https://fullnode.mainnet.sui.io:443"
-      : "https://fullnode.testnet.sui.io:443",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "sui_getObject",
-        params: [globalConfigId, { showContent: true }],
-      }),
-    },
-  );
-  const j = (await res.json()) as {
-    result?: { data?: { content?: { fields?: Record<string, string | number> } } };
-  };
-  return BigInt(j.result?.data?.content?.fields?.price_refresh_threshold_ms ?? 0);
+async function getPriceRefreshThresholdMs(client: PerpClient): Promise<bigint> {
+  const cfg = await getGlobalConfigData(client);
+  return BigInt(cfg.price_refresh_threshold_ms);
 }
 
 async function main(): Promise<void> {
@@ -118,7 +97,10 @@ async function main(): Promise<void> {
   // `skipOraclePriceRefresh: true`.
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
 
-  const client = await PerpClient.create("TESTNET", { cache: true });
+  const client = await PerpClient.create("TESTNET", {
+    cache: true,
+    waterxConfigUrl: waterxConfigUrlFromEnv(),
+  });
 
   const usdType = client.creditType();
   const wlpType = client.wlpType();
@@ -202,7 +184,7 @@ async function main(): Promise<void> {
   // AdminCap so the unrefreshable WLP entry stops aborting.
   const globalConfigId = client.config.packages.waterx_perp.global_config;
   const perpAdminCap = client.config.packages.waterx_perp.admin_cap;
-  const currentThreshold = await getPriceRefreshThresholdMs(client, globalConfigId);
+  const currentThreshold = await getPriceRefreshThresholdMs(client);
   const TARGET_THRESHOLD_MS = 7n * 24n * 3600n * 1000n; // 7 days
   console.log(`refresh threshold: ${currentThreshold} ms`);
   if (currentThreshold < TARGET_THRESHOLD_MS) {

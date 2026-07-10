@@ -282,7 +282,8 @@ async function main(): Promise<void> {
     chainEnv.EXECUTE = "1";
   }
 
-  if (!chainEnv.WATERX_SMOKE_ACCOUNT_ID?.trim()) {
+  const accountDefaulted = !chainEnv.WATERX_SMOKE_ACCOUNT_ID?.trim();
+  if (accountDefaulted) {
     chainEnv.WATERX_SMOKE_ACCOUNT_ID = DEFAULT_SMOKE_ACCOUNT_ID;
     console.log(
       `[smoke-chain] WATERX_SMOKE_ACCOUNT_ID unset — using committed default ` +
@@ -290,15 +291,19 @@ async function main(): Promise<void> {
     );
   }
 
-  // No signer address and no local sui config (CI dry run) — fall back to the
-  // default signer address. Dry runs only simulate, so the public address is
-  // enough; no keystore secret is needed. Local dev (client.yaml present) keeps
-  // using its own active address.
-  if (!chainEnv.SUI_ACTIVE_ADDRESS?.trim() && !existsSync(CLIENT_YAML)) {
+  // The default account is owned by DEFAULT_SMOKE_SIGNER, so the two defaults have
+  // to travel together: pairing it with some other active address aborts in
+  // `lp_pool::assert_wxa_protocol_perm` (EUnauthorized). A dry run only simulates,
+  // so the public address is enough — pin it even when a local `client.yaml` exists,
+  // whose active address is whatever wallet the dev happens to be on. EXECUTE still
+  // needs the matching key, so leave the signer alone there and let it fail loudly.
+  const signerUnset = !chainEnv.SUI_ACTIVE_ADDRESS?.trim();
+  const pinDefaultSigner = accountDefaulted ? flags.dryRun : !existsSync(CLIENT_YAML);
+  if (signerUnset && pinDefaultSigner) {
     chainEnv.SUI_ACTIVE_ADDRESS = DEFAULT_SMOKE_SIGNER;
     console.log(
-      `[smoke-chain] no SUI_ACTIVE_ADDRESS and no client.yaml — using default ` +
-        `signer address ${DEFAULT_SMOKE_SIGNER} (simulate-only; EXECUTE needs its key).`,
+      `[smoke-chain] using default signer address ${DEFAULT_SMOKE_SIGNER} ` +
+        `(owner of the default smoke account; simulate-only — EXECUTE needs its key).`,
     );
   }
 

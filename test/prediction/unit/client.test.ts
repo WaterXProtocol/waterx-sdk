@@ -19,6 +19,7 @@ describe("PredictClient", () => {
 
     const client = await PredictClient.testnet({
       grpcUrl: "https://fullnode.testnet.sui.io:443",
+      waterxConfigUrl: "https://waterx.test/testnet-prediction.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
@@ -30,10 +31,11 @@ describe("PredictClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() fetches waterx-config mainnet.json by default", async () => {
+  it("mainnet() fetches the waterxConfigUrl config (as-is)", async () => {
     const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
-    const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toContain("mainnet.json");
+    const url = "https://waterx.test/mainnet-prediction.json";
+    const fetchMock = vi.fn(async (fetchedUrl: string) => {
+      expect(fetchedUrl).toBe(url);
       return {
         ok: true,
         status: 200,
@@ -42,6 +44,7 @@ describe("PredictClient", () => {
     });
 
     const client = await PredictClient.mainnet({
+      waterxConfigUrl: url,
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
@@ -51,7 +54,7 @@ describe("PredictClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("mainnet() still accepts an explicit configUrl override", async () => {
+  it("mainnet() accepts an explicit waterxConfigUrl", async () => {
     const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -60,7 +63,7 @@ describe("PredictClient", () => {
     }));
 
     const client = await PredictClient.mainnet({
-      configUrl: "https://waterx.test/mainnet-prediction.json",
+      waterxConfigUrl: "https://waterx.test/mainnet-prediction.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 

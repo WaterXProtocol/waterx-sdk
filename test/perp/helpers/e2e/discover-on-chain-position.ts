@@ -10,8 +10,8 @@ import {
   getRedeemRequests,
 } from "../../../../src/perp/fetch.ts";
 import { wxaAccountIdHints } from "./canonical-testnet-account.ts";
-import { resolveE2eNetwork } from "./e2e-client.ts";
 import { resolveDefaultUsdcCoinProbeAttempts } from "./e2e-discovery-caps.ts";
+import { resolveE2eNetwork } from "./e2e-network.ts";
 import {
   getAccountOwnerByAccountId,
   getWxaAccountBalance,

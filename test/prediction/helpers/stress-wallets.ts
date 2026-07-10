@@ -58,8 +58,9 @@ export function loadStressWallets(): StressWalletEntry[] {
   const filePath = optionalEnv("E2E_STRESS_WALLETS_FILE") ?? DEFAULT_WALLETS_FILE;
   const resolved = resolve(process.cwd(), filePath);
   if (!existsSync(resolved)) {
+    const example = resolved.replace(/\.json$/, ".example.json");
     throw new Error(
-      `stress wallets file not found: ${resolved} — copy stress-wallets.example.json and fill 8 entries`,
+      `stress wallets file not found: ${resolved} — copy ${example} and fill 8 entries`,
     );
   }
   const parsed = JSON.parse(readFileSync(resolved, "utf8")) as unknown;

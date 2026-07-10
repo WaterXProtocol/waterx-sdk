@@ -33,7 +33,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     let owner = "";
 
     beforeAll(async () => {
-      await clientInit;
+      await clientInit();
       const trader = loadIntegrationTraderKeypair();
       owner = trader.getPublicKey().toSuiAddress();
       ({ accountId } = await ensureUserAccountForIntegration(client, trader, execTx));

@@ -31,13 +31,27 @@ import {
 
 loadRepoEnvFiles();
 
+/** Shared client — assigned when {@link clientInit} completes. */
 export let client!: PerpClient;
 
-export const clientInit = (async () => {
-  const c = await createIntegrationWaterXClient();
-  client = c;
-  return c;
-})();
+let clientInitPromise: Promise<PerpClient> | undefined;
+
+/**
+ * Lazily build (once) the shared integration client. Kept lazy — a function,
+ * not an eager top-level IIFE — so merely importing this module has NO side
+ * effects: `PerpClient.create` (and its `loadConfig`, which now requires a
+ * config URL) runs only on first call. Mirrors the e2e `clientInit`.
+ */
+export function clientInit(): Promise<PerpClient> {
+  if (!clientInitPromise) {
+    clientInitPromise = (async () => {
+      const c = await createIntegrationWaterXClient();
+      client = c;
+      return c;
+    })();
+  }
+  return clientInitPromise;
+}
 
 export {
   INTEGRATION_TRADER_KEYSTORE_PATH,

@@ -56,36 +56,18 @@ export interface WaterxPredictionConfig {
 
 export interface LoadConfigOptions {
   /**
-   * Override the default waterx-config raw JSON URL. Use this to point at a
-   * local mirror during development. Takes precedence over {@link configRef}.
+   * Canonical `waterx-config` JSON URL to fetch, **as-is** (no `<network>.json`
+   * / git ref appended). Required — {@link loadConfig} reads the URL only from
+   * this option (there is no env-var fallback and no built-in default) and
+   * throws when it is unset.
    */
-  configUrl?: string;
-  /**
-   * Pin the canonical config to a specific git ref — a commit SHA, branch, or
-   * tag — instead of the default `main` branch. Resolves to
-   * `https://raw.githubusercontent.com/WaterXProtocol/waterx-config/<ref>/<network>.json`.
-   * Ignored when {@link configUrl} is set.
-   */
-  configRef?: string;
+  waterxConfigUrl?: string;
   /** Reuse a previously fetched config in memory. Default: false. */
   cache?: boolean;
   /** Optional fetch implementation for tests or runtimes without global fetch. */
   fetchImpl?: typeof fetch;
   /** Request timeout in ms. Default: 10_000. */
   timeoutMs?: number;
-}
-
-const CONFIG_REPO_RAW_BASE = "https://raw.githubusercontent.com/WaterXProtocol/waterx-config";
-
-/** Default git ref for the canonical config when none is pinned. */
-const DEFAULT_CONFIG_REF = "main";
-
-/**
- * Build the canonical config URL for `network`, optionally pinned to a
- * specific git `ref` (commit SHA, branch, or tag). Defaults to `main`.
- */
-export function defaultConfigUrl(network: Network, ref: string = DEFAULT_CONFIG_REF): string {
-  return `${CONFIG_REPO_RAW_BASE}/${ref}/${network.toLowerCase()}.json`;
 }
 
 const configCache = new Map<string, WaterxPredictionConfig>();
@@ -98,7 +80,10 @@ export async function loadConfig(
   network: Network,
   opts: LoadConfigOptions = {},
 ): Promise<WaterxPredictionConfig> {
-  const url = opts.configUrl ?? defaultConfigUrl(network, opts.configRef);
+  const url = opts.waterxConfigUrl;
+  if (!url) {
+    throw new Error("loadConfig: no config URL — pass opts.waterxConfigUrl");
+  }
   if (opts.cache && configCache.has(url)) {
     return configCache.get(url)!;
   }

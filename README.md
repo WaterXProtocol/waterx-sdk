@@ -11,13 +11,18 @@ The perp and prediction lines expose builder functions with **colliding names** 
 ```ts
 import { WaterXClient } from "@waterx/sdk";
 
-const client = await WaterXClient.create({ network: "TESTNET" });
+// waterxConfigUrl is REQUIRED — the SDK has no built-in default and never reads env.
+const client = await WaterXClient.create({
+  network: "TESTNET",
+  waterxConfigUrl: "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+});
 client.account.createAccount(tx, { alias });  // shared waterx_account + funding (credit/custody)
 client.perp.buildPlaceOrderTx(params);        // perpetuals
 client.predict.placeOrder(tx, params);        // prediction markets
 // client.perp / client.predict ARE the line clients — sign/execute on them directly:
 //   await client.perp.signAndExecuteTransaction({ transaction: tx, signer })
-// each line can target a different network: WaterXClient.create({ perp: { network: "MAINNET" }, predict: { network: "TESTNET" } })
+// each line can target a different network + URL:
+//   WaterXClient.create({ perp: { network: "MAINNET", waterxConfigUrl: mainnetUrl }, predict: { network: "TESTNET", waterxConfigUrl: testnetUrl } })
 ```
 
 > `WaterXClient` is the umbrella entry point. `Client` is kept as a **deprecated alias** for one major cycle.
@@ -41,13 +46,16 @@ Consumers: `pnpm add @waterx/sdk @mysten/sui`
 
 ## Quickstart (unified client)
 
-`WaterXClient.create()` loads each line's deployment config from the canonical `waterx-config` JSON and returns a ready client. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (`client.perp` / `client.predict` are the line clients, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
+`WaterXClient.create()` loads each line's deployment config from the canonical `waterx-config` JSON (its URL passed via the **required** `waterxConfigUrl` option — the SDK has no default and never reads env) and returns a ready client. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (`client.perp` / `client.predict` are the line clients, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
 
 ```ts
 import { WaterXClient, rawPrice } from "@waterx/sdk";
 import { Transaction } from "@mysten/sui/transactions";
 
-const client = await WaterXClient.create({ network: "TESTNET" });
+const client = await WaterXClient.create({
+  network: "TESTNET",
+  waterxConfigUrl: "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+});
 const signer = /* your Ed25519Keypair or wallet Signer */;
 
 // --- Perp: place a market order ---
@@ -77,14 +85,16 @@ await client.predict.signAndExecuteTransaction({ transaction: ptx, signer });
 
 ## Per-line clients
 
-If you only need one line, construct it directly (both factories are **async** — they fetch deployment config):
+If you only need one line, construct it directly (both factories are **async** — they fetch deployment config; `waterxConfigUrl` is **required**):
 
 ```ts
 import { PerpClient } from "@waterx/sdk/perp";
 import { PredictClient } from "@waterx/sdk/prediction";
 
-const perp = await PerpClient.create("TESTNET"); // or PerpClient.testnet()
-const predict = await PredictClient.create("TESTNET"); // or PredictClient.testnet()
+const waterxConfigUrl =
+  "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json";
+const perp = await PerpClient.create("TESTNET", { waterxConfigUrl }); // or PerpClient.testnet({ waterxConfigUrl })
+const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // or PredictClient.testnet({ waterxConfigUrl })
 ```
 
 Read-only queries use gRPC `simulateTransaction` (no signer) — the `getX` view helpers, e.g. `await perp.simulate(tx)` or `getMarketData(perp, …)`.
