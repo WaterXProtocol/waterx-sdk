@@ -21,8 +21,11 @@ import type {
   CursorView,
   MarketExposure,
   MarketIdInput,
+  MarketPage,
   MarketView,
   OrderView,
+  PageParams,
+  PositionPage,
   PositionView,
   RegistryView,
 } from "./types.ts";
@@ -218,6 +221,83 @@ export function getUnresolvedMarketCursor(client: PredictClient, params: ViewBas
 
 export function getResolvedMarketCursor(client: PredictClient, params: ViewBaseParams = {}) {
   return readCursor(client, "resolved_market_cursor", params);
+}
+
+const DEFAULT_PAGE_LIMIT = 100n;
+
+/** Encode an optional cursor key as a Move `Option<u64>` pure arg (`undefined` → none / from front). */
+function startArg(tx: Transaction, start?: bigint | number | string) {
+  return tx.pure(bcs.option(bcs.u64()).serialize(start === undefined ? null : toBigInt(start)));
+}
+
+/** Every unresolved (active) market in one call. Prefer `getUnresolvedMarketsPage` when the table is large. */
+export async function getUnresolvedMarkets(
+  client: PredictClient,
+  params: ViewBaseParams = {},
+): Promise<MarketView[]> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${resolvePackageId(client, params.packageId)}::view::unresolved_markets`,
+    typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
+    arguments: [tx.object(resolveMarketRegistry(client, params.marketRegistry))],
+  });
+  const result = await client.simulate(tx);
+  return bcs.vector(MarketViewBcs).parse(extractReturnBytes(result)).map(mapMarketView);
+}
+
+async function readMarketsPage(
+  client: PredictClient,
+  functionName: "unresolved_markets_page" | "resolved_markets_page",
+  params: PageParams = {},
+): Promise<MarketPage> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${resolvePackageId(client, params.packageId)}::view::${functionName}`,
+    typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
+    arguments: [
+      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
+      startArg(tx, params.start),
+      tx.pure.u64(params.limit === undefined ? DEFAULT_PAGE_LIMIT : toBigInt(params.limit)),
+    ],
+  });
+  const result = await client.simulate(tx);
+  const markets = bcs
+    .vector(MarketViewBcs)
+    .parse(extractReturnBytes(result, 0, 0))
+    .map(mapMarketView);
+  const next = bcs.option(bcs.u64()).parse(extractReturnBytes(result, 0, 1));
+  return { markets, nextCursor: next == null ? null : BigInt(next) };
+}
+
+export function getUnresolvedMarketsPage(client: PredictClient, params: PageParams = {}) {
+  return readMarketsPage(client, "unresolved_markets_page", params);
+}
+
+export function getResolvedMarketsPage(client: PredictClient, params: PageParams = {}) {
+  return readMarketsPage(client, "resolved_markets_page", params);
+}
+
+export async function getPositionsPage(
+  client: PredictClient,
+  params: PageParams = {},
+): Promise<PositionPage> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${resolvePackageId(client, params.packageId)}::view::positions_page`,
+    typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
+    arguments: [
+      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
+      startArg(tx, params.start),
+      tx.pure.u64(params.limit === undefined ? DEFAULT_PAGE_LIMIT : toBigInt(params.limit)),
+    ],
+  });
+  const result = await client.simulate(tx);
+  const positions = bcs
+    .vector(PositionViewBcs)
+    .parse(extractReturnBytes(result, 0, 0))
+    .map(mapPositionView);
+  const next = bcs.option(bcs.u64()).parse(extractReturnBytes(result, 0, 1));
+  return { positions, nextCursor: next == null ? null : BigInt(next) };
 }
 
 export interface GetAccountIdsParams {

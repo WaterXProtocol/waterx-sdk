@@ -8,6 +8,27 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Added
+
+- **Prediction batch market/position views.** New `src/prediction/fetch.ts`
+  helpers expose the on-chain `waterx_prediction::view` batch reads added in
+  `waterx-contract#105`, so callers fetch all active exposure in a single
+  `simulate`/`devInspect` instead of the N+1 cursor walk
+  (`unresolved_market_cursor` → `market_by_key` → …): `getUnresolvedMarkets`
+  (full walk, one call) plus paginated `getUnresolvedMarketsPage` /
+  `getResolvedMarketsPage` / `getPositionsPage`. Pages take an optional
+  `Option<u64>` `start` cursor (omit → from the front of the table) and return
+  a `nextCursor` (`null` when exhausted). Adds `PageParams` / `MarketPage` /
+  `PositionPage` to `src/prediction/types.ts`; reuses the existing
+  `MarketView` / `PositionView` shapes and `mapMarketView` / `mapPositionView`
+  mappers, so no new BCS types. Loading all active markets is now **one** RPC
+  round-trip instead of N+1: measured read-only against staging (MAINNET) with
+  57 unresolved markets, `getUnresolvedMarkets` / `getUnresolvedMarketsPage`
+  (`limit=100`) returned in a single call (~0.2–1.6s, RPC-variance dependent)
+  versus ~33s for the sequential `unresolved_market_cursor` + 57×
+  `market_by_key` walk (58 serial round-trips) — roughly **20–140× faster**,
+  and the gap widens as the market/position count grows. (`waterx-contract#105`)
+
 ### Changed
 
 - **BREAKING — the config URL is supplied only via the `waterxConfigUrl` option.**
