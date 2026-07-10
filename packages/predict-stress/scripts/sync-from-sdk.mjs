@@ -82,19 +82,22 @@ function assertNoSdkSourceEscape(label, content) {
 }
 
 function rewritePaths(content) {
-  return content
-    .replace(
-      /resolve\(process\.cwd\(\), "test\/prediction\/fixtures\/stress-wallets\.json"\)/g,
-      'resolve(process.cwd(), "config/wallets.json")',
-    )
-    .replace(
-      /resolve\(process\.cwd\(\), "test\/prediction\/api\/environments"\)/g,
-      'resolve(process.cwd(), "config/environments")',
-    )
-    .replace(
-      /resolve\(process\.cwd\(\), "test\/prediction\/fixtures\/testnet-seeded\.json"\)/g,
-      'resolve(process.cwd(), "config/testnet-seeded.json")',
-    );
+  return (
+    content
+      // Matches the bare string literal, not the enclosing `resolve(...)` call: upstream
+      // wraps it in an `optionalEnv("E2E_STRESS_WALLETS_FILE") ?? ...` fallback that
+      // prettier may reflow across lines. Requiring the quotes keeps
+      // `stress-wallets.example.json` and prose mentions in docstrings untouched.
+      .replace(/"test\/prediction\/fixtures\/stress-wallets\.json"/g, '"config/wallets.json"')
+      .replace(
+        /resolve\(process\.cwd\(\), "test\/prediction\/api\/environments"\)/g,
+        'resolve(process.cwd(), "config/environments")',
+      )
+      .replace(
+        /resolve\(process\.cwd\(\), "test\/prediction\/fixtures\/testnet-seeded\.json"\)/g,
+        'resolve(process.cwd(), "config/testnet-seeded.json")',
+      )
+  );
 }
 
 function copyHelper(name) {

@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 /**
- * Fund wxa accounts in stress-wallets.json via wallet-USD or PSM MOCK_USDC deposit.
+ * Fund wxa accounts in the stress wallets file via wallet-USD or PSM MOCK_USDC deposit.
+ * Deposits unconditionally — use `ensureAccountFunded` if you want a skip-when-funded path.
  * Loads signers from the local Sui CLI keystore by matching `owner` address.
  *
  * Usage:
@@ -16,18 +17,17 @@ import type { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Ed25519Keypair as Ed25519KeypairClass } from "@mysten/sui/keypairs/ed25519";
 
 import { formatSettlementBase, getAccountSettlementBalance } from "../helpers/account-balance.ts";
-import {
-  ensureAccountFunded,
-  forceDepositAllAvailable,
-  forceDepositToAccount,
-} from "../helpers/account-funding.ts";
+import { forceDepositAllAvailable, forceDepositToAccount } from "../helpers/account-funding.ts";
 import { createE2eClient } from "../helpers/e2e-context.ts";
 import { optionalEnv } from "../helpers/e2e-env.ts";
 import { readSeedDepositAmount } from "../helpers/env.ts";
 import type { StressWalletEntry } from "../helpers/stress-wallets.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
-const WALLETS_FILE = resolve(process.cwd(), "test/prediction/fixtures/stress-wallets.json");
+const WALLETS_FILE = resolve(
+  process.cwd(),
+  optionalEnv("E2E_STRESS_WALLETS_FILE") ?? "test/prediction/fixtures/stress-wallets.json",
+);
 
 interface StressWalletRow extends StressWalletEntry {
   owner?: string;
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   const client = await createE2eClient();
   const keypairs = loadKeystoreKeypairs();
   const rows = readWalletRows();
-  if (rows.length === 0) throw new Error("stress-wallets.json is empty");
+  if (rows.length === 0) throw new Error(`${WALLETS_FILE} is empty`);
 
   console.log(
     sweepAll
