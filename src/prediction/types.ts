@@ -98,6 +98,28 @@ export interface CursorView {
   back: bigint | null;
 }
 
+export interface PageParams {
+  packageId?: string;
+  marketRegistry?: string;
+  settlementCoinType?: string;
+  /** Cursor key to resume from; omit to start at the front of the table. */
+  start?: bigint | number | string;
+  /** Max entries in this page (default 100). */
+  limit?: bigint | number | string;
+}
+
+export interface MarketPage {
+  markets: MarketView[];
+  /** Pass as `start` for the next page; `null` when the table is exhausted. */
+  nextCursor: bigint | null;
+}
+
+export interface PositionPage {
+  positions: PositionView[];
+  /** Pass as `start` for the next page; `null` when the table is exhausted. */
+  nextCursor: bigint | null;
+}
+
 export interface CoinRef {
   objectId: string;
   version: string | bigint | number;

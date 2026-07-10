@@ -137,9 +137,13 @@ export {
   getOrderCursor,
   getPosition,
   getPositionCursor,
+  getPositionsPage,
   getRegistry,
   getResolvedMarketCursor,
+  getResolvedMarketsPage,
   getUnresolvedMarketCursor,
+  getUnresolvedMarkets,
+  getUnresolvedMarketsPage,
   isKeeper,
   isPredictionProtocolAssetAllowed,
 } from "./fetch.ts";
