@@ -93,6 +93,55 @@ describe("fetchWithPolicy", () => {
 
       expect(captured?.headers).toBeUndefined();
     });
+
+    it("merges Bearer auth into a Headers instance without dropping existing entries", async () => {
+      let captured: RequestInit | undefined;
+      const fetchSpy = vi.fn(async (_url: string, init?: RequestInit) => {
+        captured = init;
+        return { ok: true } as Response;
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      await fetchWithPolicy(
+        "https://x.test.invalid/a",
+        { headers: new Headers({ "Content-Type": "application/json" }) },
+        { apiKey: "unit-test-token" },
+      );
+
+      // `Headers` normalizes names to lowercase on iteration — the merge
+      // preserves whatever `Headers.forEach` hands back for existing
+      // entries; only the literal `Authorization` key we add is ours.
+      expect(captured?.headers).toEqual({
+        "content-type": "application/json",
+        Authorization: "Bearer unit-test-token",
+      });
+    });
+
+    it("merges Bearer auth into an array-form headers list without dropping existing entries", async () => {
+      let captured: RequestInit | undefined;
+      const fetchSpy = vi.fn(async (_url: string, init?: RequestInit) => {
+        captured = init;
+        return { ok: true } as Response;
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      await fetchWithPolicy(
+        "https://x.test.invalid/a",
+        {
+          headers: [
+            ["Content-Type", "application/json"],
+            ["X-Custom", "1"],
+          ],
+        },
+        { apiKey: "unit-test-token" },
+      );
+
+      expect(captured?.headers).toEqual({
+        "Content-Type": "application/json",
+        "X-Custom": "1",
+        Authorization: "Bearer unit-test-token",
+      });
+    });
   });
 
   describe("retry", () => {
@@ -165,6 +214,33 @@ describe("fetchWithPolicy", () => {
       expect(res.status).toBe(400);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
+
+    it("retries after a per-attempt timeout, succeeding on a later attempt", async () => {
+      let calls = 0;
+      const fetchSpy = vi.fn((_url: string, init?: RequestInit) => {
+        calls += 1;
+        if (calls === 1) {
+          // First attempt: never resolves on its own — only the
+          // per-attempt AbortSignal.timeout(20) can end it.
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(new DOMException("The operation was aborted", "AbortError")),
+            );
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200 } as Response);
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      const res = await fetchWithPolicy(
+        "https://x.test.invalid/a",
+        {},
+        { retries: 1, timeoutMs: 20, retryDelayMs: 1 },
+      );
+
+      expect(res.ok).toBe(true);
+      expect(calls).toBe(2);
+    });
   });
 
   describe("final-failure error shape", () => {
@@ -221,6 +297,66 @@ describe("fetchWithPolicy", () => {
       expect(err.cause).toBe(networkError);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
+
+    it("includes a truncated response-body snippet in the final error (restores the old single-attempt diagnostic)", async () => {
+      const bodyText = "rate limited, please slow down";
+      const fetchSpy = vi.fn(
+        async () => ({ ok: false, status: 503, text: async () => bodyText }) as unknown as Response,
+      );
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      let caught: unknown;
+      try {
+        await fetchWithPolicy("https://x.test.invalid/a", {}, { retries: 0, retryDelayMs: 1 });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(FetchPolicyError);
+      const err = caught as FetchPolicyError;
+      expect(err.bodySnippet).toBe(bodyText);
+      expect(err.message).toContain(bodyText);
+    });
+
+    it("truncates a long response body to ~200 chars in the final error", async () => {
+      const longBody = "x".repeat(500);
+      const fetchSpy = vi.fn(
+        async () => ({ ok: false, status: 503, text: async () => longBody }) as unknown as Response,
+      );
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      let caught: unknown;
+      try {
+        await fetchWithPolicy("https://x.test.invalid/a", {}, { retries: 0, retryDelayMs: 1 });
+      } catch (err) {
+        caught = err;
+      }
+
+      const err = caught as FetchPolicyError;
+      // 200 chars + the "…" truncation marker.
+      expect(err.bodySnippet?.length).toBeLessThanOrEqual(201);
+      expect(err.bodySnippet).toContain("…");
+    });
+
+    it("carries no body snippet when the final response has no readable body (e.g. a plain test double)", async () => {
+      // No `.text()` on this mock at all — readBodySnippet must swallow the
+      // resulting TypeError rather than let it replace the real failure.
+      const fetchSpy = vi.fn(async () => ({ ok: false, status: 503 }) as Response);
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+      let caught: unknown;
+      try {
+        await fetchWithPolicy("https://x.test.invalid/a", {}, { retries: 0, retryDelayMs: 1 });
+      } catch (err) {
+        caught = err;
+      }
+
+      const err = caught as FetchPolicyError;
+      expect(err.bodySnippet).toBe("");
+      expect(err.message).toBe(
+        "fetchWithPolicy: x.test.invalid/a failed after 1 attempt(s) — last status 503",
+      );
+    });
   });
 
   describe("external cancellation", () => {
@@ -240,6 +376,25 @@ describe("fetchWithPolicy", () => {
       // the full 100ms backoff or any further retries.
       await new Promise((resolve) => setTimeout(resolve, 10));
       controller.abort(new Error("caller cancelled"));
+
+      await expect(promise).rejects.toThrow(/cancelled/);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("an AbortSignal passed via init.signal aborts the whole policy, same as the externalSignal param", async () => {
+      const fetchSpy = vi.fn(async () => ({ ok: false, status: 503 }) as Response);
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      const controller = new AbortController();
+
+      // Passed through `init.signal` — NOT the dedicated 4th param — and no
+      // externalSignal at all, proving the fold happens on its own.
+      const promise = fetchWithPolicy(
+        "https://x.test.invalid/a",
+        { signal: controller.signal },
+        { retries: 5, retryDelayMs: 100 },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      controller.abort(new Error("cancelled via init.signal"));
 
       await expect(promise).rejects.toThrow(/cancelled/);
       expect(fetchSpy).toHaveBeenCalledTimes(1);

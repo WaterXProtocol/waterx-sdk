@@ -60,8 +60,9 @@ export async function fetchPriceFeedsUpdateData(
     // the failure was retried or not. A network-level exhaustion (no status)
     // has no domain-specific reframing to add — propagate it as-is.
     if (err instanceof FetchPolicyError && err.status !== undefined) {
+      const body = err.bodySnippet ? ` ${err.bodySnippet}` : "";
       throw new Error(
-        `Hermes price fetch failed: ${err.status} (retries exhausted after ${err.attempts} attempts)`,
+        `Hermes price fetch failed: ${err.status}${body} (retries exhausted after ${err.attempts} attempts)`,
         { cause: err },
       );
     }

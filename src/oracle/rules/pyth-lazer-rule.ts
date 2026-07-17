@@ -103,8 +103,9 @@ async function fetchLazerSignedUpdate(
     // into this function's own message shape; a network-level exhaustion
     // (no status) propagates as-is.
     if (err instanceof FetchPolicyError && err.status !== undefined) {
+      const body = err.bodySnippet ? ` ${err.bodySnippet}` : "";
       throw new Error(
-        `Lazer price fetch failed: ${err.status} (retries exhausted after ${err.attempts} attempts)`,
+        `Lazer price fetch failed: ${err.status}${body} (retries exhausted after ${err.attempts} attempts)`,
         { cause: err },
       );
     }

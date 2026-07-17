@@ -16,6 +16,7 @@ describe("loadConfig validation", () => {
   afterEach(() => {
     clearConfigCache();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("throws when no config URL is passed (no env fallback / default)", async () => {
@@ -131,6 +132,12 @@ describe("loadConfig validation", () => {
   });
 
   it("retries a transient HTTP failure (503) then succeeds", async () => {
+    // Fake timers so the real 250ms + 500ms retry backoff doesn't cost wall
+    // clock in the suite (precedent: wormhole.test.ts's waitForVaa polling
+    // tests) — `advanceTimersByTimeAsync` also pumps the microtask queue
+    // between timer advances, so the mocked fetch's own promise resolutions
+    // still interleave correctly.
+    vi.useFakeTimers();
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
@@ -138,13 +145,16 @@ describe("loadConfig validation", () => {
       return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
     }) as unknown as typeof fetch;
 
-    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const pending = loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    await vi.advanceTimersByTimeAsync(1_000); // covers the 250ms + 500ms backoff
+    const cfg = await pending;
 
     expect(cfg.network).toBe("testnet");
     expect(calls).toBe(3);
   });
 
   it("returns the last-known-good config when a later refresh fails persistently", async () => {
+    vi.useFakeTimers();
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
@@ -153,7 +163,9 @@ describe("loadConfig validation", () => {
     }) as unknown as typeof fetch;
 
     const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
-    const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const pendingSecond = loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    await vi.advanceTimersByTimeAsync(1_000); // covers the fallback call's own 250ms + 500ms backoff
+    const second = await pendingSecond;
 
     expect(second).toEqual(first);
     // The fallback call still exhausted its own 3 attempts (calls 2-4)
@@ -163,16 +175,74 @@ describe("loadConfig validation", () => {
   });
 
   it("throws on first load when every retry attempt fails (no last-known-good to fall back to)", async () => {
+    vi.useFakeTimers();
     const fetchImpl = vi.fn(async () => ({
       ok: false,
       status: 500,
       json: async () => ({}),
     })) as unknown as typeof fetch;
 
-    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl })).rejects.toThrow(
-      /HTTP 500/,
-    );
+    const pending = loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const assertion = expect(pending).rejects.toThrow(/HTTP 500/);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertion;
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns the last-known-good config when a refresh's 200 response has malformed JSON", async () => {
+    // A 200 with a garbage body is a refresh failure exactly like a non-ok
+    // status — it must not crash a caller that already has a working
+    // config for this URL. `.json()` throwing is NOT a retryable condition
+    // (fetchWithPolicy already returned successfully; parsing is loadConfig's
+    // own concern), so this exercises the json()/validateConfig try/catch
+    // directly, not the retry loop.
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      if (calls === 1) return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      return {
+        ok: true,
+        json: async () => {
+          throw new SyntaxError("Unexpected token in JSON");
+        },
+      };
+    }) as unknown as typeof fetch;
+
+    const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+
+    expect(second).toEqual(first);
+    expect(calls).toBe(2);
+  });
+
+  it("rethrows on first load when the 200 response has malformed JSON (no last-known-good to fall back to)", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError("Unexpected token in JSON");
+      },
+    })) as unknown as typeof fetch;
+
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl })).rejects.toThrow(
+      /Unexpected token/,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the last-known-good config when a refresh's 200 response fails validateConfig", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      if (calls === 1) return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      // A 200 with a shape validateConfig rejects (no packages object).
+      return { ok: true, json: async () => ({ network: "testnet" }) };
+    }) as unknown as typeof fetch;
+
+    const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+
+    expect(second).toEqual(first);
+    expect(calls).toBe(2);
   });
 
   it("uses in-memory cache when opts.cache is true", async () => {

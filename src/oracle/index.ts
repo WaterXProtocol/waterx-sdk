@@ -3,6 +3,8 @@
  *
  * Layering (no cross-imports between siblings except via `aggregate.ts`):
  *   - `host.ts`             — `OracleHost`, the narrow client slice this module reads.
+ *   - `update-fetch.ts`     — `fetchWithPolicy`, the shared retry/timeout/Bearer resilience
+ *                             wrapper every off-chain oracle (and config) fetch goes through.
  *   - `pyth.ts`             — Pyth as a price source: Hermes REST + on-chain update PTB.
  *   - `price-update-rule.ts`— `PriceUpdateRule`, the fetch/build strategy port a rule
  *                             implements (routing across rules is not wired yet).
@@ -14,6 +16,14 @@
  */
 
 export type { OracleHost } from "./host.ts";
+
+// Shared fetch resilience wrapper — `FetchPolicyError` is re-exported (not
+// just the type) so a consumer (e.g. a BE prefetch cache) can `instanceof`
+// it off the failure `fetchPriceFeedsUpdateData` / `PythLazerRule` /
+// `loadConfig` surface, without a deep import of `./update-fetch.ts`.
+// `fetchWithPolicy` itself stays module-internal (no external caller yet).
+export { FetchPolicyError } from "./update-fetch.ts";
+export type { FetchPolicy } from "./update-fetch.ts";
 
 // Pyth source
 export {

@@ -255,14 +255,25 @@ export async function loadConfig(
 
   // Same resilience policy as the oracle money-path fetches (see
   // `fetchWithPolicy`): bounded retry with backoff instead of one bare
-  // attempt. A refresh failure (network exhaustion OR a non-ok response)
-  // falls back to the last successfully-validated config for this URL when
-  // one exists — a config-endpoint blip must not crash a long-running
-  // process that already has a working deployment snapshot. First load
-  // (nothing cached yet) has no fallback and still throws. Intentionally no
-  // log line on the fallback path — the SDK never logs (see every other
-  // oracle error in this codebase); a caller that cares can tell it got a
-  // stale snapshot by re-deriving staleness itself if it needs to.
+  // attempt. A refresh failure (network exhaustion, a non-ok response, OR a
+  // 200 response that fails to parse/validate — see below) falls back to the
+  // last successfully-validated config for this URL when one exists — a
+  // config-endpoint blip must not crash a long-running process that already
+  // has a working deployment snapshot. First load (nothing cached yet) has
+  // no fallback and still throws. Intentionally no log line on the fallback
+  // path — the SDK never logs (see every other oracle error in this
+  // codebase); a caller that cares can tell it got a stale snapshot by
+  // re-deriving staleness itself if it needs to.
+  //
+  // Deliberate limitation (not fixed here — a follow-up): this treats EVERY
+  // failure mode identically, including a DETERMINISTIC one (404/403 — the
+  // URL moved, or access was revoked) once a lastKnownGood snapshot exists.
+  // Unlike a transient blip, a deterministic failure will never self-heal on
+  // the next retry, so a long-running process with a stale snapshot will
+  // keep serving it FOREVER and silently mask what is actually a permanent
+  // deployment problem. Disambiguating "blip" from "moved/revoked" (e.g. via
+  // a max-staleness budget, or treating non-retryable 4xx specially) is
+  // intentionally deferred rather than folded into this change.
   let response: Response;
   try {
     response = await fetchWithPolicy(
@@ -292,8 +303,19 @@ export async function loadConfig(
     throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
   }
 
-  const raw = (await response.json()) as WaterXConfig;
-  validateConfig(raw, network, url);
+  // A 200 with a malformed body (bad JSON, or a shape `validateConfig`
+  // rejects) is a refresh failure exactly like a non-ok status or a network
+  // error above — it must fall back to lastKnownGood the same way, not
+  // crash a caller that already had a working config for this URL.
+  let raw: WaterXConfig;
+  try {
+    raw = (await response.json()) as WaterXConfig;
+    validateConfig(raw, network, url);
+  } catch (err) {
+    const stale = lastKnownGood.get(url);
+    if (stale) return stale;
+    throw err;
+  }
 
   lastKnownGood.set(url, raw);
   if (opts.cache) cache.set(url, raw);

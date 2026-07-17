@@ -14,8 +14,9 @@ reference the PR that introduced them.
   update-data provider.** The Hermes fetch (`fetchPriceFeedsUpdateData`) sits
   on the money path of every trading tx-build; it was one bare `fetch`, 15s
   timeout, no retry, no auth. New `fetchWithPolicy` (`src/oracle/update-fetch.ts`,
-  exported `FetchPolicy` + `FetchPolicyError`) is a shared resilience wrapper
-  now used by BOTH oracle fetches:
+  re-exported from the `oracle`/`perp` barrels as `FetchPolicy` +
+  `FetchPolicyError`) is a shared resilience wrapper now used by BOTH oracle
+  fetches AND `loadConfig`:
   - Retries network errors, HTTP 429, and HTTP 5xx with exponential backoff
     (`retryDelayMs * 2^attempt`, capped at 2s; defaults: 15s per-attempt
     timeout, 2 retries, 250ms base delay). Other 4xx (401/400/403/404/…) are
@@ -24,16 +25,25 @@ reference the PR that introduced them.
   - Attaches `Authorization: Bearer <apiKey>` iff the key is a non-empty
     string — absent/empty is byte-identical to today's keyless request (the
     Phase-0 invariant of the Pyth Pro migration).
-  - An optional caller-supplied `AbortSignal` cancels the whole policy
-    (in-flight attempt AND queued backoff) via `AbortSignal.any`.
+  - Both `init.signal` (if the caller set one) and the separate
+    `externalSignal` param cancel the WHOLE policy — in-flight attempt AND a
+    queued backoff sleep, not just one attempt — via `AbortSignal.any`
+    (folded together, so neither is silently dropped by the per-attempt
+    `{ ...init, signal }` override).
   - On final failure throws `FetchPolicyError` naming the target's
-    `host + pathname` (never the query string — feed ids are noise) plus the
-    attempt count and whichever of `status`/`cause` applies; both
-    `fetchPriceFeedsUpdateData` and `PythLazerRule`'s Lazer fetch reformat a
-    status-carrying `FetchPolicyError` into their own existing message shape
-    (`"Hermes price fetch failed: …"` / `"Lazer price fetch failed: …"`) so
-    downstream consumers (e.g. the e2e transient-failure detector) see
-    unchanged text.
+    `host + pathname` (never the query string — feed ids are noise), the
+    attempt count, and whichever of `status` (plus a ~200-char truncated
+    response-body snippet, restoring the diagnostic a plain single-attempt
+    `if (!res.ok) throw` used to carry) or `cause` applies; an INTERMEDIATE
+    (non-final) retryable response's body is discarded via
+    `response.body?.cancel()` instead of read, so a doomed-to-retry response
+    doesn't pin its socket open. `fetchPriceFeedsUpdateData`,
+    `PythLazerRule`'s Lazer fetch, and `loadConfig` each reformat a
+    status-carrying `FetchPolicyError` (body snippet included, for the two
+    oracle fetches) into their own existing message shape
+    (`"Hermes price fetch failed: …"` / `"Lazer price fetch failed: …"` /
+    `"loadConfig: HTTP …"`) so downstream consumers (e.g. the e2e
+    transient-failure detector) see unchanged text.
 
   `PythInfraConfig` gains an optional `fetch?: { timeoutMs?: number; retries?:
   number }` policy override (`src/oracle/config.ts`), threaded through by
@@ -56,11 +66,16 @@ reference the PR that introduced them.
 
   `perp/config.ts`'s `loadConfig` now retries a transient config-endpoint
   failure via the same `fetchWithPolicy` policy (2 retries) and, on a refresh
-  failure with a previously-validated config already cached for that URL,
-  silently returns that last-known-good snapshot instead of throwing (the
-  SDK never logs) — a config-endpoint blip must not crash a long-running
-  process that already has a working deployment snapshot. A first-load
-  failure (nothing cached yet) still throws.
+  failure — network exhaustion, a non-ok response, OR a 200 whose body fails
+  to parse/validate — with a previously-validated config already cached for
+  that URL, silently returns that last-known-good snapshot instead of
+  throwing (the SDK never logs) — a config-endpoint blip must not crash a
+  long-running process that already has a working deployment snapshot. A
+  first-load failure (nothing cached yet) still throws. Known, deliberately
+  deferred limitation: this treats a deterministic failure (404/403 — the URL
+  moved, or access was revoked) the same as a transient blip, so a
+  long-running process can keep serving a stale snapshot forever once it has
+  one; disambiguating the two is a follow-up.
 
 - **`PythLazerRule` — Lazer-generation price updates behind `oracleSource`
   routing.** `pyth_lazer_rule` now resolves to a real `PriceUpdateRule`
