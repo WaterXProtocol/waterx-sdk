@@ -45,6 +45,19 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       version: 1,
       pyth_sponsor: "0x1528bdc52a60aaab31a9501001dfa69377708e4c2296c3d2e25b9ca0f4e9e256",
     },
+    // Real deployed testnet entry (feeds trimmed to the fixture's tickers).
+    // `enabled` mirrors the JSON but is never read for routing — routing is the
+    // client `oracleSource` option alone.
+    pyth_lazer_rule: {
+      published_at: "0xc192ffd76818fd029ee4493748be7251e3fc51ce0f2803bede8f9970c40a8739",
+      original_id: "0xc192ffd76818fd029ee4493748be7251e3fc51ce0f2803bede8f9970c40a8739",
+      version: 1,
+      upgrade_capability: "0xc45f8b3d0e91de6c52e734fd1e865a4198a856bcae340adf2775cd9ac967e43f",
+      config: "0x31baf383d1c77350cc2ce9422fa1e2f9e0c65cf3f310401b149ca2498362c92d",
+      state: "0xe2b9096a5ea341a9f1eef126b2203727e29e73fdb0641ade2e1e32942f97e4d8",
+      enabled: true,
+      feeds: { BTCUSD: 1, ETHUSD: 2, USDCUSD: 7 },
+    },
     constant_rule: {
       published_at: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",
       original_id: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",

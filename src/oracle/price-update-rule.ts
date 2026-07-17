@@ -4,8 +4,10 @@
  * update on-chain (e.g. Pyth's wormhole-verify + price-feed-update block).
  * Feeding the refreshed price into an oracle `PriceCollector` is a separate
  * step that stays in `aggregate.ts` — this port covers fetch + verify/push
- * only. Implementations: `PythCoreRule` (Hermes VAA), `PythLazerRule` (Lazer
- * signed updates), `ConstantRule`, `SupraRule`, later `WaterxRule` (ed25519).
+ * only (`buildUpdateCalls` may hand the feed step a PTB value via
+ * {@link RuleUpdateHandle}). Implementations: `PythCoreRule` (Hermes VAA),
+ * `PythLazerRule` (Lazer signed updates), `ConstantRule`, `SupraRule`, later
+ * `WaterxRule` (ed25519).
  *
  * This file defines the port only — no routing. `aggregate.ts` stays the sole
  * orchestrator until a later task wires rule selection through it.
@@ -44,6 +46,22 @@ export type OracleSource = "pyth_rule" | "pyth_lazer_rule";
 export type RuleUpdateData = { kind: PriceUpdateRuleKind; payload: unknown } | null;
 
 /**
+ * PTB value handle a rule's {@link PriceUpdateRule.buildUpdateCalls} may
+ * return when its collector-feed leg needs a value produced by the update leg
+ * *within the same PTB*. Pyth Core needs none (its feed leg reads the shared
+ * `PriceInfoObject` the update leg refreshed), so it returns `void`. The Lazer
+ * rule returns the verified `pyth_lazer::update::Update` result — one
+ * signature verification covers every feed in the payload, and
+ * `pyth_lazer_rule::feed` takes it by reference per ticker (see
+ * `aggregateTicker`'s `lazerUpdate` arg).
+ */
+export type RuleUpdateHandle = {
+  readonly kind: "pyth_lazer_rule";
+  /** Result of `pyth_lazer::parse_and_verify_le_ecdsa_update` in this PTB. */
+  readonly update: TransactionArgument;
+};
+
+/**
  * Options for {@link PriceUpdateRule.buildUpdateCalls}. Mirrors the existing
  * `buildPythPriceUpdateCalls` / `updatePythPrices` parameter shapes in
  * `./pyth.ts` — `cache` shares on-chain Pyth state reads across builders,
@@ -73,12 +91,17 @@ export interface PriceUpdateRule {
    */
   fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData>;
 
-  /** Emit verify/update moveCalls + any per-rule setup into the PTB. */
+  /**
+   * Emit verify/update moveCalls + any per-rule setup into the PTB. Returns a
+   * {@link RuleUpdateHandle} when the rule's collector-feed leg needs a PTB
+   * value from this step (Lazer's verified `Update`); rules whose feed leg
+   * reads shared on-chain objects return `void`.
+   */
   buildUpdateCalls(
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
     tickers: string[],
     opts?: BuildUpdateOpts,
-  ): Promise<void> | void;
+  ): Promise<RuleUpdateHandle | void> | RuleUpdateHandle | void;
 }

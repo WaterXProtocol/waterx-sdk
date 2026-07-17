@@ -10,6 +10,30 @@ reference the PR that introduced them.
 
 ### Added
 
+- **`PythLazerRule` — Lazer-generation price updates behind `oracleSource`
+  routing.** `pyth_lazer_rule` now resolves to a real `PriceUpdateRule`
+  (`src/oracle/rules/pyth-lazer-rule.ts`, exported as `PythLazerRule` +
+  `PythLazerUpdatePayload`): it fetches ONE signed `leEcdsa` message for the
+  routed tickers' integer Lazer feed ids (`packages.pyth_lazer_rule.feeds`)
+  from the Lazer HTTP API (`POST /v1/latest_price`, endpoint from the new
+  `LAZER_DEFAULTS` per-network map), authenticated with the new optional
+  `pyth.api_key` config field (Lazer is auth-first; a missing key throws
+  `LazerApiKeyMissing` at fetch time — the SDK never reads `process.env`), and
+  verifies it on-chain ONCE via
+  `pyth_lazer::parse_and_verify_le_ecdsa_update(state, clock, bytes)` (no
+  update fee; `cache`/`sponsorFund` are Pyth-Core-specific and ignored).
+  `buildUpdateCalls` may now return a `RuleUpdateHandle` (exported type)
+  carrying the verified `Update` PTB value, and the collector-feed leg is
+  rule-aware: each lazer-served ticker's `aggregateTicker` (new optional
+  `lazerUpdate` arg) appends `pyth_lazer_rule::feed(collector, config, clock,
+  update)` **in addition to** its unchanged `pyth_rule::feed` leg — required
+  on-chain while `pyth_rule` stays in the ticker's weighted set
+  (`remove_outliers` demands every weighted rule appear in the collector;
+  `pyth_rule::feed` abstains on a stale `PriceInfoObject` rather than
+  aborting, and an unweighted lazer contribution is silently dropped, so
+  dual-registered tickers are safely lazer-routable ahead of the on-chain
+  weight migration). `OracleHost` gains a `network` field (already satisfied
+  by every client) for the per-network Lazer defaults.
 - **`oracleSource` client create option — env-selected oracle rule routing.**
   `WaterXClient.create` / `PerpClient.create` accept a new `oracleSource?:
   OracleSource` option (`'pyth_rule' | 'pyth_lazer_rule'`, default

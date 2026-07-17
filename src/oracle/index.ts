@@ -28,6 +28,7 @@ export type {
   PriceUpdateRule,
   PriceUpdateRuleKind,
   RuleUpdateData,
+  RuleUpdateHandle,
   BuildUpdateOpts,
   OracleSource,
 } from "./price-update-rule.ts";
@@ -35,6 +36,10 @@ export type {
 // Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)
 export { PythCoreRule } from "./rules/pyth-core-rule.ts";
 export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
+
+// Pyth Lazer rule (signed-update generation; `feedLazerRule` stays internal to `aggregate.ts`)
+export { PythLazerRule } from "./rules/pyth-lazer-rule.ts";
+export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
 // `resolveOracleRule` (rule-registry.ts) is NOT re-exported here — it has one
 // production consumer (`refreshOraclePrices` below) and no external caller;

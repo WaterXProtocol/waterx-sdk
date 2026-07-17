@@ -19,6 +19,7 @@ import type {
 import { PythCache, updatePythPrices } from "../../../src/oracle/pyth.ts";
 import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
+import { PythLazerRule } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
 import { PredictClient } from "../../../src/prediction/client.ts";
@@ -164,14 +165,15 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
   });
 });
 
-describe("refreshOraclePrices — 'pyth_lazer_rule' with no rule registered", () => {
-  it("throws a clear OracleSourceNotImplemented error naming the source", async () => {
+describe("refreshOraclePrices — 'pyth_lazer_rule' resolves the real registered rule", () => {
+  it("reaches PythLazerRule's auth-first fetch (LazerApiKeyMissing) instead of OracleSourceNotImplemented", async () => {
+    // No ruleOverrides: the production registry serves `pyth_lazer_rule`. The
+    // fixture has lazer feeds but no `pyth.api_key`, so the real rule's fetch
+    // throws its auth-first error — proof the source is registered and routed.
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
 
-    await expect(refreshOraclePrices(tx, client, ["BTCUSD"])).rejects.toThrow(
-      "OracleSourceNotImplemented: pyth_lazer_rule",
-    );
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD"])).rejects.toThrow(/LazerApiKeyMissing/);
   });
 });
 
@@ -308,13 +310,19 @@ describe("resolveOracleRule", () => {
     expect(resolveOracleRule("pyth_rule")).toBe(PythCoreRule);
   });
 
-  it("throws OracleSourceNotImplemented for an unregistered source", () => {
-    expect(() => resolveOracleRule("pyth_lazer_rule")).toThrow(
-      "OracleSourceNotImplemented: pyth_lazer_rule",
+  it("resolves 'pyth_lazer_rule' to PythLazerRule", () => {
+    expect(resolveOracleRule("pyth_lazer_rule")).toBe(PythLazerRule);
+  });
+
+  it("throws OracleSourceNotImplemented for a genuinely unregistered source", () => {
+    // Deliberately-invalid input: only a cast can reach the unregistered path
+    // now that both real sources resolve.
+    expect(() => resolveOracleRule("waterx_rule" as OracleSource)).toThrow(
+      "OracleSourceNotImplemented: waterx_rule",
     );
   });
 
-  it("lets an override map supply a rule for an otherwise-unregistered source", () => {
+  it("lets an override map replace the registered lazer rule", () => {
     const fake = createFakeRule("pyth_lazer_rule", []);
     expect(resolveOracleRule("pyth_lazer_rule", { pyth_lazer_rule: fake })).toBe(fake);
   });

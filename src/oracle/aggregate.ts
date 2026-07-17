@@ -2,18 +2,20 @@
  * Oracle aggregation — the orchestrator that composes rules into the shared
  * `Oracle`. This is the ONE file that knows about every rule: it builds a
  * `PriceCollector`, feeds whichever rules a ticker is configured for
- * (Pyth / Supra / Constant), then `aggregate`s.
+ * (Pyth / Lazer / Supra / Constant), then `aggregate`s.
  *
  * Per ticker:
  *   collector = oracle::new_collector(ticker)
  *   [pyth_rule::feed]       when the ticker has a pyth_rule.feeds entry
+ *   [pyth_lazer_rule::feed] when the update leg produced a verified lazer Update
  *   [supra_rule::feed]      when supra is enabled + wired
  *   [constant_rule::feed]   when the ticker is a constant ticker
  *   oracle::aggregate(oracle, collector)
  *
- * The fed rule set must match the on-chain weighted set for the ticker —
+ * The fed rule set must cover the on-chain weighted set for the ticker —
  * `aggregator::remove_outliers` aborts `EMissingPriceSource` if a weighted rule
- * is missing from the collector.
+ * is missing from the collector (an abstaining feed call counts as present;
+ * a fed-but-unweighted rule is silently dropped).
  *
  * `refreshOraclePrices` additionally routes the on-chain price *update* leg
  * (the fetch + verify/push step, before any of the above feeding) through the
@@ -24,10 +26,16 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import type { OracleHost } from "./host.ts";
-import type { OracleSource, PriceUpdateRule, RuleUpdateData } from "./price-update-rule.ts";
+import type {
+  OracleSource,
+  PriceUpdateRule,
+  RuleUpdateData,
+  RuleUpdateHandle,
+} from "./price-update-rule.ts";
 import type { PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
+import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
 import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
 
@@ -36,20 +44,30 @@ import { maybeFeedSupra } from "./rules/supra-rule.ts";
  * every rule the ticker is configured for, then `aggregate`.
  *
  * - **Pyth** — fed when `priceInfoObjectId` is supplied (i.e. the ticker has a
- *   `pyth_rule.feeds` entry). Caller must run the Pyth update first so the
- *   `PriceInfoObject` is fresh.
- * - **Supra** — fed alongside Pyth when supra is enabled + wired (abstains
- *   on-chain for symbols it has no pair for).
+ *   `pyth_rule.feeds` entry). When this PTB's update leg refreshed the
+ *   `PriceInfoObject` it contributes a fresh price; when it did not (a
+ *   lazer-routed ticker), the on-chain rule only READS the object and abstains
+ *   if it is stale — it never aborts — so the call stays mandatory while
+ *   `pyth_rule` remains in the ticker's on-chain weighted set
+ *   (`EMissingPriceSource` requires every weighted rule to appear).
+ * - **Lazer** — fed when `lazerUpdate` is supplied: the verified
+ *   `pyth_lazer::update::Update` produced by this PTB's lazer update leg
+ *   (see `PythLazerRule.buildUpdateCalls`). If the ticker's aggregator does
+ *   not (yet) weight `PythLazerRule`, the contribution is silently dropped
+ *   on-chain — feeding ahead of the weight migration is harmless.
+ * - **Supra** — fed alongside Pyth/Lazer when supra is enabled + wired
+ *   (abstains on-chain for symbols it has no pair for).
  * - **Constant** — fed when the ticker is a constant ticker
  *   ({@link OracleHost.isConstantTicker}).
  *
- * "Dual-feed" (Pyth + Constant) and "constant-only" are not special cases — they
- * fall out of which rules the ticker is in. Throws if no rule applies.
+ * "Dual-feed" (Pyth + Constant, or Pyth + Lazer) and "constant-only" are not
+ * special cases — they fall out of which rules the ticker is in. Throws if no
+ * rule applies.
  */
 export function aggregateTicker(
   tx: Transaction,
   host: OracleHost,
-  args: { ticker: string; priceInfoObjectId?: string },
+  args: { ticker: string; priceInfoObjectId?: string; lazerUpdate?: TransactionArgument },
 ): void {
   const oraclePkg = host.config.packages.waterx_oracle.published_at;
   const collector = newCollector({
@@ -61,9 +79,17 @@ export function aggregateTicker(
 
   if (args.priceInfoObjectId) {
     feedPythRule(tx, host, collector, args.priceInfoObjectId);
+    fed = true;
+  }
+
+  if (args.lazerUpdate !== undefined) {
+    feedLazerRule(tx, host, collector, args.lazerUpdate);
+    fed = true;
+  }
+
+  if (fed) {
     // Supra rides on the same collector when enabled (abstains on-chain otherwise).
     maybeFeedSupra(tx, host, collector);
-    fed = true;
   }
 
   if (host.isConstantTicker(args.ticker)) {
@@ -73,7 +99,7 @@ export function aggregateTicker(
 
   if (!fed) {
     throw new Error(
-      `no oracle rule configured for ticker '${args.ticker}' (no pyth feed, not a constant ticker)`,
+      `no oracle rule configured for ticker '${args.ticker}' (no pyth feed, no lazer update, not a constant ticker)`,
     );
   }
 
@@ -124,8 +150,8 @@ export function aggregateTickerWithConstant(
 /**
  * Refresh multiple tickers in one PTB. For each ticker {@link aggregateTicker}
  * feeds whichever rules it is configured for (Pyth if it has a `pyth_rule.feeds`
- * entry, Supra when enabled, Constant when it's a constant ticker) — this part
- * is unchanged regardless of `oracleSource`.
+ * entry, Lazer if the lazer update leg served it — see below — Supra when
+ * enabled, Constant when it's a constant ticker).
  *
  * Before that, the on-chain price *update* leg is routed by `host.oracleSource`
  * (see `rule-registry.ts`): the selected rule serves every ticker in its
@@ -145,16 +171,21 @@ export function aggregateTickerWithConstant(
  * PTB mutation; on-chain reads inside `buildUpdateCalls` can still fail
  * mid-append — callers discard the tx on throw.
  *
- * **Known constraint until the on-chain weighted-rule set is migrated:** a
- * ticker that still carries an on-chain `pyth_rule` weight but is routed to a
- * non-Pyth-Core `oracleSource` (e.g. `pyth_lazer_rule`) still gets its Pyth
- * leg fed by the (unchanged) {@link aggregateTicker} below, which reads
- * `pyth_rule.feeds[ticker].price_info_object` straight from config — an
- * object THIS function's update leg never refreshed for that ticker (the
- * selected rule updated a different on-chain object, e.g. a Lazer price
- * feed). That either aggregates a stale Pyth Core value or aborts on an
- * on-chain staleness check. Do not route such a ticker to a non-Pyth-Core
- * source until its on-chain weighted-rule set drops `pyth_rule`.
+ * **Collector-feed leg is rule-aware:** a lazer-served group's
+ * `buildUpdateCalls` returns the verified `Update` PTB value
+ * ({@link RuleUpdateHandle}), and every ticker in that group is aggregated
+ * with `lazerUpdate` set so {@link aggregateTicker} appends
+ * `pyth_lazer_rule::feed` against it. A lazer-routed ticker that still has a
+ * `pyth_rule.feeds` entry ALSO keeps its `pyth_rule::feed` leg — required
+ * on-chain while `pyth_rule` stays in the ticker's weighted set
+ * (`aggregator::remove_outliers` aborts `EMissingPriceSource` unless every
+ * weighted rule appears in the collector; an abstention counts as
+ * appearing), and safe: `pyth_rule::feed` only READS the `PriceInfoObject`
+ * this PTB never refreshed and abstains when it is stale rather than
+ * aborting. Conversely, a lazer feed call on an aggregator that does not
+ * (yet) weight `PythLazerRule` is silently dropped on-chain — so
+ * lazer-routing a ticker ahead of its on-chain weight migration prices it
+ * from the remaining weighted rules instead of failing.
  */
 export async function refreshOraclePrices(
   tx: Transaction,
@@ -212,15 +243,31 @@ export async function refreshOraclePrices(
         data: await group.rule.fetchUpdateData(host, group.tickers),
       })),
     );
+  // Verified-`Update` handle per lazer-served ticker (one shared PTB value per
+  // group) — consumed by the collector-feed leg below.
+  const lazerUpdateByTicker = new Map<string, TransactionArgument>();
   for (const group of groupsWithData) {
-    await group.rule.buildUpdateCalls(tx, host, group.data, group.tickers, {
-      cache: opts.cache,
-      sponsorFund: opts.sponsorFund,
-    });
+    const handle: RuleUpdateHandle | void = await group.rule.buildUpdateCalls(
+      tx,
+      host,
+      group.data,
+      group.tickers,
+      {
+        cache: opts.cache,
+        sponsorFund: opts.sponsorFund,
+      },
+    );
+    if (handle) {
+      for (const ticker of group.tickers) lazerUpdateByTicker.set(ticker, handle.update);
+    }
   }
 
   // Aggregate each ticker, feeding whichever rules it is configured for.
   for (const ticker of tickers) {
-    aggregateTicker(tx, host, { ticker, priceInfoObjectId: priceInfoByTicker.get(ticker) });
+    aggregateTicker(tx, host, {
+      ticker,
+      priceInfoObjectId: priceInfoByTicker.get(ticker),
+      lazerUpdate: lazerUpdateByTicker.get(ticker),
+    });
   }
 }

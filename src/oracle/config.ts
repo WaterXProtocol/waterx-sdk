@@ -120,6 +120,15 @@ export interface PythInfraConfig {
   state_id: string;
   wormhole_state_id: string;
   hermes_endpoint: string;
+  /**
+   * Pyth Pro / Lazer access token (`Authorization: Bearer …`) for
+   * `PythLazerRule`'s signed-update fetch — Lazer is auth-first, so there is
+   * no keyless default. Optional: Pyth-Core-only deployments never need it.
+   * Consumers pass it through client config (`config.pyth`); the SDK never
+   * reads `process.env`. Absent when a lazer-routed fetch runs →
+   * `LazerApiKeyMissing` is thrown at fetch time.
+   */
+  api_key?: string;
 }
 
 export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
@@ -132,6 +141,37 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
     state_id: "0x243759059f4c3111179da5878c12f68d612c21a8d54d85edc86164bb18be1c7c",
     wormhole_state_id: "0x31358d198147da50db32eda2562951d53973a0c0ad5ed738e9b17d88b213d790",
     hermes_endpoint: "https://hermes-beta.pyth.network",
+  },
+};
+
+// ============================================================================
+// Pyth Lazer — external infra, defaults by network
+// ============================================================================
+
+/**
+ * Pyth Lazer (Pyth Pro) external infra the `PythLazerRule` needs, by network.
+ * Mirrors {@link PYTH_DEFAULTS}: per-network constants for infrastructure Pyth
+ * operates (not part of the `waterx-config` JSON). A fuller `PYTH_INFRA`
+ * restructure is deferred — this stays a minimal map until then.
+ *
+ * - `endpoint` — Lazer HTTP API base; signed updates come from
+ *   `POST /v1/latest_price` (Bearer-authenticated). The service is
+ *   network-agnostic (one signed payload verifies on any chain that trusts the
+ *   Lazer signers), so both networks share the production host.
+ * - `verifier_package` — the Sui package carrying
+ *   `pyth_lazer::parse_and_verify_le_ecdsa_update`. Per-network: testnet is
+ *   still the original v1 publish; mainnet is the v2-upgraded package (which
+ *   still exposes the v1 entry `pyth_lazer_rule` binds). Values mirror the
+ *   contract repo's `pyth_lazer_rule/Move.toml` published-at pins.
+ */
+export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_package: string }> = {
+  MAINNET: {
+    endpoint: "https://pyth-lazer.dourolabs.app",
+    verifier_package: "0xefbfd064480777699fd9c557a5804d72ace7bc82661fdc8d1f1a44ea6d92ee10",
+  },
+  TESTNET: {
+    endpoint: "https://pyth-lazer.dourolabs.app",
+    verifier_package: "0xf5bd2141967507050a91b58de3d95e77c432cd90d1799ee46effc27430a68c21",
   },
 };
 

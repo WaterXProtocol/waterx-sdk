@@ -10,10 +10,13 @@
 
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
+import type { Network } from "../constants.ts";
 import type { OracleConfig, PythInfraConfig } from "./config.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 
 export interface OracleHost {
+  /** Sui network this client targets — selects per-network external-infra defaults (e.g. `LAZER_DEFAULTS`). */
+  readonly network: Network;
   /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
   readonly config: OracleConfig;
   /** External Pyth/Wormhole/Hermes infra (network default, overridable via config). */
