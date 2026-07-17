@@ -40,6 +40,7 @@ export type {
   ConstantFeedEntry,
   OracleConfig,
   OraclePackages,
+  PythGeneration,
   PythInfraConfig,
   PythLazerRulePackage,
   PythRulePackage,
@@ -49,7 +50,7 @@ export type {
   WaterxConstantRulePackage,
   WaterxOraclePackage,
 } from "../oracle/config.ts";
-export { PYTH_DEFAULTS } from "../oracle/config.ts";
+export { PYTH_DEFAULTS, PYTH_PRO_DEFAULTS } from "../oracle/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)

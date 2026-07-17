@@ -17,8 +17,10 @@ import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
   PYTH_DEFAULTS,
+  PYTH_PRO_DEFAULTS,
   WORMHOLE_DEFAULTS,
   type LoadConfigOptions,
+  type PythGeneration,
   type PythInfraConfig,
   type WaterXConfig,
   type WormholeInfraConfig,
@@ -34,6 +36,15 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * own env var (e.g. `ORACLE_SOURCE`).
    */
   oracleSource?: OracleSource;
+  /**
+   * Selects which Pyth Core contract generation feeds `client.pyth` when the
+   * config JSON has no explicit `pyth` override: `'core'` (default,
+   * `PYTH_DEFAULTS`) or `'pro'` (`PYTH_PRO_DEFAULTS` — the post-2026-07-31
+   * Pro-compatible contracts + Hermes-compatible endpoint; pair with
+   * `pyth.api_key`). Orthogonal to `oracleSource`. An explicit `config.pyth`
+   * always wins wholesale (see `PythGeneration`).
+   */
+  pythGeneration?: PythGeneration;
 }
 
 export class PerpClient extends BaseLineClient<WaterXConfig> {
@@ -50,10 +61,12 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   constructor(
     network: Network,
     config: WaterXConfig,
-    opts: { grpcUrl?: string; oracleSource?: OracleSource } = {},
+    opts: { grpcUrl?: string; oracleSource?: OracleSource; pythGeneration?: PythGeneration } = {},
   ) {
     super(network, config, opts);
-    this.pyth = config.pyth ?? PYTH_DEFAULTS[network];
+    // Precedence: explicit config.pyth override > generation constants.
+    this.pyth =
+      config.pyth ?? (opts.pythGeneration === "pro" ? PYTH_PRO_DEFAULTS : PYTH_DEFAULTS)[network];
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
     this.oracleSource = opts.oracleSource ?? "pyth_rule";
     this.view = new PerpConfigView(
@@ -71,6 +84,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
     return new PerpClient(network, config, {
       grpcUrl: opts.grpcUrl,
       oracleSource: opts.oracleSource,
+      pythGeneration: opts.pythGeneration,
     });
   }
 

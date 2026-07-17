@@ -35,6 +35,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import * as accountOps from "./account/index.ts";
 import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
+import type { PythGeneration } from "./oracle/config.ts";
 import type { OracleSource } from "./oracle/price-update-rule.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
@@ -163,6 +164,14 @@ export interface ClientCreateOptions {
    * — pass this from your own env var (e.g. `ORACLE_SOURCE`).
    */
   oracleSource?: OracleSource;
+  /**
+   * Selects which Pyth Core contract generation feeds the perp line's
+   * `client.perp.pyth` when the config JSON has no explicit `pyth` override:
+   * `'core'` (default) or `'pro'` (post-2026-07-31 Pro-compatible contracts +
+   * Hermes-compatible endpoint; pair with `pyth.api_key`). Perp-line only.
+   * See `PythGeneration` / `PYTH_PRO_DEFAULTS`.
+   */
+  pythGeneration?: PythGeneration;
   /** Perp-line overrides (network, grpcUrl, waterxConfigUrl, cache, …). */
   perp?: PerpLineOptions;
   /** Prediction-line overrides (network, grpcUrl, waterxConfigUrl, cache, settlement, …). */
@@ -250,6 +259,7 @@ export class WaterXClient {
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
       oracleSource: opts.oracleSource,
+      pythGeneration: opts.pythGeneration,
       ...perpRest,
     });
     const predictClient = await PredictClient.create(resolvedPredictNetwork, {

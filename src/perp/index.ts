@@ -1,7 +1,13 @@
 // ======== Core ========
 export { PerpClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { PYTH_DEFAULTS, WORMHOLE_DEFAULTS, clearConfigCache, loadConfig } from "./config.ts";
+export {
+  PYTH_DEFAULTS,
+  PYTH_PRO_DEFAULTS,
+  WORMHOLE_DEFAULTS,
+  clearConfigCache,
+  loadConfig,
+} from "./config.ts";
 export type {
   BasePackageEntry,
   ConstantFeedEntry,
@@ -9,6 +15,7 @@ export type {
   LoadConfigOptions,
   NativeCustodyAsset,
   NativeCustodyPackage,
+  PythGeneration,
   PythInfraConfig,
   PythLazerRulePackage,
   PythRulePackage,

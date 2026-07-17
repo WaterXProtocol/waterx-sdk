@@ -156,6 +156,55 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
   },
 };
 
+/**
+ * Which Pyth Core contract generation feeds `host.pyth` when the config JSON
+ * carries no explicit `pyth` override:
+ *
+ * - `'core'` (default) — the original contracts + keyless Hermes
+ *   ({@link PYTH_DEFAULTS}).
+ * - `'pro'` — the Pro-compatible upgraded contracts + the Hermes-compatible
+ *   endpoint ({@link PYTH_PRO_DEFAULTS}); pair with `pyth.api_key` after the
+ *   2026-07-31 cutover.
+ *
+ * Resolved once at client creation from the `pythGeneration` create option.
+ * Orthogonal to `oracleSource` — this flips the Pyth-Core *infra* (state ids
+ * + endpoint), not which `PriceUpdateRule` routes tickers.
+ */
+export type PythGeneration = "core" | "pro";
+
+/**
+ * Pyth **Pro-generation** Core-compatible infra — the post-2026-07-31
+ * contracts from Pyth's Core-Upgrade docs
+ * (https://docs.pyth.network/price-feeds/core/upgrade/contracts, Sui section;
+ * package revs `sui-pro-compatible-contract-mainnet` /
+ * `sui-pro-compatible-contract-testnet`). Selected via the client's
+ * `pythGeneration: 'pro'` create option; `config.pyth` still overrides
+ * wholesale (see `PerpClient`). All four state ids were verified on-chain
+ * (shared `state::State` objects under the docs' upgraded package ids).
+ *
+ * Kept as a second flat map beside {@link PYTH_DEFAULTS} rather than a nested
+ * `PYTH_INFRA[network][generation]` — `PYTH_DEFAULTS` is a published export
+ * with external consumers, so the smallest honest surface is an additive
+ * sibling (same deferral note as {@link LAZER_DEFAULTS}).
+ *
+ * The Hermes-compatible endpoint (`pyth.dourolabs.app/hermes`) serves the
+ * same REST surface as `hermes.pyth.network` but requires `pyth.api_key`
+ * (`Authorization: Bearer …`) after the cutover — see
+ * {@link PythInfraConfig.api_key}.
+ */
+export const PYTH_PRO_DEFAULTS: Record<Network, PythInfraConfig> = {
+  MAINNET: {
+    state_id: "0x03719fae774ddab3cfcaa53bbc046f0cbe21410019b6280811bf3f9f4b05839d",
+    wormhole_state_id: "0xdbca52b9fb4f712e25f61f974586d93ac541bcf8389564f0323bb07215168b5c",
+    hermes_endpoint: "https://pyth.dourolabs.app/hermes",
+  },
+  TESTNET: {
+    state_id: "0x3c48fe392912de6c18087a2b3f5fdbfbfdb4598e180947feff1f12f8e9ea073e",
+    wormhole_state_id: "0x750da8e6d16b6a363a39fe2eaa8295ac224a1e6fce4e47b58845e2e8746164f0",
+    hermes_endpoint: "https://pyth.dourolabs.app/hermes",
+  },
+};
+
 // ============================================================================
 // Pyth Lazer — external infra, defaults by network
 // ============================================================================

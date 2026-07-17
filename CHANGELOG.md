@@ -6,10 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
-## [Unreleased]
+## [3.2.0] - 2026-07-18
 
 ### Added
 
+- **`PYTH_PRO_DEFAULTS` + `pythGeneration` client option — Pyth Pro
+  (Core-upgrade) infra selectable per environment.** New per-network constant
+  set `PYTH_PRO_DEFAULTS: Record<Network, PythInfraConfig>`
+  (`src/oracle/config.ts`, re-exported from `@waterx/sdk/perp`) carrying the
+  post-2026-07-31 Pro-compatible contracts from Pyth's Core-Upgrade docs
+  (https://docs.pyth.network/price-feeds/core/upgrade/contracts, Sui section
+  — package revs `sui-pro-compatible-contract-mainnet` / `-testnet`; all four
+  state ids verified on-chain as shared `state::State` objects under the
+  docs' upgraded package ids) plus the Hermes-compatible endpoint
+  `https://pyth.dourolabs.app/hermes` (auth-first — pair with `pyth.api_key`).
+  Kept as a flat sibling of `PYTH_DEFAULTS` (not a nested
+  `PYTH_INFRA[network][generation]`) because `PYTH_DEFAULTS` is a published
+  export with external consumers — the additive map is the smallest honest
+  surface. Selection: a new `pythGeneration?: 'core' | 'pro'` create option
+  (default `'core'`) on `PerpClient.create` / `WaterXClient.create` picks
+  which set feeds `client.pyth` when the config JSON has no explicit `pyth`
+  block; an explicit `config.pyth` override still wins wholesale (unchanged
+  precedence). Orthogonal to `oracleSource` — this flips the Pyth-Core
+  *infra* (state ids + endpoint), not which `PriceUpdateRule` routes tickers,
+  so after the 7/31 cutover consumers set `pythGeneration: 'pro'` +
+  `pyth.api_key` without touching their rule routing. New `PythGeneration`
+  type exported alongside. The README gains an "Oracle sources & the Pyth
+  Pro migration" section documenting the per-env staging-Pro/prod-Core
+  pattern (env var per consumer, single SDK version everywhere) and an
+  "Adding an oracle source" runbook (implement `PriceUpdateRule` incl.
+  `requiresFeeSource`, register in `rule-registry.ts`, publish the on-chain
+  rule package via the normal config deploy pipeline, add SDK infra
+  constants if needed, flip `ORACLE_SOURCE` per environment — the path the
+  in-house ed25519 `waterx_rule` will follow).
 - **Resilient oracle fetch — retry policy, Bearer auth, injectable
   update-data provider.** The Hermes fetch (`fetchPriceFeedsUpdateData`) sits
   on the money path of every trading tx-build; it was one bare `fetch`, 15s
