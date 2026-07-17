@@ -80,6 +80,7 @@ export const PythCoreRule: PriceUpdateRule = {
       data.payload.feedIds,
       opts?.cache,
       opts?.sponsorFund,
+      opts?.allowGasFee,
     );
   },
 };

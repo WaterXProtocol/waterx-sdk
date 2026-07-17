@@ -27,16 +27,31 @@ export interface CommonBuildOpts {
   /** Share a `PythCache` across builders to avoid redundant pyth_state reads. */
   pythCache?: PythCache;
   /**
-   * Wire the `pyth_sponsor_rule` flow:
-   *   - open a Fund via `pyth_sponsor_rule::request(sponsor)`
-   *   - pay Pyth update fees from the Fund (instead of `tx.gas`)
-   *   - reimburse leftover into the sponsor pool + attach
-   *     `PythSponsorRule` witness to the TradingRequest so markets
-   *     whose `request_checklist` contains `PythSponsorRule` accept it
-   * Default: true (matches the testnet/mainnet checklist config).
-   * Pass `false` only when the market checklist is empty.
+   * @deprecated No longer a fee-source decision. `wrapRequestAndExecute` now
+   * opens (and reimburses) the `pyth_sponsor_rule` Fund purely from config
+   * presence — whenever `client.config.packages.pyth_sponsor_rule` is
+   * deployed, the fund is ALWAYS opened, regardless of this flag (see
+   * `OracleFeeSourceUnavailable` in `oracle/pyth.ts`). This closes the gap
+   * where a market whose checklist required `PythSponsorRule`, or a caller
+   * that mis-set this flag, silently drew from `tx.gas` and failed
+   * ON-CHAIN instead of at build time. Use `allowGasFee` for the
+   * non-sponsored case instead. Kept accepted (as a no-op) only so existing
+   * callers keep compiling; will be removed in a future major version.
    */
   useSponsor?: boolean;
+  /**
+   * Explicit opt-in to draw the Pyth update fee from `tx.gas` when this
+   * client's config has no `pyth_sponsor_rule` deployed. Ignored whenever a
+   * sponsor fund IS available — the sponsor pool always wins over `tx.gas`
+   * when one can be opened (see `useSponsor`'s deprecation note above).
+   * Required for flows with no `TradingRequest` to reimburse a sponsor fund
+   * against (e.g. `buildMintWlpTx` — see its doc comment). Building an
+   * oracle refresh with neither a sponsor fund nor this flag throws
+   * `OracleFeeSourceUnavailable` instead of silently drawing from `tx.gas`
+   * (Enoki-sponsored transactions reject any `tx.gas` draw). Default:
+   * `false`.
+   */
+  allowGasFee?: boolean;
   /**
    * Pre-sweep parked backing assets (USDC, USDsui, …) at the wxa account's
    * address into USD credit, plus any CREDIT coins/funds at the address into
@@ -91,6 +106,8 @@ export async function refreshWlpPoolOracles(
     sponsorFund?: { fund: TransactionArgument; packageId: string };
     lpType?: string;
     updateDataProvider?: UpdateDataProvider;
+    /** Forwarded to `refreshOraclePrices` — see `CommonBuildOpts.allowGasFee`. */
+    allowGasFee?: boolean;
   },
 ): Promise<void> {
   const poolTickers = getCollateralAssets(client.config);
@@ -99,6 +116,7 @@ export async function refreshWlpPoolOracles(
     cache: opts.cache,
     sponsorFund: opts.sponsorFund,
     updateDataProvider: opts.updateDataProvider,
+    allowGasFee: opts.allowGasFee,
   });
   for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
@@ -127,9 +145,16 @@ export async function wrapRequestAndExecute(
 ): Promise<void> {
   await maybeConsolidate(client, tx, req.accountId, opts);
 
-  const useSponsor = opts?.useSponsor ?? true;
+  // Fee source + witness attachment is config-driven, not a caller flag: the
+  // sponsor fund is opened (and later reimbursed) whenever this client's
+  // config has `pyth_sponsor_rule` deployed — regardless of the deprecated
+  // `useSponsor` flag (see its JSDoc). `allowGasFee` is the only caller lever
+  // left, and it only matters when config has NO sponsor rule to open (see
+  // `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
   let sponsorFund: { fund: TransactionArgument; packageId: string } | undefined;
-  if (useSponsor) sponsorFund = openPythSponsorFund(tx, client);
+  if (client.config.packages.pyth_sponsor_rule) {
+    sponsorFund = openPythSponsorFund(tx, client);
+  }
 
   if (!opts?.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
@@ -137,6 +162,7 @@ export async function wrapRequestAndExecute(
       sponsorFund,
       lpType: req.lpType,
       updateDataProvider: opts?.updateDataProvider,
+      allowGasFee: opts?.allowGasFee,
     });
   }
 

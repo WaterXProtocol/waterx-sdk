@@ -137,12 +137,21 @@ describe("PythCoreRule.buildUpdateCalls", () => {
     const update = mockAccumulatorUpdate();
 
     const directTx = new Transaction();
-    await buildPythPriceUpdateCalls(directTx, client, [update], [feedId], new PythCache());
+    await buildPythPriceUpdateCalls(
+      directTx,
+      client,
+      [update],
+      [feedId],
+      new PythCache(),
+      undefined,
+      true,
+    );
 
     const ruleTx = new Transaction();
     const data = { kind: "pyth_rule" as const, payload: { updates: [update], feedIds: [feedId] } };
     await PythCoreRule.buildUpdateCalls(ruleTx, client, data, ["BTCUSD"], {
       cache: new PythCache(),
+      allowGasFee: true,
     });
 
     expect(moveTargets(ruleTx)).toEqual(moveTargets(directTx));
@@ -168,6 +177,31 @@ describe("PythCoreRule.buildUpdateCalls", () => {
     const targets = moveTargets(tx);
     expect(targets).toContain("pyth_sponsor_rule::split");
     expect(targets).toContain("pyth::update_single_price_feed");
+  });
+
+  it("forwards the allowGasFee option through to buildPythPriceUpdateCalls", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+
+    const tx = new Transaction();
+    const data = { kind: "pyth_rule" as const, payload: { updates: [update], feedIds: [feedId] } };
+    await PythCoreRule.buildUpdateCalls(tx, client, data, ["BTCUSD"], { allowGasFee: true });
+
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
+  });
+
+  it("throws OracleFeeSourceUnavailable when neither sponsorFund nor allowGasFee is passed", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+
+    const tx = new Transaction();
+    const data = { kind: "pyth_rule" as const, payload: { updates: [update], feedIds: [feedId] } };
+    await expect(PythCoreRule.buildUpdateCalls(tx, client, data, ["BTCUSD"])).rejects.toThrow(
+      /OracleFeeSourceUnavailable/,
+    );
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 
   it("is a no-op when data is null (empty ticker list upstream)", async () => {
@@ -231,12 +265,21 @@ describe("PythCoreRule end-to-end fetch → build", () => {
     })) as unknown as typeof fetch;
 
     const directTx = new Transaction();
-    await buildPythPriceUpdateCalls(directTx, client, [update], [feedId], new PythCache());
+    await buildPythPriceUpdateCalls(
+      directTx,
+      client,
+      [update],
+      [feedId],
+      new PythCache(),
+      undefined,
+      true,
+    );
 
     const ruleTx = new Transaction();
     const data = await PythCoreRule.fetchUpdateData(client, ["BTCUSD"]);
     await PythCoreRule.buildUpdateCalls(ruleTx, client, data, ["BTCUSD"], {
       cache: new PythCache(),
+      allowGasFee: true,
     });
 
     expect(moveTargets(ruleTx)).toEqual(moveTargets(directTx));

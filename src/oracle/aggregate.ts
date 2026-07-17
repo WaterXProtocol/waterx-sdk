@@ -246,6 +246,16 @@ export async function refreshOraclePrices(
      * payload) throws instead, since that is a caller bug, not a cache miss.
      */
     updateDataProvider?: UpdateDataProvider;
+    /**
+     * Explicit opt-in to draw the Pyth update fee from `tx.gas` when no
+     * `sponsorFund` is supplied above — forwarded verbatim to each group's
+     * `PriceUpdateRule.buildUpdateCalls` as `BuildUpdateOpts.allowGasFee`.
+     * Ignored by rules with no update fee (e.g. `pyth_lazer_rule`). Building
+     * with neither `sponsorFund` nor this flag throws
+     * `OracleFeeSourceUnavailable` (see `oracle/pyth.ts`) instead of
+     * silently drawing from `tx.gas`.
+     */
+    allowGasFee?: boolean;
   } = {},
 ): Promise<void> {
   if (tickers.length === 0) return;
@@ -304,6 +314,7 @@ export async function refreshOraclePrices(
       (await group.rule.buildUpdateCalls(tx, host, group.data, group.tickers, {
         cache: opts.cache,
         sponsorFund: opts.sponsorFund,
+        allowGasFee: opts.allowGasFee,
       })) ?? undefined;
     // Route by the handle's kind discriminant — the one site the tag exists to
     // protect: a future non-lazer handle (e.g. a WaterxRule value) must never

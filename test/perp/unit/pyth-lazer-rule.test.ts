@@ -496,7 +496,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     ) as unknown as typeof fetch;
 
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"]);
+    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { allowGasFee: true });
 
     const targets = moveTargets(tx);
     // Lazer generation: one verify, one feed (BTCUSD only).

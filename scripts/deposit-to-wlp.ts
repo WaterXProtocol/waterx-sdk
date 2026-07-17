@@ -246,7 +246,9 @@ async function main(): Promise<void> {
       priceInfoObjectId: feed.price_info_object,
     });
   } else {
-    await refreshOraclePrices(tx, client, [ticker]);
+    // Standalone dev script, no TradingRequest to reimburse a sponsor fund
+    // against — pay the Pyth update fee from tx.gas.
+    await refreshOraclePrices(tx, client, [ticker], { allowGasFee: true });
     // Push the freshly-aggregated oracle price into TokenPoolInfo.value_usd /
     // last_price_refresh_timestamp so lp_pool::assert_prices_fresh accepts it.
     updateTokenValue(client, tx, { tokenType: usdType });

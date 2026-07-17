@@ -302,7 +302,9 @@ async function main(): Promise<void> {
     // `assert_prices_fresh` passes.
     const poolTickers = getCollateralAssets(client.config);
     const oracleTickers = Array.from(new Set([BTC, "USDCUSD", ...poolTickers]));
-    await refreshOraclePrices(matchTx, client, oracleTickers);
+    // Standalone keeper script, no TradingRequest to reimburse a sponsor
+    // fund against — pay the Pyth update fee from tx.gas.
+    await refreshOraclePrices(matchTx, client, oracleTickers, { allowGasFee: true });
     for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
       updateTokenValue(client, matchTx, { tokenType });
     }

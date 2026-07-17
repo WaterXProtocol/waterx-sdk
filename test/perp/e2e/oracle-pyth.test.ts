@@ -20,7 +20,10 @@ describe(`oracle Pyth refresh (${e2eNetwork})`, () => {
     tx.setSender(DUMMY_SENDER);
     tx.setGasBudget(1_200_000_000);
     try {
-      await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"]);
+      // Standalone oracle-refresh e2e probe (no trading), no TradingRequest
+      // to reimburse a sponsor fund against — pay the Pyth update fee from
+      // tx.gas.
+      await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { allowGasFee: true });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;

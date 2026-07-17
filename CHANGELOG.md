@@ -130,6 +130,55 @@ reference the PR that introduced them.
   code reads `enabled` for routing (see `oracleSource` above), and
   `validateConfig` does not require the package.
 
+### Changed
+
+- **BREAKING: config-driven, fail-fast Pyth update-fee source (Enoki-safe by
+  default).** `buildPythPriceUpdateCalls` used to silently fall back to
+  `tx.gas` for the per-feed Pyth update fee whenever no `sponsorFund` was
+  passed — Enoki-sponsored transactions reject any `tx.gas` draw, so BE
+  callers had to hand-roll their own oracle refresh (skip
+  `refreshOraclePrices` entirely and drive `aggregateTicker` directly) purely
+  to dodge this trap, and a market whose `request_checklist` required the
+  `PythSponsorRule` witness could fail ON-CHAIN instead of at build time. Fee
+  source is now resolved once, before any PTB mutation, with three outcomes:
+  - `sponsorFund` supplied → the fee is drawn from the sponsor pool
+    (`pyth_sponsor_rule::split`), same as before. Takes priority over the new
+    `allowGasFee` flag below — a fund, once opened, always wins.
+  - No `sponsorFund` + `allowGasFee: true` (new opt) → the fee is drawn from
+    `tx.gas`, exactly as the old implicit default did — now explicit.
+  - Neither → throws `OracleFeeSourceUnavailable` naming both fixes (deploy
+    `pyth_sponsor_rule` to config, or pass `allowGasFee: true`) instead of
+    silently drawing from `tx.gas`.
+
+  `wrapRequestAndExecute` (every order/position `build*Tx`) now opens (and
+  reimburses) the sponsor fund purely from **config presence** —
+  `client.config.packages.pyth_sponsor_rule` deployed ⇒ the fund is ALWAYS
+  opened, regardless of caller flags. `CommonBuildOpts.useSponsor` is
+  **deprecated** (kept accepted as a no-op so existing callers keep
+  compiling — see its JSDoc) and no longer gates fund-opening; the new
+  `CommonBuildOpts.allowGasFee` is the only caller lever left, and it only
+  matters when config has no sponsor rule to open.
+
+  `buildMintWlpTx` / `buildMintAndStakeWlpTx` / `buildUnstakeAndRequestRedeemWlpTx`
+  (`mint_wlp` / `request_redeem` produce no `TradingRequest`, so there's
+  nothing for `pyth_sponsor_rule::reimburse` to attach its witness to — the
+  sponsor flow is structurally unavailable to them) now require
+  `allowGasFee: true` when `skipOraclePriceRefresh` is left `false`; without
+  it they throw `OracleFeeSourceUnavailable` at build time instead of
+  quietly drawing gas that would break under Enoki. `refreshOraclePrices` /
+  `refreshWlpPoolOracles` / `updatePythPrices` / `PriceUpdateRule.buildUpdateCalls`
+  (`BuildUpdateOpts`) all gained the matching `allowGasFee?: boolean`
+  pass-through; Lazer ignores it (no update fee).
+
+  **Migration**: if you called `buildPlaceOrderTx` / `buildMintWlpTx` /
+  `refreshOraclePrices` / `updatePythPrices` (etc.) with oracle refresh
+  enabled and relied on the implicit `tx.gas` fallback (no `sponsorFund`, no
+  prior error), pass `allowGasFee: true` to keep that behavior — the
+  fallback is now explicit. If your client's config has `pyth_sponsor_rule`
+  deployed, no change is needed for order/position flows (the fund now
+  opens automatically); `useSponsor` can be dropped from call sites at your
+  convenience.
+
 ## [3.1.1] - 2026-07-10
 
 ### Added

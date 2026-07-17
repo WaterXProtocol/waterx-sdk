@@ -33,9 +33,15 @@ export interface BuildMintWlpParams extends MintWlpParams, CommonBuildOpts {
  * `last_price_refresh_timestamp` so `assert_prices_fresh` inside
  * `mint_wlp` passes.
  *
- * Does NOT use the pyth_sponsor flow — `mint_wlp` produces no
+ * Never uses the pyth_sponsor flow — `mint_wlp` produces no
  * `TradingRequest`, so there's nothing for the sponsor to attach its
- * witness to. Pyth update fees come from `tx.gas`.
+ * witness to, and `pyth_sponsor_rule::reimburse` cannot consume a Fund
+ * without one. So when `skipOraclePriceRefresh` is `false` (the refresh
+ * actually runs), the caller MUST pass `allowGasFee: true` — the Pyth
+ * update fee is drawn from `tx.gas`, which Enoki-sponsored transactions
+ * reject; a sponsored caller should keep `skipOraclePriceRefresh: true`
+ * instead and rely on freshness from other trade traffic (see
+ * `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
  */
 export async function buildMintWlpTx(
   client: PerpClient,
@@ -49,6 +55,7 @@ export async function buildMintWlpTx(
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       cache: params.pythCache,
       lpType: params.lpType,
+      allowGasFee: params.allowGasFee,
     });
   }
 
@@ -94,6 +101,7 @@ export async function buildMintAndStakeWlpTx(
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       cache: params.pythCache,
       lpType: params.lpType,
+      allowGasFee: params.allowGasFee,
     });
   }
 
@@ -134,7 +142,9 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
  * Refreshes every WLP pool-token oracle by default — `request_redeem` runs
  * `assert_prices_fresh` internally, so a stale oracle would abort the PTB.
  * Pass `skipOraclePriceRefresh: true` only when the caller is composing this
- * into a larger PTB that already pre-pumps prices.
+ * into a larger PTB that already pre-pumps prices. Like `buildMintWlpTx`,
+ * `request_redeem` produces no `TradingRequest`, so a non-skipped refresh
+ * requires `allowGasFee: true` (see `buildMintWlpTx`'s doc comment).
  */
 export async function buildUnstakeAndRequestRedeemWlpTx(
   client: PerpClient,
@@ -149,6 +159,7 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
     await refreshWlpPoolOracles(tx, client, [], {
       cache: params.pythCache,
       lpType: params.lpType,
+      allowGasFee: params.allowGasFee,
     });
   }
 

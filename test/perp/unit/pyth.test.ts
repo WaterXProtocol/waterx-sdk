@@ -89,6 +89,8 @@ describe("on-chain pyth PTB helpers", () => {
       [mockAccumulatorUpdate()],
       [feedId],
       new PythCache(),
+      undefined,
+      true,
     );
     expect(ids[0]).toMatch(/^0x/);
     expect(tx.getData().commands!.length).toBeGreaterThanOrEqual(4);
@@ -106,7 +108,7 @@ describe("on-chain pyth PTB helpers", () => {
     const client = createUnitTestClient();
     const { feedId } = attachPythGrpcMocks(client);
     const tx = new Transaction();
-    const ids = await updatePythPrices(tx, client, [feedId]);
+    const ids = await updatePythPrices(tx, client, [feedId], undefined, undefined, true);
     expect(ids.length).toBe(1);
   });
 
@@ -122,7 +124,7 @@ describe("on-chain pyth PTB helpers", () => {
     const client = createUnitTestClient();
     attachPythGrpcMocks(client);
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"]);
+    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { allowGasFee: true });
     expect(tx.getData().commands!.length).toBeGreaterThan(5);
   });
 
@@ -238,7 +240,7 @@ describe("constant rule oracle routing", () => {
     // USDC constant-ONLY (removed from pyth.feeds); BTC stays a Pyth ticker.
     delete client.config.packages.pyth_rule!.feeds.USDCUSD;
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"]);
+    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { allowGasFee: true });
 
     const targets = moveTargets(tx);
     expect(targets).toContain("pyth_rule::feed");
@@ -290,7 +292,7 @@ describe("constant rule oracle routing", () => {
       BTCUSD: { price: "65000000000000" },
     };
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD"]);
+    await refreshOraclePrices(tx, client, ["BTCUSD"], { allowGasFee: true });
 
     const targets = moveTargets(tx);
     // Both rules feed into the one collector for the dual ticker …

@@ -86,7 +86,7 @@ describe("refreshOraclePrices — default oracleSource ('pyth_rule')", () => {
 
     const referenceTx = new Transaction();
     const feedIds = ["BTCUSD", "ETHUSD"].map((t) => client.getPythFeed(t).feed_id);
-    await updatePythPrices(referenceTx, client, feedIds);
+    await updatePythPrices(referenceTx, client, feedIds, undefined, undefined, true);
     aggregateTicker(referenceTx, client, {
       ticker: "BTCUSD",
       priceInfoObjectId: client.getPythFeed("BTCUSD").price_info_object,
@@ -97,7 +97,7 @@ describe("refreshOraclePrices — default oracleSource ('pyth_rule')", () => {
     });
 
     const actualTx = new Transaction();
-    await refreshOraclePrices(actualTx, client, ["BTCUSD", "ETHUSD"]);
+    await refreshOraclePrices(actualTx, client, ["BTCUSD", "ETHUSD"], { allowGasFee: true });
 
     // Full command + input structures, not just module::function names —
     // both builds are deterministic given the same mocked inputs, so a
@@ -125,6 +125,7 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      allowGasFee: true,
     });
 
     // Each rule's fetch is called exactly once, with exactly its own group.
@@ -201,6 +202,7 @@ describe("refreshOraclePrices — ticker supported by neither rule", () => {
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      allowGasFee: true,
     });
 
     // USDCUSD never reaches either rule's fetch step …
@@ -234,6 +236,7 @@ describe("refreshOraclePrices — per-environment acceptance (staging Lazer vs p
 
     await refreshOraclePrices(new Transaction(), prodClient, ["BTCUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeForProd },
+      allowGasFee: true,
     });
     await refreshOraclePrices(new Transaction(), stagingClient, ["BTCUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeForStaging },

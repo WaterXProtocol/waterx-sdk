@@ -213,10 +213,24 @@ function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
  * (one per `feedIds`, same order). After this you can feed `pyth_rule` per
  * ticker against the matching `PriceInfoObject` (see `rules/pyth-rule.ts`).
  *
- * If `sponsorFund` is provided, the per-feed update fee comes from the
- * sponsor pool (`pyth_sponsor_rule::split`) instead of `tx.gas`. Opening and
- * reimbursing that fund is the sponsor rule's job (`rules/sponsor.ts`); here we
- * only draw a fee coin from the already-open `fund` hot potato.
+ * Fee source is resolved BEFORE any PTB mutation (or off-chain fetch) and is
+ * never silently defaulted:
+ *   - `sponsorFund` provided → the per-feed update fee is drawn from the
+ *     sponsor pool (`pyth_sponsor_rule::split`) instead of `tx.gas`. Opening
+ *     and reimbursing that fund is the caller's job (`rules/sponsor.ts` /
+ *     `wrapRequestAndExecute`, which opens it whenever the client's config
+ *     has `pyth_sponsor_rule` deployed, regardless of caller flags) — this
+ *     function only draws a fee coin from the already-open `fund` hot
+ *     potato. Takes priority over `allowGasFee`: when a fund is available it
+ *     is always used, never `tx.gas`.
+ *   - No `sponsorFund` + `allowGasFee: true` → the fee is drawn from
+ *     `tx.gas` via `tx.splitCoins`. Only safe in a non-sponsored context —
+ *     Enoki-sponsored transactions reject any `tx.gas` draw.
+ *   - Neither → throws `OracleFeeSourceUnavailable` instead of silently
+ *     drawing from `tx.gas` (the old default), which broke under Enoki and,
+ *     worse, could fail ON-CHAIN when the market's `request_checklist`
+ *     requires the `PythSponsorRule` witness that only a real sponsor fund
+ *     attaches.
  */
 export async function buildPythPriceUpdateCalls(
   tx: Transaction,
@@ -225,12 +239,21 @@ export async function buildPythPriceUpdateCalls(
   feedIds: string[],
   cache?: PythCache,
   sponsorFund?: { fund: TransactionArgument; packageId: string },
+  allowGasFee?: boolean,
 ): Promise<string[]> {
   if (updates.length === 0) {
     throw new Error("No price update data provided; Hermes returned empty results");
   }
   if (updates.length > 1) {
     throw new Error("Only a single accumulator message is supported per transaction");
+  }
+  if (!sponsorFund && !allowGasFee) {
+    throw new Error(
+      "OracleFeeSourceUnavailable: no fee source available for the Pyth update fee — " +
+        "deploy pyth_sponsor_rule to config so a sponsor fund can be opened (see " +
+        "openPythSponsorFund / wrapRequestAndExecute), or pass allowGasFee: true to draw " +
+        "the fee from tx.gas in a non-sponsored context",
+    );
   }
 
   const pyth = host.pyth;
@@ -309,10 +332,11 @@ export async function updatePythPrices(
   feedIds: string[],
   cache?: PythCache,
   sponsorFund?: { fund: TransactionArgument; packageId: string },
+  allowGasFee?: boolean,
 ): Promise<string[]> {
   const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
     apiKey: host.pyth.api_key,
     fetch: host.pyth.fetch,
   });
-  return buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund);
+  return buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund, allowGasFee);
 }
