@@ -48,7 +48,10 @@ export type RuleUpdateData = { kind: PriceUpdateRuleKind; payload: unknown } | n
  * `buildPythPriceUpdateCalls` / `updatePythPrices` parameter shapes in
  * `./pyth.ts` — `cache` shares on-chain Pyth state reads across builders,
  * `sponsorFund` draws the per-feed update fee from an open sponsor pool
- * instead of `tx.gas` (see `./rules/sponsor.ts`).
+ * instead of `tx.gas` (see `./rules/sponsor.ts`). Both fields are
+ * Pyth-Core-specific mechanics; `refreshOraclePrices` passes the same
+ * `BuildUpdateOpts` to every rule uniformly, so a non-Pyth-Core rule (e.g. a
+ * future `PythLazerRule`) simply ignores whichever fields it has no use for.
  */
 export interface BuildUpdateOpts {
   readonly cache?: PythCache;

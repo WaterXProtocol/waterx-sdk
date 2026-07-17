@@ -16,7 +16,7 @@ import type {
   PriceUpdateRule,
   RuleUpdateData,
 } from "../../../src/oracle/price-update-rule.ts";
-import { updatePythPrices } from "../../../src/oracle/pyth.ts";
+import { PythCache, updatePythPrices } from "../../../src/oracle/pyth.ts";
 import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
@@ -97,7 +97,11 @@ describe("refreshOraclePrices — default oracleSource ('pyth_rule')", () => {
     const actualTx = new Transaction();
     await refreshOraclePrices(actualTx, client, ["BTCUSD", "ETHUSD"]);
 
-    expect(moveTargets(actualTx)).toEqual(moveTargets(referenceTx));
+    // Full command + input structures, not just module::function names —
+    // both builds are deterministic given the same mocked inputs, so a
+    // divergence anywhere (argument encoding, ordering, extra commands)
+    // must fail this.
+    expect(actualTx.getData()).toEqual(referenceTx.getData());
   });
 });
 
@@ -131,6 +135,32 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
     const targets = moveTargets(tx);
     expect(targets).toContain("oracle::aggregate");
     expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(2);
+  });
+
+  it("forwards the same tx and opts.cache/opts.sponsorFund into buildUpdateCalls, alongside the exact payload fetchUpdateData resolved", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    // The fake covers every requested ticker, so no PythCoreRule fallback
+    // engages here — no real on-chain Pyth/sponsor call runs, so it's safe
+    // to forward an inert sponsorFund stub through to the fake alone.
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+
+    const tx = new Transaction();
+    const cache = new PythCache();
+    const sponsorFund = { fund: tx.pure.u64(0), packageId: "0xsponsor" };
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      cache,
+      sponsorFund,
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+    });
+
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledTimes(1);
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(
+      tx,
+      client,
+      { kind: "pyth_lazer_rule", payload: { tickers: ["BTCUSD"] } }, // == fetchUpdateData's resolved value
+      ["BTCUSD"],
+      { cache, sponsorFund },
+    );
   });
 });
 

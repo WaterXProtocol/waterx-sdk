@@ -36,8 +36,10 @@ export type {
 export { PythCoreRule } from "./rules/pyth-core-rule.ts";
 export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
 
-// Oracle-source → PriceUpdateRule registry (used internally by refreshOraclePrices)
-export { resolveOracleRule } from "./rule-registry.ts";
+// `resolveOracleRule` (rule-registry.ts) is NOT re-exported here — it has one
+// production consumer (`refreshOraclePrices` below) and no external caller;
+// per repo convention ("no unused exports") it stays module-internal. Tests
+// import it directly from `./rule-registry.ts`.
 
 // Aggregation orchestrator
 export {

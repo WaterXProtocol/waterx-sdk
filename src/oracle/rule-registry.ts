@@ -15,10 +15,13 @@
 import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";
 import { PythCoreRule } from "./rules/pyth-core-rule.ts";
 
-/** Production registry. Tests inject a fake rule via `resolveOracleRule`'s `overrides` param instead of mutating this. */
-const DEFAULT_RULES: Partial<Record<OracleSource, PriceUpdateRule>> = {
+/**
+ * Production registry. Frozen — tests inject a fake rule via
+ * `resolveOracleRule`'s `overrides` param instead of mutating this.
+ */
+const DEFAULT_RULES: Partial<Record<OracleSource, PriceUpdateRule>> = Object.freeze({
   pyth_rule: PythCoreRule,
-};
+});
 
 /**
  * Resolve the `PriceUpdateRule` registered for `source`.

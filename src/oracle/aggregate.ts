@@ -24,7 +24,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import type { OracleHost } from "./host.ts";
-import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";
+import type { OracleSource, PriceUpdateRule, RuleUpdateData } from "./price-update-rule.ts";
 import type { PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
@@ -140,7 +140,21 @@ export function aggregateTickerWithConstant(
  * per-rule PTB atomicity (no mixed-generation payload within one rule's calls).
  * When `oracleSource` isn't `'pyth_rule'`, one PTB may legitimately carry BOTH a
  * non-Pyth-Core block (selected group) and a Pyth Core block (fallback group) —
- * each verifies against its own contract objects, so that's fine.
+ * each verifies against its own contract objects, so that's fine. All groups'
+ * off-chain fetches run concurrently (`Promise.all`) and complete before any
+ * PTB mutation; on-chain reads inside `buildUpdateCalls` can still fail
+ * mid-append — callers discard the tx on throw.
+ *
+ * **Known constraint until the on-chain weighted-rule set is migrated:** a
+ * ticker that still carries an on-chain `pyth_rule` weight but is routed to a
+ * non-Pyth-Core `oracleSource` (e.g. `pyth_lazer_rule`) still gets its Pyth
+ * leg fed by the (unchanged) {@link aggregateTicker} below, which reads
+ * `pyth_rule.feeds[ticker].price_info_object` straight from config — an
+ * object THIS function's update leg never refreshed for that ticker (the
+ * selected rule updated a different on-chain object, e.g. a Lazer price
+ * feed). That either aggregates a stale Pyth Core value or aborts on an
+ * on-chain staleness check. Do not route such a ticker to a non-Pyth-Core
+ * source until its on-chain weighted-rule set drops `pyth_rule`.
  */
 export async function refreshOraclePrices(
   tx: Transaction,
@@ -150,9 +164,10 @@ export async function refreshOraclePrices(
     cache?: PythCache;
     sponsorFund?: { fund: TransactionArgument; packageId: string };
     /**
-     * Test-only: layer fake `PriceUpdateRule`s on top of the production
-     * registry (see `rule-registry.ts`'s `resolveOracleRule`). Production
-     * callers never set this — routing is by `host.oracleSource` alone.
+     * @internal Test-only: layer fake `PriceUpdateRule`s on top of the
+     * production registry (see `rule-registry.ts`'s `resolveOracleRule`).
+     * Production callers never set this — routing is by `host.oracleSource`
+     * alone.
      */
     ruleOverrides?: Partial<Record<OracleSource, PriceUpdateRule>>;
   } = {},
@@ -186,9 +201,19 @@ export async function refreshOraclePrices(
     if (fallbackGroup.length > 0) groups.push({ rule: fallbackRule, tickers: fallbackGroup });
   }
 
-  for (const group of groups) {
-    const data = await group.rule.fetchUpdateData(host, group.tickers);
-    await group.rule.buildUpdateCalls(tx, host, data, group.tickers, {
+  // Fetch every group's off-chain payload concurrently (independent network
+  // calls — no reason to serialize) and let ALL of them settle before the
+  // first PTB mutation below, so a later group's fetch failure can never
+  // leave an earlier group's moveCalls stranded in a caller-owned tx.
+  const groupsWithData: { rule: PriceUpdateRule; tickers: string[]; data: RuleUpdateData }[] =
+    await Promise.all(
+      groups.map(async (group) => ({
+        ...group,
+        data: await group.rule.fetchUpdateData(host, group.tickers),
+      })),
+    );
+  for (const group of groupsWithData) {
+    await group.rule.buildUpdateCalls(tx, host, group.data, group.tickers, {
       cache: opts.cache,
       sponsorFund: opts.sponsorFund,
     });

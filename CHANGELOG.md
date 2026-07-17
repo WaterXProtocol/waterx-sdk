@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
+## [Unreleased]
+
+### Added
+
+- **`oracleSource` client create option — env-selected oracle rule routing.**
+  `WaterXClient.create` / `PerpClient.create` accept a new `oracleSource?:
+  OracleSource` option (`'pyth_rule' | 'pyth_lazer_rule'`, default
+  `'pyth_rule'`) that selects which `PriceUpdateRule` `refreshOraclePrices`
+  uses for the on-chain price-update leg before aggregating. Exposed
+  read-only as `OracleHost.oracleSource` / `PerpClient.oracleSource`. Routing
+  is driven **solely** by this option — never by a config JSON `enabled`
+  flag and never by `process.env` (the SDK never reads it; consumers wire
+  the option from their own env var, e.g. `ORACLE_SOURCE`).
+  `refreshOraclePrices` groups tickers per rule: the selected rule serves
+  every ticker in its `supportedTickers`, tickers it doesn't cover fall back
+  to `pyth_rule` when they support it, and a ticker supported by neither is
+  skipped from the update leg exactly as before (it's still aggregated via
+  whichever rule `aggregateTicker` finds, e.g. `constant_rule`).
+- **`PriceUpdateRule` port + `PythCoreRule`.** New strategy port
+  (`src/oracle/price-update-rule.ts`, exported types `PriceUpdateRule`,
+  `PriceUpdateRuleKind`, `RuleUpdateData`, `BuildUpdateOpts`, `OracleSource`)
+  for one oracle rule generation: fetch its off-chain update payload, then
+  emit the PTB calls that verify/push it on-chain. `PythCoreRule`
+  (`src/oracle/rules/pyth-core-rule.ts`) wraps the existing Pyth Core
+  (Hermes VAA) path mechanically — no logic change — and is the only rule
+  registered today; a future `PythLazerRule` will register `'pyth_lazer_rule'`.
+- **`pyth_lazer_rule` config typing.** `OraclePackages.pyth_lazer_rule?:
+  PythLazerRulePackage` mirrors the deployed config JSON's `pyth_lazer_rule`
+  entry (`config`, `state`, `enabled?`, `feeds: Record<string, number>`
+  integer Lazer feed ids) for lossless round-tripping. Typed only — no SDK
+  code reads `enabled` for routing (see `oracleSource` above), and
+  `validateConfig` does not require the package.
+
 ## [3.1.1] - 2026-07-10
 
 ### Added
