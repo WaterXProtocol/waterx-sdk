@@ -28,7 +28,6 @@ export type {
   PriceUpdateRule,
   PriceUpdateRuleKind,
   RuleUpdateData,
-  FetchUpdateOpts,
   BuildUpdateOpts,
 } from "./price-update-rule.ts";
 

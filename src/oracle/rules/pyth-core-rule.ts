@@ -10,12 +10,7 @@
 import type { Transaction } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "../host.ts";
-import type {
-  BuildUpdateOpts,
-  FetchUpdateOpts,
-  PriceUpdateRule,
-  RuleUpdateData,
-} from "../price-update-rule.ts";
+import type { BuildUpdateOpts, PriceUpdateRule, RuleUpdateData } from "../price-update-rule.ts";
 import { buildPythPriceUpdateCalls, fetchPriceFeedsUpdateData } from "../pyth.ts";
 
 /** `pyth_rule`'s narrowed `RuleUpdateData.payload` shape. */
@@ -24,7 +19,13 @@ export interface PythCoreUpdatePayload {
   readonly feedIds: string[];
 }
 
-function isPythCoreUpdatePayload(payload: unknown): payload is PythCoreUpdatePayload {
+/**
+ * Shape check ONLY — the `kind` discriminant is checked separately by the
+ * caller before this runs, since a same-shaped payload from a different rule
+ * (e.g. a hypothetical Lazer payload also carrying `updates`/`feedIds`) must
+ * not silently pass as a Pyth Core VAA block.
+ */
+function isPythCoreUpdatePayloadShape(payload: unknown): payload is PythCoreUpdatePayload {
   return (
     typeof payload === "object" &&
     payload !== null &&
@@ -42,11 +43,7 @@ export const PythCoreRule: PriceUpdateRule = {
   },
 
   /** Resolves feed ids for `tickers`, then fetches their Hermes accumulator update. */
-  async fetchUpdateData(
-    host: OracleHost,
-    tickers: string[],
-    _opts?: FetchUpdateOpts,
-  ): Promise<RuleUpdateData> {
+  async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
     const feedIds = tickers.map((ticker) => host.getPythFeed(ticker).feed_id);
     const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds);
@@ -58,13 +55,19 @@ export const PythCoreRule: PriceUpdateRule = {
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    tickers: string[],
+    _tickers: string[],
     opts?: BuildUpdateOpts,
   ): Promise<void> {
     if (!data) return;
-    if (!isPythCoreUpdatePayload(data.payload)) {
+    if (data.kind !== "pyth_rule") {
       throw new Error(
         `PythCoreRule.buildUpdateCalls received a payload of kind '${data.kind}', expected 'pyth_rule'`,
+      );
+    }
+    if (!isPythCoreUpdatePayloadShape(data.payload)) {
+      throw new Error(
+        "PythCoreRule.buildUpdateCalls received a 'pyth_rule' payload with an unexpected shape " +
+          "(expected { updates: Uint8Array[]; feedIds: string[] })",
       );
     }
     await buildPythPriceUpdateCalls(

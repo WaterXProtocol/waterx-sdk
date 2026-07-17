@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildPythPriceUpdateCalls, PythCache } from "../../../src/oracle/pyth.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
+import { openPythSponsorFund } from "../../../src/oracle/rules/sponsor.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -108,6 +109,21 @@ describe("PythCoreRule.fetchUpdateData", () => {
     expect(data).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("propagates the feed-lookup throw for a ticker outside supportedTickers, without fetching", async () => {
+    const client = createUnitTestClient();
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    // Not in pyth_rule.feeds (and not in supportedTickers) — callers are expected
+    // to pre-filter via supportedTickers; this pins that fetchUpdateData does NOT
+    // re-validate and instead lets host.getPythFeed's throw propagate uncaught.
+    expect(PythCoreRule.supportedTickers(client)).not.toContain("DOGEUSD");
+
+    await expect(PythCoreRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
+      /No pyth feed listed for ticker: DOGEUSD/,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("PythCoreRule.buildUpdateCalls", () => {
@@ -138,7 +154,6 @@ describe("PythCoreRule.buildUpdateCalls", () => {
     const { feedId } = attachPythGrpcMocks(client);
     const update = mockAccumulatorUpdate();
 
-    const { openPythSponsorFund } = await import("../../../src/oracle/rules/sponsor.ts");
     const tx = new Transaction();
     const { fund, packageId } = openPythSponsorFund(tx, client);
 
@@ -147,8 +162,12 @@ describe("PythCoreRule.buildUpdateCalls", () => {
       sponsorFund: { fund, packageId },
     });
 
-    // Sponsor path draws the fee via a moveCall split, not tx.gas — no SplitCoins command.
+    // Sponsor path draws the fee via a moveCall split, not tx.gas — no SplitCoins command …
     expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
+    // … and the sponsor split + per-feed update calls actually landed in the PTB.
+    const targets = moveTargets(tx);
+    expect(targets).toContain("pyth_sponsor_rule::split");
+    expect(targets).toContain("pyth::update_single_price_feed");
   });
 
   it("is a no-op when data is null (empty ticker list upstream)", async () => {
@@ -160,7 +179,7 @@ describe("PythCoreRule.buildUpdateCalls", () => {
     expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 
-  it("throws when handed a payload of a different rule kind", async () => {
+  it("throws when handed a payload of a different rule kind (shape also invalid)", async () => {
     const client = createUnitTestClient();
     const tx = new Transaction();
 
@@ -172,6 +191,25 @@ describe("PythCoreRule.buildUpdateCalls", () => {
         ["USDCUSD"],
       ),
     ).rejects.toThrow(/expected 'pyth_rule'/);
+  });
+
+  it("throws on kind mismatch even when the payload shape looks like a Pyth Core update", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const tx = new Transaction();
+    // Same { updates, feedIds } shape as PythCoreRule's own payload, but tagged
+    // with a different rule's kind — the shape check alone would wrongly accept
+    // this and build a Core VAA block for a Lazer update. The kind check must
+    // reject it before the shape check ever runs.
+    const lazerShapedButWrongKind = {
+      kind: "pyth_lazer_rule" as const,
+      payload: { updates: [mockAccumulatorUpdate()], feedIds: [feedId] },
+    };
+
+    await expect(
+      PythCoreRule.buildUpdateCalls(tx, client, lazerShapedButWrongKind, ["BTCUSD"]),
+    ).rejects.toThrow(/expected 'pyth_rule'/);
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 });
 
