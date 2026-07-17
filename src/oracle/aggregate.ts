@@ -31,6 +31,7 @@ import type {
   PriceUpdateRule,
   RuleUpdateData,
   RuleUpdateHandle,
+  UpdateDataProvider,
 } from "./price-update-rule.ts";
 import type { PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
@@ -38,6 +39,41 @@ import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
 import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
+
+/**
+ * Resolve one group's off-chain update payload for {@link refreshOraclePrices}:
+ * try `provider.get(source, tickers)` first (when a provider is configured),
+ * falling back to the group's own live `rule.fetchUpdateData` on a cache miss
+ * (`null`) or a throw from the provider — a broken/degraded cache must never
+ * break the money path. A cache HIT whose `kind` doesn't match the group's
+ * rule is a caller bug (the provider handed back a different rule's
+ * payload), so that throws instead of silently falling back.
+ */
+async function resolveGroupUpdateData(
+  host: OracleHost,
+  group: { source: OracleSource; rule: PriceUpdateRule; tickers: string[] },
+  provider: UpdateDataProvider | undefined,
+): Promise<RuleUpdateData> {
+  if (provider) {
+    let cached: RuleUpdateData | null = null;
+    try {
+      cached = await provider.get(group.source, group.tickers);
+    } catch {
+      // Provider errors must never break the money path — fall through to
+      // the live fetch below exactly as a cache miss (`null`) would.
+    }
+    if (cached !== null) {
+      if (cached.kind !== group.rule.kind) {
+        throw new Error(
+          `refreshOraclePrices: updateDataProvider returned a payload of kind '${cached.kind}' ` +
+            `for source '${group.source}', expected '${group.rule.kind}'`,
+        );
+      }
+      return cached;
+    }
+  }
+  return group.rule.fetchUpdateData(host, group.tickers);
+}
 
 /**
  * Aggregate one ticker's price into the shared `Oracle`: build a collector, feed
@@ -201,6 +237,15 @@ export async function refreshOraclePrices(
      * alone.
      */
     ruleOverrides?: Partial<Record<OracleSource, PriceUpdateRule>>;
+    /**
+     * BE prefetch-cache seam: checked per group BEFORE that group's live
+     * `rule.fetchUpdateData`. See {@link UpdateDataProvider}. A cache miss
+     * (`null`) or a throw from the provider falls back to the live fetch —
+     * a degraded/broken cache must never break the money path; a
+     * kind-mismatched hit (the provider handed back the wrong rule's
+     * payload) throws instead, since that is a caller bug, not a cache miss.
+     */
+    updateDataProvider?: UpdateDataProvider;
   } = {},
 ): Promise<void> {
   if (tickers.length === 0) return;
@@ -215,13 +260,18 @@ export async function refreshOraclePrices(
   pythTickers.forEach((t) => priceInfoByTicker.set(t, host.getPythFeed(t).price_info_object));
 
   // Group tickers for the on-chain update leg: selected rule first, then the
-  // pyth_rule fallback for whatever the selected rule doesn't cover.
+  // pyth_rule fallback for whatever the selected rule doesn't cover. `source`
+  // is tracked alongside each group (rather than read back off `rule.kind`,
+  // which is typed as the broader PriceUpdateRuleKind) so the provider lookup
+  // below has an OracleSource to key on without a cast.
   const selectedRule = resolveOracleRule(host.oracleSource, opts.ruleOverrides);
   const selectedSupported = new Set(selectedRule.supportedTickers(host));
   const selectedGroup = tickers.filter((t) => selectedSupported.has(t));
 
-  const groups: { rule: PriceUpdateRule; tickers: string[] }[] = [];
-  if (selectedGroup.length > 0) groups.push({ rule: selectedRule, tickers: selectedGroup });
+  const groups: { source: OracleSource; rule: PriceUpdateRule; tickers: string[] }[] = [];
+  if (selectedGroup.length > 0) {
+    groups.push({ source: host.oracleSource, rule: selectedRule, tickers: selectedGroup });
+  }
 
   if (host.oracleSource !== "pyth_rule") {
     const fallbackRule = resolveOracleRule("pyth_rule", opts.ruleOverrides);
@@ -229,7 +279,9 @@ export async function refreshOraclePrices(
     const fallbackGroup = tickers.filter(
       (t) => !selectedSupported.has(t) && fallbackSupported.has(t),
     );
-    if (fallbackGroup.length > 0) groups.push({ rule: fallbackRule, tickers: fallbackGroup });
+    if (fallbackGroup.length > 0) {
+      groups.push({ source: "pyth_rule", rule: fallbackRule, tickers: fallbackGroup });
+    }
   }
 
   // Fetch every group's off-chain payload concurrently (independent network
@@ -239,8 +291,9 @@ export async function refreshOraclePrices(
   const groupsWithData: { rule: PriceUpdateRule; tickers: string[]; data: RuleUpdateData }[] =
     await Promise.all(
       groups.map(async (group) => ({
-        ...group,
-        data: await group.rule.fetchUpdateData(host, group.tickers),
+        rule: group.rule,
+        tickers: group.tickers,
+        data: await resolveGroupUpdateData(host, group, opts.updateDataProvider),
       })),
     );
   // Verified-`Update` handle per lazer-served ticker (one shared PTB value per

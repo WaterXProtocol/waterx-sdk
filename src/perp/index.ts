@@ -130,7 +130,7 @@ export {
   refreshOraclePrices,
   updatePythPrices,
 } from "../oracle/index.ts";
-export type { OracleSource } from "../oracle/index.ts";
+export type { OracleSource, UpdateDataProvider } from "../oracle/index.ts";
 
 // ======== Wormhole / Wormholescan utilities (credit bridge) ========
 export {

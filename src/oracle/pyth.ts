@@ -20,6 +20,7 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "./host.ts";
+import { FetchPolicyError, fetchWithPolicy } from "./update-fetch.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -42,11 +43,30 @@ export class PythCache {
 export async function fetchPriceFeedsUpdateData(
   endpoint: string,
   priceIds: string[],
+  opts?: { apiKey?: string; fetch?: { timeoutMs?: number; retries?: number } },
 ): Promise<Uint8Array[]> {
   if (priceIds.length === 0) return [];
   const url = new URL("/v2/updates/price/latest", endpoint);
   priceIds.forEach((id) => url.searchParams.append("ids[]", id));
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+
+  let res: Response;
+  try {
+    res = await fetchWithPolicy(url.toString(), {}, { apiKey: opts?.apiKey, ...opts?.fetch });
+  } catch (err) {
+    // A retryable status (429/5xx) that never recovered surfaces as a
+    // FetchPolicyError with `status` set — reformat it into this function's
+    // own message shape so callers (and the e2e transient-failure detector,
+    // which keys off "Hermes price fetch failed") see the same text whether
+    // the failure was retried or not. A network-level exhaustion (no status)
+    // has no domain-specific reframing to add — propagate it as-is.
+    if (err instanceof FetchPolicyError && err.status !== undefined) {
+      throw new Error(
+        `Hermes price fetch failed: ${err.status} (retries exhausted after ${err.attempts} attempts)`,
+        { cause: err },
+      );
+    }
+    throw err;
+  }
   if (!res.ok) throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { binary?: { data?: string[] } };
   const data = json.binary?.data;
@@ -289,6 +309,9 @@ export async function updatePythPrices(
   cache?: PythCache,
   sponsorFund?: { fund: TransactionArgument; packageId: string },
 ): Promise<string[]> {
-  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds);
+  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
+    apiKey: host.pyth.api_key,
+    fetch: host.pyth.fetch,
+  });
   return buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund);
 }

@@ -11,6 +11,7 @@
 
 import type { AccountPackages, BasePackageEntry, WormholeInfraConfig } from "../account/config.ts";
 import type { OraclePackages, PythInfraConfig } from "../oracle/config.ts";
+import { FetchPolicyError, fetchWithPolicy } from "../oracle/update-fetch.ts";
 import type { Network } from "./constants.ts";
 
 // The account-layer schema (account / funding / referral package entries +
@@ -214,14 +215,25 @@ export interface LoadConfigOptions {
   cache?: boolean;
   /** Optional fetch implementation (for tests or environments without global `fetch`). */
   fetchImpl?: typeof fetch;
-  /** Optional request timeout in ms. Default 10_000. */
+  /**
+   * Optional PER-ATTEMPT timeout in ms. Default 10_000. {@link loadConfig}
+   * retries a transient failure (network error / 429 / 5xx) via
+   * `fetchWithPolicy` (2 retries, exponential backoff) before falling back to
+   * the last successfully-validated config for this URL, if one exists.
+   */
   timeoutMs?: number;
 }
 
 const cache = new Map<string, WaterXConfig>();
+// Last successfully-validated config per URL, tracked UNCONDITIONALLY (unlike
+// `cache` above, which only records/reads when the caller opts in via
+// `opts.cache`) — this is the resilience fallback for a refresh failure, see
+// `loadConfig` below, so it must be populated regardless of that opt-in.
+const lastKnownGood = new Map<string, WaterXConfig>();
 
 export function clearConfigCache(): void {
   cache.clear();
+  lastKnownGood.clear();
 }
 
 export async function loadConfig(
@@ -241,21 +253,49 @@ export async function loadConfig(
     throw new Error("loadConfig: no global `fetch` available; pass opts.fetchImpl");
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10_000);
+  // Same resilience policy as the oracle money-path fetches (see
+  // `fetchWithPolicy`): bounded retry with backoff instead of one bare
+  // attempt. A refresh failure (network exhaustion OR a non-ok response)
+  // falls back to the last successfully-validated config for this URL when
+  // one exists — a config-endpoint blip must not crash a long-running
+  // process that already has a working deployment snapshot. First load
+  // (nothing cached yet) has no fallback and still throws. Intentionally no
+  // log line on the fallback path — the SDK never logs (see every other
+  // oracle error in this codebase); a caller that cares can tell it got a
+  // stale snapshot by re-deriving staleness itself if it needs to.
   let response: Response;
   try {
-    response = await fetchImpl(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
+    response = await fetchWithPolicy(
+      url,
+      {},
+      { timeoutMs: opts.timeoutMs ?? 10_000, retries: 2, fetchImpl },
+    );
+  } catch (err) {
+    const stale = lastKnownGood.get(url);
+    if (stale) return stale;
+    // Reformat a status-carrying FetchPolicyError (retries exhausted on a
+    // retryable status) into this function's own message shape, mirroring
+    // the non-retried `!response.ok` branch below. A network-level
+    // exhaustion (no status) has no domain-specific reframing to add —
+    // propagate FetchPolicyError's own message as-is.
+    if (err instanceof FetchPolicyError && err.status !== undefined) {
+      throw new Error(
+        `loadConfig: HTTP ${err.status} fetching ${url} (retries exhausted after ${err.attempts} attempts)`,
+        { cause: err },
+      );
+    }
+    throw err;
   }
   if (!response.ok) {
+    const stale = lastKnownGood.get(url);
+    if (stale) return stale;
     throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
   }
 
   const raw = (await response.json()) as WaterXConfig;
   validateConfig(raw, network, url);
 
+  lastKnownGood.set(url, raw);
   if (opts.cache) cache.set(url, raw);
   return raw;
 }

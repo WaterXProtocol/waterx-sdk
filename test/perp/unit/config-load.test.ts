@@ -130,6 +130,51 @@ describe("loadConfig validation", () => {
     expect(cfg.packages.waterx_perp.markets.BTCUSD).toBeDefined();
   });
 
+  it("retries a transient HTTP failure (503) then succeeds", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      if (calls < 3) return { ok: false, status: 503, json: async () => ({}) };
+      return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+    }) as unknown as typeof fetch;
+
+    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+
+    expect(cfg.network).toBe("testnet");
+    expect(calls).toBe(3);
+  });
+
+  it("returns the last-known-good config when a later refresh fails persistently", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      if (calls === 1) return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      return { ok: false, status: 503, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+
+    expect(second).toEqual(first);
+    // The fallback call still exhausted its own 3 attempts (calls 2-4)
+    // before falling back — proves it's a real retry-then-fallback, not a
+    // silent skip of the refresh.
+    expect(calls).toBe(4);
+  });
+
+  it("throws on first load when every retry attempt fails (no last-known-good to fall back to)", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl })).rejects.toThrow(
+      /HTTP 500/,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
   it("uses in-memory cache when opts.cache is true", async () => {
     let calls = 0;
     const fetchImpl = (async () => {

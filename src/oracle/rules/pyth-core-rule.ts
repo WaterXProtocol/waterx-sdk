@@ -46,7 +46,10 @@ export const PythCoreRule: PriceUpdateRule = {
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
     const feedIds = tickers.map((ticker) => host.getPythFeed(ticker).feed_id);
-    const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds);
+    const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
+      apiKey: host.pyth.api_key,
+      fetch: host.pyth.fetch,
+    });
     return { kind: "pyth_rule", payload: { updates, feedIds } };
   },
 

@@ -76,6 +76,21 @@ export interface BuildUpdateOpts {
   readonly sponsorFund?: { fund: TransactionArgument; packageId: string };
 }
 
+/**
+ * Injectable update-data cache seam for `refreshOraclePrices` (`aggregate.ts`).
+ * A BE consumer (e.g. a prefetch cache that polls Hermes/Lazer out-of-band and
+ * keeps a hot in-memory/Redis entry per source) implements this and passes it
+ * as `refreshOraclePrices`'s `updateDataProvider` opt; the SDK itself never
+ * implements one. `get` is checked before the rule's own live
+ * `fetchUpdateData` for that group of tickers — a `null` return means "no
+ * cached data, fetch live" (mirrors {@link RuleUpdateData}'s own `null`
+ * variant: there is no separate signal for "the cache legitimately has
+ * nothing" vs "go fetch live", they're the same instruction to the caller).
+ */
+export interface UpdateDataProvider {
+  get(source: OracleSource, tickers: string[]): Promise<RuleUpdateData | null>;
+}
+
 export interface PriceUpdateRule {
   readonly kind: PriceUpdateRuleKind;
 

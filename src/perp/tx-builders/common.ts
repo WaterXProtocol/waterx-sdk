@@ -12,6 +12,7 @@ import {
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
+  type UpdateDataProvider,
 } from "../../oracle/index.ts";
 import { getCollateralAssets } from "../../utils/config.ts";
 import type { PerpClient } from "../client.ts";
@@ -54,6 +55,15 @@ export interface CommonBuildOpts {
    * {@link buildConsolidateToUsdTx} separately.
    */
   consolidateToUsd?: boolean;
+  /**
+   * BE prefetch-cache seam for the oracle update-data fetch — forwarded
+   * verbatim into `refreshOraclePrices`'s `updateDataProvider` opt (see
+   * `UpdateDataProvider` in `oracle/price-update-rule.ts`). Default: none
+   * (always a live fetch). A caller-supplied provider that misses or throws
+   * still falls back to a live fetch — this option can only make a refresh
+   * faster, never break it.
+   */
+  updateDataProvider?: UpdateDataProvider;
 }
 
 interface RequestParams {
@@ -80,6 +90,7 @@ export async function refreshWlpPoolOracles(
     cache?: PythCache;
     sponsorFund?: { fund: TransactionArgument; packageId: string };
     lpType?: string;
+    updateDataProvider?: UpdateDataProvider;
   },
 ): Promise<void> {
   const poolTickers = getCollateralAssets(client.config);
@@ -87,6 +98,7 @@ export async function refreshWlpPoolOracles(
   await refreshOraclePrices(tx, client, oracleTickers, {
     cache: opts.cache,
     sponsorFund: opts.sponsorFund,
+    updateDataProvider: opts.updateDataProvider,
   });
   for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
@@ -124,6 +136,7 @@ export async function wrapRequestAndExecute(
       cache: opts?.pythCache,
       sponsorFund,
       lpType: req.lpType,
+      updateDataProvider: opts?.updateDataProvider,
     });
   }
 

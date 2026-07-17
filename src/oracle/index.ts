@@ -31,6 +31,7 @@ export type {
   RuleUpdateHandle,
   BuildUpdateOpts,
   OracleSource,
+  UpdateDataProvider,
 } from "./price-update-rule.ts";
 
 // Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)

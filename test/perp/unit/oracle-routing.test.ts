@@ -15,6 +15,7 @@ import type {
   OracleSource,
   PriceUpdateRule,
   RuleUpdateData,
+  UpdateDataProvider,
 } from "../../../src/oracle/price-update-rule.ts";
 import { PythCache, updatePythPrices } from "../../../src/oracle/pyth.ts";
 import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
@@ -302,6 +303,101 @@ describe("WaterXClient.create — oracleSource threads into PerpClient.create", 
       "TESTNET",
       expect.objectContaining({ oracleSource: undefined }),
     );
+  });
+});
+
+describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("uses the provider's cached data instead of the rule's live fetch on a matching-kind hit", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+    const cachedData: RuleUpdateData = { kind: "pyth_lazer_rule", payload: { cached: true } };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => cachedData) };
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      updateDataProvider: provider,
+    });
+
+    expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
+    expect(fakeLazer.fetchUpdateData).not.toHaveBeenCalled();
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cachedData, ["BTCUSD"], {
+      cache: undefined,
+      sponsorFund: undefined,
+    });
+  });
+
+  it("throws when the provider's hit carries a different rule's kind (caller bug, not a cache miss)", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+    const wrongKindData: RuleUpdateData = {
+      kind: "pyth_rule",
+      payload: { updates: [], feedIds: [] },
+    };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => wrongKindData) };
+
+    const tx = new Transaction();
+    await expect(
+      refreshOraclePrices(tx, client, ["BTCUSD"], {
+        ruleOverrides: { pyth_lazer_rule: fakeLazer },
+        updateDataProvider: provider,
+      }),
+    ).rejects.toThrow(
+      /updateDataProvider returned a payload of kind 'pyth_rule'.*expected 'pyth_lazer_rule'/,
+    );
+    // A kind mismatch is a caller bug — it must throw, never silently fall
+    // back to a live fetch (that would mask the bug as a cache miss).
+    expect(fakeLazer.fetchUpdateData).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the rule's live fetch when the provider throws (a broken cache must never break the money path)", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+    const provider: UpdateDataProvider = {
+      get: vi.fn(async () => {
+        throw new Error("cache layer down");
+      }),
+    };
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      updateDataProvider: provider,
+    });
+
+    expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
+    expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD"]);
+  });
+
+  it("falls back to the rule's live fetch when the provider returns null (cache miss)", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+    const provider: UpdateDataProvider = { get: vi.fn(async () => null) };
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      updateDataProvider: provider,
+    });
+
+    expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
+    expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD"]);
+  });
+
+  it("is never consulted when no updateDataProvider is passed (default behavior unchanged)", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+    });
+
+    expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD"]);
   });
 });
 

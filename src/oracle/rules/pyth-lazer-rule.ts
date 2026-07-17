@@ -19,6 +19,7 @@ import type {
   RuleUpdateData,
   RuleUpdateHandle,
 } from "../price-update-rule.ts";
+import { FetchPolicyError, fetchWithPolicy } from "../update-fetch.ts";
 
 /** `pyth_lazer_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythLazerUpdatePayload {
@@ -74,24 +75,41 @@ function requireLazerPackage(host: OracleHost): PythLazerRulePackage {
 
 /**
  * Fetch one signed `leEcdsa` update for `feedIds` from the Lazer HTTP API.
- * Bare `fetch` on purpose (mirrors `fetchPriceFeedsUpdateData`) — resilience
- * wrapping is a follow-up task's concern.
+ * Goes through the shared `fetchWithPolicy` (`../update-fetch.ts`) — same
+ * retry/timeout/Bearer policy as `fetchPriceFeedsUpdateData`, unified so
+ * both oracle sources fail the same way under upstream degradation.
  */
 async function fetchLazerSignedUpdate(
   endpoint: string,
   apiKey: string,
   feedIds: number[],
+  fetchOpts?: { timeoutMs?: number; retries?: number },
 ): Promise<Uint8Array> {
   const url = new URL("/v1/latest_price", endpoint);
-  const res = await fetch(url.toString(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ priceFeedIds: feedIds, ...LAZER_LATEST_PRICE_REQUEST }),
-    signal: AbortSignal.timeout(15_000),
-  });
+  let res: Response;
+  try {
+    res = await fetchWithPolicy(
+      url.toString(),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceFeedIds: feedIds, ...LAZER_LATEST_PRICE_REQUEST }),
+      },
+      { apiKey, ...fetchOpts },
+    );
+  } catch (err) {
+    // Mirrors fetchPriceFeedsUpdateData's reframing: a retryable status that
+    // never recovered carries `status` on the FetchPolicyError — reformat
+    // into this function's own message shape; a network-level exhaustion
+    // (no status) propagates as-is.
+    if (err instanceof FetchPolicyError && err.status !== undefined) {
+      throw new Error(
+        `Lazer price fetch failed: ${err.status} (retries exhausted after ${err.attempts} attempts)`,
+        { cause: err },
+      );
+    }
+    throw err;
+  }
   if (!res.ok) throw new Error(`Lazer price fetch failed: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { leEcdsa?: { data?: string } };
   const hex = json.leEcdsa?.data;
@@ -155,6 +173,7 @@ export const PythLazerRule: PriceUpdateRule = {
       LAZER_DEFAULTS[host.network].endpoint,
       apiKey,
       feedIds,
+      host.pyth.fetch,
     );
     return { kind: "pyth_lazer_rule", payload: { update, feedIds } };
   },

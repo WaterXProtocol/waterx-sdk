@@ -127,9 +127,20 @@ export interface PythInfraConfig {
    * no keyless default. Optional: Pyth-Core-only deployments never need it.
    * Consumers pass it through client config (`config.pyth`); the SDK never
    * reads `process.env`. Absent when a lazer-routed fetch runs →
-   * `LazerApiKeyMissing` is thrown at fetch time.
+   * `LazerApiKeyMissing` is thrown at fetch time. As of the Pyth Pro
+   * migration (post-2026-07-31) this is ALSO required for `pyth_rule`'s
+   * Hermes fetch (`fetchPriceFeedsUpdateData`) — see `fetch` below.
    */
   api_key?: string;
+  /**
+   * Retry/timeout policy override for the Hermes (`fetchPriceFeedsUpdateData`)
+   * and Lazer (`PythLazerRule`) off-chain update fetches — see
+   * `fetchWithPolicy` (`./update-fetch.ts`) for the full policy (backoff,
+   * which statuses retry, Bearer attachment). Optional: both fetches default
+   * to `fetchWithPolicy`'s built-in defaults (15s timeout, 2 retries) when
+   * unset.
+   */
+  fetch?: { timeoutMs?: number; retries?: number };
 }
 
 export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {

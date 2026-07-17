@@ -10,6 +10,58 @@ reference the PR that introduced them.
 
 ### Added
 
+- **Resilient oracle fetch — retry policy, Bearer auth, injectable
+  update-data provider.** The Hermes fetch (`fetchPriceFeedsUpdateData`) sits
+  on the money path of every trading tx-build; it was one bare `fetch`, 15s
+  timeout, no retry, no auth. New `fetchWithPolicy` (`src/oracle/update-fetch.ts`,
+  exported `FetchPolicy` + `FetchPolicyError`) is a shared resilience wrapper
+  now used by BOTH oracle fetches:
+  - Retries network errors, HTTP 429, and HTTP 5xx with exponential backoff
+    (`retryDelayMs * 2^attempt`, capped at 2s; defaults: 15s per-attempt
+    timeout, 2 retries, 250ms base delay). Other 4xx (401/400/403/404/…) are
+    NOT retried — deterministic failures return immediately so callers keep
+    their existing error text unchanged.
+  - Attaches `Authorization: Bearer <apiKey>` iff the key is a non-empty
+    string — absent/empty is byte-identical to today's keyless request (the
+    Phase-0 invariant of the Pyth Pro migration).
+  - An optional caller-supplied `AbortSignal` cancels the whole policy
+    (in-flight attempt AND queued backoff) via `AbortSignal.any`.
+  - On final failure throws `FetchPolicyError` naming the target's
+    `host + pathname` (never the query string — feed ids are noise) plus the
+    attempt count and whichever of `status`/`cause` applies; both
+    `fetchPriceFeedsUpdateData` and `PythLazerRule`'s Lazer fetch reformat a
+    status-carrying `FetchPolicyError` into their own existing message shape
+    (`"Hermes price fetch failed: …"` / `"Lazer price fetch failed: …"`) so
+    downstream consumers (e.g. the e2e transient-failure detector) see
+    unchanged text.
+
+  `PythInfraConfig` gains an optional `fetch?: { timeoutMs?: number; retries?:
+  number }` policy override (`src/oracle/config.ts`), threaded through by
+  `fetchPriceFeedsUpdateData`'s new optional third param
+  (`{ apiKey?, fetch? }`), `updatePythPrices`, `PythCoreRule.fetchUpdateData`,
+  and `PythLazerRule.fetchUpdateData` — all existing call signatures stay
+  backward-compatible.
+
+  `refreshOraclePrices` (`src/oracle/aggregate.ts`) gains an
+  `updateDataProvider?: UpdateDataProvider` opt (new port in
+  `src/oracle/price-update-rule.ts`, re-exported from `oracle`/`perp`
+  barrels) — the BE prefetch-cache seam. Per on-chain-update group, a
+  configured provider's `get(source, tickers)` is checked before that
+  group's live `rule.fetchUpdateData`: a matching-kind hit is used instead of
+  fetching; a cache miss (`null`) or a provider throw falls back to the live
+  fetch (a degraded/broken cache must never break the money path); a
+  kind-mismatched hit throws (a caller bug, not a cache miss). Threaded
+  through `CommonBuildOpts` → `wrapRequestAndExecute` → `refreshWlpPoolOracles`
+  (`src/perp/tx-builders/common.ts`) so BE tx-builders can pass one.
+
+  `perp/config.ts`'s `loadConfig` now retries a transient config-endpoint
+  failure via the same `fetchWithPolicy` policy (2 retries) and, on a refresh
+  failure with a previously-validated config already cached for that URL,
+  silently returns that last-known-good snapshot instead of throwing (the
+  SDK never logs) — a config-endpoint blip must not crash a long-running
+  process that already has a working deployment snapshot. A first-load
+  failure (nothing cached yet) still throws.
+
 - **`PythLazerRule` — Lazer-generation price updates behind `oracleSource`
   routing.** `pyth_lazer_rule` now resolves to a real `PriceUpdateRule`
   (`src/oracle/rules/pyth-lazer-rule.ts`, exported as `PythLazerRule` +
