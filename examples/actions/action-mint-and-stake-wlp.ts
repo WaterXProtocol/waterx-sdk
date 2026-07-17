@@ -56,6 +56,10 @@ run(async () => {
   await buildMintAndStakeWlpTx(client, {
     tx,
     skipOraclePriceRefresh: skipPriceUpdate,
+    // mint_wlp produces no TradingRequest to reimburse a sponsor fund
+    // against — standalone example script pays its own gas. No-op when
+    // skipPriceUpdate is true (no refresh to pay a fee for).
+    allowGasFee: true,
     accountId: requireEnv("WATERX_ACCOUNT_ID"),
     depositTokenType: usdcType,
     depositTicker,

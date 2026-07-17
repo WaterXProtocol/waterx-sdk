@@ -60,6 +60,9 @@ describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
         minLpAmount: 0n,
         // testnet WLP pool has no rewarders; defaults to client.getRewarderTypes("WLP").
         rewarderTypes: client.getRewarderTypes("WLP"),
+        // mint_wlp produces no TradingRequest to reimburse a sponsor fund
+        // against — standalone e2e simulate probe pays its own gas.
+        allowGasFee: true,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;

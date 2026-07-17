@@ -126,11 +126,25 @@ export async function refreshWlpPoolOracles(
 /**
  * Build the *Request + execute envelope with optional Pyth sponsor flow:
  *
+ *   [maybeConsolidate(tx)]
  *   [fund = sponsor.request()]
  *   refreshOraclePrices(..., sponsorFund?)
  *   req = buildRequest()
  *   [sponsor.reimburse(fund, req)]
  *   trading::execute(req)
+ *
+ * Accepted ordering caveat: `maybeConsolidate` runs FIRST and can itself
+ * append PTB commands (the consolidation sweep) before the fee-source check
+ * inside `refreshOraclePrices` ever runs — so an `OracleFeeSourceUnavailable`
+ * throw here is NOT the "zero commands appended" guarantee
+ * `refreshOraclePrices` gives its own callers (see its docblock in
+ * `aggregate.ts`); `tx` can already carry the sweep. This is the same
+ * discard-tx-on-throw contract every `build*Tx` composer already has for
+ * mid-build on-chain-read failures — not a new hole. It matters only for a
+ * caller that passed in their OWN `opts.tx` (reusing one `Transaction`
+ * across builder calls, e.g. to compose several actions in one PTB); such a
+ * caller must discard the whole `tx` on any throw from this function, not
+ * just retry the failed step.
  */
 export async function wrapRequestAndExecute(
   client: PerpClient,

@@ -92,6 +92,10 @@ async function main(): Promise<void> {
   await buildMintAndStakeWlpTx(client, {
     tx,
     skipOraclePriceRefresh: skipPriceUpdate,
+    // mint_wlp produces no TradingRequest to reimburse a sponsor fund
+    // against — standalone smoke script pays its own gas. No-op when
+    // skipPriceUpdate is true (no refresh to pay a fee for).
+    allowGasFee: true,
     accountId,
     depositTokenType: usdType,
     depositTicker: TICKER,

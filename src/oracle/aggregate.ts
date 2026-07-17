@@ -33,9 +33,10 @@ import type {
   RuleUpdateHandle,
   UpdateDataProvider,
 } from "./price-update-rule.ts";
-import type { PythCache } from "./pyth.ts";
+import { oracleFeeSourceUnavailableError, type PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
+import { PythCoreRule } from "./rules/pyth-core-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
 import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
@@ -204,8 +205,13 @@ export function aggregateTickerWithConstant(
  * non-Pyth-Core block (selected group) and a Pyth Core block (fallback group) —
  * each verifies against its own contract objects, so that's fine. All groups'
  * off-chain fetches run concurrently (`Promise.all`) and complete before any
- * PTB mutation; on-chain reads inside `buildUpdateCalls` can still fail
- * mid-append — callers discard the tx on throw.
+ * PTB mutation. A fee-source pre-check then runs across every group — before
+ * ANY of them build — so a Pyth Core group with no `sponsorFund`/`allowGasFee`
+ * throws `OracleFeeSourceUnavailable` before a mixed-shape PTB (e.g. a lazer
+ * group ahead of the Pyth Core fallback) can leave that earlier group's
+ * moveCalls stranded in the caller's `tx`; on-chain reads inside
+ * `buildUpdateCalls` can still fail mid-append for other reasons — callers
+ * discard the tx on any throw.
  *
  * **Collector-feed leg is rule-aware:** a lazer-served group's
  * `buildUpdateCalls` returns the verified `Update` PTB value
@@ -306,6 +312,28 @@ export async function refreshOraclePrices(
         data: await resolveGroupUpdateData(host, group, opts.updateDataProvider),
       })),
     );
+
+  // Fee-source pre-check, hoisted ABOVE the per-group build loop below. A
+  // per-call guard inside `buildPythPriceUpdateCalls` alone is not enough
+  // here: in a mixed shape (e.g. a lazer-selected `oracleSource` with a
+  // `pyth_rule` fallback group for tickers Lazer doesn't cover), the loop
+  // runs each group's `buildUpdateCalls` in sequence — a lazer group ahead
+  // of the Pyth Core fallback would already have appended its verify/feed
+  // moveCalls to the shared `tx` by the time the fallback group's
+  // `buildPythPriceUpdateCalls` reached its own guard and threw, breaking
+  // the "throw before any PTB mutation" guarantee. Checking every group up
+  // front — before ANY group's `buildUpdateCalls` runs — closes that gap.
+  // The off-chain fetches above have already completed by this point (a
+  // wasted Hermes/Lazer call on the throw path, not a functional issue —
+  // see `buildPythPriceUpdateCalls`'s own docblock).
+  if (
+    !opts.sponsorFund &&
+    !opts.allowGasFee &&
+    groupsWithData.some((group) => group.rule === PythCoreRule)
+  ) {
+    throw oracleFeeSourceUnavailableError();
+  }
+
   // Verified-`Update` handle per lazer-served ticker (one shared PTB value per
   // group) — consumed by the collector-feed leg below.
   const lazerUpdateByTicker = new Map<string, TransactionArgument>();

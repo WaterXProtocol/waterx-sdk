@@ -150,6 +150,18 @@ reference the PR that introduced them.
     `pyth_sponsor_rule` to config, or pass `allowGasFee: true`) instead of
     silently drawing from `tx.gas`.
 
+  "Before any PTB mutation" is a guarantee about **PTB commands**, not about
+  off-chain network calls: `updatePythPrices` fetches from Hermes and
+  `refreshOraclePrices` fetches every group's off-chain payload BEFORE
+  either reaches its fee-source check, so a throw still costs a wasted
+  fetch — it just never leaves a stray `moveCall`/`splitCoins` behind.
+  `refreshOraclePrices` additionally hoists its check ABOVE the per-group
+  build loop (not just inside `buildPythPriceUpdateCalls`'s own per-call
+  guard): a mixed-rule-shape PTB — e.g. a fee-free Lazer group ordered
+  ahead of a Pyth Core fallback group when `oracleSource` is
+  `'pyth_lazer_rule'` — would otherwise let the Lazer group's verify/feed
+  calls land in `tx` before the Pyth Core group's own guard ever fired.
+
   `wrapRequestAndExecute` (every order/position `build*Tx`) now opens (and
   reimburses) the sponsor fund purely from **config presence** —
   `client.config.packages.pyth_sponsor_rule` deployed ⇒ the fund is ALWAYS

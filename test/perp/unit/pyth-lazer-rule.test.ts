@@ -510,4 +510,37 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     expect(targets.filter((t) => t === "pyth_rule::feed")).toHaveLength(2);
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
   });
+
+  it("mixed shape with no fee source throws OracleFeeSourceUnavailable before the lazer group can mutate tx (zero commands appended)", async () => {
+    const client = createLazerTestClient("pyth_lazer_rule");
+    attachPythGrpcMocks(client);
+    // ETHUSD drops out of lazer support → falls back to the Pyth Core group,
+    // which needs a fee source; BTCUSD stays lazer-covered (fee-free, and
+    // would build first — see the group-ordering comment in
+    // `refreshOraclePrices`). If the lazer group ran before the Pyth Core
+    // fallback's own per-call guard fired, it would already have mutated
+    // `tx`. The hoisted pre-check in `refreshOraclePrices` must catch this
+    // BEFORE either group builds, so the whole call is atomic: throw or
+    // zero PTB commands, never a partial mutation.
+    delete client.config.packages.pyth_lazer_rule?.feeds.ETHUSD;
+    const hermesUpdate = mockAccumulatorUpdate();
+    globalThis.fetch = vi.fn(async (url: string | URL) =>
+      url.toString().includes("/v1/latest_price")
+        ? {
+            ok: true,
+            json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),
+          }
+        : {
+            ok: true,
+            json: async () => ({ binary: { data: [toHex(hermesUpdate)] } }),
+          },
+    ) as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /OracleFeeSourceUnavailable/,
+    );
+
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
+  });
 });

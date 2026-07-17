@@ -209,12 +209,27 @@ function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
 // ============================================================================
 
 /**
+ * Shared `OracleFeeSourceUnavailable` message — single source of truth for
+ * both this file's own per-call guard and `aggregate.ts`'s hoisted
+ * pre-check (which throws BEFORE `buildPythPriceUpdateCalls` ever runs for a
+ * multi-group `refreshOraclePrices` call — see its docblock).
+ */
+export function oracleFeeSourceUnavailableError(): Error {
+  return new Error(
+    "OracleFeeSourceUnavailable: no fee source available for the Pyth update fee — " +
+      "deploy pyth_sponsor_rule to config so a sponsor fund can be opened (see " +
+      "openPythSponsorFund / wrapRequestAndExecute), or pass allowGasFee: true to draw " +
+      "the fee from tx.gas in a non-sponsored context",
+  );
+}
+
+/**
  * Append the on-chain Pyth update PTB block. Returns `PriceInfoObject` IDs
  * (one per `feedIds`, same order). After this you can feed `pyth_rule` per
  * ticker against the matching `PriceInfoObject` (see `rules/pyth-rule.ts`).
  *
- * Fee source is resolved BEFORE any PTB mutation (or off-chain fetch) and is
- * never silently defaulted:
+ * Fee source is resolved BEFORE any PTB mutation and is never silently
+ * defaulted:
  *   - `sponsorFund` provided → the per-feed update fee is drawn from the
  *     sponsor pool (`pyth_sponsor_rule::split`) instead of `tx.gas`. Opening
  *     and reimbursing that fund is the caller's job (`rules/sponsor.ts` /
@@ -231,6 +246,18 @@ function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
  *     worse, could fail ON-CHAIN when the market's `request_checklist`
  *     requires the `PythSponsorRule` witness that only a real sponsor fund
  *     attaches.
+ *
+ * This function's own check runs AFTER `updates`/`feedIds` are already in
+ * hand, so for `updatePythPrices` (which fetches from Hermes, then calls
+ * straight into this function) the off-chain fetch has already completed by
+ * the time this throws — a wasted network call, never a stray PTB command.
+ * `refreshOraclePrices` hoists an EQUIVALENT pre-check above its per-group
+ * build loop (see its docblock in `aggregate.ts`) and, for any group whose
+ * rule is `PythCoreRule`, throws there first — same wasted-fetch trade-off
+ * (its off-chain fetches already ran too), but crucially BEFORE any group's
+ * `buildUpdateCalls` runs, which this function's own (later, per-call) guard
+ * alone could not guarantee in a mixed shape (e.g. a fee-free Lazer group
+ * ordered ahead of a Pyth Core fallback group in the same PTB).
  */
 export async function buildPythPriceUpdateCalls(
   tx: Transaction,
@@ -248,12 +275,7 @@ export async function buildPythPriceUpdateCalls(
     throw new Error("Only a single accumulator message is supported per transaction");
   }
   if (!sponsorFund && !allowGasFee) {
-    throw new Error(
-      "OracleFeeSourceUnavailable: no fee source available for the Pyth update fee — " +
-        "deploy pyth_sponsor_rule to config so a sponsor fund can be opened (see " +
-        "openPythSponsorFund / wrapRequestAndExecute), or pass allowGasFee: true to draw " +
-        "the fee from tx.gas in a non-sponsored context",
-    );
+    throw oracleFeeSourceUnavailableError();
   }
 
   const pyth = host.pyth;
