@@ -112,6 +112,16 @@ function inputPureBytes(tx: Transaction, argument: { Input?: number }): string |
   return tx.getData().inputs[argument.Input].Pure?.bytes;
 }
 
+/**
+ * Index — over ALL commands, which is what `NestedResult` refers to — of the
+ * single lazer verify call in the PTB.
+ */
+function verifyCommandIndex(tx: Transaction): number {
+  return (tx.getData().commands ?? []).findIndex(
+    (c) => c.$kind === "MoveCall" && c.MoveCall?.function === "parse_and_verify_le_ecdsa_update",
+  );
+}
+
 /** Client with a lazer api key set (replace `pyth` — never mutate the shared PYTH_DEFAULTS). */
 function createLazerTestClient(oracleSource?: "pyth_lazer_rule") {
   const client = createUnitTestClient(oracleSource ? { oracleSource } : {});
@@ -233,6 +243,17 @@ describe("PythLazerRule.fetchUpdateData", () => {
 
     await expect(PythLazerRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
       /No pyth_lazer_rule feed listed for ticker: DOGEUSD/,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws the package-not-deployed error (not a per-ticker feed error) when the config carries no pyth_lazer_rule package", async () => {
+    const client = createLazerTestClient();
+    delete client.config.packages.pyth_lazer_rule;
+    const fetchSpy = mockLazerFetch();
+
+    await expect(PythLazerRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+      /pyth_lazer_rule package is not deployed in this config/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -399,11 +420,14 @@ describe("aggregateTicker — lazer collector-feed leg", () => {
       client.config.packages.pyth_lazer_rule?.config,
     );
     expect(inputObjectId(tx, feedCall?.arguments[2] ?? {})).toBe(CLOCK_ID);
-    expect(feedCall?.arguments[3].$kind).toBe("NestedResult"); // the verified Update
+    // Handle identity: the Update argument is THE verify command's first
+    // return — not merely some NestedResult.
+    expect(feedCall?.arguments[3].NestedResult).toEqual([verifyCommandIndex(tx), 0]);
   });
 
   it("feeds lazer alone (no pyth_rule::feed) for a ticker without a pyth feed entry", async () => {
     const client = createUnitTestClient();
+    delete client.config.packages.pyth_rule!.feeds.BTCUSD;
     const tx = new Transaction();
     const handle = await buildHandle(tx, client, [1]);
 
@@ -442,6 +466,15 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
     // … but the Pyth Core UPDATE block never runs for a fully lazer-served set.
     expect(targets).not.toContain("pyth::update_single_price_feed");
+    // One verification serves every feed: BOTH tickers' feed calls take the
+    // SAME Update — the single verify command's first return.
+    const updateArgs = moveCalls(tx)
+      .filter((c) => `${c.module}::${c.function}` === "pyth_lazer_rule::feed")
+      .map((c) => c.arguments[3].NestedResult);
+    expect(updateArgs).toEqual([
+      [verifyCommandIndex(tx), 0],
+      [verifyCommandIndex(tx), 0],
+    ]);
   });
 
   it("carries a lazer block AND a Pyth Core fallback block in one PTB when a ticker lacks a lazer feed", async () => {

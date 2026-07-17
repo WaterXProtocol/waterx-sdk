@@ -247,17 +247,15 @@ export async function refreshOraclePrices(
   // group) — consumed by the collector-feed leg below.
   const lazerUpdateByTicker = new Map<string, TransactionArgument>();
   for (const group of groupsWithData) {
-    const handle: RuleUpdateHandle | void = await group.rule.buildUpdateCalls(
-      tx,
-      host,
-      group.data,
-      group.tickers,
-      {
+    const handle: RuleUpdateHandle | undefined =
+      (await group.rule.buildUpdateCalls(tx, host, group.data, group.tickers, {
         cache: opts.cache,
         sponsorFund: opts.sponsorFund,
-      },
-    );
-    if (handle) {
+      })) ?? undefined;
+    // Route by the handle's kind discriminant — the one site the tag exists to
+    // protect: a future non-lazer handle (e.g. a WaterxRule value) must never
+    // be silently fed into pyth_lazer_rule::feed.
+    if (handle?.kind === "pyth_lazer_rule") {
       for (const ticker of group.tickers) lazerUpdateByTicker.set(ticker, handle.update);
     }
   }

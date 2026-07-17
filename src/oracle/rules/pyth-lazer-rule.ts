@@ -134,7 +134,9 @@ export const PythLazerRule: PriceUpdateRule = {
   /** Resolves integer feed ids for `tickers`, then fetches one signed `leEcdsa` update. */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
-    const feeds = host.config.packages.pyth_lazer_rule?.feeds ?? {};
+    // Package-level check first: a config without the deployment must say so,
+    // not fail per ticker as if only that feed were missing.
+    const { feeds } = requireLazerPackage(host);
     const feedIds = tickers.map((ticker) => {
       const feedId = feeds[ticker];
       if (feedId === undefined) {

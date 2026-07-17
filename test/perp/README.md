@@ -88,6 +88,7 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 
 - **Network:** `scripts/run-e2e.ts` / **`test/perp/helpers/e2e/e2e-client.ts`**: **`--testnet`** / **`--mainnet`** (CLI) → **`WATERX_E2E_NETWORK`** → **`testnet`** default when unspecified (`pnpm test` runs Vitest without `run-e2e.ts`, so it relies on this fallback).
 - **Oracle:** Pyth Hermes + **`refreshOraclePrices`** / **`updatePythPrices`** (`src/utils/pyth.ts`, **`test/perp/helpers/e2e/e2e-oracle-context.ts`**). There is **no** legacy bucket-aggregator prime step.
+- **Oracle (Lazer):** `PythLazerRule` has **mock-only unit coverage** today (`test/perp/unit/pyth-lazer-rule.test.ts`) — the Lazer API is auth-first and feed responses need an **entitled** Pyth Pro key. A future real e2e should read **`WATERX_E2E_LAZER_API_KEY`** at the harness boundary and pass it as **`config.pyth.api_key`** (the SDK never reads env), skipping when unset. Never hardcode a key.
 - **gRPC:** optional **`WATERX_E2E_GRPC_URL`**; parallelism **`WATERX_E2E_MAX_FORKS=2`…`8`** if your RPC tolerates it.
 
 ## Integration (trader)

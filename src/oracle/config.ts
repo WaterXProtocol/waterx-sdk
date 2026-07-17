@@ -28,9 +28,10 @@ export interface PythSponsorRulePackage extends BasePackageEntry {
 }
 
 /**
- * `pyth_lazer_rule` deployment entry — already present in the deployed testnet
- * `waterx-config` JSON. Typed here for lossless round-tripping only; no SDK
- * code reads it yet (a future `PythLazerRule` `PriceUpdateRule` will).
+ * `pyth_lazer_rule` deployment entry — present in the deployed testnet
+ * `waterx-config` JSON. Read by `PythLazerRule` (`rules/pyth-lazer-rule.ts`):
+ * `feeds` for ticker support + integer feed-id resolution, `state` for the
+ * verify call, `published_at`/`config` for the per-ticker feed call.
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
  * which rule prices a ticker is decided solely by the client's `oracleSource`
