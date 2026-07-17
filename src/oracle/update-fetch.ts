@@ -216,8 +216,12 @@ export async function fetchWithPolicy(
       } else {
         // Doomed to be retried — discard rather than read, so this
         // response's connection/socket isn't held open for a body nobody
-        // will consume.
-        void response.body?.cancel();
+        // will consume. `.catch()` is mandatory here: an errored stream's
+        // `cancel()` returns a REJECTED promise, and a bare `void` on that
+        // is an unhandled rejection — process-fatal in Node — triggered by
+        // exactly the degraded-upstream condition this wrapper exists to
+        // survive.
+        void response.body?.cancel().catch(() => {});
       }
     } catch (err) {
       if (combinedExternalSignal?.aborted) throw err;

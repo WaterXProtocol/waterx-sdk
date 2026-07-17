@@ -4,8 +4,6 @@
 
 Full case table (ID, preconditions, operation, expected): **[`test/TEST-CASES.md`](./TEST-CASES.md)** (343 cases across Unit / E2E / Integration).
 
-Regenerate: `pnpm exec tsx scripts/generate-test-cases-doc.ts`
-
 ## Local secrets (`.env.local`)
 
 Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.local`** from **`.env.example`** (Unix: tries `chmod 600`). Put **`WATERX_INTEGRATION_PRIVATE_KEY`** and other secrets only there or in your shell — see `.env.example` for precedence. **`.integration-trader.keystore`** remains supported and gitignored.
