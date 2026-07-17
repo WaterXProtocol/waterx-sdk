@@ -27,6 +27,24 @@ export interface PythSponsorRulePackage extends BasePackageEntry {
   pyth_sponsor: string;
 }
 
+/**
+ * `pyth_lazer_rule` deployment entry — already present in the deployed testnet
+ * `waterx-config` JSON. Typed here for lossless round-tripping only; no SDK
+ * code reads it yet (a future `PythLazerRule` `PriceUpdateRule` will).
+ *
+ * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
+ * which rule prices a ticker is decided solely by the client's `oracleSource`
+ * create option (see `OracleHost.oracleSource`), never by this flag or any
+ * other config value.
+ */
+export interface PythLazerRulePackage extends BasePackageEntry {
+  config: string;
+  state: string;
+  enabled?: boolean;
+  /** Oracle ticker → integer Pyth Lazer feed id (distinct id scheme from `pyth_rule`'s hex `feed_id`). */
+  feeds: Record<string, number>;
+}
+
 /** Per-ticker `constant_rule` feed entry (mirrors the `pyth_rule.feeds` shape). */
 export interface ConstantFeedEntry {
   /**
@@ -87,6 +105,8 @@ export interface WaterxOraclePackage extends BasePackageEntry {
 export interface OraclePackages {
   pyth_rule: PythRulePackage;
   pyth_sponsor_rule?: PythSponsorRulePackage;
+  /** See {@link PythLazerRulePackage} — typed only, not read for routing. */
+  pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;
   supra_rule?: SupraRulePackage;
   waterx_oracle: WaterxOraclePackage;

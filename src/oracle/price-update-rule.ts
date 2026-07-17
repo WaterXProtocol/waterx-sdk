@@ -24,6 +24,17 @@ export type PriceUpdateRuleKind =
   | "waterx_rule";
 
 /**
+ * The subset of `PriceUpdateRuleKind`s selectable via a client's `oracleSource`
+ * create option (see `OracleHost.oracleSource`) — i.e. rules that can serve as
+ * the on-chain price *update* leg `refreshOraclePrices` runs before aggregating.
+ * `supra_rule` and `constant_rule` are auxiliary rules fed alongside whichever
+ * source is selected (see `aggregateTicker`), not sources themselves;
+ * `waterx_rule` has no `PriceUpdateRule` implementation yet. The SDK never
+ * reads `process.env` — consumers resolve their own env var to this type.
+ */
+export type OracleSource = "pyth_rule" | "pyth_lazer_rule";
+
+/**
  * Off-chain payload fetched by a rule, tagged by `kind` so a caller holding
  * several rules' results can tell them apart. `payload` is `unknown` here —
  * each rule implementation narrows it to its own shape (e.g. `PythCoreRule`'s

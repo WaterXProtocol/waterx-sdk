@@ -40,6 +40,7 @@ export type {
   OracleConfig,
   OraclePackages,
   PythInfraConfig,
+  PythLazerRulePackage,
   PythRulePackage,
   PythSponsorRulePackage,
   SupraFeedEntry,
@@ -276,6 +277,9 @@ function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void
   };
   // Validate by deployment kind. A perp config must carry the perp set; a
   // credit config the credit set. `waterx_account` is common to both.
+  // `pyth_lazer_rule` is intentionally NOT required (and never will be by
+  // presence alone) — it's an optional/experimental package selected only via
+  // a client's `oracleSource` option, never by its presence in the config.
   const isPerp = "waterx_perp" in cfg.packages;
   const isCredit = "waterx_credit" in cfg.packages || "wormhole_bridge" in cfg.packages;
   const required: (keyof WaterXPackages)[] = isPerp

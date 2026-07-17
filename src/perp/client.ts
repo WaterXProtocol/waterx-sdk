@@ -12,6 +12,7 @@
  */
 
 import { BaseLineClient } from "../base-client.ts";
+import type { OracleSource } from "../oracle/price-update-rule.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
@@ -26,6 +27,13 @@ import type { Network } from "./constants.ts";
 
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
+  /**
+   * Selects which `PriceUpdateRule` `refreshOraclePrices` uses for the
+   * on-chain price-update leg (see `OracleHost.oracleSource`). Default:
+   * `'pyth_rule'`. The SDK never reads `process.env` — pass this from your
+   * own env var (e.g. `ORACLE_SOURCE`).
+   */
+  oracleSource?: OracleSource;
 }
 
 export class PerpClient extends BaseLineClient<WaterXConfig> {
@@ -33,14 +41,21 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   pyth: PythInfraConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
+  /** Selected oracle rule source (client option, resolved at creation; default `'pyth_rule'`). See `OracleHost.oracleSource`. */
+  readonly oracleSource: OracleSource;
 
   /** Canonical-schema lookups (delegated to below); no transport. */
   private readonly view: PerpConfigView;
 
-  constructor(network: Network, config: WaterXConfig, opts: { grpcUrl?: string } = {}) {
+  constructor(
+    network: Network,
+    config: WaterXConfig,
+    opts: { grpcUrl?: string; oracleSource?: OracleSource } = {},
+  ) {
     super(network, config, opts);
     this.pyth = config.pyth ?? PYTH_DEFAULTS[network];
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
+    this.oracleSource = opts.oracleSource ?? "pyth_rule";
     this.view = new PerpConfigView(
       () => this.config,
       () => this.wormhole,
@@ -53,7 +68,10 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    */
   static async create(network: Network, opts: CreateClientOptions = {}): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
-    return new PerpClient(network, config, { grpcUrl: opts.grpcUrl });
+    return new PerpClient(network, config, {
+      grpcUrl: opts.grpcUrl,
+      oracleSource: opts.oracleSource,
+    });
   }
 
   static mainnet(opts: CreateClientOptions = {}): Promise<PerpClient> {

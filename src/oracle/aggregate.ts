@@ -14,13 +14,19 @@
  * The fed rule set must match the on-chain weighted set for the ticker —
  * `aggregator::remove_outliers` aborts `EMissingPriceSource` if a weighted rule
  * is missing from the collector.
+ *
+ * `refreshOraclePrices` additionally routes the on-chain price *update* leg
+ * (the fetch + verify/push step, before any of the above feeding) through the
+ * `PriceUpdateRule` selected by `host.oracleSource` — see `rule-registry.ts`.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import type { OracleHost } from "./host.ts";
-import { updatePythPrices, type PythCache } from "./pyth.ts";
+import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";
+import type { PythCache } from "./pyth.ts";
+import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
@@ -118,9 +124,23 @@ export function aggregateTickerWithConstant(
 /**
  * Refresh multiple tickers in one PTB. For each ticker {@link aggregateTicker}
  * feeds whichever rules it is configured for (Pyth if it has a `pyth_rule.feeds`
- * entry, Supra when enabled, Constant when it's a constant ticker). Tickers with a
- * Pyth feed are updated on-chain via one shared Pyth accumulator first; the rest
- * (constant-only) skip Pyth entirely.
+ * entry, Supra when enabled, Constant when it's a constant ticker) — this part
+ * is unchanged regardless of `oracleSource`.
+ *
+ * Before that, the on-chain price *update* leg is routed by `host.oracleSource`
+ * (see `rule-registry.ts`): the selected rule serves every ticker in its
+ * `supportedTickers(host)`; tickers it doesn't cover fall back to `pyth_rule`
+ * (`PythCoreRule`) when THEY support it — so when `oracleSource` IS `'pyth_rule'`
+ * there is exactly one group, identical to the pre-routing behavior. A ticker
+ * supported by neither is simply skipped from this leg (no fetch/build call for
+ * it) — the same way today's non-pyth tickers (e.g. constant-only) always were;
+ * it still gets aggregated below via whichever rule {@link aggregateTicker} finds.
+ *
+ * Each group's fetch + build runs against its own rule, which guarantees
+ * per-rule PTB atomicity (no mixed-generation payload within one rule's calls).
+ * When `oracleSource` isn't `'pyth_rule'`, one PTB may legitimately carry BOTH a
+ * non-Pyth-Core block (selected group) and a Pyth Core block (fallback group) —
+ * each verifies against its own contract objects, so that's fine.
  */
 export async function refreshOraclePrices(
   tx: Transaction,
@@ -129,26 +149,49 @@ export async function refreshOraclePrices(
   opts: {
     cache?: PythCache;
     sponsorFund?: { fund: TransactionArgument; packageId: string };
+    /**
+     * Test-only: layer fake `PriceUpdateRule`s on top of the production
+     * registry (see `rule-registry.ts`'s `resolveOracleRule`). Production
+     * callers never set this — routing is by `host.oracleSource` alone.
+     */
+    ruleOverrides?: Partial<Record<OracleSource, PriceUpdateRule>>;
   } = {},
 ): Promise<void> {
   if (tickers.length === 0) return;
 
-  // Every ticker with a pyth_rule.feeds entry needs the on-chain Pyth update
-  // first (one shared accumulator). Constant-only tickers (no pyth feed) skip it.
+  // price_info_object lookup for every ticker with a pyth_rule.feeds entry —
+  // needed by aggregateTicker's (unchanged) Pyth feed step below regardless of
+  // which rule performed the on-chain update for that ticker.
   const pythTickers = tickers.filter(
     (t) => host.config.packages.pyth_rule?.feeds?.[t] !== undefined,
   );
   const priceInfoByTicker = new Map<string, string>();
-  if (pythTickers.length > 0) {
-    const entries = pythTickers.map((t) => host.getPythFeed(t));
-    await updatePythPrices(
-      tx,
-      host,
-      entries.map((e) => e.feed_id),
-      opts.cache,
-      opts.sponsorFund,
+  pythTickers.forEach((t) => priceInfoByTicker.set(t, host.getPythFeed(t).price_info_object));
+
+  // Group tickers for the on-chain update leg: selected rule first, then the
+  // pyth_rule fallback for whatever the selected rule doesn't cover.
+  const selectedRule = resolveOracleRule(host.oracleSource, opts.ruleOverrides);
+  const selectedSupported = new Set(selectedRule.supportedTickers(host));
+  const selectedGroup = tickers.filter((t) => selectedSupported.has(t));
+
+  const groups: { rule: PriceUpdateRule; tickers: string[] }[] = [];
+  if (selectedGroup.length > 0) groups.push({ rule: selectedRule, tickers: selectedGroup });
+
+  if (host.oracleSource !== "pyth_rule") {
+    const fallbackRule = resolveOracleRule("pyth_rule", opts.ruleOverrides);
+    const fallbackSupported = new Set(fallbackRule.supportedTickers(host));
+    const fallbackGroup = tickers.filter(
+      (t) => !selectedSupported.has(t) && fallbackSupported.has(t),
     );
-    pythTickers.forEach((t, i) => priceInfoByTicker.set(t, entries[i]!.price_info_object));
+    if (fallbackGroup.length > 0) groups.push({ rule: fallbackRule, tickers: fallbackGroup });
+  }
+
+  for (const group of groups) {
+    const data = await group.rule.fetchUpdateData(host, group.tickers);
+    await group.rule.buildUpdateCalls(tx, host, data, group.tickers, {
+      cache: opts.cache,
+      sponsorFund: opts.sponsorFund,
+    });
   }
 
   // Aggregate each ticker, feeding whichever rules it is configured for.

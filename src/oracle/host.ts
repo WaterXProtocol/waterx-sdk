@@ -11,6 +11,7 @@
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import type { OracleConfig, PythInfraConfig } from "./config.ts";
+import type { OracleSource } from "./price-update-rule.ts";
 
 export interface OracleHost {
   /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
@@ -19,6 +20,15 @@ export interface OracleHost {
   readonly pyth: PythInfraConfig;
   /** gRPC client for the on-chain reads the Pyth update path needs. */
   readonly grpcClient: SuiGrpcClient;
+  /**
+   * Client-selected oracle rule source for `refreshOraclePrices`'s on-chain
+   * update leg — resolved at client creation from the `oracleSource` create
+   * option (default `'pyth_rule'`). Routing is driven by this value ALONE:
+   * never by a config JSON `enabled` flag (e.g. a future `pyth_lazer_rule.enabled`)
+   * and never by `process.env` — the SDK never reads it; consumers (BE/FE) wire
+   * this option from their own env var.
+   */
+  readonly oracleSource: OracleSource;
 
   /** True when `ticker` is priced by `constant_rule`. */
   isConstantTicker(ticker: string): boolean;

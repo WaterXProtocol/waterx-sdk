@@ -29,11 +29,15 @@ export type {
   PriceUpdateRuleKind,
   RuleUpdateData,
   BuildUpdateOpts,
+  OracleSource,
 } from "./price-update-rule.ts";
 
 // Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)
 export { PythCoreRule } from "./rules/pyth-core-rule.ts";
 export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
+
+// Oracle-source → PriceUpdateRule registry (used internally by refreshOraclePrices)
+export { resolveOracleRule } from "./rule-registry.ts";
 
 // Aggregation orchestrator
 export {

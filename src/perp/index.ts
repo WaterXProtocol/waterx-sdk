@@ -10,6 +10,7 @@ export type {
   NativeCustodyAsset,
   NativeCustodyPackage,
   PythInfraConfig,
+  PythLazerRulePackage,
   PythRulePackage,
   PythSponsorRulePackage,
   SupraFeedEntry,
@@ -129,6 +130,7 @@ export {
   refreshOraclePrices,
   updatePythPrices,
 } from "../oracle/index.ts";
+export type { OracleSource } from "../oracle/index.ts";
 
 // ======== Wormhole / Wormholescan utilities (credit bridge) ========
 export {
