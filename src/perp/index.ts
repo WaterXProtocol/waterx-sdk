@@ -122,6 +122,7 @@ export * from "./fetch.ts";
 // ======== Oracle utilities (Pyth source + rule aggregation) ========
 export {
   FetchPolicyError,
+  OracleFeeSourceUnavailableError,
   PythCache,
   aggregateTicker,
   aggregateTickerWithConstant,

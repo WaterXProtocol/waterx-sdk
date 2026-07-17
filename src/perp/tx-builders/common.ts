@@ -124,7 +124,7 @@ export async function refreshWlpPoolOracles(
 }
 
 /**
- * Build the *Request + execute envelope with optional Pyth sponsor flow:
+ * Build the *Request + execute envelope with the config-driven Pyth sponsor flow:
  *
  *   [maybeConsolidate(tx)]
  *   [fund = sponsor.request()]

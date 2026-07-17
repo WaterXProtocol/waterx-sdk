@@ -3,9 +3,9 @@
  *
  * Each `build*Tx` composer creates (or appends to) a `Transaction`, refreshes
  * the on-chain `Oracle` via Pyth, optionally pre-sweeps parked balances
- * (`consolidateToUsd`), wires the `pyth_sponsor_rule` flow when enabled, and
- * calls the matching `*_request` + `execute`. Implementations are split by
- * domain under `tx-builders/`:
+ * (`consolidateToUsd`), wires the `pyth_sponsor_rule` flow when deployed in
+ * config, and calls the matching `*_request` + `execute`. Implementations are
+ * split by domain under `tx-builders/`:
  *
  *   common.ts       CommonBuildOpts + request/execute envelope + oracle refresh
  *   consolidate.ts  parked-balance → wxUSD pre-sweep (appendConsolidate*)

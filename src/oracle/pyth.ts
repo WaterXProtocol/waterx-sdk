@@ -209,18 +209,34 @@ function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
 // ============================================================================
 
 /**
- * Shared `OracleFeeSourceUnavailable` message — single source of truth for
- * both this file's own per-call guard and `aggregate.ts`'s hoisted
- * pre-check (which throws BEFORE `buildPythPriceUpdateCalls` ever runs for a
- * multi-group `refreshOraclePrices` call — see its docblock).
+ * Thrown when neither a `sponsorFund` nor `allowGasFee: true` is available
+ * for the Pyth update fee — from `buildPythPriceUpdateCalls`'s own per-call
+ * guard, or `aggregate.ts`'s hoisted `refreshOraclePrices` pre-check (see its
+ * docblock). `instanceof`-able (mirrors `FetchPolicyError` in
+ * `update-fetch.ts`) so a consumer — e.g. a BE integration wiring its own
+ * `allowGasFee` decision — can branch on the error type directly instead of
+ * string-matching `error.message`.
  */
-export function oracleFeeSourceUnavailableError(): Error {
-  return new Error(
-    "OracleFeeSourceUnavailable: no fee source available for the Pyth update fee — " +
-      "deploy pyth_sponsor_rule to config so a sponsor fund can be opened (see " +
-      "openPythSponsorFund / wrapRequestAndExecute), or pass allowGasFee: true to draw " +
-      "the fee from tx.gas in a non-sponsored context",
-  );
+export class OracleFeeSourceUnavailableError extends Error {
+  constructor() {
+    super(
+      "OracleFeeSourceUnavailable: no fee source available for the Pyth update fee — " +
+        "deploy pyth_sponsor_rule to config so a sponsor fund can be opened (see " +
+        "openPythSponsorFund / wrapRequestAndExecute), or pass allowGasFee: true to draw " +
+        "the fee from tx.gas in a non-sponsored context",
+    );
+    this.name = "OracleFeeSourceUnavailableError";
+  }
+}
+
+/**
+ * Factory — single source of truth for both this file's own per-call guard
+ * and `aggregate.ts`'s hoisted pre-check (which throws BEFORE
+ * `buildPythPriceUpdateCalls` ever runs for a multi-group
+ * `refreshOraclePrices` call).
+ */
+export function oracleFeeSourceUnavailableError(): OracleFeeSourceUnavailableError {
+  return new OracleFeeSourceUnavailableError();
 }
 
 /**
@@ -251,13 +267,15 @@ export function oracleFeeSourceUnavailableError(): Error {
  * hand, so for `updatePythPrices` (which fetches from Hermes, then calls
  * straight into this function) the off-chain fetch has already completed by
  * the time this throws — a wasted network call, never a stray PTB command.
- * `refreshOraclePrices` hoists an EQUIVALENT pre-check above its per-group
- * build loop (see its docblock in `aggregate.ts`) and, for any group whose
- * rule is `PythCoreRule`, throws there first — same wasted-fetch trade-off
- * (its off-chain fetches already ran too), but crucially BEFORE any group's
- * `buildUpdateCalls` runs, which this function's own (later, per-call) guard
- * alone could not guarantee in a mixed shape (e.g. a fee-free Lazer group
- * ordered ahead of a Pyth Core fallback group in the same PTB).
+ * `refreshOraclePrices` avoids that waste entirely: it hoists an EQUIVALENT
+ * check ABOVE its off-chain fetch AND its per-group build loop (see its
+ * docblock in `aggregate.ts`), keyed on `PriceUpdateRule.requiresFeeSource`
+ * rather than waiting for a specific rule's fetch to complete — so for that
+ * route neither the network call NOR any PTB command happens before the
+ * throw. This function's own (later, per-call) guard alone could not
+ * provide that "before any group builds" guarantee in a mixed shape (e.g. a
+ * fee-free Lazer group ordered ahead of a Pyth Core fallback group in the
+ * same PTB) — `refreshOraclePrices`'s pre-check is what closes it.
  */
 export async function buildPythPriceUpdateCalls(
   tx: Transaction,

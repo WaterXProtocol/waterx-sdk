@@ -25,12 +25,16 @@ export type { OracleHost } from "./host.ts";
 export { FetchPolicyError } from "./update-fetch.ts";
 export type { FetchPolicy } from "./update-fetch.ts";
 
-// Pyth source
+// Pyth source — `OracleFeeSourceUnavailableError` is re-exported (not just
+// the type) for the same `instanceof` reason as `FetchPolicyError` above: a
+// consumer of `buildPythPriceUpdateCalls` / `updatePythPrices` /
+// `refreshOraclePrices` can branch on the fee-source failure directly.
 export {
   PythCache,
   fetchPriceFeedsUpdateData,
   buildPythPriceUpdateCalls,
   updatePythPrices,
+  OracleFeeSourceUnavailableError,
 } from "./pyth.ts";
 
 // Price-update-rule port

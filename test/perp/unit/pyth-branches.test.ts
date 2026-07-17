@@ -8,6 +8,7 @@ import {
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
   openPythSponsorFund,
+  OracleFeeSourceUnavailableError,
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
@@ -600,7 +601,10 @@ describe("pyth on-chain helper branches", () => {
 });
 
 describe("buildPythPriceUpdateCalls — fee source resolution (Task 5)", () => {
+  const originalFetch = globalThis.fetch;
+
   afterEach(() => {
+    globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
@@ -648,18 +652,56 @@ describe("buildPythPriceUpdateCalls — fee source resolution (Task 5)", () => {
     expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
   });
 
-  it("throws OracleFeeSourceUnavailable when neither sponsorFund nor allowGasFee is supplied, before any PTB mutation", async () => {
+  it("throws OracleFeeSourceUnavailableError when neither sponsorFund nor allowGasFee is supplied, before any PTB mutation", async () => {
     const client = createUnitTestClient();
     const { feedId } = attachPythGrpcMocks(client);
     const update = mockAccumulatorUpdate();
 
     const tx = new Transaction();
-    await expect(
+    const rejection = expect(
       buildPythPriceUpdateCalls(tx, client, [update], [feedId], new PythCache()),
-    ).rejects.toThrow(/OracleFeeSourceUnavailable/);
+    ).rejects;
+    await rejection.toThrow(/OracleFeeSourceUnavailable/);
+    // instanceof-able (mirrors FetchPolicyError) — a consumer can branch on
+    // the error type directly instead of string-matching `.message`.
+    await rejection.toBeInstanceOf(OracleFeeSourceUnavailableError);
 
     // Fail-fast — the throw happens before any gRPC read or PTB mutation
     // (mirrors the Task-4 fetch-all-then-build ordering guarantee).
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
+  });
+
+  it("OracleFeeSourceUnavailableError carries its own name", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+    const tx = new Transaction();
+
+    let caught: unknown;
+    try {
+      await buildPythPriceUpdateCalls(tx, client, [update], [feedId], new PythCache());
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(OracleFeeSourceUnavailableError);
+    expect((caught as Error).name).toBe("OracleFeeSourceUnavailableError");
+  });
+
+  it("refreshOraclePrices throws OracleFeeSourceUnavailableError before the off-chain fetch (single-group case)", async () => {
+    const client = createUnitTestClient();
+    attachPythGrpcMocks(client);
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD"])).rejects.toBeInstanceOf(
+      OracleFeeSourceUnavailableError,
+    );
+
+    // The pre-check is hoisted ABOVE the off-chain fetch AND the gRPC state
+    // reads too — no wasted Hermes/gRPC call, not just zero PTB commands.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(client.grpcClient.getObject).not.toHaveBeenCalled();
     expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 
@@ -703,9 +745,9 @@ describe("buildPythPriceUpdateCalls — fee source resolution (Task 5)", () => {
     })) as unknown as typeof fetch;
 
     const tx = new Transaction();
-    await expect(updatePythPrices(tx, client, [feedId])).rejects.toThrow(
-      /OracleFeeSourceUnavailable/,
-    );
+    const rejection = expect(updatePythPrices(tx, client, [feedId])).rejects;
+    await rejection.toThrow(/OracleFeeSourceUnavailable/);
+    await rejection.toBeInstanceOf(OracleFeeSourceUnavailableError);
   });
 });
 

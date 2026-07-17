@@ -98,6 +98,24 @@ export interface UpdateDataProvider {
 export interface PriceUpdateRule {
   readonly kind: PriceUpdateRuleKind;
 
+  /**
+   * `true` when this rule's on-chain update leg charges a per-update fee
+   * that must be paid from either a sponsor fund or `tx.gas` (Pyth Core:
+   * `true`, via `pyth::update_single_price_feed`'s `base_update_fee`).
+   * `false` for a fee-free update leg (Lazer: signature verification only,
+   * no `Coin` argument). `refreshOraclePrices` (`aggregate.ts`) reads this
+   * BEFORE fetching any group's off-chain payload — for every group whose
+   * rule sets it `true`, a `sponsorFund` or `allowGasFee` must already be
+   * available, or the whole call throws `OracleFeeSourceUnavailable` before
+   * any group builds (mixed-shape atomicity: a fee-free group ordered
+   * ahead of a fee-charging one in the same PTB must never get to mutate
+   * `tx` while the fee-charging group is left unpayable). A referential
+   * check against a specific rule instance (e.g. `=== PythCoreRule`) would
+   * silently stop protecting a future fee-charging rule, or a test double
+   * standing in for one — this field is the honest, extensible signal.
+   */
+  readonly requiresFeeSource: boolean;
+
   /** Tickers this rule can serve in this environment (from config feeds + enabled). */
   supportedTickers(host: OracleHost): string[];
 

@@ -322,6 +322,9 @@ async function main(): Promise<void> {
     const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens).filter(
       (t) => client.config.packages.pyth_rule.feeds[t] !== undefined,
     );
+    // mintWlp (below) is the raw lp_pool call, no TradingRequest — no
+    // sponsor fund could be reimbursed against it even if one were opened;
+    // standalone smoke script pays its own gas for the Pyth update fee.
     await refreshOraclePrices(tx, client, poolTickers, { allowGasFee: true });
     mintWlp(client, tx, {
       accountId: FAKE_ACCOUNT_ID,

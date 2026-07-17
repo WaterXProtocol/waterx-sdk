@@ -145,6 +145,10 @@ export function feedLazerRule(
 export const PythLazerRule: PriceUpdateRule = {
   kind: "pyth_lazer_rule",
 
+  // Verification is a flat signature check with no Coin argument — no
+  // update fee — see `PriceUpdateRule.requiresFeeSource`.
+  requiresFeeSource: false,
+
   /** Tickers with a `pyth_lazer_rule.feeds` entry (integer Lazer feed ids). */
   supportedTickers(host: OracleHost): string[] {
     return Object.keys(host.config.packages.pyth_lazer_rule?.feeds ?? {});

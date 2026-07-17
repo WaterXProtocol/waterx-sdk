@@ -45,6 +45,9 @@ function moveTargets(tx: Transaction): string[] {
 function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRule {
   return {
     kind,
+    // The mocked `buildUpdateCalls` below never charges anything, regardless
+    // of which real rule `kind` it stands in for — honestly fee-free.
+    requiresFeeSource: false,
     supportedTickers: vi.fn((_host: OracleHost): string[] => supported),
     fetchUpdateData: vi.fn(
       async (_host: OracleHost, tickers: string[]): Promise<RuleUpdateData> => ({

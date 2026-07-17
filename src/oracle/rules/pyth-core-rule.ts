@@ -37,6 +37,10 @@ function isPythCoreUpdatePayloadShape(payload: unknown): payload is PythCoreUpda
 export const PythCoreRule: PriceUpdateRule = {
   kind: "pyth_rule",
 
+  // Charges a per-feed `base_update_fee` via `pyth::update_single_price_feed` —
+  // see `PriceUpdateRule.requiresFeeSource`.
+  requiresFeeSource: true,
+
   /** Tickers with a `pyth_rule.feeds` entry (mirrors `refreshOraclePrices`'s filter). */
   supportedTickers(host: OracleHost): string[] {
     return Object.keys(host.config.packages.pyth_rule?.feeds ?? {});

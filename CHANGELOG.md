@@ -150,17 +150,29 @@ reference the PR that introduced them.
     `pyth_sponsor_rule` to config, or pass `allowGasFee: true`) instead of
     silently drawing from `tx.gas`.
 
-  "Before any PTB mutation" is a guarantee about **PTB commands**, not about
-  off-chain network calls: `updatePythPrices` fetches from Hermes and
-  `refreshOraclePrices` fetches every group's off-chain payload BEFORE
-  either reaches its fee-source check, so a throw still costs a wasted
-  fetch — it just never leaves a stray `moveCall`/`splitCoins` behind.
-  `refreshOraclePrices` additionally hoists its check ABOVE the per-group
-  build loop (not just inside `buildPythPriceUpdateCalls`'s own per-call
-  guard): a mixed-rule-shape PTB — e.g. a fee-free Lazer group ordered
-  ahead of a Pyth Core fallback group when `oracleSource` is
-  `'pyth_lazer_rule'` — would otherwise let the Lazer group's verify/feed
-  calls land in `tx` before the Pyth Core group's own guard ever fired.
+  `updatePythPrices` fetches from Hermes and only THEN reaches
+  `buildPythPriceUpdateCalls`'s own fee-source check, so a throw on that
+  route still costs a wasted fetch — it just never leaves a stray
+  `moveCall`/`splitCoins` behind. `refreshOraclePrices` does better: its
+  check is hoisted ABOVE both its off-chain fetch AND its per-group build
+  loop, keyed on the new `PriceUpdateRule.requiresFeeSource: boolean`
+  (`true` on `PythCoreRule`, `false` on `PythLazerRule` — a fee-free rule
+  never blocks the check) rather than waiting for a fetch to complete or
+  checking referential identity against a specific rule instance — so for
+  that route neither the network call nor any PTB command happens before
+  the throw, and a future fee-charging rule (or a test double standing in
+  for one) can't silently bypass the guarantee. This closes a mixed-shape
+  gap the per-call guard alone couldn't: a fee-free Lazer group ordered
+  ahead of a Pyth Core fallback group (`oracleSource: 'pyth_lazer_rule'`)
+  could otherwise let the Lazer group's verify/feed calls land in `tx`
+  before the Pyth Core group's own guard ever fired.
+
+  The thrown error is now a real `OracleFeeSourceUnavailableError` class
+  (`instanceof`-able, mirrors `FetchPolicyError`) exported from the oracle
+  and perp barrels, not just an `Error` with a matching message — a
+  consumer (e.g. a BE integration deciding its own `allowGasFee` policy)
+  can `catch (e) { if (e instanceof OracleFeeSourceUnavailableError) … }`
+  instead of string-matching.
 
   `wrapRequestAndExecute` (every order/position `build*Tx`) now opens (and
   reimburses) the sponsor fund purely from **config presence** —
@@ -189,7 +201,20 @@ reference the PR that introduced them.
   fallback is now explicit. If your client's config has `pyth_sponsor_rule`
   deployed, no change is needed for order/position flows (the fund now
   opens automatically); `useSponsor` can be dropped from call sites at your
-  convenience.
+  convenience. To detect the new failure mode at runtime, `instanceof
+  OracleFeeSourceUnavailableError` — exported from `@waterx/sdk` (root),
+  `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
+
+  **Signature note**: `allowGasFee` was added as an ADDITIVE trailing
+  positional parameter — 7th on `buildPythPriceUpdateCalls` (after
+  `sponsorFund`), 6th on `updatePythPrices` — not folded into an options
+  object, consistent with both functions' existing positional style. This
+  does not break any EXISTING positional call (every prior parameter keeps
+  its position and type), but a caller that already supplied `cache`/
+  `sponsorFund` positionally and now wants `allowGasFee` too must pass it as
+  the NEXT positional argument in that same call, not as a trailing options
+  object. Collapsing all 7 params into a single options object is deferred
+  to a future major version.
 
 ## [3.1.1] - 2026-07-10
 

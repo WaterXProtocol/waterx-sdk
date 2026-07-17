@@ -97,9 +97,9 @@ describe("tx-builders (v3)", () => {
       useSponsor: false,
       consolidateToUsd: false,
     });
-    expect(withUseSponsorFalse.getData().commands!.length).toBe(
-      withUseSponsorTrue.getData().commands!.length,
-    );
+    // Structural equivalence, not just a command count — useSponsor no
+    // longer influences anything about the built PTB (config alone decides).
+    expect(withUseSponsorFalse.getData()).toStrictEqual(withUseSponsorTrue.getData());
 
     // A config with no pyth_sponsor_rule never opens a fund — fewer commands
     // (no request/reimburse/witness moveCalls), regardless of useSponsor.
