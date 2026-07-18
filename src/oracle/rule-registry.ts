@@ -26,14 +26,32 @@ const DEFAULT_RULES: Partial<Record<OracleSource, PriceUpdateRule>> = Object.fre
 });
 
 /**
+ * Thrown by {@link resolveOracleRule} when `source` has no `PriceUpdateRule`
+ * registered in either the production registry or a test's `overrides` map.
+ * `instanceof`-able (mirrors `OracleFeeSourceUnavailableError` in `pyth.ts`)
+ * so a consumer can branch on the failure type directly instead of
+ * string-matching `error.message`.
+ */
+export class OracleSourceNotImplementedError extends Error {
+  /** The unregistered `OracleSource` that was requested. */
+  readonly source: OracleSource;
+
+  constructor(source: OracleSource) {
+    super(`OracleSourceNotImplemented: ${source}`);
+    this.name = "OracleSourceNotImplementedError";
+    this.source = source;
+  }
+}
+
+/**
  * Resolve the `PriceUpdateRule` registered for `source`.
  *
  * `overrides` — test-only — layers on top of the production registry so a
  * spec can inject a fake rule (e.g. a stub `pyth_lazer_rule`) without
  * touching {@link DEFAULT_RULES}; production callers never pass it.
  *
- * Throws `OracleSourceNotImplemented: <source>` when nothing is registered
- * for `source` in either map.
+ * Throws {@link OracleSourceNotImplementedError} (`OracleSourceNotImplemented:
+ * <source>`) when nothing is registered for `source` in either map.
  */
 export function resolveOracleRule(
   source: OracleSource,
@@ -41,7 +59,7 @@ export function resolveOracleRule(
 ): PriceUpdateRule {
   const rule = overrides?.[source] ?? DEFAULT_RULES[source];
   if (!rule) {
-    throw new Error(`OracleSourceNotImplemented: ${source}`);
+    throw new OracleSourceNotImplementedError(source);
   }
   return rule;
 }

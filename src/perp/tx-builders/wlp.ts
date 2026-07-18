@@ -62,6 +62,7 @@ export async function buildMintWlpTx(
       cache: params.pythCache,
       lpType: params.lpType,
       feeSource,
+      updateDataProvider: params.updateDataProvider,
     });
   }
 
@@ -113,6 +114,7 @@ export async function buildMintAndStakeWlpTx(
       cache: params.pythCache,
       lpType: params.lpType,
       feeSource,
+      updateDataProvider: params.updateDataProvider,
     });
   }
 
@@ -176,6 +178,7 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
       cache: params.pythCache,
       lpType: params.lpType,
       feeSource,
+      updateDataProvider: params.updateDataProvider,
     });
   }
 

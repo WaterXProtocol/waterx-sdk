@@ -129,7 +129,9 @@ export * from "./fetch.ts";
 // ======== Oracle utilities (Pyth source + rule aggregation) ========
 export {
   FetchPolicyError,
+  LazerApiKeyMissingError,
   OracleFeeSourceUnavailableError,
+  OracleSourceNotImplementedError,
   PythCache,
   aggregateTicker,
   aggregateTickerWithConstant,

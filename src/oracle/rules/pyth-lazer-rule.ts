@@ -65,6 +65,24 @@ function isPythLazerUpdatePayloadShape(payload: unknown): payload is PythLazerUp
   );
 }
 
+/**
+ * Thrown by {@link PythLazerRule.fetchUpdateData} when `pyth_lazer_rule` is
+ * deployed in config but no `pyth.api_key` is set — the Lazer HTTP API
+ * requires a Bearer token and the SDK never reads `process.env` to find one.
+ * `instanceof`-able (mirrors `OracleFeeSourceUnavailableError` in `pyth.ts`)
+ * so a consumer can branch on the failure type directly instead of
+ * string-matching `error.message`.
+ */
+export class LazerApiKeyMissingError extends Error {
+  constructor() {
+    super(
+      "LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token — " +
+        "set `pyth.api_key` in the client config (the SDK never reads process.env)",
+    );
+    this.name = "LazerApiKeyMissingError";
+  }
+}
+
 /** The `pyth_lazer_rule` deployment entry; throws when the config carries none. */
 function requireLazerPackage(host: OracleHost): PythLazerRulePackage {
   const entry = host.config.packages.pyth_lazer_rule;
@@ -170,10 +188,7 @@ export const PythLazerRule: PriceUpdateRule = {
     });
     const apiKey = host.pyth.api_key;
     if (!apiKey) {
-      throw new Error(
-        "LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token — " +
-          "set `pyth.api_key` in the client config (the SDK never reads process.env)",
-      );
+      throw new LazerApiKeyMissingError();
     }
     const update = await fetchLazerSignedUpdate(
       LAZER_DEFAULTS[host.network].endpoint,

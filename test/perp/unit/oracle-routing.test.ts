@@ -18,9 +18,15 @@ import type {
   UpdateDataProvider,
 } from "../../../src/oracle/price-update-rule.ts";
 import { PythCache, updatePythPrices, type OracleFeeSource } from "../../../src/oracle/pyth.ts";
-import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
+import {
+  OracleSourceNotImplementedError,
+  resolveOracleRule,
+} from "../../../src/oracle/rule-registry.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
-import { PythLazerRule } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
+import {
+  LazerApiKeyMissingError,
+  PythLazerRule,
+} from "../../../src/oracle/rules/pyth-lazer-rule.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
 import { PredictClient } from "../../../src/prediction/client.ts";
@@ -172,7 +178,9 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' resolves the real registered
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
 
-    await expect(refreshOraclePrices(tx, client, ["BTCUSD"])).rejects.toThrow(/LazerApiKeyMissing/);
+    const rejection = expect(refreshOraclePrices(tx, client, ["BTCUSD"])).rejects;
+    await rejection.toThrow(/LazerApiKeyMissing/);
+    await rejection.toBeInstanceOf(LazerApiKeyMissingError);
   });
 });
 
@@ -413,9 +421,17 @@ describe("resolveOracleRule", () => {
   it("throws OracleSourceNotImplemented for a genuinely unregistered source", () => {
     // Deliberately-invalid input: only a cast can reach the unregistered path
     // now that both real sources resolve.
-    expect(() => resolveOracleRule("waterx_rule" as OracleSource)).toThrow(
-      "OracleSourceNotImplemented: waterx_rule",
-    );
+    let caught: unknown;
+    try {
+      resolveOracleRule("waterx_rule" as OracleSource);
+    } catch (e) {
+      caught = e;
+    }
+    expect((caught as Error).message).toBe("OracleSourceNotImplemented: waterx_rule");
+    // instanceof-able (mirrors OracleFeeSourceUnavailableError) — a consumer
+    // can branch on the error type directly instead of string-matching
+    // `.message`.
+    expect(caught).toBeInstanceOf(OracleSourceNotImplementedError);
   });
 
   it("lets an override map replace the registered lazer rule", () => {

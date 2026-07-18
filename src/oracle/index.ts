@@ -55,13 +55,19 @@ export { PythCoreRule } from "./rules/pyth-core-rule.ts";
 export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
 
 // Pyth Lazer rule (signed-update generation; `feedLazerRule` stays internal to `aggregate.ts`)
-export { PythLazerRule } from "./rules/pyth-lazer-rule.ts";
+// `LazerApiKeyMissingError` is re-exported (not just the type) for the same
+// `instanceof` reason as `OracleFeeSourceUnavailableError` above.
+export { PythLazerRule, LazerApiKeyMissingError } from "./rules/pyth-lazer-rule.ts";
 export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
 // `resolveOracleRule` (rule-registry.ts) is NOT re-exported here — it has one
 // production consumer (`refreshOraclePrices` below) and no external caller;
 // per repo convention ("no unused exports") it stays module-internal. Tests
-// import it directly from `./rule-registry.ts`.
+// import it directly from `./rule-registry.ts`. `OracleSourceNotImplementedError`
+// IS re-exported (the same `instanceof` reason as `OracleFeeSourceUnavailableError`
+// above) — a consumer of `refreshOraclePrices` can catch it without importing
+// `resolveOracleRule` itself.
+export { OracleSourceNotImplementedError } from "./rule-registry.ts";
 
 // Aggregation orchestrator
 export {

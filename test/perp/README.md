@@ -2,7 +2,7 @@
 
 ## Test Case Inventory
 
-Full case table (ID, preconditions, operation, expected): **[`test/TEST-CASES.md`](./TEST-CASES.md)** (343 cases across Unit / E2E / Integration).
+There used to be a generated case table (ID, preconditions, operation, expected) at `test/TEST-CASES.md`, produced by `scripts/generate-test-cases-doc.ts`. Both the doc and its generator were deleted in `7e71719` (`chore(scripts): drop non-integration/smoke scripts and prune package.json`) — the file no longer exists and nothing regenerates it. For the current test surface, read the live tree instead: `test/perp/unit/**/*.test.ts` (unit), `test/perp/e2e/**/*.test.ts` (E2E — layout below), and `test/perp/integration/**/*.test.ts` (on-chain integration).
 
 ## Local secrets (`.env.local`)
 

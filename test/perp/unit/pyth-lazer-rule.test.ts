@@ -69,7 +69,10 @@ import { LAZER_DEFAULTS } from "../../../src/oracle/config.ts";
 import { aggregateTicker, refreshOraclePrices } from "../../../src/oracle/index.ts";
 import type { RuleUpdateHandle } from "../../../src/oracle/price-update-rule.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
-import { PythLazerRule } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
+import {
+  LazerApiKeyMissingError,
+  PythLazerRule,
+} from "../../../src/oracle/rules/pyth-lazer-rule.ts";
 import { moveCalls, moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
@@ -240,9 +243,12 @@ describe("PythLazerRule.fetchUpdateData", () => {
     const client = createUnitTestClient(); // no api_key
     const fetchSpy = mockLazerFetch();
 
-    await expect(PythLazerRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
-      /LazerApiKeyMissing/,
-    );
+    const rejection = expect(PythLazerRule.fetchUpdateData(client, ["BTCUSD"])).rejects;
+    await rejection.toThrow(/LazerApiKeyMissing/);
+    // instanceof-able (mirrors OracleFeeSourceUnavailableError) — a consumer
+    // can branch on the error type directly instead of string-matching
+    // `.message`.
+    await rejection.toBeInstanceOf(LazerApiKeyMissingError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

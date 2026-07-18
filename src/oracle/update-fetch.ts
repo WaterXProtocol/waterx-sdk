@@ -43,6 +43,10 @@
  *   retryable response's body is discarded via `response.body?.cancel()`
  *   instead of read, so a doomed-to-retry response doesn't pin its
  *   connection's socket open for no reason.
+ * - Retry worst case: with the defaults (15s timeout × 3 attempts + ~0.75s of
+ *   backoff between them) a FULL outage takes up to ~46s to surface as a
+ *   `FetchPolicyError`, vs ~15s pre-3.2.0's single bare-`fetch` attempt.
+ *   Tunable per client via `config.pyth.fetch.{timeoutMs,retries}`.
  */
 
 const DEFAULT_TIMEOUT_MS = 15_000;

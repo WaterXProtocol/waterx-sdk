@@ -8,6 +8,19 @@ reference the PR that introduced them.
 
 ## [3.2.0] - 2026-07-18
 
+> **Versioning note:** this release carries several **BREAKING** changes (see
+> `### Changed` below — the config-driven fee-source rework, the
+> `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object
+> collapse, and the `OracleFeeSource` consolidation) on a **minor** version bump.
+> This is deliberate, not an oversight: (a) `3.2.0` was never published to npm —
+> `npm view @waterx/sdk versions` tops out at `3.1.1`, so there is no intermediate
+> published shape a break could disturb; (b) both known consumers of this SDK pin
+> an exact version, so a minor bump does not silently pull a breaking change into
+> anyone's build. Maintainers may still re-tag this release as `4.0.0` at publish
+> time if project policy prefers strict semver over this pragmatic call —
+> `package.json` is intentionally left at `3.2.0` here so that decision stays
+> theirs to make at publish time, not baked into this changeset.
+
 ### Added
 
 - **`PYTH_PRO_DEFAULTS` + `pythGeneration` client option — Pyth Pro
@@ -75,6 +88,12 @@ reference the PR that introduced them.
     (`"Hermes price fetch failed: …"` / `"Lazer price fetch failed: …"` /
     `"loadConfig: HTTP …"`) so downstream consumers (e.g. the e2e
     transient-failure detector) see unchanged text.
+  - **Worst-case latency note**: under the default policy (15s timeout, 2
+    retries) a FULL outage now takes up to ~46s (3 × 15s + ~0.75s of
+    backoff) to surface as a `FetchPolicyError`, vs ~15s pre-3.2.0's single
+    bare-`fetch` attempt. Tunable per client via
+    `config.pyth.fetch.{timeoutMs,retries}` for callers that need a
+    tighter bound.
 
   `PythInfraConfig` gains an optional `fetch?: { timeoutMs?: number; retries?:
   number }` policy override (`src/oracle/config.ts`), threaded through by

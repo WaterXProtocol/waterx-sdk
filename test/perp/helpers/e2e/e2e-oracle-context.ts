@@ -38,7 +38,7 @@ export async function warmPythHermesForTickers(
       warmTx.setGasBudget(1_200_000_000);
       // Standalone dry-run simulate, no TradingRequest to reimburse a
       // sponsor fund against — pay the Pyth update fee from tx.gas.
-      await updatePythPrices(warmTx, client, [...feedSet], cache, undefined, true);
+      await updatePythPrices(warmTx, client, [...feedSet], { cache, feeSource: { kind: "gas" } });
       await client.simulate(warmTx);
     }
   } catch {

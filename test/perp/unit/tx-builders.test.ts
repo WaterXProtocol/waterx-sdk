@@ -2,6 +2,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { RuleUpdateData, UpdateDataProvider } from "../../../src/oracle/index.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
@@ -370,6 +371,39 @@ describe("tx-builders (v3)", () => {
         consolidateToUsd: false,
       }),
     ).rejects.toThrow(/OracleFeeSourceUnavailable/);
+  });
+
+  it("buildMintWlpTx consults updateDataProvider and skips the live Hermes fetch on a hit", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    attachPythGrpcMocks(client);
+
+    // No live-fetch mock installed on globalThis.fetch — if the provider hit
+    // were bypassed, PythCoreRule.fetchUpdateData would call the real
+    // (unmocked) fetch and the test would fail loudly instead of silently
+    // passing.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const cachedData: RuleUpdateData = {
+      kind: "pyth_rule",
+      payload: { updates: [mockAccumulatorUpdate()], feedIds: ["0xf9c0"] },
+    };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => cachedData) };
+
+    const tx = await buildMintWlpTx(client, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      depositTokenType: MOCK_USDC_TYPE,
+      depositTicker: "USDCUSD",
+      depositAmount: 10_000_000n,
+      minLpAmount: 0n,
+      consolidateToUsd: false,
+      allowGasFee: true,
+      updateDataProvider: provider,
+    });
+
+    expect(provider.get).toHaveBeenCalledWith("pyth_rule", ["USDCUSD"]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
 
   it("openPythSponsorFund + reimbursePythSponsor", () => {
