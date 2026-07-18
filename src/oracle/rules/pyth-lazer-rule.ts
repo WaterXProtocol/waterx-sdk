@@ -13,11 +13,12 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { LAZER_DEFAULTS, type PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
-import type {
-  BuildUpdateOpts,
-  PriceUpdateRule,
-  RuleUpdateData,
-  RuleUpdateHandle,
+import {
+  assertRuleUpdateData,
+  type BuildUpdateOpts,
+  type PriceUpdateRule,
+  type RuleUpdateData,
+  type RuleUpdateHandle,
 } from "../price-update-rule.ts";
 import { FetchPolicyError, fetchWithPolicy } from "../update-fetch.ts";
 
@@ -197,26 +198,17 @@ export const PythLazerRule: PriceUpdateRule = {
     _tickers: string[],
     _opts?: BuildUpdateOpts,
   ): RuleUpdateHandle | undefined {
-    if (!data) return undefined;
-    if (data.kind !== "pyth_lazer_rule") {
-      throw new Error(
-        `PythLazerRule.buildUpdateCalls received a payload of kind '${data.kind}', expected 'pyth_lazer_rule'`,
-      );
-    }
-    if (!isPythLazerUpdatePayloadShape(data.payload)) {
-      throw new Error(
-        "PythLazerRule.buildUpdateCalls received a 'pyth_lazer_rule' payload with an unexpected shape " +
-          "(expected { update: Uint8Array; feedIds: number[] })",
-      );
-    }
+    const payload = assertRuleUpdateData(
+      data,
+      "pyth_lazer_rule",
+      isPythLazerUpdatePayloadShape,
+      "{ update: Uint8Array; feedIds: number[] }",
+    );
+    if (!payload) return undefined;
     const lazer = requireLazerPackage(host);
     const [update] = tx.moveCall({
       target: `${LAZER_DEFAULTS[host.network].verifier_package}::pyth_lazer::parse_and_verify_le_ecdsa_update`,
-      arguments: [
-        tx.object(lazer.state),
-        tx.object.clock(),
-        tx.pure.vector("u8", data.payload.update),
-      ],
+      arguments: [tx.object(lazer.state), tx.object.clock(), tx.pure.vector("u8", payload.update)],
     });
     return { kind: "pyth_lazer_rule", update };
   },

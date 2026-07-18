@@ -27,19 +27,9 @@ import { PredictClient } from "../../../src/prediction/client.ts";
 import { WaterXClient } from "../../../src/unified-client.ts";
 import { createMockPredictClient } from "../../prediction/helpers/mock-client.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
+import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
-
-/** `module::function` for every MoveCall command in a built PTB. */
-function moveTargets(tx: Transaction): string[] {
-  const out: string[] = [];
-  for (const c of tx.getData().commands ?? []) {
-    if (c.$kind === "MoveCall" && c.MoveCall) {
-      out.push(`${c.MoveCall.module}::${c.MoveCall.function}`);
-    }
-  }
-  return out;
-}
 
 /** Fake `PriceUpdateRule` — supports exactly `supported`, no on-chain calls. */
 function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRule {

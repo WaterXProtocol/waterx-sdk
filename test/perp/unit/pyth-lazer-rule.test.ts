@@ -70,6 +70,7 @@ import { aggregateTicker, refreshOraclePrices } from "../../../src/oracle/index.
 import type { RuleUpdateHandle } from "../../../src/oracle/price-update-rule.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
 import { PythLazerRule } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
+import { moveCalls, moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -77,27 +78,6 @@ import { createUnitTestClient } from "../helpers/test-client.ts";
 const SIGNED_UPDATE = new Uint8Array([0xb9, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
 
 const CLOCK_ID = "0x0000000000000000000000000000000000000000000000000000000000000006";
-
-type MoveCallCommand = {
-  package: string;
-  module: string;
-  function: string;
-  arguments: { $kind: string; Input?: number; Result?: number; NestedResult?: [number, number] }[];
-};
-
-/** All MoveCall commands of a built PTB, in order. */
-function moveCalls(tx: Transaction): MoveCallCommand[] {
-  const out: MoveCallCommand[] = [];
-  for (const c of tx.getData().commands ?? []) {
-    if (c.$kind === "MoveCall" && c.MoveCall) out.push(c.MoveCall as MoveCallCommand);
-  }
-  return out;
-}
-
-/** `module::function` for every MoveCall command in a built PTB. */
-function moveTargets(tx: Transaction): string[] {
-  return moveCalls(tx).map((c) => `${c.module}::${c.function}`);
-}
 
 /** The object id an `{ Input: n }` argument refers to (unresolved or shared). */
 function inputObjectId(tx: Transaction, argument: { Input?: number }): string | undefined {

@@ -5,12 +5,15 @@
  * Feeding the refreshed price into an oracle `PriceCollector` is a separate
  * step that stays in `aggregate.ts` — this port covers fetch + verify/push
  * only (`buildUpdateCalls` may hand the feed step a PTB value via
- * {@link RuleUpdateHandle}). Implementations: `PythCoreRule` (Hermes VAA),
- * `PythLazerRule` (Lazer signed updates), `ConstantRule`, `SupraRule`, later
- * `WaterxRule` (ed25519).
+ * {@link RuleUpdateHandle}). Implementations: `PythCoreRule` (Hermes VAA) and
+ * `PythLazerRule` (Lazer signed updates), with `WaterxRule` (ed25519) to
+ * follow. `ConstantRule` and `SupraRule` do NOT implement this port — they
+ * remain plain collector-feed helpers wired directly into `aggregate.ts`.
  *
- * This file defines the port only — no routing. `aggregate.ts` stays the sole
- * orchestrator until a later task wires rule selection through it.
+ * This file defines the port only — routing IS wired: `aggregate.ts`'s
+ * `refreshOraclePrices` selects the concrete rule per `host.oracleSource` via
+ * `rule-registry.ts`, then drives fetch + `buildUpdateCalls` through this
+ * port; `aggregate.ts` stays the sole orchestrator.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
@@ -44,6 +47,51 @@ export type OracleSource = "pyth_rule" | "pyth_lazer_rule";
  * off-chain fetch (e.g. `ConstantRule`) or when there is nothing to fetch.
  */
 export type RuleUpdateData = { kind: PriceUpdateRuleKind; payload: unknown } | null;
+
+/**
+ * Shared null → kind → shape guard ladder for a `PriceUpdateRule.buildUpdateCalls`
+ * payload — every rule's `buildUpdateCalls` needs the exact same three checks,
+ * in the exact same order, before it can trust `data.payload`:
+ *
+ * 1. `data === null` passes straight through as `null` — the no-op case (an
+ *    empty ticker list upstream produced nothing to build).
+ * 2. `data.kind !== kind` throws BEFORE the shape check runs. This order is
+ *    load-bearing, not stylistic: two rules' payloads can share an identical
+ *    shape (e.g. Pyth Core's `{ updates, feedIds }` also satisfies a
+ *    hypothetical same-shaped rule), so checking shape first would let a
+ *    wrong-kind payload silently pass as this rule's own.
+ * 3. `!isShape(data.payload)` throws for a same-`kind` payload whose shape
+ *    doesn't match this rule's own (e.g. a hand-built test double).
+ *
+ * Returns `data.payload` narrowed to `T` once both checks pass.
+ *
+ * @param data - The `RuleUpdateData` handed to `buildUpdateCalls`.
+ * @param kind - This rule's own {@link PriceUpdateRuleKind} — the only `kind`
+ *   `data` may carry past step 2.
+ * @param isShape - Type predicate narrowing `data.payload` to `T`.
+ * @param shapeDescription - Human-readable shape, quoted verbatim into the
+ *   shape-mismatch error (e.g. `"{ updates: Uint8Array[]; feedIds: string[] }"`).
+ */
+export function assertRuleUpdateData<T>(
+  data: RuleUpdateData,
+  kind: PriceUpdateRuleKind,
+  isShape: (payload: unknown) => payload is T,
+  shapeDescription: string,
+): T | null {
+  if (!data) return null;
+  if (data.kind !== kind) {
+    throw new Error(
+      `assertRuleUpdateData: received a payload of kind '${data.kind}', expected '${kind}'`,
+    );
+  }
+  if (!isShape(data.payload)) {
+    throw new Error(
+      `assertRuleUpdateData: received a '${kind}' payload with an unexpected shape ` +
+        `(expected ${shapeDescription})`,
+    );
+  }
+  return data.payload;
+}
 
 /**
  * PTB value handle a rule's {@link PriceUpdateRule.buildUpdateCalls} may

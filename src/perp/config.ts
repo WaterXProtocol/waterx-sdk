@@ -275,46 +275,38 @@ export async function loadConfig(
   // deployment problem. Disambiguating "blip" from "moved/revoked" (e.g. via
   // a max-staleness budget, or treating non-retryable 4xx specially) is
   // intentionally deferred rather than folded into this change.
-  let response: Response;
+  //
+  // fetch → ok-check → parse → validate all run in ONE try, so any failure
+  // along that chain (network exhaustion, a non-ok response, malformed JSON,
+  // or a `validateConfig` rejection) lands in the same catch and takes the
+  // same single last-known-good lookup below.
+  let raw: WaterXConfig;
   try {
-    response = await fetchWithPolicy(
+    const response = await fetchWithPolicy(
       url,
       {},
       { timeoutMs: opts.timeoutMs ?? 10_000, retries: 2, fetchImpl },
     );
+    if (!response.ok) {
+      throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
+    }
+    raw = (await response.json()) as WaterXConfig;
+    validateConfig(raw, network, url);
   } catch (err) {
     const stale = lastKnownGood.get(url);
     if (stale) return stale;
     // Reformat a status-carrying FetchPolicyError (retries exhausted on a
     // retryable status) into this function's own message shape, mirroring
-    // the non-retried `!response.ok` branch below. A network-level
-    // exhaustion (no status) has no domain-specific reframing to add —
-    // propagate FetchPolicyError's own message as-is.
+    // the non-retried `!response.ok` throw above. A network-level
+    // exhaustion (no status), a `!response.ok` throw, or a JSON parse /
+    // `validateConfig` failure has no domain-specific reframing to add —
+    // propagate that error's own message as-is.
     if (err instanceof FetchPolicyError && err.status !== undefined) {
       throw new Error(
         `loadConfig: HTTP ${err.status} fetching ${url} (retries exhausted after ${err.attempts} attempts)`,
         { cause: err },
       );
     }
-    throw err;
-  }
-  if (!response.ok) {
-    const stale = lastKnownGood.get(url);
-    if (stale) return stale;
-    throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
-  }
-
-  // A 200 with a malformed body (bad JSON, or a shape `validateConfig`
-  // rejects) is a refresh failure exactly like a non-ok status or a network
-  // error above — it must fall back to lastKnownGood the same way, not
-  // crash a caller that already had a working config for this URL.
-  let raw: WaterXConfig;
-  try {
-    raw = (await response.json()) as WaterXConfig;
-    validateConfig(raw, network, url);
-  } catch (err) {
-    const stale = lastKnownGood.get(url);
-    if (stale) return stale;
     throw err;
   }
 

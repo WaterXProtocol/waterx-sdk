@@ -33,7 +33,7 @@ import type {
   RuleUpdateHandle,
   UpdateDataProvider,
 } from "./price-update-rule.ts";
-import { oracleFeeSourceUnavailableError, type PythCache } from "./pyth.ts";
+import { OracleFeeSourceUnavailableError, type PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
@@ -321,7 +321,7 @@ export async function refreshOraclePrices(
     !opts.allowGasFee &&
     groups.some((group) => group.rule.requiresFeeSource)
   ) {
-    throw oracleFeeSourceUnavailableError();
+    throw new OracleFeeSourceUnavailableError();
   }
 
   // Fetch every group's off-chain payload concurrently (independent network

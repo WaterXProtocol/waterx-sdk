@@ -29,19 +29,9 @@ import {
   MOCK_TESTNET_CONFIG,
   MOCK_USDC_TYPE,
 } from "../helpers/fixtures/mock-testnet-config.ts";
+import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
-
-/** `module::function` for every MoveCall command in a built PTB. */
-function moveTargets(tx: Transaction): string[] {
-  const out: string[] = [];
-  for (const c of tx.getData().commands ?? []) {
-    if (c.$kind === "MoveCall" && c.MoveCall) {
-      out.push(`${c.MoveCall.module}::${c.MoveCall.function}`);
-    }
-  }
-  return out;
-}
 
 const baseOrder = {
   isLong: true,

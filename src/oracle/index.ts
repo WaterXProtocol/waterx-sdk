@@ -7,7 +7,8 @@
  *                             wrapper every off-chain oracle (and config) fetch goes through.
  *   - `pyth.ts`             — Pyth as a price source: Hermes REST + on-chain update PTB.
  *   - `price-update-rule.ts`— `PriceUpdateRule`, the fetch/build strategy port a rule
- *                             implements (routing across rules is not wired yet).
+ *                             implements; `rule-registry.ts` + `aggregate.ts` wire
+ *                             routing across rules.
  *   - `rules/*`             — one file per oracle rule (pyth / supra / constant / sponsor).
  *   - `aggregate.ts`        — the orchestrator that feeds rules into a collector + aggregates.
  *

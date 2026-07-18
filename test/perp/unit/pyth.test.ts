@@ -6,6 +6,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchPriceFeedsUpdateData, PythCache } from "../../../src/oracle/index.ts";
+import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { MOCK_HERMES_URL } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -145,17 +146,6 @@ describe("on-chain pyth PTB helpers", () => {
     expect(() => openPythSponsorFund(tx, bare)).toThrow(/sponsor flow unavailable/);
   });
 });
-
-/** `module::function` for every MoveCall command in a built PTB. */
-function moveTargets(tx: Transaction): string[] {
-  const out: string[] = [];
-  for (const c of tx.getData().commands ?? []) {
-    if (c.$kind === "MoveCall" && c.MoveCall) {
-      out.push(`${c.MoveCall.module}::${c.MoveCall.function}`);
-    }
-  }
-  return out;
-}
 
 describe("constant rule oracle routing", () => {
   const originalFetch = globalThis.fetch;

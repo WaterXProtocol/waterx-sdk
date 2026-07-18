@@ -10,19 +10,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildPythPriceUpdateCalls, PythCache } from "../../../src/oracle/pyth.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
 import { openPythSponsorFund } from "../../../src/oracle/rules/sponsor.ts";
+import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
-
-/** `module::function` for every MoveCall command in a built PTB. */
-function moveTargets(tx: Transaction): string[] {
-  const out: string[] = [];
-  for (const c of tx.getData().commands ?? []) {
-    if (c.$kind === "MoveCall" && c.MoveCall) {
-      out.push(`${c.MoveCall.module}::${c.MoveCall.function}`);
-    }
-  }
-  return out;
-}
 
 describe("PythCoreRule.kind", () => {
   it("is 'pyth_rule'", () => {

@@ -230,16 +230,6 @@ export class OracleFeeSourceUnavailableError extends Error {
 }
 
 /**
- * Factory — single source of truth for both this file's own per-call guard
- * and `aggregate.ts`'s hoisted pre-check (which throws BEFORE
- * `buildPythPriceUpdateCalls` ever runs for a multi-group
- * `refreshOraclePrices` call).
- */
-export function oracleFeeSourceUnavailableError(): OracleFeeSourceUnavailableError {
-  return new OracleFeeSourceUnavailableError();
-}
-
-/**
  * Append the on-chain Pyth update PTB block. Returns `PriceInfoObject` IDs
  * (one per `feedIds`, same order). After this you can feed `pyth_rule` per
  * ticker against the matching `PriceInfoObject` (see `rules/pyth-rule.ts`).
@@ -293,7 +283,7 @@ export async function buildPythPriceUpdateCalls(
     throw new Error("Only a single accumulator message is supported per transaction");
   }
   if (!sponsorFund && !allowGasFee) {
-    throw oracleFeeSourceUnavailableError();
+    throw new OracleFeeSourceUnavailableError();
   }
 
   const pyth = host.pyth;
