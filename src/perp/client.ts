@@ -39,7 +39,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   /**
    * Selects which Pyth Core contract generation feeds `client.pyth` when the
    * config JSON has no explicit `pyth` override: `'core'` (default,
-   * `PYTH_DEFAULTS`) or `'pro'` (`PYTH_PRO_DEFAULTS` — the post-2026-07-31
+   * `PYTH_DEFAULTS`) or `'pro'` (`PYTH_PRO_DEFAULTS` — the post-2026-08-18
    * Pro-compatible contracts + Hermes-compatible endpoint; pair with
    * `pyth.api_key`). Orthogonal to `oracleSource`. An explicit `config.pyth`
    * always wins wholesale (see `PythGeneration`).

@@ -128,8 +128,10 @@ export interface PythInfraConfig {
    * Consumers pass it through client config (`config.pyth`); the SDK never
    * reads `process.env`. Absent when a lazer-routed fetch runs →
    * `LazerApiKeyMissing` is thrown at fetch time. As of the Pyth Pro
-   * migration (post-2026-07-31) this is ALSO required for `pyth_rule`'s
-   * Hermes fetch (`fetchPriceFeedsUpdateData`) — see `fetch` below.
+   * migration (post-2026-08-18, per
+   * https://docs.pyth.network/price-feeds/core/upgrade) this is ALSO required
+   * for `pyth_rule`'s Hermes fetch (`fetchPriceFeedsUpdateData`) — see
+   * `fetch` below.
    */
   api_key?: string;
   /**
@@ -164,7 +166,7 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
  *   ({@link PYTH_DEFAULTS}).
  * - `'pro'` — the Pro-compatible upgraded contracts + the Hermes-compatible
  *   endpoint ({@link PYTH_PRO_DEFAULTS}); pair with `pyth.api_key` after the
- *   2026-07-31 cutover.
+ *   2026-08-18 cutover.
  *
  * Resolved once at client creation from the `pythGeneration` create option.
  * Orthogonal to `oracleSource` — this flips the Pyth-Core *infra* (state ids
@@ -173,8 +175,10 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
 export type PythGeneration = "core" | "pro";
 
 /**
- * Pyth **Pro-generation** Core-compatible infra — the post-2026-07-31
- * contracts from Pyth's Core-Upgrade docs
+ * Pyth **Pro-generation** Core-compatible infra — the post-2026-08-18
+ * contracts (cutover date per
+ * https://docs.pyth.network/price-feeds/core/upgrade) from Pyth's Core-Upgrade
+ * docs
  * (https://docs.pyth.network/price-feeds/core/upgrade/contracts, Sui section;
  * package revs `sui-pro-compatible-contract-mainnet` /
  * `sui-pro-compatible-contract-testnet`). Selected via the client's

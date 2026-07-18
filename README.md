@@ -106,7 +106,7 @@ Two independent client create options control oracle behavior. The SDK **never r
 | Option | Values | What it flips |
 |--------|--------|---------------|
 | `oracleSource` | `'pyth_rule'` (default) \| `'pyth_lazer_rule'` | Which `PriceUpdateRule` `refreshOraclePrices` uses for the on-chain price-update leg. |
-| `pythGeneration` | `'core'` (default) \| `'pro'` | Which Pyth infra constants feed `client.pyth` when the config JSON has no explicit `pyth` block: `PYTH_DEFAULTS` (original contracts, keyless `hermes.pyth.network`) or `PYTH_PRO_DEFAULTS` (post-2026-07-31 Pro-compatible contracts + the Hermes-compatible `https://pyth.dourolabs.app/hermes`, auth-first). |
+| `pythGeneration` | `'core'` (default) \| `'pro'` | Which Pyth infra constants feed `client.pyth` when the config JSON has no explicit `pyth` block: `PYTH_DEFAULTS` (original contracts, keyless `hermes.pyth.network`) or `PYTH_PRO_DEFAULTS` (post-2026-08-18 Pro-compatible contracts + the Hermes-compatible `https://pyth.dourolabs.app/hermes`, auth-first). |
 
 They are orthogonal: `pythGeneration` moves the Pyth **Core** state ids + endpoint; `oracleSource` picks the **rule** (Core VAA vs Lazer signed updates). An explicit `pyth` block in the config JSON always overrides the generation constants wholesale.
 
@@ -117,11 +117,11 @@ const perp = await PerpClient.create(network, {
   oracleSource: process.env.ORACLE_SOURCE as OracleSource | undefined, // e.g. staging: pyth_lazer_rule
   pythGeneration: process.env.PYTH_GENERATION as PythGeneration | undefined, // e.g. staging: pro
 });
-// After the 2026-07-31 cutover, Pro-generation Hermes requires a key:
+// After the 2026-08-18 cutover, Pro-generation Hermes requires a key:
 perp.pyth = { ...perp.pyth, api_key: process.env.PYTH_API_KEY };
 ```
 
-This is the staging-Pro / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` and/or `PYTH_GENERATION=pro` while production leaves both unset (Core defaults) — flipping an environment is an env-var change, never an SDK release. After 7/31, consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
+This is the staging-Pro / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` and/or `PYTH_GENERATION=pro` while production leaves both unset (Core defaults) — flipping an environment is an env-var change, never an SDK release. After August 18, 2026 (the Core-upgrade cutover — see https://docs.pyth.network/price-feeds/core/upgrade), consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
 
 ### Adding an oracle source (runbook)
 

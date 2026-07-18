@@ -14,7 +14,7 @@ reference the PR that introduced them.
   (Core-upgrade) infra selectable per environment.** New per-network constant
   set `PYTH_PRO_DEFAULTS: Record<Network, PythInfraConfig>`
   (`src/oracle/config.ts`, re-exported from `@waterx/sdk/perp`) carrying the
-  post-2026-07-31 Pro-compatible contracts from Pyth's Core-Upgrade docs
+  post-2026-08-18 Pro-compatible contracts from Pyth's Core-Upgrade docs
   (https://docs.pyth.network/price-feeds/core/upgrade/contracts, Sui section
   — package revs `sui-pro-compatible-contract-mainnet` / `-testnet`; all four
   state ids verified on-chain as shared `state::State` objects under the
@@ -29,7 +29,9 @@ reference the PR that introduced them.
   block; an explicit `config.pyth` override still wins wholesale (unchanged
   precedence). Orthogonal to `oracleSource` — this flips the Pyth-Core
   *infra* (state ids + endpoint), not which `PriceUpdateRule` routes tickers,
-  so after the 7/31 cutover consumers set `pythGeneration: 'pro'` +
+  so after the 2026-08-18 cutover
+  (https://docs.pyth.network/price-feeds/core/upgrade) consumers set
+  `pythGeneration: 'pro'` +
   `pyth.api_key` without touching their rule routing. New `PythGeneration`
   type exported alongside. The README gains an "Oracle sources & the Pyth
   Pro migration" section documenting the per-env staging-Pro/prod-Core

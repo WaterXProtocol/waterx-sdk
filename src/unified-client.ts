@@ -167,7 +167,7 @@ export interface ClientCreateOptions {
   /**
    * Selects which Pyth Core contract generation feeds the perp line's
    * `client.perp.pyth` when the config JSON has no explicit `pyth` override:
-   * `'core'` (default) or `'pro'` (post-2026-07-31 Pro-compatible contracts +
+   * `'core'` (default) or `'pro'` (post-2026-08-18 Pro-compatible contracts +
    * Hermes-compatible endpoint; pair with `pyth.api_key`). Perp-line only.
    * See `PythGeneration` / `PYTH_PRO_DEFAULTS`.
    */

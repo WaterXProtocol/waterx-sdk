@@ -54,7 +54,7 @@ External chain infra (Pyth state, Wormhole state, Hermes endpoint) is
 `PYTH_PRO_DEFAULTS[network]` (`src/oracle/config.ts`, re-exported from
 `perp/config.ts`) and is exposed on `client.pyth`. Which map applies is the
 client's `pythGeneration` create option (`'core'` default \| `'pro'` — the
-post-2026-07-31 Pro-compatible contracts + auth-first compat endpoint).
+post-2026-08-18 Pro-compatible contracts + auth-first compat endpoint).
 Override per-deployment by setting `pyth` on the JSON if you ever need to
 (always wins wholesale over the generation constants).
 
