@@ -84,15 +84,10 @@ describe("on-chain pyth PTB helpers", () => {
     const client = createUnitTestClient();
     const { feedId } = attachPythGrpcMocks(client);
     const tx = new Transaction();
-    const ids = await buildPythPriceUpdateCalls(
-      tx,
-      client,
-      [mockAccumulatorUpdate()],
-      [feedId],
-      new PythCache(),
-      undefined,
-      true,
-    );
+    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedId], {
+      cache: new PythCache(),
+      feeSource: { kind: "gas" },
+    });
     expect(ids[0]).toMatch(/^0x/);
     expect(tx.getData().commands!.length).toBeGreaterThanOrEqual(4);
   });
@@ -109,7 +104,7 @@ describe("on-chain pyth PTB helpers", () => {
     const client = createUnitTestClient();
     const { feedId } = attachPythGrpcMocks(client);
     const tx = new Transaction();
-    const ids = await updatePythPrices(tx, client, [feedId], undefined, undefined, true);
+    const ids = await updatePythPrices(tx, client, [feedId], { feeSource: { kind: "gas" } });
     expect(ids.length).toBe(1);
   });
 
@@ -125,7 +120,7 @@ describe("on-chain pyth PTB helpers", () => {
     const client = createUnitTestClient();
     attachPythGrpcMocks(client);
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { feeSource: { kind: "gas" } });
     expect(tx.getData().commands!.length).toBeGreaterThan(5);
   });
 
@@ -230,7 +225,7 @@ describe("constant rule oracle routing", () => {
     // USDC constant-ONLY (removed from pyth.feeds); BTC stays a Pyth ticker.
     delete client.config.packages.pyth_rule!.feeds.USDCUSD;
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], { feeSource: { kind: "gas" } });
 
     const targets = moveTargets(tx);
     expect(targets).toContain("pyth_rule::feed");
@@ -282,7 +277,7 @@ describe("constant rule oracle routing", () => {
       BTCUSD: { price: "65000000000000" },
     };
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, ["BTCUSD"], { feeSource: { kind: "gas" } });
 
     const targets = moveTargets(tx);
     // Both rules feed into the one collector for the dual ticker …

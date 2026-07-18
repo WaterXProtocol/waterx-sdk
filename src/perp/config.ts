@@ -225,16 +225,24 @@ export interface LoadConfigOptions {
   timeoutMs?: number;
 }
 
-const cache = new Map<string, WaterXConfig>();
-// Last successfully-validated config per URL, tracked UNCONDITIONALLY (unlike
-// `cache` above, which only records/reads when the caller opts in via
-// `opts.cache`) — this is the resilience fallback for a refresh failure, see
-// `loadConfig` below, so it must be populated regardless of that opt-in.
-const lastKnownGood = new Map<string, WaterXConfig>();
+// Last successfully-validated config per URL — the ONE module map, written
+// UNCONDITIONALLY on every successful load regardless of `opts.cache`. It
+// serves two roles at once: the resilience fallback for a refresh failure
+// (see `loadConfig` below) AND the opt-in fast-path read `opts.cache: true`
+// gates at the top of `loadConfig`. `opts.cache` therefore only gates
+// whether a call *reads* this map early (skipping the fetch entirely) — it
+// never gates whether a call *writes* it; every successful load writes here.
+//
+// Deliberate (benign) semantic refinement from the prior two-map design: a
+// `cache: true` call can now hit an entry that was populated by an earlier
+// `cache: false` call for the SAME url. That's fine — it's still that url's
+// latest successfully-validated fetch, strictly FRESHER than any fallback
+// read would have been, so a `cache: true` caller never observes staler
+// data than before; it can only observe MORE-recent data sooner.
+const configCache = new Map<string, WaterXConfig>();
 
 export function clearConfigCache(): void {
-  cache.clear();
-  lastKnownGood.clear();
+  configCache.clear();
 }
 
 export async function loadConfig(
@@ -245,8 +253,8 @@ export async function loadConfig(
   if (!url) {
     throw new Error("loadConfig: no config URL — pass opts.waterxConfigUrl");
   }
-  if (opts.cache && cache.has(url)) {
-    return cache.get(url)!;
+  if (opts.cache && configCache.has(url)) {
+    return configCache.get(url)!;
   }
 
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as typeof fetch | undefined);
@@ -268,7 +276,7 @@ export async function loadConfig(
   //
   // Deliberate limitation (not fixed here — a follow-up): this treats EVERY
   // failure mode identically, including a DETERMINISTIC one (404/403 — the
-  // URL moved, or access was revoked) once a lastKnownGood snapshot exists.
+  // URL moved, or access was revoked) once a `configCache` snapshot exists.
   // Unlike a transient blip, a deterministic failure will never self-heal on
   // the next retry, so a long-running process with a stale snapshot will
   // keep serving it FOREVER and silently mask what is actually a permanent
@@ -293,7 +301,7 @@ export async function loadConfig(
     raw = (await response.json()) as WaterXConfig;
     validateConfig(raw, network, url);
   } catch (err) {
-    const stale = lastKnownGood.get(url);
+    const stale = configCache.get(url);
     if (stale) return stale;
     // Reformat a status-carrying FetchPolicyError (retries exhausted on a
     // retryable status) into this function's own message shape, mirroring
@@ -310,8 +318,7 @@ export async function loadConfig(
     throw err;
   }
 
-  lastKnownGood.set(url, raw);
-  if (opts.cache) cache.set(url, raw);
+  configCache.set(url, raw);
   return raw;
 }
 

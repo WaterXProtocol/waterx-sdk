@@ -17,7 +17,7 @@ import type {
   RuleUpdateData,
   UpdateDataProvider,
 } from "../../../src/oracle/price-update-rule.ts";
-import { PythCache, updatePythPrices } from "../../../src/oracle/pyth.ts";
+import { PythCache, updatePythPrices, type OracleFeeSource } from "../../../src/oracle/pyth.ts";
 import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
 import { PythLazerRule } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
@@ -50,7 +50,6 @@ function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRul
         _tx: Transaction,
         _host: OracleHost,
         _data: RuleUpdateData,
-        _tickers: string[],
         _opts?: BuildUpdateOpts,
       ): Promise<void> => {},
     ),
@@ -79,7 +78,7 @@ describe("refreshOraclePrices — default oracleSource ('pyth_rule')", () => {
 
     const referenceTx = new Transaction();
     const feedIds = ["BTCUSD", "ETHUSD"].map((t) => client.getPythFeed(t).feed_id);
-    await updatePythPrices(referenceTx, client, feedIds, undefined, undefined, true);
+    await updatePythPrices(referenceTx, client, feedIds, { feeSource: { kind: "gas" } });
     aggregateTicker(referenceTx, client, {
       ticker: "BTCUSD",
       priceInfoObjectId: client.getPythFeed("BTCUSD").price_info_object,
@@ -90,7 +89,9 @@ describe("refreshOraclePrices — default oracleSource ('pyth_rule')", () => {
     });
 
     const actualTx = new Transaction();
-    await refreshOraclePrices(actualTx, client, ["BTCUSD", "ETHUSD"], { allowGasFee: true });
+    await refreshOraclePrices(actualTx, client, ["BTCUSD", "ETHUSD"], {
+      feeSource: { kind: "gas" },
+    });
 
     // Full command + input structures, not just module::function names —
     // both builds are deterministic given the same mocked inputs, so a
@@ -118,7 +119,7 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeLazer },
-      allowGasFee: true,
+      feeSource: { kind: "gas" },
     });
 
     // Each rule's fetch is called exactly once, with exactly its own group.
@@ -133,19 +134,23 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
     expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(2);
   });
 
-  it("forwards the same tx and opts.cache/opts.sponsorFund into buildUpdateCalls, alongside the exact payload fetchUpdateData resolved", async () => {
+  it("forwards the same tx and opts.cache/opts.feeSource into buildUpdateCalls, alongside the exact payload fetchUpdateData resolved", async () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     // The fake covers every requested ticker, so no PythCoreRule fallback
     // engages here — no real on-chain Pyth/sponsor call runs, so it's safe
-    // to forward an inert sponsorFund stub through to the fake alone.
+    // to forward an inert feeSource stub through to the fake alone.
     const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
 
     const tx = new Transaction();
     const cache = new PythCache();
-    const sponsorFund = { fund: tx.pure.u64(0), packageId: "0xsponsor" };
+    const feeSource: OracleFeeSource = {
+      kind: "sponsor",
+      fund: tx.pure.u64(0),
+      packageId: "0xsponsor",
+    };
     await refreshOraclePrices(tx, client, ["BTCUSD"], {
       cache,
-      sponsorFund,
+      feeSource,
       ruleOverrides: { pyth_lazer_rule: fakeLazer },
     });
 
@@ -154,8 +159,7 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
       tx,
       client,
       { kind: "pyth_lazer_rule", payload: { tickers: ["BTCUSD"] } }, // == fetchUpdateData's resolved value
-      ["BTCUSD"],
-      { cache, sponsorFund },
+      { cache, feeSource },
     );
   });
 });
@@ -195,7 +199,7 @@ describe("refreshOraclePrices — ticker supported by neither rule", () => {
     const tx = new Transaction();
     await refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeLazer },
-      allowGasFee: true,
+      feeSource: { kind: "gas" },
     });
 
     // USDCUSD never reaches either rule's fetch step …
@@ -229,7 +233,7 @@ describe("refreshOraclePrices — per-environment acceptance (staging Lazer vs p
 
     await refreshOraclePrices(new Transaction(), prodClient, ["BTCUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeForProd },
-      allowGasFee: true,
+      feeSource: { kind: "gas" },
     });
     await refreshOraclePrices(new Transaction(), stagingClient, ["BTCUSD"], {
       ruleOverrides: { pyth_lazer_rule: fakeForStaging },
@@ -321,9 +325,9 @@ describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", 
 
     expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
     expect(fakeLazer.fetchUpdateData).not.toHaveBeenCalled();
-    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cachedData, ["BTCUSD"], {
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cachedData, {
       cache: undefined,
-      sponsorFund: undefined,
+      feeSource: undefined,
     });
   });
 

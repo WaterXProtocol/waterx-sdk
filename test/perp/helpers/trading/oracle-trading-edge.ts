@@ -17,7 +17,7 @@ export async function refreshOraclePricesForTradingEdge(
   // Trading-edge test helper builds requests directly (no wrapRequestAndExecute),
   // so there's no sponsor fund to open+reimburse here — pay the Pyth update
   // fee from tx.gas.
-  await refreshOraclePrices(tx, client, uniq, { allowGasFee: true });
+  await refreshOraclePrices(tx, client, uniq, { feeSource: { kind: "gas" } });
   for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType });
   }

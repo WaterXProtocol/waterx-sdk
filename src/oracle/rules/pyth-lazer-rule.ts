@@ -188,14 +188,13 @@ export const PythLazerRule: PriceUpdateRule = {
    * Appends the single `parse_and_verify_le_ecdsa_update(state, clock, bytes)`
    * call — one secp256k1 signature check covering every feed in the payload —
    * and returns its `Update` result as the handle the per-ticker feed leg
-   * consumes. `opts.cache` / `opts.sponsorFund` / `opts.allowGasFee` are
-   * Pyth-Core-specific and ignored (Lazer verification charges no update fee).
+   * consumes. `opts.cache` / `opts.feeSource` are Pyth-Core-specific and
+   * ignored (Lazer verification charges no update fee).
    */
   buildUpdateCalls(
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    _tickers: string[],
     _opts?: BuildUpdateOpts,
   ): RuleUpdateHandle | undefined {
     const payload = assertRuleUpdateData(

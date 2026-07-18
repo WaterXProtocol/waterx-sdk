@@ -263,4 +263,31 @@ describe("loadConfig validation", () => {
     });
     expect(calls).toBe(1);
   });
+
+  it("cache: true reads an entry populated by an earlier cache: false load (unified cache map)", async () => {
+    // The config cache is now a single module map written unconditionally on
+    // every successful load; `opts.cache` only gates the early-return READ.
+    // So a `cache: false` (default) call still populates the map, and a
+    // later `cache: true` call for the same URL hits that entry instead of
+    // re-fetching — same URL's latest successful fetch, strictly fresher
+    // than any fallback would be.
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+    }) as unknown as typeof fetch;
+
+    const first = await loadConfig("TESTNET", {
+      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
+      fetchImpl,
+    });
+    const second = await loadConfig("TESTNET", {
+      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
+      cache: true,
+      fetchImpl,
+    });
+
+    expect(second).toEqual(first);
+    expect(calls).toBe(1);
+  });
 });

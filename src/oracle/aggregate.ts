@@ -33,7 +33,7 @@ import type {
   RuleUpdateHandle,
   UpdateDataProvider,
 } from "./price-update-rule.ts";
-import { OracleFeeSourceUnavailableError, type PythCache } from "./pyth.ts";
+import { OracleFeeSourceUnavailableError, type OracleFeeSource, type PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
@@ -205,8 +205,8 @@ export function aggregateTickerWithConstant(
  * each verifies against its own contract objects, so that's fine. A fee-source
  * pre-check runs first, across every group's `requiresFeeSource` — BEFORE any
  * off-chain fetch or PTB mutation — so a fee-charging group with no
- * `sponsorFund`/`allowGasFee` throws `OracleFeeSourceUnavailable` with zero
- * wasted network calls and zero stray moveCalls, even in a mixed shape (e.g. a
+ * `opts.feeSource` throws `OracleFeeSourceUnavailable` with zero wasted
+ * network calls and zero stray moveCalls, even in a mixed shape (e.g. a
  * fee-free Lazer group ordered ahead of a Pyth Core fallback group). Only once
  * that check passes do all groups' off-chain fetches run concurrently
  * (`Promise.all`) and complete before any PTB mutation; on-chain reads inside
@@ -235,7 +235,18 @@ export async function refreshOraclePrices(
   tickers: string[],
   opts: {
     cache?: PythCache;
-    sponsorFund?: { fund: TransactionArgument; packageId: string };
+    /**
+     * The single resolved fee source for the Pyth update fee, forwarded
+     * verbatim to each group's `PriceUpdateRule.buildUpdateCalls` as
+     * `BuildUpdateOpts.feeSource`. Already-resolved by the caller (see
+     * {@link OracleFeeSource}'s own doc for where/how) — this function makes
+     * no sponsor-vs-gas decision itself, it only checks whether a source was
+     * resolved at all. Ignored by rules with no update fee (e.g.
+     * `pyth_lazer_rule`). Building with `feeSource` unset throws
+     * `OracleFeeSourceUnavailable` (see `oracle/pyth.ts`) instead of
+     * silently drawing from `tx.gas`.
+     */
+    feeSource?: OracleFeeSource;
     /**
      * @internal Test-only: layer fake `PriceUpdateRule`s on top of the
      * production registry (see `rule-registry.ts`'s `resolveOracleRule`).
@@ -252,16 +263,6 @@ export async function refreshOraclePrices(
      * payload) throws instead, since that is a caller bug, not a cache miss.
      */
     updateDataProvider?: UpdateDataProvider;
-    /**
-     * Explicit opt-in to draw the Pyth update fee from `tx.gas` when no
-     * `sponsorFund` is supplied above — forwarded verbatim to each group's
-     * `PriceUpdateRule.buildUpdateCalls` as `BuildUpdateOpts.allowGasFee`.
-     * Ignored by rules with no update fee (e.g. `pyth_lazer_rule`). Building
-     * with neither `sponsorFund` nor this flag throws
-     * `OracleFeeSourceUnavailable` (see `oracle/pyth.ts`) instead of
-     * silently drawing from `tx.gas`.
-     */
-    allowGasFee?: boolean;
   } = {},
 ): Promise<void> {
   if (tickers.length === 0) return;
@@ -316,11 +317,7 @@ export async function refreshOraclePrices(
   // fetches or builds — closes that gap, and (unlike a referential check
   // against a specific rule instance) keeps protecting a future
   // fee-charging rule or a test double standing in for one.
-  if (
-    !opts.sponsorFund &&
-    !opts.allowGasFee &&
-    groups.some((group) => group.rule.requiresFeeSource)
-  ) {
+  if (!opts.feeSource && groups.some((group) => group.rule.requiresFeeSource)) {
     throw new OracleFeeSourceUnavailableError();
   }
 
@@ -342,10 +339,9 @@ export async function refreshOraclePrices(
   const lazerUpdateByTicker = new Map<string, TransactionArgument>();
   for (const group of groupsWithData) {
     const handle: RuleUpdateHandle | undefined =
-      (await group.rule.buildUpdateCalls(tx, host, group.data, group.tickers, {
+      (await group.rule.buildUpdateCalls(tx, host, group.data, {
         cache: opts.cache,
-        sponsorFund: opts.sponsorFund,
-        allowGasFee: opts.allowGasFee,
+        feeSource: opts.feeSource,
       })) ?? undefined;
     // Route by the handle's kind discriminant — the one site the tag exists to
     // protect: a future non-lazer handle (e.g. a WaterxRule value) must never

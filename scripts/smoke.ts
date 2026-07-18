@@ -196,7 +196,7 @@ async function main(): Promise<void> {
     // This case builds its own TradingRequest below rather than going
     // through wrapRequestAndExecute, so no sponsor fund is opened —
     // standalone smoke script pays its own gas for the Pyth update fee.
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = closePositionRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -219,7 +219,7 @@ async function main(): Promise<void> {
     // This case builds its own TradingRequest below rather than going
     // through wrapRequestAndExecute, so no sponsor fund is opened —
     // standalone smoke script pays its own gas for the Pyth update fee.
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = placeOrderRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -250,7 +250,7 @@ async function main(): Promise<void> {
     // This case builds its own TradingRequest below rather than going
     // through wrapRequestAndExecute, so no sponsor fund is opened —
     // standalone smoke script pays its own gas for the Pyth update fee.
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = placeOrderRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -299,7 +299,7 @@ async function main(): Promise<void> {
     // This case builds its own TradingRequest below rather than going
     // through wrapRequestAndExecute, so no sponsor fund is opened —
     // standalone smoke script pays its own gas for the Pyth update fee.
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = cancelOrderRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
     // mintWlp (below) is the raw lp_pool call, no TradingRequest — no
     // sponsor fund could be reimbursed against it even if one were opened;
     // standalone smoke script pays its own gas for the Pyth update fee.
-    await refreshOraclePrices(tx, client, poolTickers, { allowGasFee: true });
+    await refreshOraclePrices(tx, client, poolTickers, { feeSource: { kind: "gas" } });
     mintWlp(client, tx, {
       accountId: FAKE_ACCOUNT_ID,
       depositTokenType: USDC_TYPE,

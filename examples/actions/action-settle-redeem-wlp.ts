@@ -30,7 +30,7 @@ run(async () => {
   // Standalone keeper script, no TradingRequest to reimburse a sponsor fund
   // against — pay the Pyth update fee from tx.gas (see
   // `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
-  await refreshOraclePrices(tx, client, poolTickers, { allowGasFee: true });
+  await refreshOraclePrices(tx, client, poolTickers, { feeSource: { kind: "gas" } });
   for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType });
   }

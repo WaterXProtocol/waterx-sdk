@@ -37,6 +37,7 @@ export {
   updatePythPrices,
   OracleFeeSourceUnavailableError,
 } from "./pyth.ts";
+export type { OracleFeeSource } from "./pyth.ts";
 
 // Price-update-rule port
 export type {

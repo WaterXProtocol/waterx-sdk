@@ -19,7 +19,7 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "./host.ts";
-import type { PythCache } from "./pyth.ts";
+import type { OracleFeeSource, PythCache } from "./pyth.ts";
 
 export type PriceUpdateRuleKind =
   | "pyth_rule"
@@ -110,22 +110,18 @@ export type RuleUpdateHandle = {
 };
 
 /**
- * Options for {@link PriceUpdateRule.buildUpdateCalls}. Mirrors the existing
- * `buildPythPriceUpdateCalls` / `updatePythPrices` parameter shapes in
- * `./pyth.ts` — `cache` shares on-chain Pyth state reads across builders,
- * `sponsorFund` draws the per-feed update fee from an open sponsor pool
- * instead of `tx.gas` (see `./rules/sponsor.ts`), `allowGasFee` explicitly
- * opts into the `tx.gas` fallback when no `sponsorFund` is available — see
- * `OracleFeeSourceUnavailable` in `./pyth.ts`. All three fields are
- * Pyth-Core-specific mechanics; `refreshOraclePrices` passes the same
- * `BuildUpdateOpts` to every rule uniformly, so a non-Pyth-Core rule (e.g.
- * `PythLazerRule`, which charges no update fee) simply ignores whichever
- * fields it has no use for.
+ * Options for {@link PriceUpdateRule.buildUpdateCalls}. Mirrors
+ * `buildPythPriceUpdateCalls` / `updatePythPrices`'s own opts shape in
+ * `./pyth.ts` — `cache` shares on-chain Pyth state reads across builders;
+ * `feeSource` is the single {@link OracleFeeSource} already resolved by the
+ * caller (see its own doc for where/how). Both fields are Pyth-Core-specific
+ * mechanics; `refreshOraclePrices` passes the same `BuildUpdateOpts` to every
+ * rule uniformly, so a non-Pyth-Core rule (e.g. `PythLazerRule`, which
+ * charges no update fee) simply ignores whichever fields it has no use for.
  */
 export interface BuildUpdateOpts {
   readonly cache?: PythCache;
-  readonly sponsorFund?: { fund: TransactionArgument; packageId: string };
-  readonly allowGasFee?: boolean;
+  readonly feeSource?: OracleFeeSource;
 }
 
 /**
@@ -153,8 +149,8 @@ export interface PriceUpdateRule {
    * `false` for a fee-free update leg (Lazer: signature verification only,
    * no `Coin` argument). `refreshOraclePrices` (`aggregate.ts`) reads this
    * BEFORE fetching any group's off-chain payload — for every group whose
-   * rule sets it `true`, a `sponsorFund` or `allowGasFee` must already be
-   * available, or the whole call throws `OracleFeeSourceUnavailable` before
+   * rule sets it `true`, `opts.feeSource` must already be resolved, or the
+   * whole call throws `OracleFeeSourceUnavailable` before
    * any group builds (mixed-shape atomicity: a fee-free group ordered
    * ahead of a fee-charging one in the same PTB must never get to mutate
    * `tx` while the fee-charging group is left unpayable). A referential
@@ -180,13 +176,15 @@ export interface PriceUpdateRule {
    * Emit verify/update moveCalls + any per-rule setup into the PTB. Returns a
    * {@link RuleUpdateHandle} when the rule's collector-feed leg needs a PTB
    * value from this step (Lazer's verified `Update`); rules whose feed leg
-   * reads shared on-chain objects return `void`.
+   * reads shared on-chain objects return `void`. Takes no `tickers` param —
+   * every implementation derives everything it needs from `data.payload`
+   * (the tickers a group covers were already fixed when `fetchUpdateData`
+   * built that payload).
    */
   buildUpdateCalls(
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    tickers: string[],
     opts?: BuildUpdateOpts,
   ): Promise<RuleUpdateHandle | void> | RuleUpdateHandle | void;
 }

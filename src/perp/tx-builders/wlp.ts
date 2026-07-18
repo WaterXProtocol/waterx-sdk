@@ -6,6 +6,7 @@
 
 import type { Transaction } from "@mysten/sui/transactions";
 
+import type { OracleFeeSource } from "../../oracle/index.ts";
 import type { PerpClient } from "../client.ts";
 import { stake, unstake } from "../user/staking.ts";
 import {
@@ -51,11 +52,16 @@ export async function buildMintWlpTx(
 
   await maybeConsolidate(client, tx, params.accountId, params);
 
+  // `mint_wlp` has no sponsor flow to resolve against (see the doc comment
+  // above) — the only candidate source at this edge is the caller's
+  // ergonomic `allowGasFee` opt-in.
+  const feeSource: OracleFeeSource | undefined = params.allowGasFee ? { kind: "gas" } : undefined;
+
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       cache: params.pythCache,
       lpType: params.lpType,
-      allowGasFee: params.allowGasFee,
+      feeSource,
     });
   }
 
@@ -97,11 +103,16 @@ export async function buildMintAndStakeWlpTx(
 
   await maybeConsolidate(client, tx, params.accountId, params);
 
+  // `mint_wlp` has no sponsor flow to resolve against (see `buildMintWlpTx`'s
+  // doc comment) — the only candidate source at this edge is the caller's
+  // ergonomic `allowGasFee` opt-in.
+  const feeSource: OracleFeeSource | undefined = params.allowGasFee ? { kind: "gas" } : undefined;
+
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       cache: params.pythCache,
       lpType: params.lpType,
-      allowGasFee: params.allowGasFee,
+      feeSource,
     });
   }
 
@@ -155,11 +166,16 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
 
   await maybeConsolidate(client, tx, params.accountId, params);
 
+  // `request_redeem` has no sponsor flow to resolve against (see
+  // `buildMintWlpTx`'s doc comment) — the only candidate source at this edge
+  // is the caller's ergonomic `allowGasFee` opt-in.
+  const feeSource: OracleFeeSource | undefined = params.allowGasFee ? { kind: "gas" } : undefined;
+
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [], {
       cache: params.pythCache,
       lpType: params.lpType,
-      allowGasFee: params.allowGasFee,
+      feeSource,
     });
   }
 

@@ -304,7 +304,7 @@ async function main(): Promise<void> {
     const oracleTickers = Array.from(new Set([BTC, "USDCUSD", ...poolTickers]));
     // Standalone keeper script, no TradingRequest to reimburse a sponsor
     // fund against — pay the Pyth update fee from tx.gas.
-    await refreshOraclePrices(matchTx, client, oracleTickers, { allowGasFee: true });
+    await refreshOraclePrices(matchTx, client, oracleTickers, { feeSource: { kind: "gas" } });
     for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
       updateTokenValue(client, matchTx, { tokenType });
     }

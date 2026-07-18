@@ -67,7 +67,6 @@ export const PythCoreRule: PriceUpdateRule = {
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    _tickers: string[],
     opts?: BuildUpdateOpts,
   ): Promise<void> {
     const payload = assertRuleUpdateData(
@@ -77,14 +76,9 @@ export const PythCoreRule: PriceUpdateRule = {
       "{ updates: Uint8Array[]; feedIds: string[] }",
     );
     if (!payload) return;
-    await buildPythPriceUpdateCalls(
-      tx,
-      host,
-      payload.updates,
-      payload.feedIds,
-      opts?.cache,
-      opts?.sponsorFund,
-      opts?.allowGasFee,
-    );
+    await buildPythPriceUpdateCalls(tx, host, payload.updates, payload.feedIds, {
+      cache: opts?.cache,
+      feeSource: opts?.feeSource,
+    });
   },
 };

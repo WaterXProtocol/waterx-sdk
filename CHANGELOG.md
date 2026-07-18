@@ -108,6 +108,17 @@ reference the PR that introduced them.
   long-running process can keep serving a stale snapshot forever once it has
   one; disambiguating the two is a follow-up.
 
+  **Follow-up (same 3.2.0, still unpublished): the opt-in `cache` map and the
+  always-on last-known-good map are now ONE module map**, written
+  unconditionally on every successful load; `opts.cache` only gates the
+  early-return READ at the top of `loadConfig`, it no longer gates the write.
+  `clearConfigCache` clears the single map. Deliberate, benign semantic
+  refinement: a `cache: true` load can now hit an entry populated by an
+  earlier `cache: false` load of the SAME url — that's fine, it's still that
+  url's latest successfully-validated fetch, strictly FRESHER than any
+  fallback read would have been, so a `cache: true` caller never observes
+  staler data than before.
+
 - **`PythLazerRule` — Lazer-generation price updates behind `oracleSource`
   routing.** `pyth_lazer_rule` now resolves to a real `PriceUpdateRule`
   (`src/oracle/rules/pyth-lazer-rule.ts`, exported as `PythLazerRule` +
@@ -236,16 +247,61 @@ reference the PR that introduced them.
   OracleFeeSourceUnavailableError` — exported from `@waterx/sdk` (root),
   `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
 
-  **Signature note**: `allowGasFee` was added as an ADDITIVE trailing
-  positional parameter — 7th on `buildPythPriceUpdateCalls` (after
-  `sponsorFund`), 6th on `updatePythPrices` — not folded into an options
-  object, consistent with both functions' existing positional style. This
-  does not break any EXISTING positional call (every prior parameter keeps
-  its position and type), but a caller that already supplied `cache`/
-  `sponsorFund` positionally and now wants `allowGasFee` too must pass it as
-  the NEXT positional argument in that same call, not as a trailing options
-  object. Collapsing all 7 params into a single options object is deferred
-  to a future major version.
+  **Follow-up (same 3.2.0, still unpublished): `OracleFeeSource`
+  consolidation.** The `sponsorFund` / `allowGasFee` pair above is now ONE
+  resolved value, `OracleFeeSource` (new type, exported
+  from the oracle barrel and re-exported from `@waterx/sdk` / `@waterx/sdk/perp`):
+
+  ```ts
+  type OracleFeeSource =
+    | { kind: "sponsor"; fund: TransactionArgument; packageId: string }
+    | { kind: "gas" };
+  ```
+
+  It is resolved exactly ONCE, at the edges — `wrapRequestAndExecute` and the
+  WLP builders (`buildMintWlpTx` / `buildMintAndStakeWlpTx` /
+  `buildUnstakeAndRequestRedeemWlpTx`) — from the same config-presence +
+  `allowGasFee` decision described above, then threaded verbatim through
+  `refreshOraclePrices` → `BuildUpdateOpts` → `PythCoreRule` →
+  `buildPythPriceUpdateCalls`. The sponsor-beats-gas priority is now
+  structural (decided once at resolution) instead of re-checked at every
+  layer. **`BuildUpdateOpts.sponsorFund`/`allowGasFee` and
+  `refreshOraclePrices`'s `opts.sponsorFund`/`opts.allowGasFee` are REMOVED**,
+  replaced by a single `feeSource?: OracleFeeSource` field on both.
+  **`PUBLIC BUILDER DX IS UNCHANGED`**: `CommonBuildOpts.allowGasFee` (used by
+  every `build*Tx` composer) is still a plain `boolean` — callers of the
+  high-level builders never construct an `OracleFeeSource` themselves; only
+  direct callers of `refreshOraclePrices` / `BuildUpdateOpts` /
+  `buildPythPriceUpdateCalls` see the new shape.
+
+  **This retires the earlier "Signature note" plan** (originally: append
+  `allowGasFee` as another ADDITIVE positional param, collapse to an options
+  object only in a future major version) — `buildPythPriceUpdateCalls` /
+  `updatePythPrices` now take ONE trailing options object,
+  `{ cache?: PythCache; feeSource?: OracleFeeSource }`, replacing the
+  positional `cache?, sponsorFund?, allowGasFee?` tail entirely (not just
+  appending `allowGasFee` as another position, as originally planned). Both
+  are pre-existing 3.1.x-exported symbols, so THIS PART is a real break for
+  any positional caller — acceptable only because 3.2.0 as a whole is
+  already BREAKING and has not been published to npm yet, so there is no
+  intermediate shape to preserve compatibility with.
+
+  **Migration (fee-source consolidation)**: a direct caller of
+  `buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund,
+  allowGasFee)` or `updatePythPrices(tx, host, feedIds, cache, sponsorFund,
+  allowGasFee)` moves those trailing positionals into one options object:
+  `{ cache, feeSource: sponsorFund ? { kind: 'sponsor', ...sponsorFund } :
+  allowGasFee ? { kind: 'gas' } : undefined }`. A direct caller of
+  `refreshOraclePrices(tx, host, tickers, { sponsorFund, allowGasFee })` makes
+  the same substitution for `feeSource`. A caller of any `build*Tx` composer
+  (`CommonBuildOpts.allowGasFee`) needs no change — the builder resolves
+  `OracleFeeSource` internally.
+
+  Also dropped: `PriceUpdateRule.buildUpdateCalls`'s unused `tickers`
+  parameter (both `PythCoreRule` and `PythLazerRule` already derived
+  everything from `data.payload`) — a 3.2.0-new port with zero external
+  consumers, so this is a free removal, not a migration item. New signature:
+  `buildUpdateCalls(tx, host, data, opts?)`.
 
 ## [3.1.1] - 2026-07-10
 

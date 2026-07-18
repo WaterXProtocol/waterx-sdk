@@ -19,7 +19,7 @@
  *      ): Update
  *    Called ONCE per PTB: one secp256k1 trusted-signer check covers every feed
  *    in the message. NO update fee — no Coin argument (unlike Pyth Core's
- *    per-feed `base_update_fee`), so `BuildUpdateOpts.sponsorFund`/`cache` are
+ *    per-feed `base_update_fee`), so `BuildUpdateOpts.feeSource`/`cache` are
  *    ignored by this rule.
  *
  * 2. FEED (waterx `pyth_lazer_rule` package, `published_at` from config):
@@ -127,12 +127,10 @@ async function buildHandle(
   feedIds: number[],
 ): Promise<RuleUpdateHandle> {
   const handle =
-    (await PythLazerRule.buildUpdateCalls(
-      tx,
-      client,
-      { kind: "pyth_lazer_rule", payload: { update: SIGNED_UPDATE, feedIds } },
-      ["BTCUSD"],
-    )) ?? undefined;
+    (await PythLazerRule.buildUpdateCalls(tx, client, {
+      kind: "pyth_lazer_rule",
+      payload: { update: SIGNED_UPDATE, feedIds },
+    })) ?? undefined;
   if (!handle) throw new Error("expected buildUpdateCalls to return a RuleUpdateHandle");
   return handle;
 }
@@ -305,7 +303,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     const client = createUnitTestClient();
     const tx = new Transaction();
 
-    const handle = await PythLazerRule.buildUpdateCalls(tx, client, null, []);
+    const handle = await PythLazerRule.buildUpdateCalls(tx, client, null);
 
     expect(handle).toBeUndefined();
     expect(tx.getData().commands?.length ?? 0).toBe(0);
@@ -322,9 +320,9 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     };
 
     // Sync throw: the lazer rule's buildUpdateCalls has nothing to await.
-    expect(() =>
-      PythLazerRule.buildUpdateCalls(tx, client, coreTaggedLazerShape, ["BTCUSD"]),
-    ).toThrow(/expected 'pyth_lazer_rule'/);
+    expect(() => PythLazerRule.buildUpdateCalls(tx, client, coreTaggedLazerShape)).toThrow(
+      /expected 'pyth_lazer_rule'/,
+    );
     expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 
@@ -336,9 +334,9 @@ describe("PythLazerRule.buildUpdateCalls", () => {
       payload: { updates: [mockAccumulatorUpdate()], feedIds: ["0xfeed"] },
     };
 
-    await expect(
-      PythCoreRule.buildUpdateCalls(tx, client, lazerTaggedCoreShape, ["BTCUSD"]),
-    ).rejects.toThrow(/expected 'pyth_rule'/);
+    await expect(PythCoreRule.buildUpdateCalls(tx, client, lazerTaggedCoreShape)).rejects.toThrow(
+      /expected 'pyth_rule'/,
+    );
     expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 
@@ -351,7 +349,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
       payload: { updates: [SIGNED_UPDATE], feedIds: [1] },
     };
 
-    expect(() => PythLazerRule.buildUpdateCalls(tx, client, wrongShape, ["BTCUSD"])).toThrow(
+    expect(() => PythLazerRule.buildUpdateCalls(tx, client, wrongShape)).toThrow(
       /unexpected shape/,
     );
   });
@@ -362,12 +360,10 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     const tx = new Transaction();
 
     expect(() =>
-      PythLazerRule.buildUpdateCalls(
-        tx,
-        client,
-        { kind: "pyth_lazer_rule", payload: { update: SIGNED_UPDATE, feedIds: [1] } },
-        ["BTCUSD"],
-      ),
+      PythLazerRule.buildUpdateCalls(tx, client, {
+        kind: "pyth_lazer_rule",
+        payload: { update: SIGNED_UPDATE, feedIds: [1] },
+      }),
     ).toThrow(/pyth_lazer_rule package is not deployed/);
   });
 });
@@ -476,7 +472,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     ) as unknown as typeof fetch;
 
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { allowGasFee: true });
+    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { feeSource: { kind: "gas" } });
 
     const targets = moveTargets(tx);
     // Lazer generation: one verify, one feed (BTCUSD only).

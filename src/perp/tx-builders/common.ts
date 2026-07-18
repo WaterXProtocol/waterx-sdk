@@ -12,6 +12,7 @@ import {
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
+  type OracleFeeSource,
   type UpdateDataProvider,
 } from "../../oracle/index.ts";
 import { getCollateralAssets } from "../../utils/config.ts";
@@ -103,20 +104,18 @@ export async function refreshWlpPoolOracles(
   extraTickers: string[],
   opts: {
     cache?: PythCache;
-    sponsorFund?: { fund: TransactionArgument; packageId: string };
+    /** Forwarded to `refreshOraclePrices` — already resolved by the caller (see `OracleFeeSource`). */
+    feeSource?: OracleFeeSource;
     lpType?: string;
     updateDataProvider?: UpdateDataProvider;
-    /** Forwarded to `refreshOraclePrices` — see `CommonBuildOpts.allowGasFee`. */
-    allowGasFee?: boolean;
   },
 ): Promise<void> {
   const poolTickers = getCollateralAssets(client.config);
   const oracleTickers = Array.from(new Set([...extraTickers, ...poolTickers]));
   await refreshOraclePrices(tx, client, oracleTickers, {
     cache: opts.cache,
-    sponsorFund: opts.sponsorFund,
+    feeSource: opts.feeSource,
     updateDataProvider: opts.updateDataProvider,
-    allowGasFee: opts.allowGasFee,
   });
   for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
@@ -128,7 +127,7 @@ export async function refreshWlpPoolOracles(
  *
  *   [maybeConsolidate(tx)]
  *   [fund = sponsor.request()]
- *   refreshOraclePrices(..., sponsorFund?)
+ *   refreshOraclePrices(..., feeSource?)
  *   req = buildRequest()
  *   [sponsor.reimburse(fund, req)]
  *   trading::execute(req)
@@ -165,18 +164,28 @@ export async function wrapRequestAndExecute(
   // `useSponsor` flag (see its JSDoc). `allowGasFee` is the only caller lever
   // left, and it only matters when config has NO sponsor rule to open (see
   // `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
+  //
+  // `feeSource` is resolved HERE, once, from that same decision — sponsor
+  // beats gas structurally because this is the only branch that ever sees
+  // both candidates; everything downstream (`refreshWlpPoolOracles` →
+  // `refreshOraclePrices` → `BuildUpdateOpts` → `PythCoreRule` →
+  // `buildPythPriceUpdateCalls`) just carries the single resolved value.
   let sponsorFund: { fund: TransactionArgument; packageId: string } | undefined;
   if (client.config.packages.pyth_sponsor_rule) {
     sponsorFund = openPythSponsorFund(tx, client);
   }
+  const feeSource: OracleFeeSource | undefined = sponsorFund
+    ? { kind: "sponsor", ...sponsorFund }
+    : opts?.allowGasFee
+      ? { kind: "gas" }
+      : undefined;
 
   if (!opts?.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
       cache: opts?.pythCache,
-      sponsorFund,
+      feeSource,
       lpType: req.lpType,
       updateDataProvider: opts?.updateDataProvider,
-      allowGasFee: opts?.allowGasFee,
     });
   }
 
