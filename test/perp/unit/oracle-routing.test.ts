@@ -51,6 +51,14 @@ function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRul
         payload: { tickers },
       }),
     ),
+    // Honest indivisible fake: serves the payload whole for covered tickers,
+    // misses (null) as soon as any requested ticker is outside `supported`.
+    narrowUpdateData: vi.fn(
+      (_host: OracleHost, data: RuleUpdateData, tickers: string[]): RuleUpdateData =>
+        data !== null && tickers.length > 0 && tickers.every((t) => supported.includes(t))
+          ? data
+          : null,
+    ),
     buildUpdateCalls: vi.fn(
       async (
         _tx: Transaction,

@@ -62,6 +62,38 @@ export const PythCoreRule: PriceUpdateRule = {
     return { kind: "pyth_rule", payload: { updates, feedIds } };
   },
 
+  /**
+   * Subsets a (typically whole-universe) payload from {@link fetchUpdateData}
+   * down to exactly `tickers`. Pyth Core charges a per-feed update fee (one
+   * `update_single_price_feed` moveCall per `feedIds` entry — see
+   * `buildPythPriceUpdateCalls`), so serving a full all-registry payload for a
+   * 2-ticker build would multiply both the fee and the PTB size ~N× — a
+   * per-feed subset is valid input by construction. Narrows `feedIds` only:
+   * the single combined Hermes accumulator blob in `updates` already covers
+   * every packed feed and needs no re-slicing. A ticker with no
+   * `pyth_rule.feeds` entry, or whose feed id is not packed in THIS payload's
+   * `feedIds`, is a coverage gap → `null` (miss), never a silent partial.
+   */
+  narrowUpdateData(host: OracleHost, data: RuleUpdateData, tickers: string[]): RuleUpdateData {
+    const payload = assertRuleUpdateData(
+      data,
+      "pyth_rule",
+      isPythCoreUpdatePayloadShape,
+      "{ updates: Uint8Array[]; feedIds: string[] }",
+    );
+    if (!payload || tickers.length === 0) return null;
+    const packedFeedIds = new Set(payload.feedIds);
+    const feedIds: string[] = [];
+    for (const ticker of tickers) {
+      // Same lookup as `host.getPythFeed(ticker)` minus its throw — an
+      // unlisted ticker is a miss here, not an error.
+      const feedId = host.config.packages.pyth_rule?.feeds?.[ticker]?.feed_id;
+      if (feedId === undefined || !packedFeedIds.has(feedId)) return null;
+      feedIds.push(feedId);
+    }
+    return { kind: "pyth_rule", payload: { updates: payload.updates, feedIds } };
+  },
+
   /** Appends the wormhole/pyth update PTB block for the payload from {@link fetchUpdateData}. */
   async buildUpdateCalls(
     tx: Transaction,

@@ -374,6 +374,95 @@ describe("PythLazerRule.buildUpdateCalls", () => {
   });
 });
 
+describe("PythLazerRule.narrowUpdateData", () => {
+  /** Whole-universe payload as the BE prefetch cache holds it: one signed
+   *  message covering every configured feed (BTCUSD=1, ETHUSD=2, USDCUSD=7). */
+  const universeLazerData = {
+    kind: "pyth_lazer_rule" as const,
+    payload: { update: SIGNED_UPDATE, feedIds: [1, 2, 7] },
+  };
+
+  it("serves the WHOLE payload for a covered subset — one signed message is indivisible", () => {
+    const client = createUnitTestClient();
+
+    const narrowed = PythLazerRule.narrowUpdateData(client, universeLazerData, ["BTCUSD"]);
+
+    expect(narrowed).toEqual({ kind: "pyth_lazer_rule", payload: universeLazerData.payload });
+    // Whole-payload pass-through by reference — the secp256k1 signature only
+    // verifies over the full message bytes, so a trimmed copy would be invalid.
+    expect(narrowed?.payload).toBe(universeLazerData.payload);
+  });
+
+  it("serves the whole payload when every packed ticker is requested, in any order", () => {
+    const client = createUnitTestClient();
+
+    const narrowed = PythLazerRule.narrowUpdateData(client, universeLazerData, [
+      "USDCUSD",
+      "BTCUSD",
+      "ETHUSD",
+    ]);
+
+    expect(narrowed?.payload).toBe(universeLazerData.payload);
+  });
+
+  it("misses (null) for a config-listed ticker whose feed id is not packed in this payload", () => {
+    const client = createUnitTestClient();
+    const btcOnly = {
+      kind: "pyth_lazer_rule" as const,
+      payload: { update: SIGNED_UPDATE, feedIds: [1] },
+    };
+
+    // ETHUSD has a lazer feed configured (id 2), but this message never
+    // carried it — the payload can only be used whole, so this is a miss.
+    expect(PythLazerRule.narrowUpdateData(client, btcOnly, ["BTCUSD", "ETHUSD"])).toBeNull();
+  });
+
+  it("misses (null) for a ticker with no pyth_lazer_rule feed configured", () => {
+    const client = createUnitTestClient();
+    expect(PythLazerRule.supportedTickers(client)).not.toContain("DOGEUSD");
+
+    expect(PythLazerRule.narrowUpdateData(client, universeLazerData, ["DOGEUSD"])).toBeNull();
+  });
+
+  it("returns null for an empty ticker list (mirrors fetchUpdateData's empty → null)", () => {
+    const client = createUnitTestClient();
+
+    expect(PythLazerRule.narrowUpdateData(client, universeLazerData, [])).toBeNull();
+  });
+
+  it("passes null data through as null", () => {
+    const client = createUnitTestClient();
+
+    expect(PythLazerRule.narrowUpdateData(client, null, ["BTCUSD"])).toBeNull();
+  });
+
+  it("throws on a wrong-kind payload instead of missing (a routing bug, not a cache miss)", () => {
+    const client = createUnitTestClient();
+
+    expect(() =>
+      PythLazerRule.narrowUpdateData(
+        client,
+        { kind: "pyth_rule", payload: { update: SIGNED_UPDATE, feedIds: [1] } },
+        ["BTCUSD"],
+      ),
+    ).toThrow(/expected 'pyth_lazer_rule'/);
+  });
+
+  it("narrowed (whole) payload is accepted by buildUpdateCalls, appending the single verify call", async () => {
+    const client = createUnitTestClient();
+    const tx = new Transaction();
+
+    const narrowed = PythLazerRule.narrowUpdateData(client, universeLazerData, [
+      "BTCUSD",
+      "ETHUSD",
+    ]);
+    const handle = await PythLazerRule.buildUpdateCalls(tx, client, narrowed);
+
+    expect(handle?.kind).toBe("pyth_lazer_rule");
+    expect(moveTargets(tx)).toEqual(["pyth_lazer::parse_and_verify_le_ecdsa_update"]);
+  });
+});
+
 describe("aggregateTicker — lazer collector-feed leg", () => {
   it("feeds BOTH pyth_rule and pyth_lazer_rule for a dual-registered lazer-routed ticker (additive per remove_outliers)", async () => {
     const client = createUnitTestClient();

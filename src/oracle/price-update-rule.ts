@@ -173,6 +173,29 @@ export interface PriceUpdateRule {
   fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData>;
 
   /**
+   * Narrow a payload previously produced by {@link fetchUpdateData} — typically
+   * for a superset of tickers (e.g. a consumer's whole-universe prefetch cache)
+   * — down to exactly `tickers`, without any re-fetch. Each rule owns its
+   * payload's divisibility semantics, so consumers must never subset a payload
+   * themselves (that knowledge branching on `kind` in a consumer is exactly the
+   * altitude violation this method removes):
+   *
+   * - A non-null result MUST be valid {@link buildUpdateCalls} input covering
+   *   exactly `tickers` — a divisible payload (Pyth Core's per-feed entries)
+   *   returns a subset; an indivisible payload (Lazer's single signed message)
+   *   returns the whole payload iff every requested ticker is covered.
+   * - A ticker this payload cannot serve → `null` (miss), NEVER a silent
+   *   partial. `null` mirrors {@link UpdateDataProvider.get}'s convention: the
+   *   caller falls back to a live {@link fetchUpdateData} for those tickers.
+   * - An empty `tickers` list → `null`, mirroring {@link fetchUpdateData}'s own
+   *   empty-list convention (nothing to build); `data === null` → `null`.
+   * - `data` must be this rule's own payload: kind/shape are enforced via
+   *   {@link assertRuleUpdateData}, so a wrong-`kind` payload throws (a routing
+   *   bug), it does not miss.
+   */
+  narrowUpdateData(host: OracleHost, data: RuleUpdateData, tickers: string[]): RuleUpdateData;
+
+  /**
    * Emit verify/update moveCalls + any per-rule setup into the PTB. Returns a
    * {@link RuleUpdateHandle} when the rule's collector-feed leg needs a PTB
    * value from this step (Lazer's verified `Update`); rules whose feed leg

@@ -200,6 +200,31 @@ export const PythLazerRule: PriceUpdateRule = {
   },
 
   /**
+   * A Lazer payload is ONE signed `leEcdsa` message covering every feed it was
+   * fetched for — verification is a single flat signature check over the whole
+   * message (`parse_and_verify_le_ecdsa_update`, no per-feed cost), so the
+   * payload is indivisible: it can only be served whole. Returns the whole
+   * payload iff every requested ticker's integer feed id is packed in THIS
+   * payload's `feedIds`; any coverage gap (unlisted ticker, or a feed this
+   * payload does not carry) → `null` (miss), never a silent partial.
+   */
+  narrowUpdateData(host: OracleHost, data: RuleUpdateData, tickers: string[]): RuleUpdateData {
+    const payload = assertRuleUpdateData(
+      data,
+      "pyth_lazer_rule",
+      isPythLazerUpdatePayloadShape,
+      "{ update: Uint8Array; feedIds: number[] }",
+    );
+    if (!payload || tickers.length === 0) return null;
+    const packedFeedIds = new Set(payload.feedIds);
+    for (const ticker of tickers) {
+      const feedId = host.config.packages.pyth_lazer_rule?.feeds?.[ticker];
+      if (feedId === undefined || !packedFeedIds.has(feedId)) return null;
+    }
+    return { kind: "pyth_lazer_rule", payload };
+  },
+
+  /**
    * Appends the single `parse_and_verify_le_ecdsa_update(state, clock, bytes)`
    * call — one secp256k1 signature check covering every feed in the payload —
    * and returns its `Update` result as the handle the per-ticker feed leg

@@ -8,7 +8,10 @@ import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildPythPriceUpdateCalls, PythCache } from "../../../src/oracle/pyth.ts";
-import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
+import {
+  PythCoreRule,
+  type PythCoreUpdatePayload,
+} from "../../../src/oracle/rules/pyth-core-rule.ts";
 import { openPythSponsorFund } from "../../../src/oracle/rules/sponsor.ts";
 import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
@@ -227,6 +230,130 @@ describe("PythCoreRule.buildUpdateCalls", () => {
       PythCoreRule.buildUpdateCalls(tx, client, lazerShapedButWrongKind),
     ).rejects.toThrow(/expected 'pyth_rule'/);
     expect(tx.getData().commands?.length ?? 0).toBe(0);
+  });
+});
+
+describe("PythCoreRule.narrowUpdateData", () => {
+  /** Whole-universe payload as the BE prefetch cache holds it: one combined
+   *  Hermes accumulator blob + every configured feed id. */
+  function universeCoreData(client: ReturnType<typeof createUnitTestClient>) {
+    return {
+      kind: "pyth_rule" as const,
+      payload: {
+        updates: [mockAccumulatorUpdate()],
+        feedIds: ["BTCUSD", "ETHUSD", "USDCUSD"].map((t) => client.getPythFeed(t).feed_id),
+      },
+    };
+  }
+
+  it("subsets feedIds to exactly the requested tickers, reusing the accumulator blob without re-slicing", () => {
+    const client = createUnitTestClient();
+    const data = universeCoreData(client);
+
+    const narrowed = PythCoreRule.narrowUpdateData(client, data, ["BTCUSD"]);
+
+    expect(narrowed).toEqual({
+      kind: "pyth_rule",
+      payload: { updates: data.payload.updates, feedIds: [client.getPythFeed("BTCUSD").feed_id] },
+    });
+    // The combined Hermes blob already covers every packed feed — served by
+    // reference, never copied or re-sliced.
+    expect((narrowed?.payload as PythCoreUpdatePayload).updates).toBe(data.payload.updates);
+  });
+
+  it("orders feedIds by the request, independent of the payload's own packing order", () => {
+    const client = createUnitTestClient();
+    const data = universeCoreData(client); // packed BTC, ETH, USDC
+
+    const narrowed = PythCoreRule.narrowUpdateData(client, data, ["ETHUSD", "BTCUSD"]);
+
+    expect(narrowed?.payload).toEqual({
+      updates: data.payload.updates,
+      feedIds: [client.getPythFeed("ETHUSD").feed_id, client.getPythFeed("BTCUSD").feed_id],
+    });
+  });
+
+  it("misses (null) for a ticker with no pyth_rule.feeds entry — never a silent partial", () => {
+    const client = createUnitTestClient();
+    expect(PythCoreRule.supportedTickers(client)).not.toContain("DOGEUSD");
+
+    const narrowed = PythCoreRule.narrowUpdateData(client, universeCoreData(client), [
+      "BTCUSD",
+      "DOGEUSD",
+    ]);
+
+    expect(narrowed).toBeNull();
+  });
+
+  it("misses (null) for a config-listed ticker whose feed is not packed in this payload", () => {
+    const client = createUnitTestClient();
+    const btcOnly = {
+      kind: "pyth_rule" as const,
+      payload: {
+        updates: [mockAccumulatorUpdate()],
+        feedIds: [client.getPythFeed("BTCUSD").feed_id],
+      },
+    };
+
+    // ETHUSD has a pyth feed configured, but this payload never fetched it —
+    // serving it anyway would emit an update call the blob cannot back.
+    expect(PythCoreRule.narrowUpdateData(client, btcOnly, ["ETHUSD"])).toBeNull();
+  });
+
+  it("returns null for an empty ticker list (mirrors fetchUpdateData's empty → null)", () => {
+    const client = createUnitTestClient();
+
+    expect(PythCoreRule.narrowUpdateData(client, universeCoreData(client), [])).toBeNull();
+  });
+
+  it("passes null data through as null", () => {
+    const client = createUnitTestClient();
+
+    expect(PythCoreRule.narrowUpdateData(client, null, ["BTCUSD"])).toBeNull();
+  });
+
+  it("throws on a wrong-kind payload instead of missing (a routing bug, not a cache miss)", () => {
+    const client = createUnitTestClient();
+
+    expect(() =>
+      PythCoreRule.narrowUpdateData(
+        client,
+        { kind: "pyth_lazer_rule", payload: { update: new Uint8Array(4), feedIds: [1] } },
+        ["BTCUSD"],
+      ),
+    ).toThrow(/expected 'pyth_rule'/);
+  });
+
+  it("narrowed payload is accepted by buildUpdateCalls and builds the same PTB as a direct single-feed build", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client); // === BTCUSD's configured feed id
+    const update = mockAccumulatorUpdate();
+    const universe = {
+      kind: "pyth_rule" as const,
+      payload: {
+        updates: [update],
+        feedIds: [
+          feedId,
+          client.getPythFeed("ETHUSD").feed_id,
+          client.getPythFeed("USDCUSD").feed_id,
+        ],
+      },
+    };
+
+    const directTx = new Transaction();
+    await buildPythPriceUpdateCalls(directTx, client, [update], [feedId], {
+      cache: new PythCache(),
+      feeSource: { kind: "gas" },
+    });
+
+    const ruleTx = new Transaction();
+    const narrowed = PythCoreRule.narrowUpdateData(client, universe, ["BTCUSD"]);
+    await PythCoreRule.buildUpdateCalls(ruleTx, client, narrowed, {
+      cache: new PythCache(),
+      feeSource: { kind: "gas" },
+    });
+
+    expect(moveTargets(ruleTx)).toEqual(moveTargets(directTx));
   });
 });
 
