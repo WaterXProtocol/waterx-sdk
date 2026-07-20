@@ -384,9 +384,15 @@ describe("tx-builders (v3)", () => {
     // passing.
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
+    // The cache holds a payload that actually covers USDCUSD — its real config
+    // feed id, so refreshOraclePrices' narrowUpdateData step subsets it to the
+    // requested ticker and serves it instead of live-fetching.
     const cachedData: RuleUpdateData = {
       kind: "pyth_rule",
-      payload: { updates: [mockAccumulatorUpdate()], feedIds: ["0xf9c0"] },
+      payload: {
+        updates: [mockAccumulatorUpdate()],
+        feedIds: [client.getPythFeed("USDCUSD").feed_id],
+      },
     };
     const provider: UpdateDataProvider = { get: vi.fn(async () => cachedData) };
 

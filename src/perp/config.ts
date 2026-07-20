@@ -211,7 +211,7 @@ export interface LoadConfigOptions {
   waterxConfigUrl?: string;
   /**
    * Reuse a previously-fetched config from the in-memory cache (keyed by
-   * the effective URL). Default: false (always fetch fresh).
+   * network + the effective URL). Default: false (always fetch fresh).
    */
   cache?: boolean;
   /** Optional fetch implementation (for tests or environments without global `fetch`). */
@@ -220,25 +220,27 @@ export interface LoadConfigOptions {
    * Optional PER-ATTEMPT timeout in ms. Default 10_000. {@link loadConfig}
    * retries a transient failure (network error / 429 / 5xx) via
    * `fetchWithPolicy` (2 retries, exponential backoff) before falling back to
-   * the last successfully-validated config for this URL, if one exists.
+   * the last successfully-validated config for this network+URL, if one exists.
    */
   timeoutMs?: number;
 }
 
-// Last successfully-validated config per URL — the ONE module map, written
-// UNCONDITIONALLY on every successful load regardless of `opts.cache`. It
-// serves two roles at once: the resilience fallback for a refresh failure
-// (see `loadConfig` below) AND the opt-in fast-path read `opts.cache: true`
-// gates at the top of `loadConfig`. `opts.cache` therefore only gates
-// whether a call *reads* this map early (skipping the fetch entirely) — it
-// never gates whether a call *writes* it; every successful load writes here.
+// Last successfully-validated config per `${network}:${url}` — the ONE module
+// map, written UNCONDITIONALLY on every successful load regardless of
+// `opts.cache`. It serves two roles at once: the resilience fallback for a
+// refresh failure (see `loadConfig` below) AND the opt-in fast-path read
+// `opts.cache: true` gates at the top of `loadConfig`. `opts.cache` therefore
+// only gates whether a call *reads* this map early (skipping the fetch
+// entirely) — it never gates whether a call *writes* it; every successful
+// load writes here. The network prefix keeps one network's snapshot from ever
+// satisfying another's request (see the cache-key note in `loadConfig`).
 //
 // Deliberate (benign) semantic refinement from the prior two-map design: a
 // `cache: true` call can now hit an entry that was populated by an earlier
-// `cache: false` call for the SAME url. That's fine — it's still that url's
-// latest successfully-validated fetch, strictly FRESHER than any fallback
-// read would have been, so a `cache: true` caller never observes staler
-// data than before; it can only observe MORE-recent data sooner.
+// `cache: false` call for the SAME network+url. That's fine — it's still that
+// key's latest successfully-validated fetch, strictly FRESHER than any
+// fallback read would have been, so a `cache: true` caller never observes
+// staler data than before; it can only observe MORE-recent data sooner.
 const configCache = new Map<string, WaterXConfig>();
 
 export function clearConfigCache(): void {
@@ -253,8 +255,16 @@ export async function loadConfig(
   if (!url) {
     throw new Error("loadConfig: no config URL — pass opts.waterxConfigUrl");
   }
-  if (opts.cache && configCache.has(url)) {
-    return configCache.get(url)!;
+  // Key by network AND url, never url alone: the same url can legitimately be
+  // requested for two networks (and `validateConfig` enforces network/url
+  // coherence on the success path), so a url-only key would let a testnet
+  // snapshot satisfy a mainnet request — both on this fast-path read and on
+  // the resilience fallback below — handing back wrong-CHAIN object ids to
+  // build transactions against. A wrong-network request simply misses here
+  // and fetches fresh.
+  const cacheKey = `${network}:${url}`;
+  if (opts.cache && configCache.has(cacheKey)) {
+    return configCache.get(cacheKey)!;
   }
 
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as typeof fetch | undefined);
@@ -266,7 +276,7 @@ export async function loadConfig(
   // `fetchWithPolicy`): bounded retry with backoff instead of one bare
   // attempt. A refresh failure (network exhaustion, a non-ok response, OR a
   // 200 response that fails to parse/validate — see below) falls back to the
-  // last successfully-validated config for this URL when one exists — a
+  // last successfully-validated config for this network+URL when one exists — a
   // config-endpoint blip must not crash a long-running process that already
   // has a working deployment snapshot. First load (nothing cached yet) has
   // no fallback and still throws. Intentionally no log line on the fallback
@@ -301,7 +311,7 @@ export async function loadConfig(
     raw = (await response.json()) as WaterXConfig;
     validateConfig(raw, network, url);
   } catch (err) {
-    const stale = configCache.get(url);
+    const stale = configCache.get(cacheKey);
     if (stale) return stale;
     // Reformat a status-carrying FetchPolicyError (retries exhausted on a
     // retryable status) into this function's own message shape, mirroring
@@ -318,7 +328,7 @@ export async function loadConfig(
     throw err;
   }
 
-  configCache.set(url, raw);
+  configCache.set(cacheKey, raw);
   return raw;
 }
 

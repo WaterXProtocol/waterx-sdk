@@ -51,13 +51,22 @@ function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRul
         payload: { tickers },
       }),
     ),
-    // Honest indivisible fake: serves the payload whole for covered tickers,
-    // misses (null) as soon as any requested ticker is outside `supported`.
+    // Honest indivisible fake, faithful to the port contract:
+    //  - a wrong-`kind` payload is a routing bug → THROWS (real rules enforce
+    //    this via `assertRuleUpdateData`), it is never a miss;
+    //  - otherwise serves the payload whole for covered tickers, misses
+    //    (`null`) as soon as any requested ticker is outside `supported`.
     narrowUpdateData: vi.fn(
-      (_host: OracleHost, data: RuleUpdateData, tickers: string[]): RuleUpdateData =>
-        data !== null && tickers.length > 0 && tickers.every((t) => supported.includes(t))
+      (_host: OracleHost, data: RuleUpdateData, tickers: string[]): RuleUpdateData => {
+        if (data !== null && data.kind !== kind) {
+          throw new Error(
+            `narrowUpdateData: received a payload of kind '${data.kind}', expected '${kind}'`,
+          );
+        }
+        return data !== null && tickers.length > 0 && tickers.every((t) => supported.includes(t))
           ? data
-          : null,
+          : null;
+      },
     ),
     buildUpdateCalls: vi.fn(
       async (
@@ -340,11 +349,83 @@ describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", 
     });
 
     expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
+    // The hit is narrowed to the group's tickers before use (here the
+    // indivisible Lazer payload covers BTCUSD, so it passes through whole).
+    expect(fakeLazer.narrowUpdateData).toHaveBeenCalledWith(client, cachedData, ["BTCUSD"]);
     expect(fakeLazer.fetchUpdateData).not.toHaveBeenCalled();
     expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cachedData, {
       cache: undefined,
       feeSource: undefined,
     });
+  });
+
+  it("narrows a whole-universe cached hit down to the group's tickers before building (divisible Pyth Core payload)", async () => {
+    // Regression: without narrowing, a whole-universe Core hit would emit an
+    // update_single_price_feed — and charge its fee — for every cached feed
+    // instead of just this group's requested ticker.
+    const client = createUnitTestClient(); // default 'pyth_rule'
+    const wholeUniverse: RuleUpdateData = {
+      kind: "pyth_rule",
+      payload: { feedIds: ["btc-feed", "eth-feed"], updates: ["blob"] },
+    };
+    const narrowedToBtc: RuleUpdateData = {
+      kind: "pyth_rule",
+      payload: { feedIds: ["btc-feed"], updates: ["blob"] },
+    };
+    const fakeCore: PriceUpdateRule = {
+      ...createFakeRule("pyth_rule", ["BTCUSD", "ETHUSD"]),
+      // Divisible payload: subsets to exactly the requested tickers.
+      narrowUpdateData: vi.fn((_host: OracleHost, _data: RuleUpdateData, tickers: string[]) =>
+        tickers.length === 1 && tickers[0] === "BTCUSD" ? narrowedToBtc : null,
+      ),
+    };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => wholeUniverse) };
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      ruleOverrides: { pyth_rule: fakeCore },
+      updateDataProvider: provider,
+    });
+
+    // Provider returned the whole universe; the rule narrowed it; the build
+    // (and thus the on-chain update fee) sees ONLY the BTC subset.
+    expect(fakeCore.narrowUpdateData).toHaveBeenCalledWith(client, wholeUniverse, ["BTCUSD"]);
+    expect(fakeCore.buildUpdateCalls).toHaveBeenCalledWith(tx, client, narrowedToBtc, {
+      cache: undefined,
+      feeSource: undefined,
+    });
+    expect(fakeCore.fetchUpdateData).not.toHaveBeenCalled();
+  });
+
+  it("live-fetches when a cached hit cannot cover the group's tickers (narrowUpdateData → null miss)", async () => {
+    // An indivisible cached payload built for a different ticker set can't
+    // serve this group — narrowUpdateData misses (null), and the group must
+    // fall through to a live fetch, NOT throw and NOT ship the wrong payload.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const cachedForOthers: RuleUpdateData = {
+      kind: "pyth_lazer_rule",
+      payload: { covers: ["ETHUSD"] },
+    };
+    const fakeLazer: PriceUpdateRule = {
+      ...createFakeRule("pyth_lazer_rule", ["BTCUSD"]),
+      narrowUpdateData: vi.fn((): RuleUpdateData => null),
+    };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => cachedForOthers) };
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      updateDataProvider: provider,
+    });
+
+    expect(fakeLazer.narrowUpdateData).toHaveBeenCalledWith(client, cachedForOthers, ["BTCUSD"]);
+    expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD"]);
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(
+      tx,
+      client,
+      { kind: "pyth_lazer_rule", payload: { tickers: ["BTCUSD"] } },
+      { cache: undefined, feeSource: undefined },
+    );
   });
 
   it("throws when the provider's hit carries a different rule's kind (caller bug, not a cache miss)", async () => {
@@ -357,13 +438,16 @@ describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", 
     const provider: UpdateDataProvider = { get: vi.fn(async () => wrongKindData) };
 
     const tx = new Transaction();
+    // A kind mismatch surfaces from narrowUpdateData's own guard (real rules
+    // route it through assertRuleUpdateData) — the orchestrator no longer
+    // duplicates that check.
     await expect(
       refreshOraclePrices(tx, client, ["BTCUSD"], {
         ruleOverrides: { pyth_lazer_rule: fakeLazer },
         updateDataProvider: provider,
       }),
     ).rejects.toThrow(
-      /updateDataProvider returned a payload of kind 'pyth_rule'.*expected 'pyth_lazer_rule'/,
+      /narrowUpdateData: received a payload of kind 'pyth_rule'.*expected 'pyth_lazer_rule'/,
     );
     // A kind mismatch is a caller bug — it must throw, never silently fall
     // back to a live fetch (that would mask the bug as a cache miss).

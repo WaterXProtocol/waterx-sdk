@@ -6,22 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
-## [3.2.0] - 2026-07-18
+## [Unreleased]
 
-> **Versioning note:** this release carries several **BREAKING** changes (see
+_All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). The release workflow stamps this section with a version + date (`## [X.Y.Z] - <date>`) at publish; `package.json` currently carries `3.2.0` per the versioning note below._
+
+> **Versioning note:** this change set carries several **BREAKING** changes (see
 > `### Changed` below — the config-driven fee-source rework, the
 > `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object
-> collapse, and the `OracleFeeSource` consolidation) on a **minor** version bump.
-> This is deliberate, not an oversight: (a) `3.2.0` was never published to npm —
-> `npm view @waterx/sdk versions` tops out at `3.1.1`, so there is no intermediate
-> published shape a break could disturb; (b) both known consumers of this SDK pin
-> an exact version, so a minor bump does not silently pull a breaking change into
-> anyone's build. Maintainers may still re-tag this release as `4.0.0` at publish
-> time if project policy prefers strict semver over this pragmatic call —
-> `package.json` is intentionally left at `3.2.0` here so that decision stays
-> theirs to make at publish time, not baked into this changeset.
+> collapse, and the `OracleFeeSource` consolidation) on what `package.json` currently
+> marks a **minor** bump (`3.2.0`). This is deliberate, not an oversight: (a) `3.2.0`
+> was never published to npm — `npm view @waterx/sdk versions` tops out at `3.1.1`, so
+> there is no intermediate published shape a break could disturb; (b) both known
+> consumers of this SDK pin an exact version, so a minor bump does not silently pull a
+> breaking change into anyone's build. Maintainers may still tag this release as
+> `4.0.0` at publish time if project policy prefers strict semver over this pragmatic
+> call — the version/date stamp is the release step's to make, not baked into this
+> changeset.
 
 ### Added
+
+- **`narrowUpdateData` on the `PriceUpdateRule` port — rules own payload
+  subsetting.** New `narrowUpdateData(host, data, tickers)` method: narrows a
+  payload previously produced by `fetchUpdateData` (typically a consumer's
+  whole-universe prefetch cache) down to exactly `tickers`, without a re-fetch.
+  Each rule owns its own divisibility — `PythCoreRule` subsets its per-feed
+  entries; `PythLazerRule`'s single signed message is indivisible, so it passes
+  through whole iff every requested ticker is covered and misses (`null`)
+  otherwise. `refreshOraclePrices` now narrows every `updateDataProvider` cache
+  hit through this method before building, so a whole-universe hit updates and
+  charges the on-chain fee for ONLY the group's tickers (not every cached feed),
+  and a hit that cannot cover the group falls through to a live fetch instead of
+  shipping the wrong payload. Consumers therefore never branch on rule `kind` to
+  subset a payload — that knowledge lives in the rule.
 
 - **`PYTH_PRO_DEFAULTS` + `pythGeneration` client option — Pyth Pro
   (Core-upgrade) infra selectable per environment.** New per-network constant
@@ -193,6 +209,15 @@ reference the PR that introduced them.
 
 ### Changed
 
+- **`loadConfig` in-memory cache is keyed by network + url, not url alone.**
+  The same `waterxConfigUrl` can be requested for two networks (and
+  `validateConfig` already enforces network/url coherence on the success path),
+  so a url-only cache key let a testnet snapshot satisfy a mainnet request —
+  both on the `cache: true` fast-path read and on the resilience fallback for a
+  failed refresh — handing back wrong-CHAIN object ids to build transactions
+  against. A wrong-network request now misses the cache and fetches fresh; a
+  failing refresh with no same-network last-known-good throws rather than
+  serving another network's config.
 - **BREAKING: config-driven, fail-fast Pyth update-fee source (Enoki-safe by
   default).** `buildPythPriceUpdateCalls` used to silently fall back to
   `tx.gas` for the per-feed Pyth update fee whenever no `sponsorFund` was

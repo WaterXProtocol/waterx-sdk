@@ -174,6 +174,55 @@ describe("loadConfig validation", () => {
     expect(calls).toBe(4);
   });
 
+  it("keys the cache by network+url: a mainnet request never reuses a testnet snapshot for the same url (primary read)", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return calls === 1
+        ? { ok: true, json: async () => MOCK_TESTNET_CONFIG }
+        : { ok: true, json: async () => ({ ...MOCK_TESTNET_CONFIG, network: "mainnet" }) };
+    }) as unknown as typeof fetch;
+
+    const testnet = await loadConfig("TESTNET", {
+      waterxConfigUrl: BASE_URL,
+      cache: true,
+      fetchImpl,
+    });
+    const mainnet = await loadConfig("MAINNET", {
+      waterxConfigUrl: BASE_URL,
+      cache: true,
+      fetchImpl,
+    });
+
+    expect(testnet.network).toBe("testnet");
+    expect(mainnet.network).toBe("mainnet");
+    // The mainnet request did NOT reuse the cached testnet snapshot for the
+    // same url — it fetched fresh (a url-only key would have returned testnet).
+    expect(calls).toBe(2);
+  });
+
+  it("keys the resilience fallback by network+url: a failing mainnet refresh never falls back to a testnet snapshot for the same url", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      // Testnet load (call 1) succeeds and is cached; every mainnet call fails.
+      return calls === 1
+        ? { ok: true, json: async () => MOCK_TESTNET_CONFIG }
+        : { ok: false, status: 503, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, cache: true, fetchImpl });
+
+    // Same url, different network, persistent failure: there is no mainnet
+    // last-known-good, so this must THROW rather than serve the cached testnet
+    // config (whose object ids are for the wrong chain).
+    const pending = loadConfig("MAINNET", { waterxConfigUrl: BASE_URL, cache: true, fetchImpl });
+    const assertion = expect(pending).rejects.toThrow(/HTTP 503/);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertion;
+  });
+
   it("throws on first load when every retry attempt fails (no last-known-good to fall back to)", async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn(async () => ({

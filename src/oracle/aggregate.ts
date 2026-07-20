@@ -45,9 +45,22 @@ import { maybeFeedSupra } from "./rules/supra-rule.ts";
  * try `provider.get(source, tickers)` first (when a provider is configured),
  * falling back to the group's own live `rule.fetchUpdateData` on a cache miss
  * (`null`) or a throw from the provider — a broken/degraded cache must never
- * break the money path. A cache HIT whose `kind` doesn't match the group's
- * rule is a caller bug (the provider handed back a different rule's
- * payload), so that throws instead of silently falling back.
+ * break the money path.
+ *
+ * A cache HIT is treated as a payload for a POSSIBLY-WIDER ticker set (a
+ * provider commonly caches one whole-universe payload per source — see
+ * {@link UpdateDataProvider}), so it is narrowed to exactly `group.tickers`
+ * via `rule.narrowUpdateData` before use. This is load-bearing, not
+ * defensive: without it a Pyth Core hit would emit an
+ * `update_single_price_feed` — and charge its fee — for every cached feed
+ * instead of just this group's, and a payload that cannot cover the group
+ * (`narrowUpdateData` → `null`) would never reach the live-fetch fallback.
+ * Each rule owns its own subsetting (Core subsets per-feed entries; Lazer's
+ * indivisible payload passes whole iff fully covered), so the orchestrator
+ * never branches on `kind` here. A hit whose `kind` doesn't match the
+ * group's rule is a caller bug (the provider handed back a different rule's
+ * payload), so that throws — via `narrowUpdateData`'s own
+ * `assertRuleUpdateData` guard — instead of silently falling back.
  */
 async function resolveGroupUpdateData(
   host: OracleHost,
@@ -63,13 +76,10 @@ async function resolveGroupUpdateData(
       // the live fetch below exactly as a cache miss (`null`) would.
     }
     if (cached !== null) {
-      if (cached.kind !== group.rule.kind) {
-        throw new Error(
-          `refreshOraclePrices: updateDataProvider returned a payload of kind '${cached.kind}' ` +
-            `for source '${group.source}', expected '${group.rule.kind}'`,
-        );
-      }
-      return cached;
+      // Wrong-kind hit throws inside narrowUpdateData (assertRuleUpdateData);
+      // a hit that can't cover the group narrows to null → live-fetch below.
+      const narrowed = group.rule.narrowUpdateData(host, cached, group.tickers);
+      if (narrowed !== null) return narrowed;
     }
   }
   return group.rule.fetchUpdateData(host, group.tickers);

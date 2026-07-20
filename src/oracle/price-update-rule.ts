@@ -134,6 +134,14 @@ export interface BuildUpdateOpts {
  * cached data, fetch live" (mirrors {@link RuleUpdateData}'s own `null`
  * variant: there is no separate signal for "the cache legitimately has
  * nothing" vs "go fetch live", they're the same instruction to the caller).
+ *
+ * A non-null hit MAY be a payload for a WIDER ticker set than `tickers` — a
+ * provider is free to cache one whole-universe payload per source and return
+ * it verbatim; `refreshOraclePrices` narrows it down to exactly the requested
+ * tickers via the rule's {@link PriceUpdateRule.narrowUpdateData} before use,
+ * so an implementer need not (and should not) subset it by hand. The only
+ * hard requirement on a hit is that its `kind` matches the requested
+ * `source`'s rule — a mismatch is a routing bug and throws.
  */
 export interface UpdateDataProvider {
   get(source: OracleSource, tickers: string[]): Promise<RuleUpdateData | null>;
