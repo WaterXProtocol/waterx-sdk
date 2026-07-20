@@ -8,20 +8,19 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
-_All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). The release workflow stamps this section with a version + date (`## [X.Y.Z] - <date>`) at publish; `package.json` currently carries `3.2.0` per the versioning note below._
+_All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). Per this repo's release rule (CLAUDE.md), `package.json` stays at the last released version (`3.1.1`) on this branch; the release workflow stamps this section with a version + date (`## [X.Y.Z] - <date>`) **and** bumps `package.json` at publish._
 
-> **Versioning note:** this change set carries several **BREAKING** changes (see
-> `### Changed` below — the config-driven fee-source rework, the
-> `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object
-> collapse, and the `OracleFeeSource` consolidation) on what `package.json` currently
-> marks a **minor** bump (`3.2.0`). This is deliberate, not an oversight: (a) `3.2.0`
+> **Versioning note (for the release step):** this change set carries several
+> **BREAKING** changes (see `### Changed` below — the config-driven fee-source rework,
+> the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object
+> collapse, and the `OracleFeeSource` consolidation). It is nonetheless reasonable to
+> release as a **minor** (`3.2.0`) rather than `4.0.0`: (a) the intended `3.2.0` shape
 > was never published to npm — `npm view @waterx/sdk versions` tops out at `3.1.1`, so
 > there is no intermediate published shape a break could disturb; (b) both known
-> consumers of this SDK pin an exact version, so a minor bump does not silently pull a
-> breaking change into anyone's build. Maintainers may still tag this release as
-> `4.0.0` at publish time if project policy prefers strict semver over this pragmatic
-> call — the version/date stamp is the release step's to make, not baked into this
-> changeset.
+> consumers pin an exact version, so a minor bump cannot silently pull a breaking
+> change into anyone's build. Tagging `4.0.0` is equally fine if project policy prefers
+> strict SemVer — that call, and the `package.json` bump, belong to the release step,
+> not this PR.
 
 ### Added
 
