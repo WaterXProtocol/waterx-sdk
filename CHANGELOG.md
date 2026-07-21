@@ -6,18 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
-## [Unreleased]
+## [4.0.0] - 2026-07-21
 
-_All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). Per this repo's release rule (CLAUDE.md), `package.json` stays at the last released version (`3.1.1`) on this branch; the release workflow stamps this section with a version + date (`## [X.Y.Z] - <date>`) **and** bumps `package.json` at publish._
-
-> **Versioning note (for the release step):** this change set carries several
-> **BREAKING** changes (see `### Changed` below — the config-driven fee-source rework,
-> the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object
-> collapse, and the `OracleFeeSource` consolidation), so it must release as the next
-> **major** version, `4.0.0`. `npm view @waterx/sdk versions` currently tops out at
-> `3.1.1`; the release workflow stamps this section with the version and date, then
-> updates `package.json` at publish. This PR intentionally does not change
-> `package.json`.
+_All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). Released as the next **major** (`4.0.0`) because the change set carries several **BREAKING** changes (see `### Changed`): the config-driven fee-source rework, the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object collapse, and the `OracleFeeSource` consolidation._
 
 ### Added
 
