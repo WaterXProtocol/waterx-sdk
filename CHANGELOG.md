@@ -13,14 +13,11 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
 > **Versioning note (for the release step):** this change set carries several
 > **BREAKING** changes (see `### Changed` below — the config-driven fee-source rework,
 > the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object
-> collapse, and the `OracleFeeSource` consolidation). It is nonetheless reasonable to
-> release as a **minor** (`3.2.0`) rather than `4.0.0`: (a) the intended `3.2.0` shape
-> was never published to npm — `npm view @waterx/sdk versions` tops out at `3.1.1`, so
-> there is no intermediate published shape a break could disturb; (b) both known
-> consumers pin an exact version, so a minor bump cannot silently pull a breaking
-> change into anyone's build. Tagging `4.0.0` is equally fine if project policy prefers
-> strict SemVer — that call, and the `package.json` bump, belong to the release step,
-> not this PR.
+> collapse, and the `OracleFeeSource` consolidation), so it must release as the next
+> **major** version, `4.0.0`. `npm view @waterx/sdk versions` currently tops out at
+> `3.1.1`; the release workflow stamps this section with the version and date, then
+> updates `package.json` at publish. This PR intentionally does not change
+> `package.json`.
 
 ### Added
 
@@ -105,7 +102,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
     transient-failure detector) see unchanged text.
   - **Worst-case latency note**: under the default policy (15s timeout, 2
     retries) a FULL outage now takes up to ~46s (3 × 15s + ~0.75s of
-    backoff) to surface as a `FetchPolicyError`, vs ~15s pre-3.2.0's single
+    backoff) to surface as a `FetchPolicyError`, vs ~15s pre-4.0.0's single
     bare-`fetch` attempt. Tunable per client via
     `config.pyth.fetch.{timeoutMs,retries}` for callers that need a
     tighter bound.
@@ -142,7 +139,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   long-running process can keep serving a stale snapshot forever once it has
   one; disambiguating the two is a follow-up.
 
-  **Follow-up (same 3.2.0, still unpublished): the opt-in `cache` map and the
+  **Follow-up (same 4.0.0, still unpublished): the opt-in `cache` map and the
   always-on last-known-good map are now ONE module map**, written
   unconditionally on every successful load; `opts.cache` only gates the
   early-return READ at the top of `loadConfig`, it no longer gates the write.
@@ -290,7 +287,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   OracleFeeSourceUnavailableError` — exported from `@waterx/sdk` (root),
   `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
 
-  **Follow-up (same 3.2.0, still unpublished): `OracleFeeSource`
+  **Follow-up (same 4.0.0, still unpublished): `OracleFeeSource`
   consolidation.** The `sponsorFund` / `allowGasFee` pair above is now ONE
   resolved value, `OracleFeeSource` (new type, exported
   from the oracle barrel and re-exported from `@waterx/sdk` / `@waterx/sdk/perp`):
@@ -325,9 +322,8 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   positional `cache?, sponsorFund?, allowGasFee?` tail entirely (not just
   appending `allowGasFee` as another position, as originally planned). Both
   are pre-existing 3.1.x-exported symbols, so THIS PART is a real break for
-  any positional caller — acceptable only because 3.2.0 as a whole is
-  already BREAKING and has not been published to npm yet, so there is no
-  intermediate shape to preserve compatibility with.
+  any positional caller — this is a breaking change and is covered by the
+  `4.0.0` major release.
 
   **Migration (fee-source consolidation)**: a direct caller of
   `buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund,
@@ -342,7 +338,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
 
   Also dropped: `PriceUpdateRule.buildUpdateCalls`'s unused `tickers`
   parameter (both `PythCoreRule` and `PythLazerRule` already derived
-  everything from `data.payload`) — a 3.2.0-new port with zero external
+  everything from `data.payload`) — a 4.0.0-new port with zero external
   consumers, so this is a free removal, not a migration item. New signature:
   `buildUpdateCalls(tx, host, data, opts?)`.
 
