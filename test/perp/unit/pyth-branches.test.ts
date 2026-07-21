@@ -8,6 +8,7 @@ import {
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
   openPythSponsorFund,
+  OracleFeeSourceUnavailableError,
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
@@ -98,7 +99,9 @@ describe("pyth on-chain helper branches", () => {
     const tx = new Transaction();
     const update = mockAccumulatorUpdate();
     await expect(
-      buildPythPriceUpdateCalls(tx, client, [update, update], ["0xfeed"], new PythCache()),
+      buildPythPriceUpdateCalls(tx, client, [update, update], ["0xfeed"], {
+        cache: new PythCache(),
+      }),
     ).rejects.toThrow(/Only a single accumulator message/);
   });
 
@@ -109,14 +112,17 @@ describe("pyth on-chain helper branches", () => {
     const cache = new PythCache();
 
     const gasTx = new Transaction();
-    await buildPythPriceUpdateCalls(gasTx, client, [update], [feedId], cache);
+    await buildPythPriceUpdateCalls(gasTx, client, [update], [feedId], {
+      cache,
+      feeSource: { kind: "gas" },
+    });
     expect(gasTx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
 
     const sponsorTx = new Transaction();
     const { fund, packageId } = openPythSponsorFund(sponsorTx, client);
-    await buildPythPriceUpdateCalls(sponsorTx, client, [update], [feedId], cache, {
-      fund,
-      packageId,
+    await buildPythPriceUpdateCalls(sponsorTx, client, [update], [feedId], {
+      cache,
+      feeSource: { kind: "sponsor", fund, packageId },
     });
     expect(sponsorTx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
     expect(sponsorTx.getData().commands?.some((c) => c.$kind === "MoveCall")).toBe(true);
@@ -127,13 +133,10 @@ describe("pyth on-chain helper branches", () => {
     wirePythGrpc(client, { dynamicFieldValue: { bcs: new Uint8Array(8) } });
     const tx = new Transaction();
     await expect(
-      buildPythPriceUpdateCalls(
-        tx,
-        client,
-        [mockAccumulatorUpdate()],
-        ["0xdeadbeef"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], ["0xdeadbeef"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/not registered on-chain/);
   });
 
@@ -152,7 +155,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.pythStateInfo?.packageId).toBe(directPkg);
 
@@ -171,7 +174,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache2,
+      { cache: cache2, feeSource: { kind: "gas" } },
     );
     expect(cache2.pythStateInfo?.packageId).toBe(nestedPkg);
   });
@@ -190,7 +193,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.pythStateInfo?.baseUpdateFee).toBe(4242n);
   });
@@ -212,7 +215,7 @@ describe("pyth on-chain helper branches", () => {
         client,
         [mockAccumulatorUpdate()],
         ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-        new PythCache(),
+        { cache: new PythCache(), feeSource: { kind: "gas" } },
       ),
     ).rejects.toThrow(/Cannot extract package from price table type/);
   });
@@ -222,7 +225,9 @@ describe("pyth on-chain helper branches", () => {
     wirePythGrpc(client);
     const feedHex = "f9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";
     const tx = new Transaction();
-    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedHex]);
+    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedHex], {
+      feeSource: { kind: "gas" },
+    });
     expect(ids[0]).toMatch(/^0x/);
   });
 
@@ -237,7 +242,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
   });
@@ -253,7 +258,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
   });
@@ -275,7 +280,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
   });
@@ -297,7 +302,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
   });
@@ -316,13 +321,10 @@ describe("pyth on-chain helper branches", () => {
     cache.priceFeedObjectIdCache.set(`${PYTH_STATE}:${feedId.replace(/^0x/, "")}`, "0xcached");
 
     const tx = new Transaction();
-    const ids = await buildPythPriceUpdateCalls(
-      tx,
-      client,
-      [mockAccumulatorUpdate()],
-      [feedId],
+    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedId], {
       cache,
-    );
+      feeSource: { kind: "gas" },
+    });
     expect(ids[0]).toBe("0xcached");
     expect(getDynamicField).not.toHaveBeenCalled();
   });
@@ -353,13 +355,10 @@ describe("pyth on-chain helper branches", () => {
     cache.priceFeedObjectIdCache.set(feedId.replace(/^0x/, ""), "0xcached-no-state");
 
     const tx = new Transaction();
-    const ids = await buildPythPriceUpdateCalls(
-      tx,
-      client,
-      [mockAccumulatorUpdate()],
-      [feedId],
+    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedId], {
       cache,
-    );
+      feeSource: { kind: "gas" },
+    });
     expect(ids[0]).toBe("0xcached-no-state");
     expect(getDynamicField).not.toHaveBeenCalled();
   });
@@ -381,7 +380,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(cache.priceTableInfo?.id).toBe(PRICE_TABLE_CHILD);
   });
@@ -396,7 +395,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     const getObject = client.grpcClient.getObject as ReturnType<typeof vi.fn>;
     const callsAfterFirst = getObject.mock.calls.length;
@@ -407,7 +406,7 @@ describe("pyth on-chain helper branches", () => {
       client,
       [mockAccumulatorUpdate()],
       ["0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b"],
-      cache,
+      { cache, feeSource: { kind: "gas" } },
     );
     expect(getObject.mock.calls.length).toBe(callsAfterFirst);
     expect(cache.pythStateInfo?.packageId).toBe(MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT);
@@ -419,13 +418,10 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { pythStateJson: null });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/Unable to fetch pyth state/);
 
     wirePythGrpc(client, {
@@ -435,13 +431,10 @@ describe("pyth on-chain helper branches", () => {
       },
     });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/base_update_fee/);
   });
 
@@ -449,13 +442,10 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { wormholeJson: null });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/wormhole package id/);
   });
 
@@ -463,26 +453,20 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { dynamicFields: [] });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/Price table not found/);
 
     wirePythGrpc(client, {
       dynamicFields: [{ valueType: DEFAULT_MOCK_PYTH_ROW_TYPE }],
     });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/Price table missing childId/);
 
     wirePythGrpc(client, {
@@ -494,13 +478,10 @@ describe("pyth on-chain helper branches", () => {
       ],
     });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/Cannot extract package from price table type/);
   });
 
@@ -508,13 +489,10 @@ describe("pyth on-chain helper branches", () => {
     const client = createUnitTestClient();
     wirePythGrpc(client, { pythStateJson: { fields: {} } });
     await expect(
-      buildPythPriceUpdateCalls(
-        txFor(),
-        client,
-        [mockAccumulatorUpdate()],
-        ["0x1"],
-        new PythCache(),
-      ),
+      buildPythPriceUpdateCalls(txFor(), client, [mockAccumulatorUpdate()], ["0x1"], {
+        cache: new PythCache(),
+        feeSource: { kind: "gas" },
+      }),
     ).rejects.toThrow(/Cannot resolve package id/);
   });
 
@@ -546,6 +524,153 @@ describe("pyth on-chain helper branches", () => {
     expect(() => reimbursePythSponsor(tx, client, fund, req, MOCK_USDC_TYPE)).toThrow(
       /pyth_sponsor_rule missing from config/,
     );
+  });
+});
+
+describe("buildPythPriceUpdateCalls — fee source resolution (Task 5)", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("draws from the sponsor pool when feeSource.kind is 'sponsor' (never tx.gas)", async () => {
+    // The old "sponsorFund wins over allowGasFee when both are supplied"
+    // scenario no longer applies — `OracleFeeSource` is a closed union, so a
+    // caller can no longer construct a "both supplied" shape at all. The
+    // priority is now structural (resolved once at the edge, see
+    // `OracleFeeSource`'s doc); this test just pins the sponsor-split
+    // behavior for that one resolved kind.
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+
+    const tx = new Transaction();
+    const { fund, packageId } = openPythSponsorFund(tx, client);
+    await buildPythPriceUpdateCalls(tx, client, [update], [feedId], {
+      cache: new PythCache(),
+      feeSource: { kind: "sponsor", fund, packageId },
+    });
+
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
+    expect(
+      tx
+        .getData()
+        .commands?.some((c) => c.$kind === "MoveCall" && c.MoveCall?.function === "split"),
+    ).toBe(true);
+  });
+
+  it("draws from tx.gas when feeSource.kind is 'gas'", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+
+    const tx = new Transaction();
+    await buildPythPriceUpdateCalls(tx, client, [update], [feedId], {
+      cache: new PythCache(),
+      feeSource: { kind: "gas" },
+    });
+
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
+  });
+
+  it("throws OracleFeeSourceUnavailableError when no feeSource is supplied, before any PTB mutation", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+
+    const tx = new Transaction();
+    const rejection = expect(
+      buildPythPriceUpdateCalls(tx, client, [update], [feedId], { cache: new PythCache() }),
+    ).rejects;
+    await rejection.toThrow(/OracleFeeSourceUnavailable/);
+    // instanceof-able (mirrors FetchPolicyError) — a consumer can branch on
+    // the error type directly instead of string-matching `.message`.
+    await rejection.toBeInstanceOf(OracleFeeSourceUnavailableError);
+
+    // Fail-fast — the throw happens before any gRPC read or PTB mutation
+    // (mirrors the Task-4 fetch-all-then-build ordering guarantee).
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
+  });
+
+  it("OracleFeeSourceUnavailableError carries its own name", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+    const tx = new Transaction();
+
+    let caught: unknown;
+    try {
+      await buildPythPriceUpdateCalls(tx, client, [update], [feedId], { cache: new PythCache() });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(OracleFeeSourceUnavailableError);
+    expect((caught as Error).name).toBe("OracleFeeSourceUnavailableError");
+  });
+
+  it("refreshOraclePrices throws OracleFeeSourceUnavailableError before the off-chain fetch (single-group case)", async () => {
+    const client = createUnitTestClient();
+    attachPythGrpcMocks(client);
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD"])).rejects.toBeInstanceOf(
+      OracleFeeSourceUnavailableError,
+    );
+
+    // The pre-check is hoisted ABOVE the off-chain fetch AND the gRPC state
+    // reads too — no wasted Hermes/gRPC call, not just zero PTB commands.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(client.grpcClient.getObject).not.toHaveBeenCalled();
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
+  });
+
+  it("throw message names both resolutions", async () => {
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+    const tx = new Transaction();
+
+    await expect(
+      buildPythPriceUpdateCalls(tx, client, [update], [feedId], { cache: new PythCache() }),
+    ).rejects.toThrow(/pyth_sponsor_rule to config.*allowGasFee/s);
+  });
+
+  it("updatePythPrices forwards feeSource through to buildPythPriceUpdateCalls", async () => {
+    const { updatePythPrices } = await import("../../../src/oracle/index.ts");
+    const { toHex } = await import("@mysten/bcs");
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ binary: { data: [toHex(update)] } }),
+    })) as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    const ids = await updatePythPrices(tx, client, [feedId], { feeSource: { kind: "gas" } });
+    expect(ids.length).toBe(1);
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
+  });
+
+  it("updatePythPrices rejects when no fee source is available", async () => {
+    const { updatePythPrices } = await import("../../../src/oracle/index.ts");
+    const { toHex } = await import("@mysten/bcs");
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client);
+    const update = mockAccumulatorUpdate();
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ binary: { data: [toHex(update)] } }),
+    })) as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    const rejection = expect(updatePythPrices(tx, client, [feedId])).rejects;
+    await rejection.toThrow(/OracleFeeSourceUnavailable/);
+    await rejection.toBeInstanceOf(OracleFeeSourceUnavailableError);
   });
 });
 

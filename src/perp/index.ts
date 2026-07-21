@@ -1,7 +1,13 @@
 // ======== Core ========
 export { PerpClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { PYTH_DEFAULTS, WORMHOLE_DEFAULTS, clearConfigCache, loadConfig } from "./config.ts";
+export {
+  PYTH_DEFAULTS,
+  PYTH_PRO_DEFAULTS,
+  WORMHOLE_DEFAULTS,
+  clearConfigCache,
+  loadConfig,
+} from "./config.ts";
 export type {
   BasePackageEntry,
   ConstantFeedEntry,
@@ -9,7 +15,9 @@ export type {
   LoadConfigOptions,
   NativeCustodyAsset,
   NativeCustodyPackage,
+  PythGeneration,
   PythInfraConfig,
+  PythLazerRulePackage,
   PythRulePackage,
   PythSponsorRulePackage,
   SupraFeedEntry,
@@ -120,6 +128,10 @@ export * from "./fetch.ts";
 
 // ======== Oracle utilities (Pyth source + rule aggregation) ========
 export {
+  FetchPolicyError,
+  LazerApiKeyMissingError,
+  OracleFeeSourceUnavailableError,
+  OracleSourceNotImplementedError,
   PythCache,
   aggregateTicker,
   aggregateTickerWithConstant,
@@ -128,6 +140,12 @@ export {
   fetchPriceFeedsUpdateData,
   refreshOraclePrices,
   updatePythPrices,
+} from "../oracle/index.ts";
+export type {
+  FetchPolicy,
+  OracleFeeSource,
+  OracleSource,
+  UpdateDataProvider,
 } from "../oracle/index.ts";
 
 // ======== Wormhole / Wormholescan utilities (credit bridge) ========

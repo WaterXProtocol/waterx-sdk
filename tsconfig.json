@@ -23,10 +23,19 @@
     "test/perp/e2e",
     "test/perp/helpers/fixtures",
     "test/perp/helpers/test-client.ts",
-    "test/perp/helpers/e2e/e2e-client.ts",
-    "test/perp/helpers/e2e/e2e-setup.ts",
-    "test/perp/helpers/e2e/transient-rpc.ts",
+    "test/perp/helpers/e2e",
     "test/perp/helpers/trading/expected-open-trading-fee.ts"
   ],
-  "exclude": ["node_modules", "**/__tests__/*", "test/prediction/helpers/bucket-backend-mono"]
+  "exclude": [
+    "node_modules",
+    "**/__tests__/*",
+    "test/prediction/helpers/bucket-backend-mono",
+    // Orphaned e2e helpers with no importer anywhere in the tree — pre-existing stale
+    // call sites against removed/renamed APIs (bucketOraclePackageId, getMarketSummary,
+    // BaseAsset/CollateralAsset, depositCoin). Leave excluded until someone revives them;
+    // fixing dead code with no caller is out of scope of the tsconfig-include hygiene fix.
+    "test/perp/helpers/e2e/build-oracle-feed-simulate.ts",
+    "test/perp/helpers/e2e/e2e-open-sizing-expect.ts",
+    "test/perp/helpers/e2e/wlp-mint-simulate-tx.ts"
+  ]
 }

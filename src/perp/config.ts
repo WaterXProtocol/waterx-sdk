@@ -11,6 +11,7 @@
 
 import type { AccountPackages, BasePackageEntry, WormholeInfraConfig } from "../account/config.ts";
 import type { OraclePackages, PythInfraConfig } from "../oracle/config.ts";
+import { FetchPolicyError, fetchWithPolicy } from "../oracle/update-fetch.ts";
 import type { Network } from "./constants.ts";
 
 // The account-layer schema (account / funding / referral package entries +
@@ -39,7 +40,9 @@ export type {
   ConstantFeedEntry,
   OracleConfig,
   OraclePackages,
+  PythGeneration,
   PythInfraConfig,
+  PythLazerRulePackage,
   PythRulePackage,
   PythSponsorRulePackage,
   SupraFeedEntry,
@@ -47,7 +50,7 @@ export type {
   WaterxConstantRulePackage,
   WaterxOraclePackage,
 } from "../oracle/config.ts";
-export { PYTH_DEFAULTS } from "../oracle/config.ts";
+export { PYTH_DEFAULTS, PYTH_PRO_DEFAULTS } from "../oracle/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -208,19 +211,40 @@ export interface LoadConfigOptions {
   waterxConfigUrl?: string;
   /**
    * Reuse a previously-fetched config from the in-memory cache (keyed by
-   * the effective URL). Default: false (always fetch fresh).
+   * network + the effective URL). Default: false (always fetch fresh).
    */
   cache?: boolean;
   /** Optional fetch implementation (for tests or environments without global `fetch`). */
   fetchImpl?: typeof fetch;
-  /** Optional request timeout in ms. Default 10_000. */
+  /**
+   * Optional PER-ATTEMPT timeout in ms. Default 10_000. {@link loadConfig}
+   * retries a transient failure (network error / 429 / 5xx) via
+   * `fetchWithPolicy` (2 retries, exponential backoff) before falling back to
+   * the last successfully-validated config for this network+URL, if one exists.
+   */
   timeoutMs?: number;
 }
 
-const cache = new Map<string, WaterXConfig>();
+// Last successfully-validated config per `${network}:${url}` — the ONE module
+// map, written UNCONDITIONALLY on every successful load regardless of
+// `opts.cache`. It serves two roles at once: the resilience fallback for a
+// refresh failure (see `loadConfig` below) AND the opt-in fast-path read
+// `opts.cache: true` gates at the top of `loadConfig`. `opts.cache` therefore
+// only gates whether a call *reads* this map early (skipping the fetch
+// entirely) — it never gates whether a call *writes* it; every successful
+// load writes here. The network prefix keeps one network's snapshot from ever
+// satisfying another's request (see the cache-key note in `loadConfig`).
+//
+// Deliberate (benign) semantic refinement from the prior two-map design: a
+// `cache: true` call can now hit an entry that was populated by an earlier
+// `cache: false` call for the SAME network+url. That's fine — it's still that
+// key's latest successfully-validated fetch, strictly FRESHER than any
+// fallback read would have been, so a `cache: true` caller never observes
+// staler data than before; it can only observe MORE-recent data sooner.
+const configCache = new Map<string, WaterXConfig>();
 
 export function clearConfigCache(): void {
-  cache.clear();
+  configCache.clear();
 }
 
 export async function loadConfig(
@@ -231,8 +255,16 @@ export async function loadConfig(
   if (!url) {
     throw new Error("loadConfig: no config URL — pass opts.waterxConfigUrl");
   }
-  if (opts.cache && cache.has(url)) {
-    return cache.get(url)!;
+  // Key by network AND url, never url alone: the same url can legitimately be
+  // requested for two networks (and `validateConfig` enforces network/url
+  // coherence on the success path), so a url-only key would let a testnet
+  // snapshot satisfy a mainnet request — both on this fast-path read and on
+  // the resilience fallback below — handing back wrong-CHAIN object ids to
+  // build transactions against. A wrong-network request simply misses here
+  // and fetches fresh.
+  const cacheKey = `${network}:${url}`;
+  if (opts.cache && configCache.has(cacheKey)) {
+    return configCache.get(cacheKey)!;
   }
 
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as typeof fetch | undefined);
@@ -240,22 +272,63 @@ export async function loadConfig(
     throw new Error("loadConfig: no global `fetch` available; pass opts.fetchImpl");
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10_000);
-  let response: Response;
+  // Same resilience policy as the oracle money-path fetches (see
+  // `fetchWithPolicy`): bounded retry with backoff instead of one bare
+  // attempt. A refresh failure (network exhaustion, a non-ok response, OR a
+  // 200 response that fails to parse/validate — see below) falls back to the
+  // last successfully-validated config for this network+URL when one exists — a
+  // config-endpoint blip must not crash a long-running process that already
+  // has a working deployment snapshot. First load (nothing cached yet) has
+  // no fallback and still throws. Intentionally no log line on the fallback
+  // path — the SDK never logs (see every other oracle error in this
+  // codebase); a caller that cares can tell it got a stale snapshot by
+  // re-deriving staleness itself if it needs to.
+  //
+  // Deliberate limitation (not fixed here — a follow-up): this treats EVERY
+  // failure mode identically, including a DETERMINISTIC one (404/403 — the
+  // URL moved, or access was revoked) once a `configCache` snapshot exists.
+  // Unlike a transient blip, a deterministic failure will never self-heal on
+  // the next retry, so a long-running process with a stale snapshot will
+  // keep serving it FOREVER and silently mask what is actually a permanent
+  // deployment problem. Disambiguating "blip" from "moved/revoked" (e.g. via
+  // a max-staleness budget, or treating non-retryable 4xx specially) is
+  // intentionally deferred rather than folded into this change.
+  //
+  // fetch → ok-check → parse → validate all run in ONE try, so any failure
+  // along that chain (network exhaustion, a non-ok response, malformed JSON,
+  // or a `validateConfig` rejection) lands in the same catch and takes the
+  // same single last-known-good lookup below.
+  let raw: WaterXConfig;
   try {
-    response = await fetchImpl(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-  if (!response.ok) {
-    throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
+    const response = await fetchWithPolicy(
+      url,
+      {},
+      { timeoutMs: opts.timeoutMs ?? 10_000, retries: 2, fetchImpl },
+    );
+    if (!response.ok) {
+      throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
+    }
+    raw = (await response.json()) as WaterXConfig;
+    validateConfig(raw, network, url);
+  } catch (err) {
+    const stale = configCache.get(cacheKey);
+    if (stale) return stale;
+    // Reformat a status-carrying FetchPolicyError (retries exhausted on a
+    // retryable status) into this function's own message shape, mirroring
+    // the non-retried `!response.ok` throw above. A network-level
+    // exhaustion (no status), a `!response.ok` throw, or a JSON parse /
+    // `validateConfig` failure has no domain-specific reframing to add —
+    // propagate that error's own message as-is.
+    if (err instanceof FetchPolicyError && err.status !== undefined) {
+      throw new Error(
+        `loadConfig: HTTP ${err.status} fetching ${url} (retries exhausted after ${err.attempts} attempts)`,
+        { cause: err },
+      );
+    }
+    throw err;
   }
 
-  const raw = (await response.json()) as WaterXConfig;
-  validateConfig(raw, network, url);
-
-  if (opts.cache) cache.set(url, raw);
+  configCache.set(cacheKey, raw);
   return raw;
 }
 
@@ -276,6 +349,9 @@ function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void
   };
   // Validate by deployment kind. A perp config must carry the perp set; a
   // credit config the credit set. `waterx_account` is common to both.
+  // `pyth_lazer_rule` is intentionally NOT required (and never will be by
+  // presence alone) — it's an optional/experimental package selected only via
+  // a client's `oracleSource` option, never by its presence in the config.
   const isPerp = "waterx_perp" in cfg.packages;
   const isCredit = "waterx_credit" in cfg.packages || "wormhole_bridge" in cfg.packages;
   const required: (keyof WaterXPackages)[] = isPerp

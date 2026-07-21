@@ -35,6 +35,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import * as accountOps from "./account/index.ts";
 import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
+import type { PythGeneration } from "./oracle/config.ts";
+import type { OracleSource } from "./oracle/price-update-rule.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
 import * as perpFetch from "./perp/fetch.ts";
@@ -155,6 +157,21 @@ export interface ClientCreateOptions {
   waterxConfigUrl?: string;
   /** Memoize the fetched config JSON. */
   cache?: boolean;
+  /**
+   * Selects which `PriceUpdateRule` the perp line's `refreshOraclePrices` uses
+   * for the on-chain price-update leg (see `OracleHost.oracleSource`).
+   * Default: `'pyth_rule'`. Perp-line only. The SDK never reads `process.env`
+   * — pass this from your own env var (e.g. `ORACLE_SOURCE`).
+   */
+  oracleSource?: OracleSource;
+  /**
+   * Selects which Pyth Core contract generation feeds the perp line's
+   * `client.perp.pyth` when the config JSON has no explicit `pyth` override:
+   * `'core'` (default) or `'pro'` (post-2026-08-18 Pro-compatible contracts +
+   * Hermes-compatible endpoint; pair with `pyth.api_key`). Perp-line only.
+   * See `PythGeneration` / `PYTH_PRO_DEFAULTS`.
+   */
+  pythGeneration?: PythGeneration;
   /** Perp-line overrides (network, grpcUrl, waterxConfigUrl, cache, …). */
   perp?: PerpLineOptions;
   /** Prediction-line overrides (network, grpcUrl, waterxConfigUrl, cache, settlement, …). */
@@ -241,6 +258,8 @@ export class WaterXClient {
       grpcUrl: opts.grpcUrl,
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
+      oracleSource: opts.oracleSource,
+      pythGeneration: opts.pythGeneration,
       ...perpRest,
     });
     const predictClient = await PredictClient.create(resolvedPredictNetwork, {

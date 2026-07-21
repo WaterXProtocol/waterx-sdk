@@ -10,7 +10,9 @@ export async function appendWlpPoolOracleRefresh(
   client: PerpClient,
 ): Promise<void> {
   const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
-  await refreshOraclePrices(tx, client, poolTickers);
+  // Standalone WLP-pool-ops test helper, no TradingRequest to reimburse a
+  // sponsor fund against — pay the Pyth update fee from tx.gas.
+  await refreshOraclePrices(tx, client, poolTickers, { feeSource: { kind: "gas" } });
   for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType });
   }

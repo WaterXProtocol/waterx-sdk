@@ -36,7 +36,9 @@ export async function warmPythHermesForTickers(
       const warmTx = new Transaction();
       warmTx.setSender(DUMMY_SENDER);
       warmTx.setGasBudget(1_200_000_000);
-      await updatePythPrices(warmTx, client, [...feedSet], cache);
+      // Standalone dry-run simulate, no TradingRequest to reimburse a
+      // sponsor fund against — pay the Pyth update fee from tx.gas.
+      await updatePythPrices(warmTx, client, [...feedSet], { cache, feeSource: { kind: "gas" } });
       await client.simulate(warmTx);
     }
   } catch {

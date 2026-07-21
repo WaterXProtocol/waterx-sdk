@@ -206,6 +206,9 @@ async function main(): Promise<void> {
       depositTicker: "USDCUSD",
       depositAmount: mintAmount,
       minLpAmount: 0n,
+      // mint_wlp produces no TradingRequest to reimburse a sponsor fund
+      // against — standalone smoke script pays its own gas.
+      allowGasFee: true,
     });
     if (!(await sim(client, keypair, mintTx, "mintWlp (sim)"))) process.exit(2);
     const r = await execute(client, keypair, mintTx, "mintWlp (execute)");

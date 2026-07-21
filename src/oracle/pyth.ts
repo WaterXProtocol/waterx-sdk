@@ -20,6 +20,7 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "./host.ts";
+import { FetchPolicyError, fetchWithPolicy } from "./update-fetch.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -42,11 +43,31 @@ export class PythCache {
 export async function fetchPriceFeedsUpdateData(
   endpoint: string,
   priceIds: string[],
+  opts?: { apiKey?: string; fetch?: { timeoutMs?: number; retries?: number } },
 ): Promise<Uint8Array[]> {
   if (priceIds.length === 0) return [];
   const url = new URL("/v2/updates/price/latest", endpoint);
   priceIds.forEach((id) => url.searchParams.append("ids[]", id));
-  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(15_000) });
+
+  let res: Response;
+  try {
+    res = await fetchWithPolicy(url.toString(), {}, { apiKey: opts?.apiKey, ...opts?.fetch });
+  } catch (err) {
+    // A retryable status (429/5xx) that never recovered surfaces as a
+    // FetchPolicyError with `status` set — reformat it into this function's
+    // own message shape so callers (and the e2e transient-failure detector,
+    // which keys off "Hermes price fetch failed") see the same text whether
+    // the failure was retried or not. A network-level exhaustion (no status)
+    // has no domain-specific reframing to add — propagate it as-is.
+    if (err instanceof FetchPolicyError && err.status !== undefined) {
+      const body = err.bodySnippet ? ` ${err.bodySnippet}` : "";
+      throw new Error(
+        `Hermes price fetch failed: ${err.status}${body} (retries exhausted after ${err.attempts} attempts)`,
+        { cause: err },
+      );
+    }
+    throw err;
+  }
   if (!res.ok) throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { binary?: { data?: string[] } };
   const data = json.binary?.data;
@@ -188,22 +209,90 @@ function extractVaaBytes(accumulatorMessage: Uint8Array): Uint8Array {
 // ============================================================================
 
 /**
+ * Resolved source for the Pyth Core on-chain update fee. Deliberately a
+ * closed two-variant union, not a `{ sponsorFund?, allowGasFee? }` pair — a
+ * caller can no longer construct the "both supplied" or "neither supplied
+ * but some other truthy flag" shapes that used to require a priority rule to
+ * disambiguate.
+ *
+ * Resolved exactly ONCE, at the edges (`wrapRequestAndExecute` and the WLP
+ * builders' equivalent in `perp/tx-builders/`) from config presence
+ * (`pyth_sponsor_rule` deployed → open a fund → `'sponsor'`) and the
+ * caller's ergonomic `allowGasFee` opt-in (→ `'gas'`), then threaded
+ * verbatim through `refreshOraclePrices` → `BuildUpdateOpts` →
+ * `PythCoreRule` → {@link buildPythPriceUpdateCalls}. The sponsor-beats-gas
+ * priority from the old two-flag design is now structural — whichever edge
+ * resolves this value decides once; no downstream layer re-derives or
+ * re-documents a priority because none of them ever see more than one
+ * candidate source.
+ */
+export type OracleFeeSource =
+  | { readonly kind: "sponsor"; readonly fund: TransactionArgument; readonly packageId: string }
+  | { readonly kind: "gas" };
+
+/**
+ * Thrown when no {@link OracleFeeSource} is available for the Pyth update fee
+ * — from `buildPythPriceUpdateCalls`'s own per-call guard, or `aggregate.ts`'s
+ * hoisted `refreshOraclePrices` pre-check (see its docblock). `instanceof`-able
+ * (mirrors `FetchPolicyError` in `update-fetch.ts`) so a consumer — e.g. a BE
+ * integration wiring its own `allowGasFee` decision — can branch on the error
+ * type directly instead of string-matching `error.message`.
+ */
+export class OracleFeeSourceUnavailableError extends Error {
+  constructor() {
+    super(
+      "OracleFeeSourceUnavailable: no fee source available for the Pyth update fee — " +
+        "deploy pyth_sponsor_rule to config so a sponsor fund can be opened (see " +
+        "openPythSponsorFund / wrapRequestAndExecute), or pass allowGasFee: true to draw " +
+        "the fee from tx.gas in a non-sponsored context",
+    );
+    this.name = "OracleFeeSourceUnavailableError";
+  }
+}
+
+/**
  * Append the on-chain Pyth update PTB block. Returns `PriceInfoObject` IDs
  * (one per `feedIds`, same order). After this you can feed `pyth_rule` per
  * ticker against the matching `PriceInfoObject` (see `rules/pyth-rule.ts`).
  *
- * If `sponsorFund` is provided, the per-feed update fee comes from the
- * sponsor pool (`pyth_sponsor_rule::split`) instead of `tx.gas`. Opening and
- * reimbursing that fund is the sponsor rule's job (`rules/sponsor.ts`); here we
- * only draw a fee coin from the already-open `fund` hot potato.
+ * `opts.feeSource` is resolved BEFORE any PTB mutation and is never silently
+ * defaulted — this function trusts whatever single {@link OracleFeeSource}
+ * it's handed, it does not choose between competing candidates:
+ *   - `{ kind: 'sponsor' }` → the per-feed update fee is drawn from the
+ *     sponsor pool (`pyth_sponsor_rule::split`) instead of `tx.gas`. Opening
+ *     and reimbursing that fund is the caller's job (`rules/sponsor.ts` /
+ *     `wrapRequestAndExecute`, which opens it whenever the client's config
+ *     has `pyth_sponsor_rule` deployed) — this function only draws a fee
+ *     coin from the already-open `fund` hot potato.
+ *   - `{ kind: 'gas' }` → the fee is drawn from `tx.gas` via `tx.splitCoins`.
+ *     Only safe in a non-sponsored context — Enoki-sponsored transactions
+ *     reject any `tx.gas` draw.
+ *   - `undefined` → throws `OracleFeeSourceUnavailable` instead of silently
+ *     drawing from `tx.gas` (the old default), which broke under Enoki and,
+ *     worse, could fail ON-CHAIN when the market's `request_checklist`
+ *     requires the `PythSponsorRule` witness that only a real sponsor fund
+ *     attaches.
+ *
+ * This function's own check runs AFTER `updates`/`feedIds` are already in
+ * hand, so for `updatePythPrices` (which fetches from Hermes, then calls
+ * straight into this function) the off-chain fetch has already completed by
+ * the time this throws — a wasted network call, never a stray PTB command.
+ * `refreshOraclePrices` avoids that waste entirely: it hoists an EQUIVALENT
+ * check ABOVE its off-chain fetch AND its per-group build loop (see its
+ * docblock in `aggregate.ts`), keyed on `PriceUpdateRule.requiresFeeSource`
+ * rather than waiting for a specific rule's fetch to complete — so for that
+ * route neither the network call NOR any PTB command happens before the
+ * throw. This function's own (later, per-call) guard alone could not
+ * provide that "before any group builds" guarantee in a mixed shape (e.g. a
+ * fee-free Lazer group ordered ahead of a Pyth Core fallback group in the
+ * same PTB) — `refreshOraclePrices`'s pre-check is what closes it.
  */
 export async function buildPythPriceUpdateCalls(
   tx: Transaction,
   host: OracleHost,
   updates: Uint8Array[],
   feedIds: string[],
-  cache?: PythCache,
-  sponsorFund?: { fund: TransactionArgument; packageId: string },
+  opts?: { cache?: PythCache; feeSource?: OracleFeeSource },
 ): Promise<string[]> {
   if (updates.length === 0) {
     throw new Error("No price update data provided; Hermes returned empty results");
@@ -211,7 +300,12 @@ export async function buildPythPriceUpdateCalls(
   if (updates.length > 1) {
     throw new Error("Only a single accumulator message is supported per transaction");
   }
+  const feeSource = opts?.feeSource;
+  if (!feeSource) {
+    throw new OracleFeeSourceUnavailableError();
+  }
 
+  const cache = opts?.cache;
   const pyth = host.pyth;
   const [stateInfo, wormholePackageId, table] = await Promise.all([
     getPythStateInfo(host.grpcClient, pyth.state_id, cache),
@@ -252,12 +346,13 @@ export async function buildPythPriceUpdateCalls(
     if (!priceInfoObjectId) {
       throw new Error(`Pyth feed ${feedIds[i]} not registered on-chain in Pyth state`);
     }
-    const feeCoin = sponsorFund
-      ? tx.moveCall({
-          target: `${sponsorFund.packageId}::pyth_sponsor_rule::split`,
-          arguments: [sponsorFund.fund],
-        })[0]!
-      : tx.splitCoins(tx.gas, [tx.pure.u64(baseUpdateFee)])[0]!;
+    const feeCoin =
+      feeSource.kind === "sponsor"
+        ? tx.moveCall({
+            target: `${feeSource.packageId}::pyth_sponsor_rule::split`,
+            arguments: [feeSource.fund],
+          })[0]!
+        : tx.splitCoins(tx.gas, [tx.pure.u64(baseUpdateFee)])[0]!;
 
     [hotPotato] = tx.moveCall({
       target: `${pythPackageId}::pyth::update_single_price_feed`,
@@ -286,9 +381,11 @@ export async function updatePythPrices(
   tx: Transaction,
   host: OracleHost,
   feedIds: string[],
-  cache?: PythCache,
-  sponsorFund?: { fund: TransactionArgument; packageId: string },
+  opts?: { cache?: PythCache; feeSource?: OracleFeeSource },
 ): Promise<string[]> {
-  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds);
-  return buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund);
+  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
+    apiKey: host.pyth.api_key,
+    fetch: host.pyth.fetch,
+  });
+  return buildPythPriceUpdateCalls(tx, host, updates, feedIds, opts);
 }

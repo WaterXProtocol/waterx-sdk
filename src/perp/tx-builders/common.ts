@@ -12,6 +12,8 @@ import {
   PythCache,
   refreshOraclePrices,
   reimbursePythSponsor,
+  type OracleFeeSource,
+  type UpdateDataProvider,
 } from "../../oracle/index.ts";
 import { getCollateralAssets } from "../../utils/config.ts";
 import type { PerpClient } from "../client.ts";
@@ -26,16 +28,31 @@ export interface CommonBuildOpts {
   /** Share a `PythCache` across builders to avoid redundant pyth_state reads. */
   pythCache?: PythCache;
   /**
-   * Wire the `pyth_sponsor_rule` flow:
-   *   - open a Fund via `pyth_sponsor_rule::request(sponsor)`
-   *   - pay Pyth update fees from the Fund (instead of `tx.gas`)
-   *   - reimburse leftover into the sponsor pool + attach
-   *     `PythSponsorRule` witness to the TradingRequest so markets
-   *     whose `request_checklist` contains `PythSponsorRule` accept it
-   * Default: true (matches the testnet/mainnet checklist config).
-   * Pass `false` only when the market checklist is empty.
+   * @deprecated No longer a fee-source decision. `wrapRequestAndExecute` now
+   * opens (and reimburses) the `pyth_sponsor_rule` Fund purely from config
+   * presence — whenever `client.config.packages.pyth_sponsor_rule` is
+   * deployed, the fund is ALWAYS opened, regardless of this flag (see
+   * `OracleFeeSourceUnavailable` in `oracle/pyth.ts`). This closes the gap
+   * where a market whose checklist required `PythSponsorRule`, or a caller
+   * that mis-set this flag, silently drew from `tx.gas` and failed
+   * ON-CHAIN instead of at build time. Use `allowGasFee` for the
+   * non-sponsored case instead. Kept accepted (as a no-op) only so existing
+   * callers keep compiling; will be removed in a future major version.
    */
   useSponsor?: boolean;
+  /**
+   * Explicit opt-in to draw the Pyth update fee from `tx.gas` when this
+   * client's config has no `pyth_sponsor_rule` deployed. Ignored whenever a
+   * sponsor fund IS available — the sponsor pool always wins over `tx.gas`
+   * when one can be opened (see `useSponsor`'s deprecation note above).
+   * Required for flows with no `TradingRequest` to reimburse a sponsor fund
+   * against (e.g. `buildMintWlpTx` — see its doc comment). Building an
+   * oracle refresh with neither a sponsor fund nor this flag throws
+   * `OracleFeeSourceUnavailable` instead of silently drawing from `tx.gas`
+   * (Enoki-sponsored transactions reject any `tx.gas` draw). Default:
+   * `false`.
+   */
+  allowGasFee?: boolean;
   /**
    * Pre-sweep parked backing assets (USDC, USDsui, …) at the wxa account's
    * address into USD credit, plus any CREDIT coins/funds at the address into
@@ -54,6 +71,15 @@ export interface CommonBuildOpts {
    * {@link buildConsolidateToUsdTx} separately.
    */
   consolidateToUsd?: boolean;
+  /**
+   * BE prefetch-cache seam for the oracle update-data fetch — forwarded
+   * verbatim into `refreshOraclePrices`'s `updateDataProvider` opt (see
+   * `UpdateDataProvider` in `oracle/price-update-rule.ts`). Default: none
+   * (always a live fetch). A caller-supplied provider that misses or throws
+   * still falls back to a live fetch — this option can only make a refresh
+   * faster, never break it.
+   */
+  updateDataProvider?: UpdateDataProvider;
 }
 
 interface RequestParams {
@@ -78,15 +104,18 @@ export async function refreshWlpPoolOracles(
   extraTickers: string[],
   opts: {
     cache?: PythCache;
-    sponsorFund?: { fund: TransactionArgument; packageId: string };
+    /** Forwarded to `refreshOraclePrices` — already resolved by the caller (see `OracleFeeSource`). */
+    feeSource?: OracleFeeSource;
     lpType?: string;
+    updateDataProvider?: UpdateDataProvider;
   },
 ): Promise<void> {
   const poolTickers = getCollateralAssets(client.config);
   const oracleTickers = Array.from(new Set([...extraTickers, ...poolTickers]));
   await refreshOraclePrices(tx, client, oracleTickers, {
     cache: opts.cache,
-    sponsorFund: opts.sponsorFund,
+    feeSource: opts.feeSource,
+    updateDataProvider: opts.updateDataProvider,
   });
   for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
@@ -94,13 +123,27 @@ export async function refreshWlpPoolOracles(
 }
 
 /**
- * Build the *Request + execute envelope with optional Pyth sponsor flow:
+ * Build the *Request + execute envelope with the config-driven Pyth sponsor flow:
  *
+ *   [maybeConsolidate(tx)]
  *   [fund = sponsor.request()]
- *   refreshOraclePrices(..., sponsorFund?)
+ *   refreshOraclePrices(..., feeSource?)
  *   req = buildRequest()
  *   [sponsor.reimburse(fund, req)]
  *   trading::execute(req)
+ *
+ * Accepted ordering caveat: `maybeConsolidate` runs FIRST and can itself
+ * append PTB commands (the consolidation sweep) before the fee-source check
+ * inside `refreshOraclePrices` ever runs — so an `OracleFeeSourceUnavailable`
+ * throw here is NOT the "zero commands appended" guarantee
+ * `refreshOraclePrices` gives its own callers (see its docblock in
+ * `aggregate.ts`); `tx` can already carry the sweep. This is the same
+ * discard-tx-on-throw contract every `build*Tx` composer already has for
+ * mid-build on-chain-read failures — not a new hole. It matters only for a
+ * caller that passed in their OWN `opts.tx` (reusing one `Transaction`
+ * across builder calls, e.g. to compose several actions in one PTB); such a
+ * caller must discard the whole `tx` on any throw from this function, not
+ * just retry the failed step.
  */
 export async function wrapRequestAndExecute(
   client: PerpClient,
@@ -115,15 +158,34 @@ export async function wrapRequestAndExecute(
 ): Promise<void> {
   await maybeConsolidate(client, tx, req.accountId, opts);
 
-  const useSponsor = opts?.useSponsor ?? true;
+  // Fee source + witness attachment is config-driven, not a caller flag: the
+  // sponsor fund is opened (and later reimbursed) whenever this client's
+  // config has `pyth_sponsor_rule` deployed — regardless of the deprecated
+  // `useSponsor` flag (see its JSDoc). `allowGasFee` is the only caller lever
+  // left, and it only matters when config has NO sponsor rule to open (see
+  // `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
+  //
+  // `feeSource` is resolved HERE, once, from that same decision — sponsor
+  // beats gas structurally because this is the only branch that ever sees
+  // both candidates; everything downstream (`refreshWlpPoolOracles` →
+  // `refreshOraclePrices` → `BuildUpdateOpts` → `PythCoreRule` →
+  // `buildPythPriceUpdateCalls`) just carries the single resolved value.
   let sponsorFund: { fund: TransactionArgument; packageId: string } | undefined;
-  if (useSponsor) sponsorFund = openPythSponsorFund(tx, client);
+  if (client.config.packages.pyth_sponsor_rule) {
+    sponsorFund = openPythSponsorFund(tx, client);
+  }
+  const feeSource: OracleFeeSource | undefined = sponsorFund
+    ? { kind: "sponsor", ...sponsorFund }
+    : opts?.allowGasFee
+      ? { kind: "gas" }
+      : undefined;
 
   if (!opts?.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
       cache: opts?.pythCache,
-      sponsorFund,
+      feeSource,
       lpType: req.lpType,
+      updateDataProvider: opts?.updateDataProvider,
     });
   }
 

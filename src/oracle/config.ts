@@ -27,6 +27,25 @@ export interface PythSponsorRulePackage extends BasePackageEntry {
   pyth_sponsor: string;
 }
 
+/**
+ * `pyth_lazer_rule` deployment entry — present in the deployed testnet
+ * `waterx-config` JSON. Read by `PythLazerRule` (`rules/pyth-lazer-rule.ts`):
+ * `feeds` for ticker support + integer feed-id resolution, `state` for the
+ * verify call, `published_at`/`config` for the per-ticker feed call.
+ *
+ * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
+ * which rule prices a ticker is decided solely by the client's `oracleSource`
+ * create option (see `OracleHost.oracleSource`), never by this flag or any
+ * other config value.
+ */
+export interface PythLazerRulePackage extends BasePackageEntry {
+  config: string;
+  state: string;
+  enabled?: boolean;
+  /** Oracle ticker → integer Pyth Lazer feed id (distinct id scheme from `pyth_rule`'s hex `feed_id`). */
+  feeds: Record<string, number>;
+}
+
 /** Per-ticker `constant_rule` feed entry (mirrors the `pyth_rule.feeds` shape). */
 export interface ConstantFeedEntry {
   /**
@@ -87,6 +106,8 @@ export interface WaterxOraclePackage extends BasePackageEntry {
 export interface OraclePackages {
   pyth_rule: PythRulePackage;
   pyth_sponsor_rule?: PythSponsorRulePackage;
+  /** See {@link PythLazerRulePackage} — typed only, not read for routing. */
+  pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;
   supra_rule?: SupraRulePackage;
   waterx_oracle: WaterxOraclePackage;
@@ -100,6 +121,28 @@ export interface PythInfraConfig {
   state_id: string;
   wormhole_state_id: string;
   hermes_endpoint: string;
+  /**
+   * Pyth Pro / Lazer access token (`Authorization: Bearer …`) for
+   * `PythLazerRule`'s signed-update fetch — Lazer is auth-first, so there is
+   * no keyless default. Optional: Pyth-Core-only deployments never need it.
+   * Consumers pass it through client config (`config.pyth`); the SDK never
+   * reads `process.env`. Absent when a lazer-routed fetch runs →
+   * `LazerApiKeyMissing` is thrown at fetch time. As of the Pyth Pro
+   * migration (post-2026-08-18, per
+   * https://docs.pyth.network/price-feeds/core/upgrade) this is ALSO required
+   * for `pyth_rule`'s Hermes fetch (`fetchPriceFeedsUpdateData`) — see
+   * `fetch` below.
+   */
+  api_key?: string;
+  /**
+   * Retry/timeout policy override for the Hermes (`fetchPriceFeedsUpdateData`)
+   * and Lazer (`PythLazerRule`) off-chain update fetches — see
+   * `fetchWithPolicy` (`./update-fetch.ts`) for the full policy (backoff,
+   * which statuses retry, Bearer attachment). Optional: both fetches default
+   * to `fetchWithPolicy`'s built-in defaults (15s timeout, 2 retries) when
+   * unset.
+   */
+  fetch?: { timeoutMs?: number; retries?: number };
 }
 
 export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
@@ -112,6 +155,88 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
     state_id: "0x243759059f4c3111179da5878c12f68d612c21a8d54d85edc86164bb18be1c7c",
     wormhole_state_id: "0x31358d198147da50db32eda2562951d53973a0c0ad5ed738e9b17d88b213d790",
     hermes_endpoint: "https://hermes-beta.pyth.network",
+  },
+};
+
+/**
+ * Which Pyth Core contract generation feeds `host.pyth` when the config JSON
+ * carries no explicit `pyth` override:
+ *
+ * - `'core'` (default) — the original contracts + keyless Hermes
+ *   ({@link PYTH_DEFAULTS}).
+ * - `'pro'` — the Pro-compatible upgraded contracts + the Hermes-compatible
+ *   endpoint ({@link PYTH_PRO_DEFAULTS}); pair with `pyth.api_key` after the
+ *   2026-08-18 cutover.
+ *
+ * Resolved once at client creation from the `pythGeneration` create option.
+ * Orthogonal to `oracleSource` — this flips the Pyth-Core *infra* (state ids
+ * + endpoint), not which `PriceUpdateRule` routes tickers.
+ */
+export type PythGeneration = "core" | "pro";
+
+/**
+ * Pyth **Pro-generation** Core-compatible infra — the post-2026-08-18
+ * contracts (cutover date per
+ * https://docs.pyth.network/price-feeds/core/upgrade) from Pyth's Core-Upgrade
+ * docs
+ * (https://docs.pyth.network/price-feeds/core/upgrade/contracts, Sui section;
+ * package revs `sui-pro-compatible-contract-mainnet` /
+ * `sui-pro-compatible-contract-testnet`). Selected via the client's
+ * `pythGeneration: 'pro'` create option; `config.pyth` still overrides
+ * wholesale (see `PerpClient`). All four state ids were verified on-chain
+ * (shared `state::State` objects under the docs' upgraded package ids).
+ *
+ * Kept as a second flat map beside {@link PYTH_DEFAULTS} rather than a nested
+ * `PYTH_INFRA[network][generation]` — `PYTH_DEFAULTS` is a published export
+ * with external consumers, so the smallest honest surface is an additive
+ * sibling (same deferral note as {@link LAZER_DEFAULTS}).
+ *
+ * The Hermes-compatible endpoint (`pyth.dourolabs.app/hermes`) serves the
+ * same REST surface as `hermes.pyth.network` but requires `pyth.api_key`
+ * (`Authorization: Bearer …`) after the cutover — see
+ * {@link PythInfraConfig.api_key}.
+ */
+export const PYTH_PRO_DEFAULTS: Record<Network, PythInfraConfig> = {
+  MAINNET: {
+    state_id: "0x03719fae774ddab3cfcaa53bbc046f0cbe21410019b6280811bf3f9f4b05839d",
+    wormhole_state_id: "0xdbca52b9fb4f712e25f61f974586d93ac541bcf8389564f0323bb07215168b5c",
+    hermes_endpoint: "https://pyth.dourolabs.app/hermes",
+  },
+  TESTNET: {
+    state_id: "0x3c48fe392912de6c18087a2b3f5fdbfbfdb4598e180947feff1f12f8e9ea073e",
+    wormhole_state_id: "0x750da8e6d16b6a363a39fe2eaa8295ac224a1e6fce4e47b58845e2e8746164f0",
+    hermes_endpoint: "https://pyth.dourolabs.app/hermes",
+  },
+};
+
+// ============================================================================
+// Pyth Lazer — external infra, defaults by network
+// ============================================================================
+
+/**
+ * Pyth Lazer (Pyth Pro) external infra the `PythLazerRule` needs, by network.
+ * Mirrors {@link PYTH_DEFAULTS}: per-network constants for infrastructure Pyth
+ * operates (not part of the `waterx-config` JSON). A fuller `PYTH_INFRA`
+ * restructure is deferred — this stays a minimal map until then.
+ *
+ * - `endpoint` — Lazer HTTP API base; signed updates come from
+ *   `POST /v1/latest_price` (Bearer-authenticated). The service is
+ *   network-agnostic (one signed payload verifies on any chain that trusts the
+ *   Lazer signers), so both networks share the production host.
+ * - `verifier_package` — the Sui package carrying
+ *   `pyth_lazer::parse_and_verify_le_ecdsa_update`. Per-network: testnet is
+ *   still the original v1 publish; mainnet is the v2-upgraded package (which
+ *   still exposes the v1 entry `pyth_lazer_rule` binds). Values mirror the
+ *   contract repo's `pyth_lazer_rule/Move.toml` published-at pins.
+ */
+export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_package: string }> = {
+  MAINNET: {
+    endpoint: "https://pyth-lazer.dourolabs.app",
+    verifier_package: "0xefbfd064480777699fd9c557a5804d72ace7bc82661fdc8d1f1a44ea6d92ee10",
+  },
+  TESTNET: {
+    endpoint: "https://pyth-lazer.dourolabs.app",
+    verifier_package: "0xf5bd2141967507050a91b58de3d95e77c432cd90d1799ee46effc27430a68c21",
   },
 };
 

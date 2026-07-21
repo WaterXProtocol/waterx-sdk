@@ -193,7 +193,10 @@ async function main(): Promise<void> {
   // 3. closePositionRequest + execute — needs oracle refresh first.
   await runCase(client, "closePosition(BTC, fake pos)", async () => {
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"]);
+    // This case builds its own TradingRequest below rather than going
+    // through wrapRequestAndExecute, so no sponsor fund is opened —
+    // standalone smoke script pays its own gas for the Pyth update fee.
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = closePositionRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -213,7 +216,10 @@ async function main(): Promise<void> {
   //    vector construction with an empty vector.
   await runCase(client, "placeOrder(BTC market)", async () => {
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"]);
+    // This case builds its own TradingRequest below rather than going
+    // through wrapRequestAndExecute, so no sponsor fund is opened —
+    // standalone smoke script pays its own gas for the Pyth update fee.
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = placeOrderRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -241,7 +247,10 @@ async function main(): Promise<void> {
   //    of PlaceOrderArgument move structs.
   await runCase(client, "placeOrder(BTC limit + TP/SL)", async () => {
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"]);
+    // This case builds its own TradingRequest below rather than going
+    // through wrapRequestAndExecute, so no sponsor fund is opened —
+    // standalone smoke script pays its own gas for the Pyth update fee.
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = placeOrderRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -287,7 +296,10 @@ async function main(): Promise<void> {
   // 6. cancelOrder wildcard — defaults to scan all 4 books.
   await runCase(client, "cancelOrder(wildcard)", async () => {
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"]);
+    // This case builds its own TradingRequest below rather than going
+    // through wrapRequestAndExecute, so no sponsor fund is opened —
+    // standalone smoke script pays its own gas for the Pyth update fee.
+    await refreshOraclePrices(tx, client, [BTC_TICKER, "USDCUSD"], { feeSource: { kind: "gas" } });
     const req = cancelOrderRequest(client, tx, {
       ticker: BTC_TICKER,
       collateralType: USDC_TYPE,
@@ -310,7 +322,10 @@ async function main(): Promise<void> {
     const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens).filter(
       (t) => client.config.packages.pyth_rule.feeds[t] !== undefined,
     );
-    await refreshOraclePrices(tx, client, poolTickers);
+    // mintWlp (below) is the raw lp_pool call, no TradingRequest — no
+    // sponsor fund could be reimbursed against it even if one were opened;
+    // standalone smoke script pays its own gas for the Pyth update fee.
+    await refreshOraclePrices(tx, client, poolTickers, { feeSource: { kind: "gas" } });
     mintWlp(client, tx, {
       accountId: FAKE_ACCOUNT_ID,
       depositTokenType: USDC_TYPE,

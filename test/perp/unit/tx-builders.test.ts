@@ -2,6 +2,7 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { RuleUpdateData, UpdateDataProvider } from "../../../src/oracle/index.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
@@ -29,6 +30,7 @@ import {
   MOCK_TESTNET_CONFIG,
   MOCK_USDC_TYPE,
 } from "../helpers/fixtures/mock-testnet-config.ts";
+import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -65,8 +67,19 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("buildPlaceOrderTx defaults useSponsor to true when omitted", async () => {
-    const withoutSponsor = await buildPlaceOrderTx(client, {
+  it("wrapRequestAndExecute opens the sponsor fund from config presence, ignoring the deprecated useSponsor flag", async () => {
+    const withUseSponsorTrue = await buildPlaceOrderTx(client, {
+      ticker: common.ticker,
+      accountId: common.accountId,
+      collateralType: common.collateralType,
+      main: baseOrder,
+      skipOraclePriceRefresh: true,
+      useSponsor: true,
+      consolidateToUsd: false,
+    });
+    // useSponsor: false is now a no-op — MOCK_TESTNET_CONFIG has
+    // pyth_sponsor_rule, so the fund still opens (config wins).
+    const withUseSponsorFalse = await buildPlaceOrderTx(client, {
       ticker: common.ticker,
       accountId: common.accountId,
       collateralType: common.collateralType,
@@ -75,7 +88,18 @@ describe("tx-builders (v3)", () => {
       useSponsor: false,
       consolidateToUsd: false,
     });
-    const defaultSponsor = await buildPlaceOrderTx(client, {
+    // Structural equivalence, not just a command count — useSponsor no
+    // longer influences anything about the built PTB (config alone decides).
+    expect(withUseSponsorFalse.getData()).toStrictEqual(withUseSponsorTrue.getData());
+
+    // A config with no pyth_sponsor_rule never opens a fund — fewer commands
+    // (no request/reimburse/witness moveCalls), regardless of useSponsor.
+    const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
+    delete noSponsorConfig.packages.pyth_sponsor_rule;
+    const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    const withoutSponsorRuleConfig = await buildPlaceOrderTx(noSponsorClient, {
       ticker: common.ticker,
       accountId: common.accountId,
       collateralType: common.collateralType,
@@ -83,9 +107,107 @@ describe("tx-builders (v3)", () => {
       skipOraclePriceRefresh: true,
       consolidateToUsd: false,
     });
-    expect(defaultSponsor.getData().commands!.length).toBeGreaterThan(
-      withoutSponsor.getData().commands!.length,
+    expect(withoutSponsorRuleConfig.getData().commands!.length).toBeLessThan(
+      withUseSponsorTrue.getData().commands!.length,
     );
+  });
+
+  it("buildPlaceOrderTx: config HAS pyth_sponsor_rule + caller passes nothing → sponsor split, no gas SplitCoins", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+    attachPythGrpcMocks(client);
+
+    const tx = await buildPlaceOrderTx(client, {
+      ...common,
+      main: baseOrder,
+      skipOraclePriceRefresh: false,
+      useSponsor: undefined,
+      consolidateToUsd: false,
+    });
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
+    expect(moveTargets(tx)).toContain("pyth_sponsor_rule::split");
+  });
+
+  it("buildPlaceOrderTx: config HAS pyth_sponsor_rule + caller passes allowGasFee → STILL sponsor split (config wins)", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+    attachPythGrpcMocks(client);
+
+    const tx = await buildPlaceOrderTx(client, {
+      ...common,
+      main: baseOrder,
+      skipOraclePriceRefresh: false,
+      allowGasFee: true,
+      consolidateToUsd: false,
+    });
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
+  });
+
+  it("buildPlaceOrderTx: NO pyth_sponsor_rule in config + allowGasFee → gas split", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
+    delete noSponsorConfig.packages.pyth_sponsor_rule;
+    const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    attachPythGrpcMocks(noSponsorClient);
+
+    const tx = await buildPlaceOrderTx(noSponsorClient, {
+      ...common,
+      main: baseOrder,
+      skipOraclePriceRefresh: false,
+      allowGasFee: true,
+      consolidateToUsd: false,
+    });
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
+    expect(moveTargets(tx)).not.toContain("pyth_sponsor_rule::split");
+  });
+
+  it("buildPlaceOrderTx: NO pyth_sponsor_rule in config + no allowGasFee → throws OracleFeeSourceUnavailable at build", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
+    delete noSponsorConfig.packages.pyth_sponsor_rule;
+    const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
+      grpcUrl: "https://fullnode.test.invalid:443",
+    });
+    attachPythGrpcMocks(noSponsorClient);
+
+    await expect(
+      buildPlaceOrderTx(noSponsorClient, {
+        ...common,
+        main: baseOrder,
+        skipOraclePriceRefresh: false,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toThrow(/OracleFeeSourceUnavailable/);
   });
 
   it("buildClosePositionTx / increase / decrease / collateral adjust", async () => {
@@ -213,6 +335,9 @@ describe("tx-builders (v3)", () => {
     ) as unknown as typeof fetch;
 
     attachPythGrpcMocks(client);
+    // mint_wlp produces no TradingRequest, so it can never reimburse a sponsor
+    // fund — allowGasFee is required to draw the Pyth update fee from tx.gas
+    // (see buildMintWlpTx's doc comment / OracleFeeSourceUnavailable).
     const tx = await buildMintWlpTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       depositTokenType: MOCK_USDC_TYPE,
@@ -220,7 +345,70 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       consolidateToUsd: false,
+      allowGasFee: true,
     });
+    expect(tx.getData().commands?.length).toBeGreaterThan(5);
+  });
+
+  it("buildMintWlpTx with oracle refresh throws OracleFeeSourceUnavailable without allowGasFee (config has pyth_sponsor_rule)", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    attachPythGrpcMocks(client);
+    await expect(
+      buildMintWlpTx(client, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        depositTokenType: MOCK_USDC_TYPE,
+        depositTicker: "USDCUSD",
+        depositAmount: 10_000_000n,
+        minLpAmount: 0n,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toThrow(/OracleFeeSourceUnavailable/);
+  });
+
+  it("buildMintWlpTx consults updateDataProvider and skips the live Hermes fetch on a hit", async () => {
+    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
+      await import("../helpers/fixtures/pyth-mock-grpc.ts");
+    attachPythGrpcMocks(client);
+
+    // No live-fetch mock installed on globalThis.fetch — if the provider hit
+    // were bypassed, PythCoreRule.fetchUpdateData would call the real
+    // (unmocked) fetch and the test would fail loudly instead of silently
+    // passing.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    // The cache holds a payload that actually covers USDCUSD — its real config
+    // feed id, so refreshOraclePrices' narrowUpdateData step subsets it to the
+    // requested ticker and serves it instead of live-fetching.
+    const cachedData: RuleUpdateData = {
+      kind: "pyth_rule",
+      payload: {
+        updates: [mockAccumulatorUpdate()],
+        feedIds: [client.getPythFeed("USDCUSD").feed_id],
+      },
+    };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => cachedData) };
+
+    const tx = await buildMintWlpTx(client, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      depositTokenType: MOCK_USDC_TYPE,
+      depositTicker: "USDCUSD",
+      depositAmount: 10_000_000n,
+      minLpAmount: 0n,
+      consolidateToUsd: false,
+      allowGasFee: true,
+      updateDataProvider: provider,
+    });
+
+    expect(provider.get).toHaveBeenCalledWith("pyth_rule", ["USDCUSD"]);
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(tx.getData().commands?.length).toBeGreaterThan(5);
   });
 

@@ -2,15 +2,13 @@
 
 ## Test Case Inventory
 
-Full case table (ID, preconditions, operation, expected): **[`test/TEST-CASES.md`](./TEST-CASES.md)** (343 cases across Unit / E2E / Integration).
-
-Regenerate: `pnpm exec tsx scripts/generate-test-cases-doc.ts`
+There used to be a generated case table (ID, preconditions, operation, expected) at `test/TEST-CASES.md`, produced by `scripts/generate-test-cases-doc.ts`. Both the doc and its generator were deleted in `7e71719` (`chore(scripts): drop non-integration/smoke scripts and prune package.json`) — the file no longer exists and nothing regenerates it. For the current test surface, read the live tree instead: `test/perp/unit/**/*.test.ts` (unit), `test/perp/e2e/**/*.test.ts` (E2E — layout below), and `test/perp/integration/**/*.test.ts` (on-chain integration).
 
 ## Local secrets (`.env.local`)
 
 Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.local`** from **`.env.example`** (Unix: tries `chmod 600`). Put **`WATERX_INTEGRATION_PRIVATE_KEY`** and other secrets only there or in your shell — see `.env.example` for precedence. **`.integration-trader.keystore`** remains supported and gitignored.
 
-Pyth **Hermes** sporadic **502/503/504/521**: SDK **`fetchPriceFeedsUpdateData`** does one REST call (non-2xx throws; no retry or beta⇄prod failover). E2e simulate tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Integration tests do **not** skip pure Hermes HTTP failures (only on-chain **`::pyth_rule::feed`** transients via **`execIntegrationOrSkipOracleTransient`**).
+Pyth **Hermes** sporadic **502/503/504/521**: SDK **`fetchPriceFeedsUpdateData`** goes through **`fetchWithPolicy`** (`src/oracle/update-fetch.ts`) — bounded retry with exponential backoff on network errors / 429 / 5xx (default: 2 retries; still no beta⇄prod failover) — and only throws once retries are exhausted. E2e simulate tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Integration tests do **not** skip pure Hermes HTTP failures (only on-chain **`::pyth_rule::feed`** transients via **`execIntegrationOrSkipOracleTransient`**).
 
 PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and a single **`test-e2e`** job running **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
 
@@ -88,6 +86,7 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 
 - **Network:** `scripts/run-e2e.ts` / **`test/perp/helpers/e2e/e2e-client.ts`**: **`--testnet`** / **`--mainnet`** (CLI) → **`WATERX_E2E_NETWORK`** → **`testnet`** default when unspecified (`pnpm test` runs Vitest without `run-e2e.ts`, so it relies on this fallback).
 - **Oracle:** Pyth Hermes + **`refreshOraclePrices`** / **`updatePythPrices`** (`src/utils/pyth.ts`, **`test/perp/helpers/e2e/e2e-oracle-context.ts`**). There is **no** legacy bucket-aggregator prime step.
+- **Oracle (Lazer):** `PythLazerRule` has **mock-only unit coverage** today (`test/perp/unit/pyth-lazer-rule.test.ts`) — the Lazer API is auth-first and feed responses need an **entitled** Pyth Pro key. A future real e2e should read **`WATERX_E2E_LAZER_API_KEY`** at the harness boundary and pass it as **`config.pyth.api_key`** (the SDK never reads env), skipping when unset. Never hardcode a key.
 - **gRPC:** optional **`WATERX_E2E_GRPC_URL`**; parallelism **`WATERX_E2E_MAX_FORKS=2`…`8`** if your RPC tolerates it.
 
 ## Integration (trader)

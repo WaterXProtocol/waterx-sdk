@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PerpClient } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
-import { PYTH_DEFAULTS } from "../../../src/perp/config.ts";
-import type { WlpPackage } from "../../../src/perp/config.ts";
+import { PYTH_DEFAULTS, PYTH_PRO_DEFAULTS } from "../../../src/perp/config.ts";
+import type { PythInfraConfig, WlpPackage } from "../../../src/perp/config.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
@@ -169,6 +169,50 @@ describe("PerpClient (offline)", () => {
   });
 });
 
+describe("pythGeneration (Pyth Core vs Pro infra selection)", () => {
+  it("defaults to the core generation (PYTH_DEFAULTS)", () => {
+    const client = createUnitTestClient();
+    expect(client.pyth).toEqual(PYTH_DEFAULTS.TESTNET);
+  });
+
+  it("explicit 'core' picks PYTH_DEFAULTS", () => {
+    const client = createUnitTestClient({ pythGeneration: "core" });
+    expect(client.pyth).toEqual(PYTH_DEFAULTS.TESTNET);
+  });
+
+  it("'pro' picks the Pro-compatible set (PYTH_PRO_DEFAULTS)", () => {
+    const client = createUnitTestClient({ pythGeneration: "pro" });
+    expect(client.pyth).toEqual(PYTH_PRO_DEFAULTS.TESTNET);
+  });
+
+  it("an explicit config.pyth override wins over the generation constants", () => {
+    const override: PythInfraConfig = {
+      state_id: "0x" + "ab".repeat(32),
+      wormhole_state_id: "0x" + "cd".repeat(32),
+      hermes_endpoint: "https://hermes.example.invalid",
+      api_key: "test-key",
+    };
+    const config = { ...structuredClone(MOCK_TESTNET_CONFIG), pyth: override };
+    const client = new PerpClient("TESTNET", config, { pythGeneration: "pro" });
+    expect(client.pyth).toEqual(override);
+  });
+
+  it("PYTH_PRO_DEFAULTS carries full-length ids distinct from core, on the compat endpoint", () => {
+    for (const network of ["MAINNET", "TESTNET"] as const) {
+      const core = PYTH_DEFAULTS[network];
+      const pro = PYTH_PRO_DEFAULTS[network];
+      // Full 32-byte object ids — guards against a truncated paste ever shipping.
+      expect(pro.state_id).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(pro.wormhole_state_id).toMatch(/^0x[0-9a-f]{64}$/);
+      // The upgraded contracts are NEW objects, not the core ones re-listed.
+      expect(pro.state_id).not.toBe(core.state_id);
+      expect(pro.wormhole_state_id).not.toBe(core.wormhole_state_id);
+      // Both networks share the Hermes-compatible (auth-first) endpoint.
+      expect(pro.hermes_endpoint).toBe("https://pyth.dourolabs.app/hermes");
+    }
+  });
+});
+
 describe("PerpClient.create", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -180,6 +224,12 @@ describe("PerpClient.create", () => {
     expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true });
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
     expect(client.network).toBe("TESTNET");
+  });
+
+  it("create() threads pythGeneration through to the client", async () => {
+    vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
+    const client = await PerpClient.create("TESTNET", { pythGeneration: "pro" });
+    expect(client.pyth).toEqual(PYTH_PRO_DEFAULTS.TESTNET);
   });
 
   it("mainnet() and testnet() delegate to create()", async () => {

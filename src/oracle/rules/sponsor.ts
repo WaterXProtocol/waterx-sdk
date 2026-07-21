@@ -3,10 +3,12 @@
  * attach the `PythSponsorRule` witness to a `TradingRequest`. Required when the
  * market's `request_checklist` contains `PythSponsorRule`.
  *
- * Flow: {@link openPythSponsorFund} opens a `Fund` hot potato; pass the returned
- * `{ fund, packageId }` to the Pyth update path as its `sponsorFund` (it draws
- * per-feed fees via `pyth_sponsor_rule::split`); then {@link reimbursePythSponsor}
- * consumes the `Fund`, returns leftover SUI, and attaches the witness.
+ * Flow: {@link openPythSponsorFund} opens a `Fund` hot potato; the caller wraps
+ * the returned `{ fund, packageId }` into an `OracleFeeSource` (`{ kind:
+ * 'sponsor', fund, packageId }`) and passes that to the Pyth update path (it
+ * draws per-feed fees via `pyth_sponsor_rule::split`); then
+ * {@link reimbursePythSponsor} consumes the `Fund`, returns leftover SUI, and
+ * attaches the witness.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
@@ -18,9 +20,11 @@ import {
 import type { OracleHost } from "../host.ts";
 
 /**
- * Opens a `Fund` hot potato from the shared PythSponsor pool. Pass the returned
- * `{ fund, packageId }` straight to `refreshOraclePrices` as `sponsorFund`, then
- * {@link reimbursePythSponsor} once the TradingRequest is built.
+ * Opens a `Fund` hot potato from the shared PythSponsor pool. Wrap the
+ * returned `{ fund, packageId }` into an `OracleFeeSource`
+ * (`{ kind: 'sponsor', fund, packageId }`) and pass that to
+ * `refreshOraclePrices` as `feeSource`, then {@link reimbursePythSponsor} once
+ * the TradingRequest is built.
  */
 export function openPythSponsorFund(
   tx: Transaction,
