@@ -55,6 +55,8 @@ reference the PR that introduced them.
   which the deployed on-chain rule accepts (`channel::from_u8` aborts only on
   the 1000ms channel).
 
+- **Base-path-safe URL join shared by both oracle fetches; `endpointSupportedFeedIds` exported from the oracle barrel.** The Lazer fetch had the same latent leading-slash `new URL` footgun that 404'd the Pro Hermes endpoint (harmless today only because the default Lazer endpoint has no base path); both fetches now build URLs through one `joinEndpointPath` helper (`update-fetch.ts`). The oracle barrel additionally exports `endpointSupportedFeedIds` so consumers implementing their own Hermes readers (e.g. the BE's parsed latest-price bootstrap) can reuse the per-endpoint missing-feed memo instead of re-discovering it.
+
 ### Added
 
 - **Fail-fast when a client selects an `oracleSource` the network doesn't

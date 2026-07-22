@@ -90,6 +90,19 @@ export class FetchPolicyError extends Error {
   }
 }
 
+/**
+ * Join an API `path` onto an `endpoint` PRESERVING the endpoint's own base
+ * path. `new URL(path, endpoint)` is the footgun this replaces: a
+ * leading-slash path is *absolute* and silently discards the endpoint's path
+ * — harmless for a bare-origin endpoint (`https://hermes.pyth.network`) but
+ * it dropped the `/hermes` prefix of the Pyth Pro compat endpoint and 404'd
+ * every feed (see `fetchPriceFeedsUpdateData`). Every oracle fetch that
+ * targets `<endpoint><fixed path>` must build its URL here.
+ */
+export function joinEndpointPath(endpoint: string, path: string): URL {
+  return new URL(`${endpoint.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`);
+}
+
 function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }

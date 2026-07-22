@@ -20,7 +20,7 @@ import {
   type RuleUpdateData,
   type RuleUpdateHandle,
 } from "../price-update-rule.ts";
-import { FetchPolicyError, fetchWithPolicy } from "../update-fetch.ts";
+import { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "../update-fetch.ts";
 
 /** `pyth_lazer_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythLazerUpdatePayload {
@@ -111,7 +111,11 @@ async function fetchLazerSignedUpdate(
   feedIds: number[],
   fetchOpts?: { timeoutMs?: number; retries?: number },
 ): Promise<Uint8Array> {
-  const url = new URL("/v1/latest_price", endpoint);
+  // joinEndpointPath preserves any base path on the endpoint — the same
+  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
+  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
+  // Lazer endpoint has no base path, but a config override may.
+  const url = joinEndpointPath(endpoint, "v1/latest_price");
   let res: Response;
   try {
     res = await fetchWithPolicy(

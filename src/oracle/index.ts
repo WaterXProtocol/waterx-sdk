@@ -33,6 +33,7 @@ export type { FetchPolicy } from "./update-fetch.ts";
 export {
   PythCache,
   fetchPriceFeedsUpdateData,
+  endpointSupportedFeedIds,
   buildPythPriceUpdateCalls,
   updatePythPrices,
   OracleFeeSourceUnavailableError,

@@ -193,9 +193,7 @@ describe("PythLazerRule.fetchUpdateData", () => {
 
     await PythLazerRule.fetchUpdateData(client, ["BTCUSD"]);
 
-    expect(captured?.url).toBe(
-      new URL("/v1/latest_price", LAZER_DEFAULTS.TESTNET.endpoint).toString(),
-    );
+    expect(captured?.url).toBe(`${LAZER_DEFAULTS.TESTNET.endpoint}/v1/latest_price`);
     expect(captured?.init?.method).toBe("POST");
     expect(captured?.init?.headers).toEqual({
       "Content-Type": "application/json",

@@ -20,7 +20,7 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "./host.ts";
-import { FetchPolicyError, fetchWithPolicy } from "./update-fetch.ts";
+import { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "./update-fetch.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -82,14 +82,10 @@ export function __resetMissingFeedCacheForTest(): void {
 }
 
 async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Promise<Response> {
-  // The path is APPENDED to the endpoint's own path, not resolved relative to
-  // it. `new URL("/v2/…", endpoint)` would treat the leading slash as an
-  // absolute path and DISCARD the endpoint's base path — fine for Core
-  // (`https://hermes.pyth.network`, no base path) but it silently drops the
-  // `/hermes` prefix of the Pyth Pro endpoint (`…dourolabs.app/hermes`),
-  // hitting `/v2/…` → 404 on EVERY feed. Concatenate onto the (de-slashed)
-  // endpoint so any base path survives.
-  const url = new URL(`${endpoint.replace(/\/+$/, "")}/v2/updates/price/latest`);
+  // joinEndpointPath preserves the endpoint's own base path — `new URL`
+  // with a leading-slash path would discard it (the Pyth Pro `/hermes`
+  // prefix → 404 on EVERY feed); see its doc in update-fetch.ts.
+  const url = joinEndpointPath(endpoint, "v2/updates/price/latest");
   ids.forEach((id) => url.searchParams.append("ids[]", id));
   return fetchWithPolicy(url.toString(), {}, { apiKey: opts?.apiKey, ...opts?.fetch });
 }

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FetchPolicyError, fetchWithPolicy } from "../../../src/oracle/update-fetch.ts";
+import { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "../../../src/oracle/update-fetch.ts";
 
 /**
  * A `fetch` mock that never resolves on its own and only rejects when its
@@ -436,5 +436,25 @@ describe("fetchWithPolicy", () => {
       expect(Date.now() - start).toBeGreaterThanOrEqual(15);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("joinEndpointPath", () => {
+  it("preserves an endpoint's base path (the Pyth Pro '/hermes' regression)", () => {
+    expect(joinEndpointPath("https://pyth.dourolabs.app/hermes", "v2/updates/price/latest").href).toBe(
+      "https://pyth.dourolabs.app/hermes/v2/updates/price/latest",
+    );
+  });
+
+  it("is identical to plain concat for a bare-origin endpoint", () => {
+    expect(joinEndpointPath("https://hermes.pyth.network", "v1/latest_price").href).toBe(
+      "https://hermes.pyth.network/v1/latest_price",
+    );
+  });
+
+  it("normalizes trailing endpoint slashes and leading path slashes", () => {
+    expect(joinEndpointPath("https://x.test/base///", "///v1/p").href).toBe(
+      "https://x.test/base/v1/p",
+    );
   });
 });
