@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
+## [Unreleased]
+
+### Fixed
+
+- **Pyth HTTP fetch drops endpoint-rejected feeds and retries with the
+  survivors — order/position/WLP tx-builds no longer 404 on a Pyth-Pro-missing
+  feed.** `fetchPriceFeedsUpdateData` (the money-path Hermes fetch behind every
+  trading tx-build) now handles Pyth's all-or-nothing `404 "Price IDs not
+  found: …"` — returned when ANY requested id is unknown to the endpoint, e.g.
+  the mainnet `WTIUSD`/`BRENTUSD` feeds that are absent from the Pyth Pro compat
+  endpoint. It parses the rejected ids, drops them, and re-fetches the
+  survivors (recursion strictly shrinks the id set, so it terminates; no
+  survivors → `[]`), so a handful of missing feeds can no longer 404 the entire
+  refresh. A ticker whose feed is genuinely absent here just isn't in the
+  returned payload — its on-chain aggregate then abstains/aborts, which is
+  correct (it isn't priceable on this endpoint). A 404 that is NOT a
+  missing-ids body still throws as before. Mirrors the oracle service's WS
+  missing-feed self-heal. Releases as `4.0.1` (patch); `package.json` stays at
+  the last released version per the repo's release-tagging rule.
+
 ## [4.0.0] - 2026-07-21
 
 _All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). Released as the next **major** (`4.0.0`) because the change set carries several **BREAKING** changes (see `### Changed`): the config-driven fee-source rework, the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object collapse, and the `OracleFeeSource` consolidation._

@@ -93,6 +93,50 @@ describe("pyth on-chain helper branches", () => {
     );
   });
 
+  it("drops endpoint-rejected ids on a 404 'Price IDs not found' and retries with the survivors", async () => {
+    let call = 0;
+    const fetchSpy = vi.fn(async (_url: string) => {
+      call += 1;
+      // First batch includes a feed this endpoint doesn't have (e.g. a Core
+      // feed absent from the Pyth Pro compat endpoint).
+      if (call === 1) return new Response("Price IDs not found: 0xWTI", { status: 404 });
+      // Retry with only the survivor succeeds.
+      return new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 });
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const data = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+
+    expect(data).toHaveLength(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // The retry carries ONLY the survivor — the rejected id is gone.
+    const retryUrl = fetchSpy.mock.calls[1]?.[0] as string;
+    expect(retryUrl).toContain("0xBTC");
+    expect(retryUrl).not.toContain("0xWTI");
+  });
+
+  it("returns [] (no retry) when every requested id is rejected", async () => {
+    const fetchSpy = vi.fn(
+      async () => new Response("Price IDs not found: 0xWTI, 0xBRENT", { status: 404 }),
+    );
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(
+      fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"]),
+    ).resolves.toEqual([]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // nothing survives → no retry
+  });
+
+  it("still throws on a 404 that is NOT a missing-ids body", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("Not Found", { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC"])).rejects.toThrow(
+      /Hermes price fetch failed: 404/,
+    );
+  });
+
   it("buildPythPriceUpdateCalls rejects multiple accumulator messages", async () => {
     const client = createUnitTestClient();
     wirePythGrpc(client);

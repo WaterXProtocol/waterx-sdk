@@ -40,6 +40,23 @@ export class PythCache {
 // Hermes REST
 // ============================================================================
 
+/**
+ * Parse Pyth's `"Price IDs not found: <id>, <id>, …"` 404 body into a
+ * lowercased set of the feed ids the endpoint rejected. Empty set when the
+ * body isn't that shape, so the caller falls through to its normal
+ * `Hermes price fetch failed` throw.
+ */
+function parseMissingPriceIds(body: string): Set<string> {
+  const match = /Price IDs not found:\s*(.+)/i.exec(body);
+  if (!match) return new Set<string>();
+  return new Set(
+    match[1]
+      .split(",")
+      .map((id) => id.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 export async function fetchPriceFeedsUpdateData(
   endpoint: string,
   priceIds: string[],
@@ -68,7 +85,27 @@ export async function fetchPriceFeedsUpdateData(
     }
     throw err;
   }
-  if (!res.ok) throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    // Pyth rejects the ENTIRE batch with 404 if any id is unknown to this
+    // endpoint — e.g. a Core feed absent from the Pyth Pro compat endpoint
+    // (mainnet WTIUSD/BRENTUSD today). Drop the rejected ids and retry with
+    // the survivors so a handful of missing feeds can't fail the whole
+    // refresh, which sits on the money path of every order/position/WLP
+    // tx-build. A ticker whose feed is genuinely absent here just won't be in
+    // the returned payload; its on-chain aggregate then abstains/aborts
+    // (correct — it isn't priceable on this endpoint). Recursion strictly
+    // shrinks `priceIds`, so it terminates (no survivors → `[]`).
+    const missing = parseMissingPriceIds(body);
+    if (res.status === 404 && missing.size > 0) {
+      const survivors = priceIds.filter((id) => !missing.has(id.toLowerCase()));
+      if (survivors.length === 0) return [];
+      if (survivors.length < priceIds.length) {
+        return fetchPriceFeedsUpdateData(endpoint, survivors, opts);
+      }
+    }
+    throw new Error(`Hermes price fetch failed: ${res.status} ${body}`);
+  }
   const json = (await res.json()) as { binary?: { data?: string[] } };
   const data = json.binary?.data;
   if (!Array.isArray(data) || data.length === 0) {
