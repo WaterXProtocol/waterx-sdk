@@ -49,6 +49,24 @@ describe("fetchPriceFeedsUpdateData", () => {
       /Hermes price fetch failed: 500/,
     );
   });
+
+  it("preserves the endpoint's base path (Pyth Pro '/hermes'), not just the origin", async () => {
+    // Regression: `new URL("/v2/…", endpoint)` treats the leading slash as an
+    // absolute path and DROPS the endpoint's base path — hitting `/v2/…` → 404
+    // on the Pyth Pro compat endpoint (`…/hermes`) for EVERY feed. The request
+    // URL must keep the `/hermes` prefix.
+    const fetchSpy = vi.fn(async (_url: string) => ({
+      ok: true,
+      json: async () => ({ binary: { data: [toHex(new Uint8Array([9]))] } }),
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await fetchPriceFeedsUpdateData("https://pyth.dourolabs.app/hermes", ["0xabc"]);
+
+    const calledUrl = String(fetchSpy.mock.calls[0]![0]);
+    expect(calledUrl).toContain("/hermes/v2/updates/price/latest");
+    expect(calledUrl).toContain("ids%5B%5D=0xabc");
+  });
 });
 
 describe("PythCache", () => {

@@ -82,7 +82,14 @@ export function __resetMissingFeedCacheForTest(): void {
 }
 
 async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Promise<Response> {
-  const url = new URL("/v2/updates/price/latest", endpoint);
+  // The path is APPENDED to the endpoint's own path, not resolved relative to
+  // it. `new URL("/v2/…", endpoint)` would treat the leading slash as an
+  // absolute path and DISCARD the endpoint's base path — fine for Core
+  // (`https://hermes.pyth.network`, no base path) but it silently drops the
+  // `/hermes` prefix of the Pyth Pro endpoint (`…dourolabs.app/hermes`),
+  // hitting `/v2/…` → 404 on EVERY feed. Concatenate onto the (de-slashed)
+  // endpoint so any base path survives.
+  const url = new URL(`${endpoint.replace(/\/+$/, "")}/v2/updates/price/latest`);
   ids.forEach((id) => url.searchParams.append("ids[]", id));
   return fetchWithPolicy(url.toString(), {}, { apiKey: opts?.apiKey, ...opts?.fetch });
 }

@@ -10,12 +10,28 @@ reference the PR that introduced them.
 
 ### Fixed
 
-- **Pyth HTTP fetch drops endpoint-missing feeds — order/position/WLP tx-builds
-  no longer 404 under Pyth Pro.** `fetchPriceFeedsUpdateData` (the money-path
-  Hermes fetch behind every trading tx-build) now survives Pyth's
-  all-or-nothing `404` — returned when ANY requested id is unknown to the
-  endpoint, e.g. the mainnet `WTIUSD`/`BRENTUSD` feeds (Commodities
-  USOILSPOT/UKOILSPOT) that are absent from the Pyth Pro compat endpoint. The
+- **Pyth Hermes fetch dropped the endpoint's base path — EVERY feed 404'd
+  under Pyth Pro (all trading tx-builds broken).** `fetchPriceFeedsUpdateData`
+  built its request URL with `new URL("/v2/updates/price/latest", endpoint)`;
+  the leading slash makes the path **absolute**, so it replaced the endpoint's
+  own path instead of appending to it. Harmless for Pyth Core
+  (`https://hermes.pyth.network`, no base path) but it silently dropped the
+  `/hermes` prefix of the Pyth Pro compat endpoint
+  (`https://pyth.dourolabs.app/hermes`), hitting `…app/v2/…` → **404 on every
+  feed**, on the money path of every order/position/WLP tx-build. Now the path
+  is concatenated onto the (de-slashed) endpoint so any base path survives.
+  Regression test asserts the built URL keeps the base path (existing tests all
+  used path-less endpoints, so none caught it). Shipped latent in 4.0.0 —
+  surfaced only when the Pyth Pro endpoint (with its `/hermes` subpath) came
+  into use.
+
+- **Pyth HTTP fetch drops genuinely endpoint-missing feeds — tx-builds no
+  longer 404 on the two feeds Pyth Pro lacks.** With the URL fixed,
+  `fetchPriceFeedsUpdateData` still survives Pyth's all-or-nothing `404` —
+  returned when ANY requested id is unknown to the endpoint, i.e. the mainnet
+  `WTIUSD`/`BRENTUSD` feeds (Commodities USOILSPOT/UKOILSPOT) that are absent
+  from the Pyth Pro compat endpoint (verified 404 per-feed; the other 29
+  configured feeds serve 200). The
   404 body that names the bad ids is NOT reliably delivered to `fetch`
   (Cloudflare returns `content-length: 0` to node's undici even though curl
   sees it), so the unknown ids are isolated by **bisection**, memoized
