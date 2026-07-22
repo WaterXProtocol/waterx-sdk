@@ -33,6 +33,16 @@ export interface OracleHost {
    */
   readonly oracleSource: OracleSource;
 
+  /**
+   * Client-selected Pyth Core contract generation (the `pythGeneration`
+   * create option; default `'core'`). Consumed by `refreshOraclePrices`'s
+   * generation-compatibility fail-fast — building the `pyth_rule` feed leg
+   * with `'pro'` infra against a core-compiled rule package aborts on-chain,
+   * so the client refuses it up front. Optional so bare test hosts predating
+   * the field keep compiling (absent = `'core'`).
+   */
+  readonly pythGeneration?: 'core' | 'pro';
+
   /** True when `ticker` is priced by `constant_rule`. */
   isConstantTicker(ticker: string): boolean;
   /** The `supra_rule` config when deployed, enabled, and fully wired; else `undefined`. */

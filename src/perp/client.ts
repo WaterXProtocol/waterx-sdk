@@ -55,6 +55,8 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   wormhole: WormholeInfraConfig;
   /** Selected oracle rule source (client option, resolved at creation; default `'pyth_rule'`). See `OracleHost.oracleSource`. */
   readonly oracleSource: OracleSource;
+  /** Selected Pyth Core generation (client option; default `'core'`). See `OracleHost.pythGeneration`. */
+  readonly pythGeneration: PythGeneration;
 
   /** Canonical-schema lookups (delegated to below); no transport. */
   private readonly view: PerpConfigView;
@@ -70,6 +72,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       config.pyth ?? (opts.pythGeneration === "pro" ? PYTH_PRO_DEFAULTS : PYTH_DEFAULTS)[network];
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
     this.oracleSource = opts.oracleSource ?? "pyth_rule";
+    this.pythGeneration = opts.pythGeneration ?? "core";
     this.view = new PerpConfigView(
       () => this.config,
       () => this.wormhole,

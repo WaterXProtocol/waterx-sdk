@@ -59,6 +59,22 @@ reference the PR that introduced them.
 
 ### Added
 
+- **Fail-fast when `pythGeneration: 'pro'` would tx-build against a
+  core-compiled `pyth_rule`.** The two knobs are deliberately separate axes
+  (`oracleSource` picks the RULE, `pythGeneration` the Pyth Core INFRA
+  generation) — but the pro-generation × today's-deployed-rule cell is
+  invalid for tx-building: Move types are package-qualified, so the
+  core-compiled `pyth_rule::feed` rejects the Pro `PythState` on-chain with a
+  cryptic `CommandArgumentError { TypeMismatch }` (verified on mainnet
+  2026-07-22, under BOTH oracle sources — the config-driven feed leg puts
+  `pyth_rule::feed` in every PTB). `refreshOraclePrices` now throws
+  `PythGenerationMismatchError` BEFORE any fetch or PTB mutation whenever a
+  pro-generation client requests a `pyth_rule`-fed ticker and the config's
+  `pyth_rule` package lacks the new `generation: 'pro'` marker
+  (`PythRulePackage.generation`, absent = `'core'`). Deliberately NOT
+  enforced at client creation: data-plane-only 'pro' clients (price reads,
+  prefetch caches) keep working — only tx-building is refused.
+
 - **Fail-fast when a client selects an `oracleSource` the network doesn't
   configure.** `PerpClient.create` (and thus `WaterXClient.create`) now calls
   the new `assertOracleSourceConfigured(network, packages, source)`

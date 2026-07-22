@@ -74,7 +74,10 @@ export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 // IS re-exported (the same `instanceof` reason as `OracleFeeSourceUnavailableError`
 // above) — a consumer of `refreshOraclePrices` can catch it without importing
 // `resolveOracleRule` itself.
-export { OracleSourceNotImplementedError } from "./rule-registry.ts";
+export {
+  OracleSourceNotImplementedError,
+  PythGenerationMismatchError,
+} from "./rule-registry.ts";
 
 // Aggregation orchestrator
 export {

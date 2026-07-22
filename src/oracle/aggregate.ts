@@ -34,7 +34,7 @@ import type {
   UpdateDataProvider,
 } from "./price-update-rule.ts";
 import { OracleFeeSourceUnavailableError, type OracleFeeSource, type PythCache } from "./pyth.ts";
-import { resolveOracleRule } from "./rule-registry.ts";
+import { assertPythGenerationCompatible, resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
 import { feedPythRule } from "./rules/pyth-rule.ts";
@@ -283,6 +283,15 @@ export async function refreshOraclePrices(
   const pythTickers = tickers.filter(
     (t) => host.config.packages.pyth_rule?.feeds?.[t] !== undefined,
   );
+  // Fail-fast BEFORE any fetch or PTB mutation: a 'pro'-generation client
+  // building the pyth_rule feed leg against a core-compiled rule package
+  // would abort on-chain with a cryptic TypeMismatch (see
+  // PythGenerationMismatchError). Only fires when this request actually
+  // involves a pyth_rule-fed ticker, so lazer-only shapes (post weight-flip
+  // configs with no pyth feeds) stay unaffected.
+  if (pythTickers.length > 0) {
+    assertPythGenerationCompatible(host);
+  }
   const priceInfoByTicker = new Map<string, string>();
   pythTickers.forEach((t) => priceInfoByTicker.set(t, host.getPythFeed(t).price_info_object));
 

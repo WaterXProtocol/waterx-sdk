@@ -21,6 +21,17 @@ import type { Network } from "../constants.ts";
 export interface PythRulePackage extends BasePackageEntry {
   config: string;
   feeds: Record<string, { feed_id: string; price_info_object: string }>;
+  /**
+   * Which Pyth Core contract GENERATION this deployed rule package is
+   * compiled against — Move types are package-qualified, so a rule built
+   * against the pre-2026-08-18 Core pyth package cannot accept the Pro
+   * generation's `PythState`/`PriceInfoObject` objects (an order built that
+   * way dies on-chain with `CommandArgumentError { TypeMismatch }`; verified
+   * on mainnet 2026-07-22). Absent = `'core'` (every deployment to date).
+   * `refreshOraclePrices` fail-fasts when the client's `pythGeneration`
+   * disagrees — see `PythGenerationMismatchError`.
+   */
+  generation?: 'core' | 'pro';
 }
 
 export interface PythSponsorRulePackage extends BasePackageEntry {

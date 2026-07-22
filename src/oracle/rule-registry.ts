@@ -89,6 +89,46 @@ export function assertOracleSourceConfigured(
 }
 
 /**
+ * Thrown by {@link assertPythGenerationCompatible} when a client running
+ * `pythGeneration: 'pro'` would build the `pyth_rule` feed/update leg against
+ * a rule package NOT compiled for the Pro generation. Move types are
+ * package-qualified: the deployed core-compiled `pyth_rule::feed` takes the
+ * CORE `PythState` type, so handing it the Pro state object aborts on-chain
+ * with `CommandArgumentError { TypeMismatch }` deep in the money path
+ * (verified on mainnet 2026-07-22). This turns that into a loud client-side
+ * error. Cleared by a config whose `pyth_rule.generation === 'pro'` (i.e. a
+ * Pro-compiled rule deployment).
+ */
+export class PythGenerationMismatchError extends Error {
+  constructor() {
+    super(
+      "PythGenerationMismatch: pythGeneration 'pro' selected, but the config's pyth_rule " +
+        "package is compiled against the CORE pyth contracts — its feed would reject the " +
+        "Pro PythState on-chain (CommandArgumentError TypeMismatch). Use 'core' for " +
+        "tx-building until a Pro-compiled pyth_rule ships (config marks it with " +
+        "pyth_rule.generation: 'pro'); 'pro' remains fine for data-plane reads.",
+    );
+    this.name = "PythGenerationMismatchError";
+  }
+}
+
+/**
+ * Fail-fast for the pro-generation/core-rule mismatch above. Called by
+ * `refreshOraclePrices` BEFORE any fetch or PTB mutation whenever the request
+ * involves a `pyth_rule`-fed ticker; deliberately NOT called at client
+ * creation, so data-plane-only 'pro' clients (price reads, prefetch caches)
+ * keep working — only tx-building is refused.
+ */
+export function assertPythGenerationCompatible(host: {
+  pythGeneration?: "core" | "pro";
+  config: { packages: { pyth_rule: { generation?: "core" | "pro" } } };
+}): void {
+  if ((host.pythGeneration ?? "core") !== "pro") return;
+  if ((host.config.packages.pyth_rule.generation ?? "core") === "pro") return;
+  throw new PythGenerationMismatchError();
+}
+
+/**
  * Resolve the `PriceUpdateRule` registered for `source`.
  *
  * `overrides` — test-only — layers on top of the production registry so a
