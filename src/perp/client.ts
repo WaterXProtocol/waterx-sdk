@@ -31,19 +31,24 @@ import type { Network } from "./constants.ts";
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
   /**
-   * Selects which `PriceUpdateRule` `refreshOraclePrices` uses for the
-   * on-chain price-update leg (see `OracleHost.oracleSource`). Default:
-   * `'pyth_rule'`. The SDK never reads `process.env` — pass this from your
-   * own env var (e.g. `ORACLE_SOURCE`).
-   */
-  oracleSource?: OracleSource;
-  /**
-   * Selects which Pyth Core contract generation feeds `client.pyth` when the
-   * config JSON has no explicit `pyth` override: `'core'` (default,
-   * `PYTH_DEFAULTS`) or `'pro'` (`PYTH_PRO_DEFAULTS` — the post-2026-08-18
-   * Pro-compatible contracts + Hermes-compatible endpoint; pair with
-   * `pyth.api_key`). Orthogonal to `oracleSource`. An explicit `config.pyth`
-   * always wins wholesale (see `PythGeneration`).
+   * THE oracle mode — one knob, two real-world bundles:
+   *
+   * - `'core'` (default): `pyth_rule` price updates (Hermes VAA + per-feed
+   *   update fees) on the Core contracts + keyless Core Hermes.
+   * - `'pro'`: `pyth_lazer_rule` price updates (ONE Lazer signed-update
+   *   verify per PTB, no update fees; requires a config carrying
+   *   `packages.pyth_lazer_rule` and `pyth.api_key`) + the authenticated
+   *   Pro Hermes endpoint for reads.
+   *
+   * The rule source is DERIVED from this (`'pro'` → `pyth_lazer_rule`,
+   * else `pyth_rule`) — there is deliberately no separate `oracleSource`
+   * option: the off-diagonal combinations were either broken on-chain or
+   * transitional-only. Note the `pyth_rule::feed` leg always binds the Core
+   * pyth state internally (a property of the deployed rule package), so
+   * `'pro'` tx-builds correctly while aggregators still weight `pyth_rule`.
+   * An explicit `config.pyth` override still wins wholesale for the infra
+   * block. The SDK never reads `process.env` — pass this from your own env
+   * var (e.g. `PYTH_GENERATION`).
    */
   pythGeneration?: PythGeneration;
 }
@@ -53,10 +58,8 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   pyth: PythInfraConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
-  /** Selected oracle rule source (client option, resolved at creation; default `'pyth_rule'`). See `OracleHost.oracleSource`. */
+  /** Oracle rule source, DERIVED from `pythGeneration` (`'pro'` → `pyth_lazer_rule`, else `pyth_rule`). */
   readonly oracleSource: OracleSource;
-  /** Selected Pyth Core generation (client option; default `'core'`). See `OracleHost.pythGeneration`. */
-  readonly pythGeneration: PythGeneration;
 
   /** Canonical-schema lookups (delegated to below); no transport. */
   private readonly view: PerpConfigView;
@@ -64,15 +67,15 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   constructor(
     network: Network,
     config: WaterXConfig,
-    opts: { grpcUrl?: string; oracleSource?: OracleSource; pythGeneration?: PythGeneration } = {},
+    opts: { grpcUrl?: string; pythGeneration?: PythGeneration } = {},
   ) {
     super(network, config, opts);
     // Precedence: explicit config.pyth override > generation constants.
     this.pyth =
       config.pyth ?? (opts.pythGeneration === "pro" ? PYTH_PRO_DEFAULTS : PYTH_DEFAULTS)[network];
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
-    this.oracleSource = opts.oracleSource ?? "pyth_rule";
-    this.pythGeneration = opts.pythGeneration ?? "core";
+    // ONE knob: the rule source is derived from the mode, never independent.
+    this.oracleSource = opts.pythGeneration === "pro" ? "pyth_lazer_rule" : "pyth_rule";
     this.view = new PerpConfigView(
       () => this.config,
       () => this.wormhole,
@@ -85,14 +88,16 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    */
   static async create(network: Network, opts: CreateClientOptions = {}): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
-    // Fail fast: a non-default oracleSource whose rule package isn't in the
-    // network config (e.g. pyth_lazer_rule on mainnet) would otherwise silently
-    // route everything through the pyth_rule fallback. See
-    // assertOracleSourceConfigured.
-    assertOracleSourceConfigured(network, config.packages, opts.oracleSource ?? "pyth_rule");
+    // Fail fast: 'pro' derives the pyth_lazer_rule source, so the config must
+    // carry that package with feeds — otherwise every ticker would silently
+    // route through the pyth_rule fallback. See assertOracleSourceConfigured.
+    assertOracleSourceConfigured(
+      network,
+      config.packages,
+      opts.pythGeneration === "pro" ? "pyth_lazer_rule" : "pyth_rule",
+    );
     return new PerpClient(network, config, {
       grpcUrl: opts.grpcUrl,
-      oracleSource: opts.oracleSource,
       pythGeneration: opts.pythGeneration,
     });
   }

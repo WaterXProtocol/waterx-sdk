@@ -20,8 +20,6 @@ import type {
 import { PythCache, updatePythPrices, type OracleFeeSource } from "../../../src/oracle/pyth.ts";
 import {
   assertOracleSourceConfigured,
-  assertPythGenerationCompatible,
-  PythGenerationMismatchError,
   OracleSourceNotConfiguredError,
   OracleSourceNotImplementedError,
   resolveOracleRule,
@@ -298,9 +296,9 @@ describe("PerpClient.create — oracleSource threads through the async factory",
     expect(client.oracleSource).toBe("pyth_rule");
   });
 
-  it("threads an explicit oracleSource option", async () => {
+  it("derives 'pyth_lazer_rule' from pythGeneration: 'pro' (one knob — no separate oracleSource)", async () => {
     vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
+    const client = await PerpClient.create("TESTNET", { pythGeneration: "pro" });
     expect(client.oracleSource).toBe("pyth_lazer_rule");
   });
 });
@@ -314,15 +312,15 @@ describe("WaterXClient.create — oracleSource threads into PerpClient.create", 
     const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     vi.spyOn(PredictClient, "create").mockResolvedValue(createMockPredictClient());
 
-    await WaterXClient.create({ oracleSource: "pyth_lazer_rule" });
+    await WaterXClient.create({ pythGeneration: "pro" });
 
     expect(perpCreate).toHaveBeenCalledWith(
       "TESTNET",
-      expect.objectContaining({ oracleSource: "pyth_lazer_rule" }),
+      expect.objectContaining({ pythGeneration: "pro" }),
     );
   });
 
-  it("passes oracleSource: undefined (PerpClient defaults to 'pyth_rule') when omitted", async () => {
+  it("omitting pythGeneration reaches PerpClient.create undefined (defaults to 'core' → pyth_rule)", async () => {
     const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     vi.spyOn(PredictClient, "create").mockResolvedValue(createMockPredictClient());
 
@@ -330,7 +328,7 @@ describe("WaterXClient.create — oracleSource threads into PerpClient.create", 
 
     expect(perpCreate).toHaveBeenCalledWith(
       "TESTNET",
-      expect.objectContaining({ oracleSource: undefined }),
+      expect.objectContaining({ pythGeneration: undefined }),
     );
   });
 });
@@ -573,18 +571,5 @@ describe("assertOracleSourceConfigured (fail-fast on unconfigured oracleSource)"
     expect(() =>
       assertOracleSourceConfigured("TESTNET", { pyth_lazer_rule: { feeds: {} } }, "pyth_lazer_rule"),
     ).toThrow(OracleSourceNotConfiguredError);
-  });
-});
-
-describe("assertPythGenerationCompatible (fail-fast: pro generation cannot tx-build)", () => {
-  it("passes for core generation (explicit or default)", () => {
-    expect(() => assertPythGenerationCompatible({ pythGeneration: "core" })).not.toThrow();
-    expect(() => assertPythGenerationCompatible({})).not.toThrow();
-  });
-
-  it("throws for pro generation — unconditionally (every deployed pyth_rule is Core-compiled; no config marker exists to lift it)", () => {
-    expect(() => assertPythGenerationCompatible({ pythGeneration: "pro" })).toThrow(
-      PythGenerationMismatchError,
-    );
   });
 });

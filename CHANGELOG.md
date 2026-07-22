@@ -8,6 +8,28 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: one oracle knob.** The `oracleSource` create option is REMOVED;
+  `pythGeneration: 'core' | 'pro'` is the single mode switch — `'core'` =
+  `pyth_rule` updates on Core infra (today's prod), `'pro'` =
+  `pyth_lazer_rule` updates (one Lazer verify per PTB, no update fees) + the
+  authenticated Pro Hermes for reads. The rule source is derived
+  (`'pro'` → `pyth_lazer_rule`), making the previously-broken off-diagonal
+  combinations unrepresentable. Enabling this, `pyth_rule::feed` now ALWAYS
+  binds the CORE pyth state internally — a property of the deployed rule
+  package (compiled against the Core pyth dependency), not of the client's
+  infra selection; passing the infra-selected state was correct only by
+  coincidence under 'core' and aborted every 'pro' tx-build with
+  `CommandArgumentError { arg 3, TypeMismatch }` (verified on mainnet
+  2026-07-22; with the pin, a 'pro' order build now passes the full oracle
+  leg — devInspect-verified). Consequently `assertPythGenerationCompatible` /
+  `PythGenerationMismatchError` (added earlier in this unreleased set) are
+  deleted — nothing is left to guard. `assertOracleSourceConfigured` now
+  gates the DERIVED source at create ('pro' requires a config carrying
+  `packages.pyth_lazer_rule` with feeds). `OracleHost.oracleSource` remains
+  as the internal routing contract.
+
 ### Fixed
 
 - **Pyth Hermes fetch dropped the endpoint's base path — EVERY feed 404'd
