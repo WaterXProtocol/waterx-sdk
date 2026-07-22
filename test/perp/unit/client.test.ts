@@ -207,7 +207,9 @@ describe("pythGeneration (Pyth Core vs Pro infra selection)", () => {
       // The upgraded contracts are NEW objects, not the core ones re-listed.
       expect(pro.state_id).not.toBe(core.state_id);
       expect(pro.wormhole_state_id).not.toBe(core.wormhole_state_id);
-      // Both networks share the Hermes-compatible (auth-first) endpoint.
+      // Both networks share the auth-first compat endpoint ON PURPOSE — Pyth
+      // Pro has no beta channel; the Pro TESTNET contracts are keyed by PROD
+      // feed ids too (see PYTH_PRO_DEFAULTS' TESTNET comment).
       expect(pro.hermes_endpoint).toBe("https://pyth.dourolabs.app/hermes");
     }
   });

@@ -37,10 +37,17 @@ export interface PythLazerUpdatePayload {
  *   `confidence` is optional on-chain but requested so the rule's
  *   fail-closed confidence gate actually engages (a payload without
  *   confidence passes the gate unchecked).
- * - `channel` — `real_time`: the deployed rule binds the v1 Lazer API, whose
- *   `channel::from_u8` aborts on the 1000ms fixed-rate channel; real_time /
- *   50ms / 200ms are the safe subscriptions, and for an on-demand pull
- *   real_time is the freshest.
+ * - `channel` — `fixed_rate@200ms`, NOT `real_time`: Lazer rejects a request
+ *   whose channel is faster than ANY requested feed's `min_channel`, and it
+ *   rejects the WHOLE batch (`400 Feeds do not support channel …`). Only the
+ *   majors (BTC/ETH/SOL/USDC/DOGE/XRP/BNB/HYPE + EUR/JPY FX) publish
+ *   `real_time`; the other 19 of the 29 configured feeds — including SUIUSD
+ *   and every xStock — are `min_channel: fixed_rate@200ms` (Lazer symbol
+ *   registry, verified 2026-07-22: the same 29-feed batch 400s at
+ *   `real_time`/`50ms` and serves 200 with the leEcdsa blob at `200ms`).
+ *   200ms is the fastest channel every configured feed supports, and the
+ *   deployed rule accepts it: the v1 on-chain `channel::from_u8` aborts only
+ *   on the 1000ms fixed-rate channel (real_time / 50ms / 200ms are safe).
  * - `formats: leEcdsa` + `jsonBinaryEncoding: hex` — the Sui verifier takes
  *   the `leEcdsa` framing; hex matches `fromHex` below.
  */
@@ -48,7 +55,7 @@ const LAZER_LATEST_PRICE_REQUEST = {
   properties: ["price", "exponent", "confidence"],
   formats: ["leEcdsa"],
   jsonBinaryEncoding: "hex",
-  channel: "real_time",
+  channel: "fixed_rate@200ms",
 } as const;
 
 /**

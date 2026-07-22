@@ -45,6 +45,16 @@ reference the PR that introduced them.
   isn't priced (its on-chain aggregate abstains/aborts — correct). Mirrors the
   oracle service's WS missing-feed self-heal.
 
+- **Lazer requests pin `channel: 'fixed_rate@200ms'` — `real_time` rejected
+  19 of the 29 configured feeds.** Lazer 400s the WHOLE batch when any
+  requested feed's `min_channel` is slower than the requested channel, and
+  only the majors (BTC/ETH/SOL/USDC/DOGE/XRP/BNB/HYPE + EUR/JPY) publish
+  `real_time` — the other 19, including SUIUSD and every xStock, are
+  `min_channel: fixed_rate@200ms`. Verified live: the same 29-feed batch 400s
+  at `real_time`/`50ms` and serves 200 (with the leEcdsa blob) at `200ms`,
+  which the deployed on-chain rule accepts (`channel::from_u8` aborts only on
+  the 1000ms channel).
+
 ### Added
 
 - **Fail-fast when a client selects an `oracleSource` the network doesn't
