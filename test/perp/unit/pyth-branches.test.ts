@@ -13,6 +13,7 @@ import {
   refreshOraclePrices,
   reimbursePythSponsor,
 } from "../../../src/oracle/index.ts";
+import { __resetMissingFeedCacheForTest } from "../../../src/oracle/pyth.ts";
 import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
@@ -80,6 +81,7 @@ describe("pyth on-chain helper branches", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    __resetMissingFeedCacheForTest();
     vi.restoreAllMocks();
   });
 
@@ -93,48 +95,57 @@ describe("pyth on-chain helper branches", () => {
     );
   });
 
-  it("drops endpoint-rejected ids on a 404 'Price IDs not found' and retries with the survivors", async () => {
-    let call = 0;
-    const fetchSpy = vi.fn(async (_url: string) => {
-      call += 1;
-      // First batch includes a feed this endpoint doesn't have (e.g. a Core
-      // feed absent from the Pyth Pro compat endpoint).
-      if (call === 1) return new Response("Price IDs not found: 0xWTI", { status: 404 });
-      // Retry with only the survivor succeeds.
-      return new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 });
-    });
+  // A batch containing 0xWTI 404s; any batch without it 200s. Pyth's 404 body
+  // is NOT reliably delivered to fetch, so the impl isolates 0xWTI by
+  // bisection rather than parsing.
+  const wtiUnknownFetch = () =>
+    vi.fn(async (url: string) =>
+      url.includes("0xWTI")
+        ? new Response("", { status: 404 }) // empty body, like Cloudflare→undici
+        : new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 }),
+    );
+
+  it("bisects out an endpoint-missing feed and re-fetches the survivors as one batch", async () => {
+    const fetchSpy = wtiUnknownFetch();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const data = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
 
+    // Survivor served → one combined blob; 0xWTI dropped, never in a 200 URL.
     expect(data).toHaveLength(1);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    // The retry carries ONLY the survivor — the rejected id is gone.
-    const retryUrl = fetchSpy.mock.calls[1]?.[0] as string;
-    expect(retryUrl).toContain("0xBTC");
-    expect(retryUrl).not.toContain("0xWTI");
+    const okUrls = fetchSpy.mock.calls
+      .map((c) => c[0] as string)
+      .filter((u) => !u.includes("0xWTI"));
+    expect(okUrls.length).toBeGreaterThan(0);
+    // The final clean fetch carries the survivor only.
+    const last = fetchSpy.mock.calls.at(-1)?.[0] as string;
+    expect(last).toContain("0xBTC");
+    expect(last).not.toContain("0xWTI");
   });
 
-  it("returns [] (no retry) when every requested id is rejected", async () => {
-    const fetchSpy = vi.fn(
-      async () => new Response("Price IDs not found: 0xWTI, 0xBRENT", { status: 404 }),
-    );
+  it("memoizes a missing feed — a second call skips it with no 404", async () => {
+    const fetchSpy = wtiUnknownFetch();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]); // discovers 0xWTI
+    fetchSpy.mockClear();
+
+    const data = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+
+    expect(data).toHaveLength(1);
+    // Second call: 0xWTI filtered up front → exactly one fetch, no 404.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0]?.[0] as string).not.toContain("0xWTI");
+  });
+
+  it("returns [] when every requested feed is missing on the endpoint", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("", { status: 404 }),
+    ) as unknown as typeof fetch;
 
     await expect(
       fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"]),
     ).resolves.toEqual([]);
-    expect(fetchSpy).toHaveBeenCalledTimes(1); // nothing survives → no retry
-  });
-
-  it("still throws on a 404 that is NOT a missing-ids body", async () => {
-    globalThis.fetch = vi.fn(
-      async () => new Response("Not Found", { status: 404 }),
-    ) as unknown as typeof fetch;
-
-    await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC"])).rejects.toThrow(
-      /Hermes price fetch failed: 404/,
-    );
   });
 
   it("buildPythPriceUpdateCalls rejects multiple accumulator messages", async () => {

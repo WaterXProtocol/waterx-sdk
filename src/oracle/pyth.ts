@@ -40,35 +40,98 @@ export class PythCache {
 // Hermes REST
 // ============================================================================
 
+type FetchOpts = { apiKey?: string; fetch?: { timeoutMs?: number; retries?: number } };
+
 /**
- * Parse Pyth's `"Price IDs not found: <id>, <id>, …"` 404 body into a
- * lowercased set of the feed ids the endpoint rejected. Empty set when the
- * body isn't that shape, so the caller falls through to its normal
- * `Hermes price fetch failed` throw.
+ * Per-endpoint memo of feed ids this endpoint has rejected as unknown (a 404
+ * on `/v2/updates/price/latest`). The Pyth Pro compat endpoint carries a
+ * SUBSET of Core's feeds — mainnet `WTIUSD`/`BRENTUSD` (Commodities
+ * USOILSPOT/UKOILSPOT) are absent, for example. Pyth 404s the WHOLE batch if
+ * ANY id is unknown, and the body naming the bad ids is NOT reliably delivered
+ * to `fetch` (Cloudflare returns it to curl but `content-length: 0` to node's
+ * undici), so the ids are isolated by bisection and remembered here — later
+ * batches skip them instead of 404ing every time. Cleared on process restart.
  */
-function parseMissingPriceIds(body: string): Set<string> {
-  const match = /Price IDs not found:\s*(.+)/i.exec(body);
-  if (!match) return new Set<string>();
-  return new Set(
-    match[1]
-      .split(",")
-      .map((id) => id.trim().toLowerCase())
-      .filter(Boolean),
-  );
+const missingFeedIdsByEndpoint = new Map<string, Set<string>>();
+
+function recordMissingFeed(endpoint: string, feedId: string): void {
+  let set = missingFeedIdsByEndpoint.get(endpoint);
+  if (!set) {
+    set = new Set<string>();
+    missingFeedIdsByEndpoint.set(endpoint, set);
+  }
+  set.add(feedId.toLowerCase());
+}
+
+/**
+ * The subset of `feedIds` this `endpoint` is known to serve — i.e. minus any
+ * previously discovered to be absent (see {@link fetchPriceFeedsUpdateData}).
+ * Callers building a `{ updates, feedIds }` payload use this to keep `feedIds`
+ * aligned with the feeds the fetch actually returned data for, so
+ * `buildPythPriceUpdateCalls` (one moveCall per feed id) never references a
+ * feed the accumulator blob doesn't cover.
+ */
+export function endpointSupportedFeedIds(endpoint: string, feedIds: string[]): string[] {
+  const missing = missingFeedIdsByEndpoint.get(endpoint);
+  return missing ? feedIds.filter((id) => !missing.has(id.toLowerCase())) : feedIds;
+}
+
+/** Test-only: forget everything learned about which feeds an endpoint lacks. */
+export function __resetMissingFeedCacheForTest(): void {
+  missingFeedIdsByEndpoint.clear();
+}
+
+async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Promise<Response> {
+  const url = new URL("/v2/updates/price/latest", endpoint);
+  ids.forEach((id) => url.searchParams.append("ids[]", id));
+  return fetchWithPolicy(url.toString(), {}, { apiKey: opts?.apiKey, ...opts?.fetch });
+}
+
+/**
+ * Bisect `ids` to find which ones this endpoint 404s on and {@link
+ * recordMissingFeed} them — the response body isn't readable, so a single id
+ * that still 404s IS the unknown one. Data is discarded; this only populates
+ * the memo. A non-404 (the subset is fine) or a network error stops that
+ * branch. Runs at most once per endpoint per unknown-feed set (survivors are
+ * memoized, so steady-state fetches never reach here).
+ */
+async function discoverMissingFeeds(
+  endpoint: string,
+  ids: string[],
+  opts?: FetchOpts,
+): Promise<void> {
+  if (ids.length === 0) return;
+  let res: Response;
+  try {
+    res = await rawFetch(endpoint, ids, opts);
+  } catch {
+    return; // transient/network failure — can't classify; leave the memo untouched
+  }
+  void res.body?.cancel().catch(() => {});
+  if (res.status !== 404) return; // this subset is serveable — nothing to record
+  if (ids.length === 1) {
+    recordMissingFeed(endpoint, ids[0]);
+    return;
+  }
+  const mid = Math.floor(ids.length / 2);
+  await Promise.all([
+    discoverMissingFeeds(endpoint, ids.slice(0, mid), opts),
+    discoverMissingFeeds(endpoint, ids.slice(mid), opts),
+  ]);
 }
 
 export async function fetchPriceFeedsUpdateData(
   endpoint: string,
   priceIds: string[],
-  opts?: { apiKey?: string; fetch?: { timeoutMs?: number; retries?: number } },
+  opts?: FetchOpts,
 ): Promise<Uint8Array[]> {
-  if (priceIds.length === 0) return [];
-  const url = new URL("/v2/updates/price/latest", endpoint);
-  priceIds.forEach((id) => url.searchParams.append("ids[]", id));
+  // Skip feeds this endpoint has already told us it doesn't have.
+  const ids = endpointSupportedFeedIds(endpoint, priceIds);
+  if (ids.length === 0) return [];
 
   let res: Response;
   try {
-    res = await fetchWithPolicy(url.toString(), {}, { apiKey: opts?.apiKey, ...opts?.fetch });
+    res = await rawFetch(endpoint, ids, opts);
   } catch (err) {
     // A retryable status (429/5xx) that never recovered surfaces as a
     // FetchPolicyError with `status` set — reformat it into this function's
@@ -85,27 +148,32 @@ export async function fetchPriceFeedsUpdateData(
     }
     throw err;
   }
+
   if (!res.ok) {
-    const body = await res.text();
-    // Pyth rejects the ENTIRE batch with 404 if any id is unknown to this
-    // endpoint — e.g. a Core feed absent from the Pyth Pro compat endpoint
-    // (mainnet WTIUSD/BRENTUSD today). Drop the rejected ids and retry with
-    // the survivors so a handful of missing feeds can't fail the whole
-    // refresh, which sits on the money path of every order/position/WLP
-    // tx-build. A ticker whose feed is genuinely absent here just won't be in
-    // the returned payload; its on-chain aggregate then abstains/aborts
-    // (correct — it isn't priceable on this endpoint). Recursion strictly
-    // shrinks `priceIds`, so it terminates (no survivors → `[]`).
-    const missing = parseMissingPriceIds(body);
-    if (res.status === 404 && missing.size > 0) {
-      const survivors = priceIds.filter((id) => !missing.has(id.toLowerCase()));
+    // Pyth 404s the ENTIRE batch if ANY id is unknown to the endpoint (a Core
+    // feed absent from the Pyth Pro compat endpoint). This is on the money
+    // path of every order/position/WLP tx-build, so instead of failing the
+    // whole refresh: discover the unknown ids (bisection — the body isn't
+    // readable), memoize them, and re-fetch the survivors as ONE clean batch
+    // (a single combined accumulator blob, which buildPythPriceUpdateCalls
+    // requires). A genuinely-absent ticker just isn't in the payload — its
+    // on-chain aggregate abstains/aborts, which is correct. Steady state:
+    // once discovered, survivors are filtered up front and this never runs.
+    if (res.status === 404) {
+      void res.body?.cancel().catch(() => {});
+      await discoverMissingFeeds(endpoint, ids, opts);
+      const survivors = endpointSupportedFeedIds(endpoint, ids);
       if (survivors.length === 0) return [];
-      if (survivors.length < priceIds.length) {
+      // survivors < ids ⇒ we removed the offender(s); re-fetch cleanly. Equal
+      // ⇒ nothing was recorded (a 404 that wasn't a missing-feed rejection) —
+      // surface it rather than loop.
+      if (survivors.length < ids.length) {
         return fetchPriceFeedsUpdateData(endpoint, survivors, opts);
       }
     }
-    throw new Error(`Hermes price fetch failed: ${res.status} ${body}`);
+    throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
   }
+
   const json = (await res.json()) as { binary?: { data?: string[] } };
   const data = json.binary?.data;
   if (!Array.isArray(data) || data.length === 0) {

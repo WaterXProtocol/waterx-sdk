@@ -44,6 +44,51 @@ export class OracleSourceNotImplementedError extends Error {
 }
 
 /**
+ * Thrown by {@link assertOracleSourceConfigured} when a client selects an
+ * `oracleSource` whose on-chain rule package is not configured on the network.
+ */
+export class OracleSourceNotConfiguredError extends Error {
+  /** The selected `OracleSource` that the network config does not support. */
+  readonly source: OracleSource;
+  readonly network: string;
+
+  constructor(source: OracleSource, network: string) {
+    super(
+      `OracleSourceNotConfigured: oracleSource '${source}' has no on-chain rule ` +
+        `package (packages.${source} with feeds) in the ${network} config — that ` +
+        `network does not support it. Configure it, or use the default 'pyth_rule'.`,
+    );
+    this.name = "OracleSourceNotConfiguredError";
+    this.source = source;
+    this.network = network;
+  }
+}
+
+/**
+ * Fail-fast guard for client creation. A selected `oracleSource` OTHER than the
+ * always-present default `pyth_rule` must have its rule package (with feeds)
+ * present in the loaded config for the network. Without this check, an
+ * `oracleSource` whose config is absent — e.g. `pyth_lazer_rule` on mainnet —
+ * would NOT error: `PythLazerRule.supportedTickers` returns `[]` (its
+ * `packages.pyth_lazer_rule?.feeds ?? {}`), and `refreshOraclePrices` then
+ * silently routes EVERY ticker through the `pyth_rule` fallback. The client
+ * would run entirely on Pyth Core while believing it is on the selected source
+ * — a dangerous silent misconfiguration. Throw {@link
+ * OracleSourceNotConfiguredError} instead.
+ */
+export function assertOracleSourceConfigured(
+  network: string,
+  packages: Partial<Record<OracleSource, { feeds?: Record<string, unknown> }>>,
+  source: OracleSource,
+): void {
+  if (source === "pyth_rule") return; // Pyth Core rule — the default, always present.
+  const feeds = packages[source]?.feeds;
+  if (!feeds || Object.keys(feeds).length === 0) {
+    throw new OracleSourceNotConfiguredError(source, network);
+  }
+}
+
+/**
  * Resolve the `PriceUpdateRule` registered for `source`.
  *
  * `overrides` — test-only — layers on top of the production registry so a

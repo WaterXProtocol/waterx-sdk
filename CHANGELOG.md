@@ -10,21 +10,44 @@ reference the PR that introduced them.
 
 ### Fixed
 
-- **Pyth HTTP fetch drops endpoint-rejected feeds and retries with the
-  survivors — order/position/WLP tx-builds no longer 404 on a Pyth-Pro-missing
-  feed.** `fetchPriceFeedsUpdateData` (the money-path Hermes fetch behind every
-  trading tx-build) now handles Pyth's all-or-nothing `404 "Price IDs not
-  found: …"` — returned when ANY requested id is unknown to the endpoint, e.g.
-  the mainnet `WTIUSD`/`BRENTUSD` feeds that are absent from the Pyth Pro compat
-  endpoint. It parses the rejected ids, drops them, and re-fetches the
-  survivors (recursion strictly shrinks the id set, so it terminates; no
-  survivors → `[]`), so a handful of missing feeds can no longer 404 the entire
-  refresh. A ticker whose feed is genuinely absent here just isn't in the
-  returned payload — its on-chain aggregate then abstains/aborts, which is
-  correct (it isn't priceable on this endpoint). A 404 that is NOT a
-  missing-ids body still throws as before. Mirrors the oracle service's WS
-  missing-feed self-heal. Releases as `4.0.1` (patch); `package.json` stays at
-  the last released version per the repo's release-tagging rule.
+- **Pyth HTTP fetch drops endpoint-missing feeds — order/position/WLP tx-builds
+  no longer 404 under Pyth Pro.** `fetchPriceFeedsUpdateData` (the money-path
+  Hermes fetch behind every trading tx-build) now survives Pyth's
+  all-or-nothing `404` — returned when ANY requested id is unknown to the
+  endpoint, e.g. the mainnet `WTIUSD`/`BRENTUSD` feeds (Commodities
+  USOILSPOT/UKOILSPOT) that are absent from the Pyth Pro compat endpoint. The
+  404 body that names the bad ids is NOT reliably delivered to `fetch`
+  (Cloudflare returns `content-length: 0` to node's undici even though curl
+  sees it), so the unknown ids are isolated by **bisection**, memoized
+  per-endpoint (`missingFeedIdsByEndpoint`), and the survivors re-fetched as one
+  clean batch (a single combined accumulator blob, which
+  `buildPythPriceUpdateCalls` requires). Steady state: once discovered, missing
+  feeds are filtered up front and no batch 404s. `PythCoreRule.fetchUpdateData`
+  aligns its returned `feedIds` with the served set via the new exported
+  `endpointSupportedFeedIds(endpoint, feedIds)`, so the payload never lists a
+  feed the blob doesn't cover. A ticker whose feed is genuinely absent just
+  isn't priced (its on-chain aggregate abstains/aborts — correct). Mirrors the
+  oracle service's WS missing-feed self-heal.
+
+### Added
+
+- **Fail-fast when a client selects an `oracleSource` the network doesn't
+  configure.** `PerpClient.create` (and thus `WaterXClient.create`) now calls
+  the new `assertOracleSourceConfigured(network, packages, source)`
+  (`rule-registry.ts`): a non-default `oracleSource` (i.e. anything other than
+  `pyth_rule`) whose rule package is missing/empty in the loaded config throws
+  `OracleSourceNotConfiguredError` at creation. Without it, e.g.
+  `oracleSource: 'pyth_lazer_rule'` on mainnet (which has no `pyth_lazer_rule`
+  config) would NOT error — `PythLazerRule.supportedTickers` returns `[]` and
+  `refreshOraclePrices` silently routes every ticker through the `pyth_rule`
+  fallback, so the client runs entirely on Pyth Core while believing it is on
+  the selected source. Now that misconfiguration fails loudly at boot.
+  (`pythGeneration: 'pro'` — Pyth Pro, the upgraded Pyth *Core* — is unaffected:
+  it's a knob on the always-present `pyth_rule` path, orthogonal to
+  `oracleSource`, and needs no Lazer config.)
+
+_Both entries release as `4.0.1` (patch); `package.json` stays at the last
+released version per the repo's release-tagging rule._
 
 ## [4.0.0] - 2026-07-21
 

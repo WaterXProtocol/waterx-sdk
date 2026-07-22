@@ -13,6 +13,7 @@
 
 import { BaseLineClient } from "../base-client.ts";
 import type { OracleSource } from "../oracle/price-update-rule.ts";
+import { assertOracleSourceConfigured } from "../oracle/rule-registry.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
@@ -81,6 +82,11 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    */
   static async create(network: Network, opts: CreateClientOptions = {}): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
+    // Fail fast: a non-default oracleSource whose rule package isn't in the
+    // network config (e.g. pyth_lazer_rule on mainnet) would otherwise silently
+    // route everything through the pyth_rule fallback. See
+    // assertOracleSourceConfigured.
+    assertOracleSourceConfigured(network, config.packages, opts.oracleSource ?? "pyth_rule");
     return new PerpClient(network, config, {
       grpcUrl: opts.grpcUrl,
       oracleSource: opts.oracleSource,

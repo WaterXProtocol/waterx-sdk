@@ -16,7 +16,11 @@ import {
   type PriceUpdateRule,
   type RuleUpdateData,
 } from "../price-update-rule.ts";
-import { buildPythPriceUpdateCalls, fetchPriceFeedsUpdateData } from "../pyth.ts";
+import {
+  buildPythPriceUpdateCalls,
+  endpointSupportedFeedIds,
+  fetchPriceFeedsUpdateData,
+} from "../pyth.ts";
 
 /** `pyth_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythCoreUpdatePayload {
@@ -54,12 +58,21 @@ export const PythCoreRule: PriceUpdateRule = {
   /** Resolves feed ids for `tickers`, then fetches their Hermes accumulator update. */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
+    const endpoint = host.pyth.hermes_endpoint;
     const feedIds = tickers.map((ticker) => host.getPythFeed(ticker).feed_id);
-    const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
+    const updates = await fetchPriceFeedsUpdateData(endpoint, feedIds, {
       apiKey: host.pyth.api_key,
       fetch: host.pyth.fetch,
     });
-    return { kind: "pyth_rule", payload: { updates, feedIds } };
+    // `updates` covers only the feeds this endpoint actually served — the fetch
+    // drops (and memoizes) any it lacks, e.g. Core feeds absent from Pyth Pro
+    // (WTIUSD/BRENTUSD). Align `feedIds` with them: buildPythPriceUpdateCalls
+    // emits one moveCall per feedId and must not reference a feed the
+    // accumulator blob doesn't cover.
+    return {
+      kind: "pyth_rule",
+      payload: { updates, feedIds: endpointSupportedFeedIds(endpoint, feedIds) },
+    };
   },
 
   /**

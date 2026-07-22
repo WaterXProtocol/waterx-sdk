@@ -19,6 +19,8 @@ import type {
 } from "../../../src/oracle/price-update-rule.ts";
 import { PythCache, updatePythPrices, type OracleFeeSource } from "../../../src/oracle/pyth.ts";
 import {
+  assertOracleSourceConfigured,
+  OracleSourceNotConfiguredError,
   OracleSourceNotImplementedError,
   resolveOracleRule,
 } from "../../../src/oracle/rule-registry.ts";
@@ -534,5 +536,40 @@ describe("resolveOracleRule", () => {
   it("overrides take precedence over the production registry for a registered source", () => {
     const fake = createFakeRule("pyth_rule", []);
     expect(resolveOracleRule("pyth_rule", { pyth_rule: fake })).toBe(fake);
+  });
+});
+
+describe("assertOracleSourceConfigured (fail-fast on unconfigured oracleSource)", () => {
+  const lazerPackages = { pyth_lazer_rule: { feeds: { BTCUSD: 1 } } };
+  const mainnetLikePackages = { pyth_rule: { feeds: { BTCUSD: { feed_id: "0x1" } } } };
+
+  it("passes for the default 'pyth_rule' even with no lazer config (mainnet)", () => {
+    expect(() =>
+      assertOracleSourceConfigured("MAINNET", mainnetLikePackages, "pyth_rule"),
+    ).not.toThrow();
+  });
+
+  it("passes for 'pyth_lazer_rule' when the network has a lazer package with feeds", () => {
+    expect(() =>
+      assertOracleSourceConfigured("TESTNET", lazerPackages, "pyth_lazer_rule"),
+    ).not.toThrow();
+  });
+
+  it("throws for 'pyth_lazer_rule' when the network config lacks it (the mainnet case)", () => {
+    let caught: unknown;
+    try {
+      assertOracleSourceConfigured("MAINNET", mainnetLikePackages, "pyth_lazer_rule");
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(OracleSourceNotConfiguredError);
+    expect((caught as OracleSourceNotConfiguredError).source).toBe("pyth_lazer_rule");
+    expect((caught as Error).message).toMatch(/pyth_lazer_rule.*MAINNET/);
+  });
+
+  it("throws when the package exists but has no feeds (non-functional source)", () => {
+    expect(() =>
+      assertOracleSourceConfigured("TESTNET", { pyth_lazer_rule: { feeds: {} } }, "pyth_lazer_rule"),
+    ).toThrow(OracleSourceNotConfiguredError);
   });
 });
