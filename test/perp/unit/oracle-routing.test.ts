@@ -576,34 +576,15 @@ describe("assertOracleSourceConfigured (fail-fast on unconfigured oracleSource)"
   });
 });
 
-describe("assertPythGenerationCompatible (fail-fast on pro generation vs core-compiled rule)", () => {
-  const hostWith = (
-    pythGeneration: "core" | "pro" | undefined,
-    ruleGeneration: "core" | "pro" | undefined,
-  ) => ({
-    ...(pythGeneration !== undefined ? { pythGeneration } : {}),
-    config: {
-      packages: {
-        pyth_rule: { ...(ruleGeneration !== undefined ? { generation: ruleGeneration } : {}) },
-      },
-    },
+describe("assertPythGenerationCompatible (fail-fast: pro generation cannot tx-build)", () => {
+  it("passes for core generation (explicit or default)", () => {
+    expect(() => assertPythGenerationCompatible({ pythGeneration: "core" })).not.toThrow();
+    expect(() => assertPythGenerationCompatible({})).not.toThrow();
   });
 
-  it("passes for core generation regardless of the rule marker (today's prod)", () => {
-    expect(() => assertPythGenerationCompatible(hostWith("core", undefined))).not.toThrow();
-    expect(() => assertPythGenerationCompatible(hostWith(undefined, undefined))).not.toThrow();
-  });
-
-  it("throws for pro generation against an unmarked (core-compiled) rule package", () => {
-    expect(() => assertPythGenerationCompatible(hostWith("pro", undefined))).toThrow(
+  it("throws for pro generation — unconditionally (every deployed pyth_rule is Core-compiled; no config marker exists to lift it)", () => {
+    expect(() => assertPythGenerationCompatible({ pythGeneration: "pro" })).toThrow(
       PythGenerationMismatchError,
     );
-    expect(() => assertPythGenerationCompatible(hostWith("pro", "core"))).toThrow(
-      PythGenerationMismatchError,
-    );
-  });
-
-  it("passes for pro generation once the config marks a pro-compiled rule", () => {
-    expect(() => assertPythGenerationCompatible(hostWith("pro", "pro"))).not.toThrow();
   });
 });

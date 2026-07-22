@@ -102,11 +102,11 @@ export function assertOracleSourceConfigured(
 export class PythGenerationMismatchError extends Error {
   constructor() {
     super(
-      "PythGenerationMismatch: pythGeneration 'pro' selected, but the config's pyth_rule " +
-        "package is compiled against the CORE pyth contracts — its feed would reject the " +
-        "Pro PythState on-chain (CommandArgumentError TypeMismatch). Use 'core' for " +
-        "tx-building until a Pro-compiled pyth_rule ships (config marks it with " +
-        "pyth_rule.generation: 'pro'); 'pro' remains fine for data-plane reads.",
+      "PythGenerationMismatch: pythGeneration 'pro' cannot build the pyth_rule feed leg — " +
+        "the deployed pyth_rule Move package is compiled against the CORE pyth contracts, " +
+        "so its feed rejects the Pro PythState on-chain (CommandArgumentError TypeMismatch). " +
+        "Use 'core' for tx-building; 'pro' remains fine for data-plane reads. This gate " +
+        "lifts only with an SDK release that binds a Pro-compiled rule package.",
     );
     this.name = "PythGenerationMismatchError";
   }
@@ -118,13 +118,17 @@ export class PythGenerationMismatchError extends Error {
  * involves a `pyth_rule`-fed ticker; deliberately NOT called at client
  * creation, so data-plane-only 'pro' clients (price reads, prefetch caches)
  * keep working — only tx-building is refused.
+ *
+ * Unconditional on the config: only two rule packages exist (`pyth_rule`,
+ * `pyth_lazer_rule`) and every deployed `pyth_rule` is Core-compiled. There
+ * is deliberately NO config marker to lift this — a Pro-compiled rule would
+ * be a new package needing new SDK bindings anyway, so the SDK release that
+ * binds it removes this gate.
  */
 export function assertPythGenerationCompatible(host: {
   pythGeneration?: "core" | "pro";
-  config: { packages: { pyth_rule: { generation?: "core" | "pro" } } };
 }): void {
   if ((host.pythGeneration ?? "core") !== "pro") return;
-  if ((host.config.packages.pyth_rule.generation ?? "core") === "pro") return;
   throw new PythGenerationMismatchError();
 }
 
