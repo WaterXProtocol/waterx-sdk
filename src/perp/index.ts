@@ -23,7 +23,6 @@ export type {
   SupraFeedEntry,
   SupraRulePackage,
   TestnetFaucetPackage,
-  TrustedEmitterRow,
   WaterXConfig,
   WaterXPackages,
   WaterxCreditPackage,
