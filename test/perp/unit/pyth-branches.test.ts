@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildPythPriceUpdateCalls,
+  endpointSupportedFeedIds,
   fetchPriceFeedsUpdateData,
   openPythSponsorFund,
   OracleFeeSourceUnavailableError,
@@ -13,7 +14,7 @@ import {
   refreshOraclePrices,
   reimbursePythSponsor,
 } from "../../../src/oracle/index.ts";
-import { __resetMissingFeedCacheForTest } from "../../../src/oracle/pyth.ts";
+import { __resetMissingFeedCacheForTest, probeMissingFeeds } from "../../../src/oracle/pyth.ts";
 import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
@@ -111,16 +112,33 @@ describe("pyth on-chain helper branches", () => {
 
     const data = await fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
 
-    // Survivor served → one combined blob; 0xWTI dropped, never in a 200 URL.
+    // Survivor served → one combined blob; 0xWTI dropped from the final
+    // clean fetch, which carries the survivor only.
     expect(data).toHaveLength(1);
-    const okUrls = fetchSpy.mock.calls
-      .map((c) => c[0] as string)
-      .filter((u) => !u.includes("0xWTI"));
-    expect(okUrls.length).toBeGreaterThan(0);
-    // The final clean fetch carries the survivor only.
     const last = fetchSpy.mock.calls.at(-1)?.[0] as string;
     expect(last).toContain("0xBTC");
     expect(last).not.toContain("0xWTI");
+  });
+
+  it("probeMissingFeeds memoizes without fetching any survivor data", async () => {
+    const fetchSpy = wtiUnknownFetch();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+
+    // Discovery-only: the memo knows 0xWTI, and NO full-batch root probe ran
+    // (the caller already observed the 404) — only the two half-probes.
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("memo key ignores trailing slashes — one entry per endpoint however callers spell it", async () => {
+    const fetchSpy = wtiUnknownFetch();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await probeMissingFeeds(`${MOCK_HERMES_URL}/`, ["0xBTC", "0xWTI"]);
+
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
   });
 
   it("memoizes a missing feed — a second call skips it with no 404", async () => {

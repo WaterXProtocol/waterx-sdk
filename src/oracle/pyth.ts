@@ -54,11 +54,23 @@ type FetchOpts = { apiKey?: string; fetch?: { timeoutMs?: number; retries?: numb
  */
 const missingFeedIdsByEndpoint = new Map<string, Set<string>>();
 
+/**
+ * Memo key for `endpoint` — trailing slashes trimmed, mirroring what
+ * {@link joinEndpointPath} does to the request URL. Without this, two
+ * consumers spelling the same endpoint differently (`…/hermes` vs
+ * `…/hermes/`) would fragment the memo into two entries and re-run the whole
+ * 404 discovery despite one of them having already paid for it.
+ */
+function memoKey(endpoint: string): string {
+  return endpoint.replace(/\/+$/, "");
+}
+
 function recordMissingFeed(endpoint: string, feedId: string): void {
-  let set = missingFeedIdsByEndpoint.get(endpoint);
+  const key = memoKey(endpoint);
+  let set = missingFeedIdsByEndpoint.get(key);
   if (!set) {
     set = new Set<string>();
-    missingFeedIdsByEndpoint.set(endpoint, set);
+    missingFeedIdsByEndpoint.set(key, set);
   }
   set.add(feedId.toLowerCase());
 }
@@ -72,7 +84,7 @@ function recordMissingFeed(endpoint: string, feedId: string): void {
  * feed the accumulator blob doesn't cover.
  */
 export function endpointSupportedFeedIds(endpoint: string, feedIds: string[]): string[] {
-  const missing = missingFeedIdsByEndpoint.get(endpoint);
+  const missing = missingFeedIdsByEndpoint.get(memoKey(endpoint));
   return missing ? feedIds.filter((id) => !missing.has(id.toLowerCase())) : feedIds;
 }
 
@@ -97,21 +109,29 @@ async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Prom
  * the memo. A non-404 (the subset is fine) or a network error stops that
  * branch. Runs at most once per endpoint per unknown-feed set (survivors are
  * memoized, so steady-state fetches never reach here).
+ *
+ * `known404: true` skips the root probe — the caller has already watched this
+ * exact batch 404, so re-fetching it would only re-learn a fact in hand (a
+ * wasted round trip on the money path during cold discovery). Recursive
+ * half-calls always probe: their status is genuinely unknown.
  */
 async function discoverMissingFeeds(
   endpoint: string,
   ids: string[],
   opts?: FetchOpts,
+  known404 = false,
 ): Promise<void> {
   if (ids.length === 0) return;
-  let res: Response;
-  try {
-    res = await rawFetch(endpoint, ids, opts);
-  } catch {
-    return; // transient/network failure — can't classify; leave the memo untouched
+  if (!known404) {
+    let res: Response;
+    try {
+      res = await rawFetch(endpoint, ids, opts);
+    } catch {
+      return; // transient/network failure — can't classify; leave the memo untouched
+    }
+    void res.body?.cancel().catch(() => {});
+    if (res.status !== 404) return; // this subset is serveable — nothing to record
   }
-  void res.body?.cancel().catch(() => {});
-  if (res.status !== 404) return; // this subset is serveable — nothing to record
   if (ids.length === 1) {
     recordMissingFeed(endpoint, ids[0]);
     return;
@@ -121,6 +141,23 @@ async function discoverMissingFeeds(
     discoverMissingFeeds(endpoint, ids.slice(0, mid), opts),
     discoverMissingFeeds(endpoint, ids.slice(mid), opts),
   ]);
+}
+
+/**
+ * Discovery-only entry for consumers that fetch Hermes THEMSELVES (e.g. a
+ * parsed latest-price reader) and just observed a whole-batch 404: bisects
+ * `ids`, memoizes the endpoint-missing ones (see {@link
+ * endpointSupportedFeedIds}), fetches NO survivor data. Without this, such a
+ * consumer's only way to populate the memo was calling {@link
+ * fetchPriceFeedsUpdateData} and discarding its accumulator blob — two full
+ * redundant transfers per cold discovery.
+ */
+export function probeMissingFeeds(
+  endpoint: string,
+  ids: string[],
+  opts?: FetchOpts,
+): Promise<void> {
+  return discoverMissingFeeds(endpoint, ids, opts, true);
 }
 
 export async function fetchPriceFeedsUpdateData(
@@ -164,7 +201,8 @@ export async function fetchPriceFeedsUpdateData(
     // once discovered, survivors are filtered up front and this never runs.
     if (res.status === 404) {
       void res.body?.cancel().catch(() => {});
-      await discoverMissingFeeds(endpoint, ids, opts);
+      // known404: this exact batch just 404'd above — skip the root re-probe.
+      await discoverMissingFeeds(endpoint, ids, opts, true);
       const survivors = endpointSupportedFeedIds(endpoint, ids);
       if (survivors.length === 0) return [];
       // survivors < ids ⇒ we removed the offender(s); re-fetch cleanly. Equal
