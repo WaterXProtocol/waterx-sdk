@@ -164,6 +164,54 @@ describe("fetchWithPolicy", () => {
       expect(delays).toEqual(expect.arrayContaining([5, 10]));
     });
 
+    it("honors a numeric Retry-After on 429 (within the backoff cap) instead of exponential backoff", async () => {
+      let calls = 0;
+      const fetchSpy = vi.fn(async () => {
+        calls += 1;
+        if (calls < 2) {
+          return {
+            ok: false,
+            status: 429,
+            headers: new Headers({ "retry-after": "1" }),
+          } as unknown as Response;
+        }
+        return { ok: true, status: 200 } as Response;
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+      const res = await fetchWithPolicy("https://x.test.invalid/a", {}, { retryDelayMs: 5 });
+
+      expect(res.ok).toBe(true);
+      // 1s from the server's own header — not the 5ms exponential base.
+      const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
+      expect(delays).toEqual(expect.arrayContaining([1000]));
+    });
+
+    it("ignores a Retry-After beyond the backoff cap (falls back to exponential)", async () => {
+      let calls = 0;
+      const fetchSpy = vi.fn(async () => {
+        calls += 1;
+        if (calls < 2) {
+          return {
+            ok: false,
+            status: 429,
+            headers: new Headers({ "retry-after": "60" }),
+          } as unknown as Response;
+        }
+        return { ok: true, status: 200 } as Response;
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+      const res = await fetchWithPolicy("https://x.test.invalid/a", {}, { retryDelayMs: 5 });
+
+      expect(res.ok).toBe(true);
+      const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
+      expect(delays).toEqual(expect.arrayContaining([5]));
+      expect(delays).not.toEqual(expect.arrayContaining([60_000]));
+    });
+
     it("retries on HTTP 503 then succeeds", async () => {
       let calls = 0;
       const fetchSpy = vi.fn(async () => {

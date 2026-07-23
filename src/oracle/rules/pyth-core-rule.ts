@@ -71,7 +71,7 @@ export const PythCoreRule: PriceUpdateRule = {
     // accumulator blob doesn't cover.
     return {
       kind: "pyth_rule",
-      payload: { updates, feedIds: endpointSupportedFeedIds(endpoint, feedIds) },
+      payload: { updates, feedIds: endpointSupportedFeedIds(endpoint, feedIds, host.pyth.api_key) },
     };
   },
 

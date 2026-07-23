@@ -55,19 +55,21 @@ type FetchOpts = { apiKey?: string; fetch?: { timeoutMs?: number; retries?: numb
 const missingFeedIdsByEndpoint = new Map<string, Set<string>>();
 
 /**
- * Memo key for `endpoint` — the same trailing-slash trim
+ * Memo key for `(endpoint, credential)` — the same trailing-slash trim
  * {@link joinEndpointPath} applies to the request URL (shared helper, so the
- * two can't drift). Without this, two consumers spelling the same endpoint
- * differently (`…/hermes` vs `…/hermes/`) would fragment the memo into two
- * entries and re-run the whole 404 discovery despite one of them having
- * already paid for it.
+ * two can't drift), plus the apiKey: "feed X is missing" is a property of the
+ * endpoint AND the credential (Pyth Pro entitlements are per-key), so two
+ * clients in one process with different keys must not cross-poison each
+ * other's memo. Without the trim, two consumers spelling the same endpoint
+ * differently (`…/hermes` vs `…/hermes/`) would fragment the memo and re-run
+ * the whole 404 discovery despite one of them having already paid for it.
  */
-function memoKey(endpoint: string): string {
-  return trimTrailingSlashes(endpoint);
+function memoKey(endpoint: string, apiKey: string | undefined): string {
+  return `${trimTrailingSlashes(endpoint)}\u0000${apiKey ?? ""}`;
 }
 
-function recordMissingFeed(endpoint: string, feedId: string): void {
-  const key = memoKey(endpoint);
+function recordMissingFeed(endpoint: string, feedId: string, apiKey: string | undefined): void {
+  const key = memoKey(endpoint, apiKey);
   let set = missingFeedIdsByEndpoint.get(key);
   if (!set) {
     set = new Set<string>();
@@ -84,14 +86,57 @@ function recordMissingFeed(endpoint: string, feedId: string): void {
  * `buildPythPriceUpdateCalls` (one moveCall per feed id) never references a
  * feed the accumulator blob doesn't cover.
  */
-export function endpointSupportedFeedIds(endpoint: string, feedIds: string[]): string[] {
-  const missing = missingFeedIdsByEndpoint.get(memoKey(endpoint));
+export function endpointSupportedFeedIds(
+  endpoint: string,
+  feedIds: string[],
+  apiKey?: string,
+): string[] {
+  const missing = missingFeedIdsByEndpoint.get(memoKey(endpoint, apiKey));
   return missing ? feedIds.filter((id) => !missing.has(id.toLowerCase())) : feedIds;
 }
 
 /** Test-only: forget everything learned about which feeds an endpoint lacks. */
 export function __resetMissingFeedCacheForTest(): void {
   missingFeedIdsByEndpoint.clear();
+}
+
+/**
+ * Catalog-first discovery: one `GET /v2/price_feeds` names every feed id the
+ * endpoint serves for THIS credential (verified against the Pro compat
+ * endpoint: WTI absent from the catalog AND 404 on latest-price; BTC present
+ * AND 200 — entitlement-filtered per key). Any requested id missing from the
+ * catalog is memoized; no bisection, no per-batch probe storm. Returns false
+ * (caller falls back to bisection) when the catalog itself is unavailable —
+ * the catalog is an optimization, the bisection remains the ground truth
+ * derived from the money-path fetch itself.
+ */
+async function discoverViaCatalog(
+  endpoint: string,
+  ids: string[],
+  opts?: FetchOpts,
+): Promise<boolean> {
+  try {
+    const res = await fetchWithPolicy(
+      joinEndpointPath(endpoint, "v2/price_feeds").toString(),
+      {},
+      { apiKey: opts?.apiKey, ...opts?.fetch },
+    );
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
+      return false;
+    }
+    const catalog = (await res.json()) as { id: string }[];
+    // Catalog ids come WITHOUT the 0x prefix; callers pass either form.
+    const served = new Set(catalog.map((f) => f.id.toLowerCase().replace(/^0x/, "")));
+    for (const id of ids) {
+      if (!served.has(id.toLowerCase().replace(/^0x/, ""))) {
+        recordMissingFeed(endpoint, id, opts?.apiKey);
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Promise<Response> {
@@ -133,8 +178,13 @@ async function discoverMissingFeeds(
     void res.body?.cancel().catch(() => {});
     if (res.status !== 404) return; // this subset is serveable — nothing to record
   }
+  // A confirmed 404: prefer ONE catalog read over O(log n) bisection probes.
+  // Only the top-level call tries it (recursive halves inherit known404=true
+  // from... no: halves pass known404=false and re-probe — the catalog path
+  // returns before any recursion, so halves only run on catalog failure).
+  if (await discoverViaCatalog(endpoint, ids, opts)) return;
   if (ids.length === 1) {
-    recordMissingFeed(endpoint, ids[0]);
+    recordMissingFeed(endpoint, ids[0], opts?.apiKey);
     return;
   }
   const mid = Math.floor(ids.length / 2);
@@ -167,7 +217,7 @@ export async function fetchPriceFeedsUpdateData(
   opts?: FetchOpts,
 ): Promise<Uint8Array[]> {
   // Skip feeds this endpoint has already told us it doesn't have.
-  const ids = endpointSupportedFeedIds(endpoint, priceIds);
+  const ids = endpointSupportedFeedIds(endpoint, priceIds, opts?.apiKey);
   if (ids.length === 0) return [];
 
   let res: Response;
@@ -204,7 +254,7 @@ export async function fetchPriceFeedsUpdateData(
       void res.body?.cancel().catch(() => {});
       // known404: this exact batch just 404'd above — skip the root re-probe.
       await discoverMissingFeeds(endpoint, ids, opts, true);
-      const survivors = endpointSupportedFeedIds(endpoint, ids);
+      const survivors = endpointSupportedFeedIds(endpoint, ids, opts?.apiKey);
       if (survivors.length === 0) return [];
       // survivors < ids ⇒ we removed the offender(s); re-fetch cleanly. Equal
       // ⇒ nothing was recorded (a 404 that wasn't a missing-feed rejection) —

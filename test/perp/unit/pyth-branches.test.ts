@@ -99,14 +99,29 @@ describe("pyth on-chain helper branches", () => {
   // A batch containing 0xWTI 404s; any batch without it 200s. Pyth's 404 body
   // is NOT reliably delivered to fetch, so the impl isolates 0xWTI by
   // bisection rather than parsing.
+  // Serves the catalog (listing only BTC) at /v2/price_feeds, 404s any
+  // latest-price batch containing 0xWTI (empty body, like Cloudflare→undici),
+  // and 200s everything else.
   const wtiUnknownFetch = () =>
     vi.fn(async (url: string) =>
-      url.includes("0xWTI")
-        ? new Response("", { status: 404 }) // empty body, like Cloudflare→undici
-        : new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 }),
+      url.includes("price_feeds")
+        ? new Response(JSON.stringify([{ id: "BTC" }]), { status: 200 })
+        : url.includes("0xWTI")
+          ? new Response("", { status: 404 })
+          : new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 }),
     );
 
-  it("bisects out an endpoint-missing feed and re-fetches the survivors as one batch", async () => {
+  // Catalog endpoint down — discovery must fall back to bisection.
+  const wtiUnknownFetchNoCatalog = () =>
+    vi.fn(async (url: string) =>
+      url.includes("price_feeds")
+        ? new Response("", { status: 500 })
+        : url.includes("0xWTI")
+          ? new Response("", { status: 404 })
+          : new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 }),
+    );
+
+  it("discovers an endpoint-missing feed via the catalog and re-fetches the survivors as one batch", async () => {
     const fetchSpy = wtiUnknownFetch();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
@@ -126,10 +141,20 @@ describe("pyth on-chain helper branches", () => {
 
     await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
 
-    // Discovery-only: the memo knows 0xWTI, and NO full-batch root probe ran
-    // (the caller already observed the 404) — only the two half-probes.
+    // Discovery-only: the memo knows 0xWTI from ONE catalog read — no root
+    // probe (the caller already observed the 404), no bisection halves.
     expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to bisection when the catalog endpoint is unavailable", async () => {
+    const fetchSpy = wtiUnknownFetchNoCatalog();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+
+    // Catalog 500 → the two half-probes isolate 0xWTI exactly as before.
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
   });
 
   it("memo key ignores trailing slashes — one entry per endpoint however callers spell it", async () => {
@@ -139,6 +164,27 @@ describe("pyth on-chain helper branches", () => {
     await probeMissingFeeds(`${MOCK_HERMES_URL}/`, ["0xBTC", "0xWTI"]);
 
     expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
+  });
+
+  it("memo is credential-scoped — one key's missing feed never poisons another key's view", async () => {
+    const fetchSpy = wtiUnknownFetch();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    // key-a discovers 0xWTI missing (Pro entitlements are per-key).
+    await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"], { apiKey: "key-a" });
+
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"], "key-a")).toEqual([
+      "0xBTC",
+    ]);
+    // A different credential (or keyless) still sees the full set.
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"], "key-b")).toEqual([
+      "0xBTC",
+      "0xWTI",
+    ]);
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual([
+      "0xBTC",
+      "0xWTI",
+    ]);
   });
 
   it("memoizes a missing feed — a second call skips it with no 404", async () => {
