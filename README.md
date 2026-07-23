@@ -14,11 +14,12 @@ import { WaterXClient } from "@waterx/sdk";
 // waterxConfigUrl is REQUIRED — the SDK has no built-in default and never reads env.
 const client = await WaterXClient.create({
   network: "TESTNET",
-  waterxConfigUrl: "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+  waterxConfigUrl:
+    "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
 });
-client.account.createAccount(tx, { alias });  // shared waterx_account + funding (credit/custody)
-client.perp.buildPlaceOrderTx(params);        // perpetuals
-client.predict.placeOrder(tx, params);        // prediction markets
+client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
+client.perp.buildPlaceOrderTx(params); // perpetuals
+client.predict.placeOrder(tx, params); // prediction markets
 // client.perp / client.predict ARE the line clients — sign/execute on them directly:
 //   await client.perp.signAndExecuteTransaction({ transaction: tx, signer })
 // each line can target a different network + URL:
@@ -29,11 +30,11 @@ client.predict.placeOrder(tx, params);        // prediction markets
 
 Import surfaces:
 
-| Import | What |
-|--------|------|
-| `@waterx/sdk` | `WaterXClient` (umbrella) + `perp` / `prediction` namespaces. Perp's API is also re-exported flat here (**deprecated** — prefer `client.perp` or the `perp` namespace; removed next major). |
-| `@waterx/sdk/perp` | Perp line: `PerpClient`, builders, fetch, Pyth/Wormhole utils. |
-| `@waterx/sdk/prediction` | Prediction line: `PredictClient`, builders, fetch, utils. |
+| Import                   | What                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@waterx/sdk`            | `WaterXClient` (umbrella) + `perp` / `prediction` namespaces. Perp's API is also re-exported flat here (**deprecated** — prefer `client.perp` or the `perp` namespace; removed next major). |
+| `@waterx/sdk/perp`       | Perp line: `PerpClient`, builders, fetch, Pyth/Wormhole utils.                                                                                                                              |
+| `@waterx/sdk/prediction` | Prediction line: `PredictClient`, builders, fetch, utils.                                                                                                                                   |
 
 ## Install
 
@@ -101,37 +102,37 @@ Read-only queries use gRPC `simulateTransaction` (no signer) — the `getX` view
 
 ## Oracle sources & the Pyth Pro migration
 
-Two independent client create options control oracle behavior. The SDK **never reads `process.env`** — each consumer wires them from its own env vars, so every environment runs the **same SDK version** and differs only by env:
+ONE client create option controls oracle behavior. The SDK **never reads `process.env`** — each consumer wires it from its own env var, so every environment runs the **same SDK version** and differs only by env:
 
-| Option | Values | What it flips |
-|--------|--------|---------------|
-| `oracleSource` | `'pyth_rule'` (default) \| `'pyth_lazer_rule'` | Which `PriceUpdateRule` `refreshOraclePrices` uses for the on-chain price-update leg. |
-| `pythGeneration` | `'core'` (default) \| `'pro'` | Which Pyth infra constants feed `client.pyth` when the config JSON has no explicit `pyth` block: `PYTH_DEFAULTS` (original contracts, keyless `hermes.pyth.network`) or `PYTH_PRO_DEFAULTS` (post-2026-08-18 Pro-compatible contracts + the Hermes-compatible `https://pyth.dourolabs.app/hermes`, auth-first). |
+| Option           | Values                        | What it flips                                                                                                                                                                                                                                                                     |
+| ---------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pythGeneration` | `'core'` (default) \| `'pro'` | The whole oracle mode. `'core'` = `pyth_rule` updates on Core infra (keyless `hermes.pyth.network`). `'pro'` = `pyth_lazer_rule` updates (ONE Lazer leEcdsa verify per PTB, no per-feed update fees) + the auth-first Pro Hermes (`https://pyth.dourolabs.app/hermes`) for reads. |
 
-They are orthogonal: `pythGeneration` moves the Pyth **Core** state ids + endpoint; `oracleSource` picks the **rule** (Core VAA vs Lazer signed updates). An explicit `pyth` block in the config JSON always overrides the generation constants wholesale.
+The on-chain rule source is **derived** (`'pro'` → `pyth_lazer_rule`) — there is no separate `oracleSource` option, so the previously-broken off-diagonal combinations are unrepresentable. `PerpClient.create` fails fast (`OracleSourceNotConfiguredError`) when `'pro'` is selected against a config with no `packages.pyth_lazer_rule`.
+
+The `pyth_rule` path (the `'core'` mode, and the per-ticker fallback under `'pro'` for tickers without a Lazer feed) is **Core-infra by construction** — the deployed rule package is compiled against Core pyth, so both its feed leg (Core `PythState`) and its update leg (Core price-info objects, keyless Core Hermes) pin Core via `resolveCorePythInfra`, regardless of generation. An explicit `pyth` block in the config JSON overrides the generation constants for the paths that read `client.pyth` (Lazer/read infra under `'pro'`; everything under `'core'`).
 
 ```ts
-// Per-environment wiring — the consumer owns the env vars, not the SDK:
+// Per-environment wiring — the consumer owns the env var, not the SDK:
 const perp = await PerpClient.create(network, {
   waterxConfigUrl,
-  oracleSource: process.env.ORACLE_SOURCE as OracleSource | undefined, // e.g. staging: pyth_lazer_rule
-  pythGeneration: process.env.PYTH_GENERATION as PythGeneration | undefined, // e.g. staging: pro
+  pythGeneration: process.env.PYTH_GENERATION as PythGeneration | undefined, // e.g. staging: 'pro'
 });
-// After the 2026-08-18 cutover, Pro-generation Hermes requires a key:
+// Pro-generation Hermes requires a key (Lazer signed updates + auth-first reads):
 perp.pyth = { ...perp.pyth, api_key: process.env.PYTH_API_KEY };
 ```
 
-This is the staging-Pro / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` and/or `PYTH_GENERATION=pro` while production leaves both unset (Core defaults) — flipping an environment is an env-var change, never an SDK release. After August 18, 2026 (the Core-upgrade cutover — see https://docs.pyth.network/price-feeds/core/upgrade), consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
+This is the staging-Pro / prod-Core rollout pattern: staging sets `PYTH_GENERATION=pro` (+ `PYTH_API_KEY`) while production leaves it unset — flipping an environment is an env-var change, never an SDK release. After August 18, 2026 (the Core-upgrade cutover — see https://docs.pyth.network/price-feeds/core/upgrade), consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
 
 ### Adding an oracle source (runbook)
 
-Every rule generation plugs in the same way — routing is driven **only** by the client's `oracleSource` option (never a config `enabled` flag, never `process.env`):
+Every rule generation plugs in the same way — routing is driven **only** by the client's derived `OracleHost.oracleSource` (never a config `enabled` flag, never `process.env`):
 
 1. **Implement `PriceUpdateRule`** in `src/oracle/rules/<name>-rule.ts` — all port fields (`src/oracle/price-update-rule.ts`): `kind`, `requiresFeeSource` (`true` iff the on-chain verify draws a per-update fee — gates the fail-fast fee-source check), `supportedTickers`, `fetchUpdateData`, `narrowUpdateData` (subset a cached whole-universe payload to one build's tickers — a divisible payload returns a per-feed subset, an indivisible one returns itself whole iff fully covered; uncovered ticker → `null` miss), `buildUpdateCalls`.
 2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value (added to the union in `price-update-rule.ts`).
 3. **Publish the on-chain rule package** — its config entry (package ids, per-ticker `feeds`) arrives via the normal `waterx-config` deploy pipeline; type it in `OraclePackages` (`src/oracle/config.ts`).
 4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a per-network map in `src/oracle/config.ts`, mirroring `LAZER_DEFAULTS` / `PYTH_PRO_DEFAULTS`.
-5. **Consumers flip `ORACLE_SOURCE`** per environment — no consumer code change, no SDK re-release.
+5. **Consumers flip `PYTH_GENERATION`** per environment (the rule source derives from it) — no consumer code change, no SDK re-release.
 
 The in-house `waterx_rule` (ed25519 enclave-signed CEX prices) follows exactly this path when it lands.
 
@@ -147,14 +148,14 @@ Perp `build*Tx` helpers are Pyth-backed (`async`; they refresh feeds before the 
 
 ## Development
 
-| Command | Use |
-| --- | --- |
-| `pnpm typecheck` | Typecheck the whole tree |
-| `pnpm test` / `pnpm test:unit` | Unit tests (perp + prediction) |
-| `pnpm test:e2e` | Testnet simulate e2e (perp + prediction) |
-| `pnpm test:integration` | On-chain integration (needs `SUI_PRIVATE_KEY`; local-only) |
-| `pnpm lint` / `pnpm format` | ESLint + Prettier |
-| `pnpm codegen` | Regenerate `src/generated` from Move |
-| `pnpm seed:testnet` | Seed prediction testnet fixtures (needs `SUI_PRIVATE_KEY`) |
+| Command                        | Use                                                        |
+| ------------------------------ | ---------------------------------------------------------- |
+| `pnpm typecheck`               | Typecheck the whole tree                                   |
+| `pnpm test` / `pnpm test:unit` | Unit tests (perp + prediction)                             |
+| `pnpm test:e2e`                | Testnet simulate e2e (perp + prediction)                   |
+| `pnpm test:integration`        | On-chain integration (needs `SUI_PRIVATE_KEY`; local-only) |
+| `pnpm lint` / `pnpm format`    | ESLint + Prettier                                          |
+| `pnpm codegen`                 | Regenerate `src/generated` from Move                       |
+| `pnpm seed:testnet`            | Seed prediction testnet fixtures (needs `SUI_PRIVATE_KEY`) |
 
 Tests are split per line under `test/perp/` and `test/prediction/`, each with `unit` / `e2e` / `integration` tiers. See the per-line `README.md` in each.

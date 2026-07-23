@@ -20,6 +20,7 @@ import {
   buildPythPriceUpdateCalls,
   endpointSupportedFeedIds,
   fetchPriceFeedsUpdateData,
+  resolveCorePythInfra,
 } from "../pyth.ts";
 
 /** `pyth_rule`'s narrowed `RuleUpdateData.payload` shape. */
@@ -58,10 +59,13 @@ export const PythCoreRule: PriceUpdateRule = {
   /** Resolves feed ids for `tickers`, then fetches their Hermes accumulator update. */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
-    const endpoint = host.pyth.hermes_endpoint;
+    // Core infra by construction — see resolveCorePythInfra: under 'pro'
+    // the host block is the PRO infra and must not shape this rule's fetch.
+    const corePyth = resolveCorePythInfra(host);
+    const endpoint = corePyth.hermes_endpoint;
     const feedIds = tickers.map((ticker) => host.getPythFeed(ticker).feed_id);
     const updates = await fetchPriceFeedsUpdateData(endpoint, feedIds, {
-      apiKey: host.pyth.api_key,
+      apiKey: corePyth.api_key,
       fetch: host.pyth.fetch,
     });
     // `updates` covers only the feeds this endpoint actually served — the fetch
@@ -71,7 +75,7 @@ export const PythCoreRule: PriceUpdateRule = {
     // accumulator blob doesn't cover.
     return {
       kind: "pyth_rule",
-      payload: { updates, feedIds: endpointSupportedFeedIds(endpoint, feedIds, host.pyth.api_key) },
+      payload: { updates, feedIds: endpointSupportedFeedIds(endpoint, feedIds, corePyth.api_key) },
     };
   },
 

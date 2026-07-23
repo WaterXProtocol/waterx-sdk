@@ -76,6 +76,38 @@ describe("PythCoreRule.fetchUpdateData", () => {
     expect(parsedUrl.searchParams.getAll("ids[]")).toEqual([client.getPythFeed("BTCUSD").feed_id]);
   });
 
+  it("under 'pro' fetches from the CORE Hermes, not the host's Pro endpoint (fallback tickers only exist there)", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    // Simulate the pro host: its pyth block is the PRO infra.
+    (client as { pyth: typeof client.pyth }).pyth = {
+      ...client.pyth,
+      hermes_endpoint: "https://pyth.example-pro.invalid/hermes",
+      api_key: "pro-key",
+    };
+    const update = mockAccumulatorUpdate();
+    let requestedUrl: string | undefined;
+    let authHeader: string | undefined;
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      requestedUrl = url.toString();
+      authHeader = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => mockAccumulatorUpdate().buffer,
+        json: async () => ({ binary: { data: [toHex(update)] } }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    await PythCoreRule.fetchUpdateData(client, ["BTCUSD"]);
+
+    const parsedUrl = new URL(requestedUrl ?? "");
+    // CORE endpoint (PYTH_DEFAULTS), keyless — NOT the Pro endpoint/key: the
+    // update leg must stay on the same Core infra the feed leg pins, and the
+    // Pro endpoint doesn't even serve the tickers that fall back to pyth_rule.
+    expect(parsedUrl.host).not.toBe("pyth.example-pro.invalid");
+    expect(authHeader).toBeUndefined();
+  });
+
   it("resolves multiple tickers to their respective feed ids", async () => {
     const client = createUnitTestClient();
     const update = mockAccumulatorUpdate();

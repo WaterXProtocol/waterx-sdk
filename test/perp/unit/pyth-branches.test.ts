@@ -207,9 +207,9 @@ describe("pyth on-chain helper branches", () => {
       async () => new Response("", { status: 404 }),
     ) as unknown as typeof fetch;
 
-    await expect(
-      fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"]),
-    ).resolves.toEqual([]);
+    await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"])).resolves.toEqual(
+      [],
+    );
   });
 
   it("buildPythPriceUpdateCalls rejects multiple accumulator messages", async () => {

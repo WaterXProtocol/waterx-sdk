@@ -14,11 +14,11 @@ PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Li
 
 ## Vitest projects
 
-| Project                | Glob                                         | Notes                                                                                                                                                                                          |
-| ---------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **unit**               | `src/**/*.test.ts`, `test/perp/unit/**/*.test.ts` | Fast, no chain                                                                                                                                                                                 |
-| **e2e**                | `test/perp/e2e/**/*.test.ts`                 | **v3** `simulateTransaction` against canonical **`waterx-config`** (`WaterXClient.create`). Single Vitest fork by default (public gRPC rate limits). **Testnet default locally** (mainnet JSON often incomplete); **CI** runs the same command in one job (`pnpm exec tsx scripts/run-e2e.ts --testnet`, no **`--shard`**). Use **`--mainnet`** when `waterx-config/main/mainnet.json` is ready. |
-| **integration-trader** | `test/perp/integration/**/*.test.ts`            | **[v3] On-chain** integration against canonical **`waterx-config`**. Starts via **`pnpm test:integration`** (`scripts/run-integration.ts`), which aligns **`WATERX_E2E_NETWORK`** / **`WATERX_INTEGRATION_NETWORK`**. Needs **`WATERX_INTEGRATION_PRIVATE_KEY`** (or `.integration-trader.keystore`). Most suites **`describe.skipIf(!isIntegrationTraderConfigured())`**; optional env still gates destructive cases (e.g. close-one position). **`WATERX_INTEGRATION_MAX_FORKS`** caps Vitest parallelism. **Gas:** low default caps via **`integrationGasBudget`** (~0.01–0.02 SUI); optional **`WATERX_INTEGRATION_GAS_BUDGET`**. Tests **run first**; only **skip** (not fail) when the chain reports insufficient SUI for gas selection. Run a subset: `pnpm test:integration test/perp/integration/user/trader-custody.test.ts`. |
+| Project                | Glob                                              | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **unit**               | `src/**/*.test.ts`, `test/perp/unit/**/*.test.ts` | Fast, no chain                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **e2e**                | `test/perp/e2e/**/*.test.ts`                      | **v3** `simulateTransaction` against canonical **`waterx-config`** (`WaterXClient.create`). Single Vitest fork by default (public gRPC rate limits). **Testnet default locally** (mainnet JSON often incomplete); **CI** runs the same command in one job (`pnpm exec tsx scripts/run-e2e.ts --testnet`, no **`--shard`**). Use **`--mainnet`** when `waterx-config/main/mainnet.json` is ready.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **integration-trader** | `test/perp/integration/**/*.test.ts`              | **[v3] On-chain** integration against canonical **`waterx-config`**. Starts via **`pnpm test:integration`** (`scripts/run-integration.ts`), which aligns **`WATERX_E2E_NETWORK`** / **`WATERX_INTEGRATION_NETWORK`**. Needs **`WATERX_INTEGRATION_PRIVATE_KEY`** (or `.integration-trader.keystore`). Most suites **`describe.skipIf(!isIntegrationTraderConfigured())`**; optional env still gates destructive cases (e.g. close-one position). **`WATERX_INTEGRATION_MAX_FORKS`** caps Vitest parallelism. **Gas:** low default caps via **`integrationGasBudget`** (~0.01–0.02 SUI); optional **`WATERX_INTEGRATION_GAS_BUDGET`**. Tests **run first**; only **skip** (not fail) when the chain reports insufficient SUI for gas selection. Run a subset: `pnpm test:integration test/perp/integration/user/trader-custody.test.ts`. |
 
 **Skipped counts:** Vitest reports **`skipped`** when tests opt out via **`ctx.skip`** or **`describe.skipIf`** — **environment / on-chain state**, not broken placeholders. Common cases:
 
@@ -33,12 +33,12 @@ PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Li
 
 ### E2E layout (`test/perp/e2e/`)
 
-| Area        | Files |
-| ----------- | ----- |
-| Read / fetch | `read-views`, `read-pagination`, `read-account`, `read-position-order`, `read-wlp-queue`, `read-referral`, `fetch-errors` |
-| Oracle / wxa | `oracle-pyth`, `account-wxa`, `referral`, `custody` (native CREDIT PSM), `credit` (bridge tx-builders + `getAccountsByOwner`) |
+| Area         | Files                                                                                                                                                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read / fetch | `read-views`, `read-pagination`, `read-account`, `read-position-order`, `read-wlp-queue`, `read-referral`, `fetch-errors`                                                                                                                             |
+| Oracle / wxa | `oracle-pyth`, `account-wxa`, `referral`, `custody` (native CREDIT PSM), `credit` (bridge tx-builders + `getAccountsByOwner`)                                                                                                                         |
 | Trading      | `trade-open`, `trade-position` (discovery sender), `trade-orders`, `trade-pre-orders`, `trade-pre-order-requests` (standalone add/cancel pre), `builders-compose`, `trade-ghost-sizing` (close/inc/dec/deposit/withdraw with ghost **`position_id`**) |
-| Pool / ops   | `wlp` (discovered wxa USDC mint), `wlp-redeem` (discovered WLP + queue cancel), `staking` (discovered wxa WLP), `keeper` |
+| Pool / ops   | `wlp` (discovered wxa USDC mint), `wlp-redeem` (discovered WLP + queue cancel), `staking` (discovered wxa WLP), `keeper`                                                                                                                              |
 
 Stateful flows use **`discoverStatefulSimulatePosition`** / **`discoverWxaAccountWith*`** (`test/perp/helpers/e2e/discover-on-chain-position.ts`, **`e2e-wxa-discovery.ts`**): prefer env **`WATERX_E2E_WXA_ACCOUNT_ID`** / **`WATERX_INTEGRATION_ACCOUNT_ID`**, else built-in testnet canonical wxa in **`canonical-testnet-account.ts`** (CI-safe, no `.env.local`), then market scan / redeem queue / funded probe → **`getAccountOwnerByAccountId`** for **`tx.setSender`**.
 
@@ -46,21 +46,21 @@ Scratch helpers under **`test/perp/helpers/scratch/`** remain for **scenario dat
 
 ## Daily commands
 
-| Command                                  | What it runs                                                                                             |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `pnpm test`                              | **unit** + **e2e** (e2e defaults to **testnet**)                                                           |
-| `pnpm test:unit`                         | unit only                                                                                                |
-| `pnpm test:e2e`                          | simulate / e2e only, **testnet** by default                                                               |
-| `pnpm test:e2e --testnet`                | explicit testnet (same as bare `test:e2e`)                                                               |
-| `pnpm test:e2e --mainnet`                | mainnet (`waterx-config` must include all required `published_at` fields)                                  |
-| `pnpm test:e2e:testnet`                  | alias for `pnpm test:e2e --testnet`                                                                     |
-| `pnpm test:e2e:mainnet`                  | alias for `pnpm test:e2e --mainnet`                                                                      |
-| `pnpm test:watch`                        | unit + e2e in watch mode                                                                                |
-| `pnpm test:coverage`                     | unit + e2e with coverage (`src/**/*.ts`)                                                                  |
-| `pnpm test:all`                          | all Vitest projects (**unit**, **e2e**, **integration-trader**)                                         |
+| Command                                  | What it runs                                                                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`                              | **unit** + **e2e** (e2e defaults to **testnet**)                                                                  |
+| `pnpm test:unit`                         | unit only                                                                                                         |
+| `pnpm test:e2e`                          | simulate / e2e only, **testnet** by default                                                                       |
+| `pnpm test:e2e --testnet`                | explicit testnet (same as bare `test:e2e`)                                                                        |
+| `pnpm test:e2e --mainnet`                | mainnet (`waterx-config` must include all required `published_at` fields)                                         |
+| `pnpm test:e2e:testnet`                  | alias for `pnpm test:e2e --testnet`                                                                               |
+| `pnpm test:e2e:mainnet`                  | alias for `pnpm test:e2e --mainnet`                                                                               |
+| `pnpm test:watch`                        | unit + e2e in watch mode                                                                                          |
+| `pnpm test:coverage`                     | unit + e2e with coverage (`src/**/*.ts`)                                                                          |
+| `pnpm test:all`                          | all Vitest projects (**unit**, **e2e**, **integration-trader**)                                                   |
 | `pnpm test:integration`                  | **integration-trader** via **`scripts/run-integration.ts --testnet`** (override with `--mainnet` or env networks) |
-| `pnpm test:integration:persistent-state` | Seed per-ticker keeper slots + WLP on integration wxa (feeds e2e discovery) |
-| `pnpm test:integration:gap`              | WLP redeem/cancel, staking, keeper roundtrip, custody mint, credit withdraw enqueue |
+| `pnpm test:integration:persistent-state` | Seed per-ticker keeper slots + WLP on integration wxa (feeds e2e discovery)                                       |
+| `pnpm test:integration:gap`              | WLP redeem/cancel, staking, keeper roundtrip, custody mint, credit withdraw enqueue                               |
 
 **Recommended local testnet loop:** **`pnpm test:e2e:preflight`** (needs **`WATERX_INTEGRATION_PRIVATE_KEY`**; sets **`WATERX_E2E_WXA_ACCOUNT_ID`**, seeds keeper slots + wxa WLP + **pending redeem** on the integration wxa account for **`wlp-redeem` cancel simulate**) → **`pnpm test:e2e`**. Disable redeem enqueue with **`WATERX_E2E_PREFLIGHT_REDEEM=0`**. CI only runs **`pnpm test:e2e`** (no key, no preflight). Alternative seed: **`pnpm test:integration:persistent-state`**.
 
@@ -69,14 +69,14 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 
 ## CI-style commands
 
-| Command                       | Purpose                                                                                         |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| `pnpm test:ci`                | **`test:ci:full`**: unit (coverage + JUnit) then **`test:ci:e2e`** (**testnet**, JUnit XML)    |
-| `pnpm test:ci:unit`           | Unit + coverage + `test-results-unit.xml`                                                      |
-| `pnpm test:ci:e2e`            | Simulate e2e on **testnet** + `test-results-simulate-testnet.xml` (same network as CI e2e job) |
-| `pnpm test:ci:e2e:testnet`    | Same flags/output as **`test:ci:e2e`** (explicit alias)                                         |
-| `pnpm test:ci:e2e:mainnet`    | Mainnet + `test-results-simulate-mainnet.xml`                                                   |
-| `pnpm test:ci:e2e:coverage`   | **`pnpm exec tsx scripts/run-e2e.ts --testnet --coverage`**                                    |
+| Command                     | Purpose                                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
+| `pnpm test:ci`              | **`test:ci:full`**: unit (coverage + JUnit) then **`test:ci:e2e`** (**testnet**, JUnit XML)    |
+| `pnpm test:ci:unit`         | Unit + coverage + `test-results-unit.xml`                                                      |
+| `pnpm test:ci:e2e`          | Simulate e2e on **testnet** + `test-results-simulate-testnet.xml` (same network as CI e2e job) |
+| `pnpm test:ci:e2e:testnet`  | Same flags/output as **`test:ci:e2e`** (explicit alias)                                        |
+| `pnpm test:ci:e2e:mainnet`  | Mainnet + `test-results-simulate-mainnet.xml`                                                  |
+| `pnpm test:ci:e2e:coverage` | **`pnpm exec tsx scripts/run-e2e.ts --testnet --coverage`**                                    |
 
 **Discovery audit:** **`pnpm audit:e2e-discovery --testnet`** lists live testnet **`discover*`** usages (helps keep simulate discovery consistent).
 
@@ -100,12 +100,12 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 
 ## TypeScript scope
 
-Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/*.ts`** and **`test/integration`** so simulate + integration helpers typecheck with the SDK; legacy-only helpers remain **`exclude`** where still v2-shaped (**`wlp-mint-simulate-tx`**, **`market-summary-assertions`**).
+Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/\*.ts`** and **`test/integration`** so simulate + integration helpers typecheck with the SDK; legacy-only helpers remain **`exclude`** where still v2-shaped (**`wlp-mint-simulate-tx`**, **`market-summary-assertions`\*\*).
 
 ## Related: oracle debug (not Vitest)
 
-| Command                  | Purpose                                                                                                                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                  | Purpose                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm oracle:aggregates` | `scripts/print-oracle-aggregates.ts` (Hermes Pyth refresh + oracle PTB **simulate** for markets/collaterals; no private key; `-- --format raw` / `--help`) |
 
 Admin-keystore flows live on branch **`integration/admin-e2e-parked`**.

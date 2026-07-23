@@ -569,7 +569,11 @@ describe("assertOracleSourceConfigured (fail-fast on unconfigured oracleSource)"
 
   it("throws when the package exists but has no feeds (non-functional source)", () => {
     expect(() =>
-      assertOracleSourceConfigured("TESTNET", { pyth_lazer_rule: { feeds: {} } }, "pyth_lazer_rule"),
+      assertOracleSourceConfigured(
+        "TESTNET",
+        { pyth_lazer_rule: { feeds: {} } },
+        "pyth_lazer_rule",
+      ),
     ).toThrow(OracleSourceNotConfiguredError);
   });
 });

@@ -19,8 +19,15 @@ import { bcs } from "@mysten/sui/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import type { PythInfraConfig } from "./config.ts";
+import { PYTH_DEFAULTS } from "./config.ts";
 import type { OracleHost } from "./host.ts";
-import { FetchPolicyError, fetchWithPolicy, joinEndpointPath, trimTrailingSlashes } from "./update-fetch.ts";
+import {
+  FetchPolicyError,
+  fetchWithPolicy,
+  joinEndpointPath,
+  trimTrailingSlashes,
+} from "./update-fetch.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -137,6 +144,21 @@ async function discoverViaCatalog(
   } catch {
     return false;
   }
+}
+
+/**
+ * The Pyth infra the `pyth_rule` (Core) path must use. Under `'pro'` the
+ * host's `pyth` block is the PRO infra — auth-first, entitlement-gated
+ * endpoint and PRO state/price-info objects, intended for the Lazer/read
+ * paths. But `pyth_rule` is compiled against CORE pyth: its update leg must
+ * post to CORE objects (updating Pro objects while `feed` reads Core ones
+ * left fallback tickers permanently stale), and its update data must come
+ * from the keyless CORE Hermes — which also serves exactly the fallback
+ * tickers the Pro endpoint lacks (e.g. WTI/BRENT). Under `'core'` the host
+ * block IS the Core infra (including any config override) and is used as-is.
+ */
+export function resolveCorePythInfra(host: OracleHost): PythInfraConfig {
+  return host.oracleSource === "pyth_lazer_rule" ? PYTH_DEFAULTS[host.network] : host.pyth;
 }
 
 async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Promise<Response> {
@@ -503,7 +525,7 @@ export async function buildPythPriceUpdateCalls(
   }
 
   const cache = opts?.cache;
-  const pyth = host.pyth;
+  const pyth = resolveCorePythInfra(host);
   const [stateInfo, wormholePackageId, table] = await Promise.all([
     getPythStateInfo(host.grpcClient, pyth.state_id, cache),
     getWormholePackageId(host.grpcClient, pyth.wormhole_state_id, cache),
@@ -580,8 +602,9 @@ export async function updatePythPrices(
   feedIds: string[],
   opts?: { cache?: PythCache; feeSource?: OracleFeeSource },
 ): Promise<string[]> {
-  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
-    apiKey: host.pyth.api_key,
+  const corePyth = resolveCorePythInfra(host);
+  const updates = await fetchPriceFeedsUpdateData(corePyth.hermes_endpoint, feedIds, {
+    apiKey: corePyth.api_key,
     fetch: host.pyth.fetch,
   });
   return buildPythPriceUpdateCalls(tx, host, updates, feedIds, opts);

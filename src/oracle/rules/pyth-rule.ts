@@ -9,9 +9,9 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import { PYTH_DEFAULTS } from "../config.ts";
 import { feed as pythRuleFeed } from "../../generated/waterx_pyth_rule/pyth_rule.ts";
 import type { OracleHost } from "../host.ts";
+import { resolveCorePythInfra } from "../pyth.ts";
 
 export function feedPythRule(
   tx: Transaction,
@@ -32,7 +32,10 @@ export function feedPythRule(
       // coincidence under 'core' — under 'pro' it aborted EVERY tx-build with
       // CommandArgumentError{arg 3, TypeMismatch} (mainnet, 2026-07-22). The
       // config's price_info_object entries are Core objects to match.
-      pythState: tx.object(PYTH_DEFAULTS[host.network].state_id),
+      // resolveCorePythInfra keeps the whole pyth_rule path (this feed leg
+      // AND the update leg in pyth.ts) on the same Core infra, while still
+      // honoring a config-supplied Core override under 'core'.
+      pythState: tx.object(resolveCorePythInfra(host).state_id),
       pythPriceInfo: tx.object(priceInfoObjectId),
     },
   })(tx);

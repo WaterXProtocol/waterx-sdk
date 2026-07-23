@@ -11,6 +11,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { resolveSignerPrivateKey } from "./resolve-signer-key.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,8 +19,7 @@ const REPO_ROOT = resolve(__dirname, "../../..");
 const DEFAULT_WATERX_ENV = resolve(REPO_ROOT, "../bucket-backend-mono-1/apps/waterx/.env");
 const SDK_ENV = resolve(REPO_ROOT, ".env");
 
-const DEFAULT_DEV_ADDRESS =
-  "0x0000000000000000000000000000000000000000000000000000000000000001";
+const DEFAULT_DEV_ADDRESS = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 function parseEnvFile(path) {
   if (!existsSync(path)) return {};
@@ -103,8 +103,7 @@ const expiresInSec = Number.parseInt(
   10,
 );
 
-const suiAddress =
-  parseAddressArg() ?? (await deriveAddressFromSdkEnv()) ?? DEFAULT_DEV_ADDRESS;
+const suiAddress = parseAddressArg() ?? (await deriveAddressFromSdkEnv()) ?? DEFAULT_DEV_ADDRESS;
 
 const now = Math.floor(Date.now() / 1000);
 const token = signJwt(
