@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 
+import { resolveCorePythInfra } from "../../../../src/oracle/pyth.ts";
 import type { PerpClient } from "../../../../src/perp/client.ts";
 import {
   DEFAULT_MOCK_PYTH_ROW_TYPE,
@@ -39,10 +40,15 @@ export function attachPythGrpcMocks(client: PerpClient) {
 
   client.grpcClient = {
     getObject: vi.fn(async ({ objectId }: { objectId: string }) => {
-      if (objectId === client.pyth.state_id) {
+      // Key on the RESOLVED Core infra, not client.pyth verbatim: under a
+      // pyth_lazer_rule host the Core update path resolves
+      // PYTH_DEFAULTS[network] (see resolveCorePythInfra) — the mock must
+      // answer for whichever ids the code under test actually reads.
+      const corePyth = resolveCorePythInfra(client);
+      if (objectId === corePyth.state_id || objectId === client.pyth.state_id) {
         return { object: { json: pythStateJson } };
       }
-      if (objectId === client.pyth.wormhole_state_id) {
+      if (objectId === corePyth.wormhole_state_id || objectId === client.pyth.wormhole_state_id) {
         return { object: { json: wormholeJson } };
       }
       return { object: { json: null } };

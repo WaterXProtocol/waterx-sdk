@@ -23,7 +23,6 @@ export type {
   BasePackageEntry,
   NativeCustodyAsset,
   NativeCustodyPackage,
-  TrustedEmitterRow,
   WaterxCreditPackage,
   WaterxReferralPackage,
   WithdrawalQueuePackage,

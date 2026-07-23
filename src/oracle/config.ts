@@ -205,6 +205,14 @@ export const PYTH_PRO_DEFAULTS: Record<Network, PythInfraConfig> = {
   TESTNET: {
     state_id: "0x3c48fe392912de6c18087a2b3f5fdbfbfdb4598e180947feff1f12f8e9ea073e",
     wormhole_state_id: "0x750da8e6d16b6a363a39fe2eaa8295ac224a1e6fce4e47b58845e2e8746164f0",
+    // Same endpoint as mainnet ON PURPOSE: Pyth Pro has NO beta channel. The
+    // Pro TESTNET deployment's price table is keyed by PROD Hermes feed ids
+    // (verified on-chain 2026-07-22 — its 11 seeded feeds incl. BTC/ETH/SUI/
+    // USDC are all prod ids), i.e. it verifies the same prod-signed VAAs the
+    // auth endpoint serves. A testnet config carrying BETA feed ids (the
+    // hermes-beta channel, correct for `pythGeneration: 'core'`) is therefore
+    // structurally incompatible with 'pro' — migrating testnet to Pro means
+    // re-pointing the config's pyth feeds at PROD ids, not changing this URL.
     hermes_endpoint: "https://pyth.dourolabs.app/hermes",
   },
 };

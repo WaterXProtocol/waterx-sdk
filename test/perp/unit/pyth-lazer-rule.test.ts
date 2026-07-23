@@ -46,7 +46,10 @@
  *    (`POST {LAZER_DEFAULTS.endpoint}/v1/latest_price`, `Authorization:
  *    Bearer <pyth.api_key>`; path + required `channel` field + Bearer auth
  *    verified live against the endpoint). The v1 on-chain `channel::from_u8`
- *    aborts on the 1000ms fixed-rate channel → request `real_time`.
+ *    aborts on the 1000ms fixed-rate channel; the request pins
+ *    `fixed_rate@200ms` — the fastest channel every configured feed supports
+ *    (19/29 don't publish `real_time`, and one incapable feed rejects the
+ *    whole batch). See LAZER_LATEST_PRICE_REQUEST's doc.
  *
  * 5. AGGREGATE SEMANTICS (`aggregator::remove_outliers`) — decides the feed
  *    branch implemented in `aggregate.ts`: it aborts `EMissingPriceSource`
@@ -190,9 +193,7 @@ describe("PythLazerRule.fetchUpdateData", () => {
 
     await PythLazerRule.fetchUpdateData(client, ["BTCUSD"]);
 
-    expect(captured?.url).toBe(
-      new URL("/v1/latest_price", LAZER_DEFAULTS.TESTNET.endpoint).toString(),
-    );
+    expect(captured?.url).toBe(`${LAZER_DEFAULTS.TESTNET.endpoint}/v1/latest_price`);
     expect(captured?.init?.method).toBe("POST");
     expect(captured?.init?.headers).toEqual({
       "Content-Type": "application/json",
@@ -203,7 +204,11 @@ describe("PythLazerRule.fetchUpdateData", () => {
       properties: ["price", "exponent", "confidence"],
       formats: ["leEcdsa"],
       jsonBinaryEncoding: "hex",
-      channel: "real_time",
+      // fixed_rate@200ms, not real_time: 19 of the 29 configured feeds
+      // (incl. SUIUSD and every xStock) don't publish real_time, and one
+      // incapable feed 400s the WHOLE batch. 200ms is the fastest channel
+      // every configured feed supports (see LAZER_LATEST_PRICE_REQUEST).
+      channel: "fixed_rate@200ms",
     });
   });
 

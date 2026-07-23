@@ -22,8 +22,13 @@ export type { OracleHost } from "./host.ts";
 // just the type) so a consumer (e.g. a BE prefetch cache) can `instanceof`
 // it off the failure `fetchPriceFeedsUpdateData` / `PythLazerRule` /
 // `loadConfig` surface, without a deep import of `./update-fetch.ts`.
-// `fetchWithPolicy` itself stays module-internal (no external caller yet).
-export { FetchPolicyError } from "./update-fetch.ts";
+// `fetchWithPolicy` + `joinEndpointPath` are exported for consumers that hit
+// Hermes-compatible endpoints THEMSELVES (e.g. the BE's parsed latest-price
+// bootstrap and Pyth schedule readers): one shared Bearer/timeout/retry
+// policy and one base-path-safe URL join, instead of each caller re-rolling
+// them (the hand-rolled copies were how the Pro `/hermes` base path got
+// dropped and the Bearer went missing on sibling fetches).
+export { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "./update-fetch.ts";
 export type { FetchPolicy } from "./update-fetch.ts";
 
 // Pyth source — `OracleFeeSourceUnavailableError` is re-exported (not just
@@ -33,6 +38,8 @@ export type { FetchPolicy } from "./update-fetch.ts";
 export {
   PythCache,
   fetchPriceFeedsUpdateData,
+  endpointSupportedFeedIds,
+  probeMissingFeeds,
   buildPythPriceUpdateCalls,
   updatePythPrices,
   OracleFeeSourceUnavailableError,

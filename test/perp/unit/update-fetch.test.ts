@@ -5,7 +5,11 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { FetchPolicyError, fetchWithPolicy } from "../../../src/oracle/update-fetch.ts";
+import {
+  FetchPolicyError,
+  fetchWithPolicy,
+  joinEndpointPath,
+} from "../../../src/oracle/update-fetch.ts";
 
 /**
  * A `fetch` mock that never resolves on its own and only rejects when its
@@ -162,6 +166,54 @@ describe("fetchWithPolicy", () => {
       // Backoff: retryDelayMs * 2^attempt for attempts 0 and 1 → 5ms, 10ms.
       const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
       expect(delays).toEqual(expect.arrayContaining([5, 10]));
+    });
+
+    it("honors a numeric Retry-After on 429 (within the backoff cap) instead of exponential backoff", async () => {
+      let calls = 0;
+      const fetchSpy = vi.fn(async () => {
+        calls += 1;
+        if (calls < 2) {
+          return {
+            ok: false,
+            status: 429,
+            headers: new Headers({ "retry-after": "1" }),
+          } as unknown as Response;
+        }
+        return { ok: true, status: 200 } as Response;
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+      const res = await fetchWithPolicy("https://x.test.invalid/a", {}, { retryDelayMs: 5 });
+
+      expect(res.ok).toBe(true);
+      // 1s from the server's own header — not the 5ms exponential base.
+      const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
+      expect(delays).toEqual(expect.arrayContaining([1000]));
+    });
+
+    it("ignores a Retry-After beyond the backoff cap (falls back to exponential)", async () => {
+      let calls = 0;
+      const fetchSpy = vi.fn(async () => {
+        calls += 1;
+        if (calls < 2) {
+          return {
+            ok: false,
+            status: 429,
+            headers: new Headers({ "retry-after": "60" }),
+          } as unknown as Response;
+        }
+        return { ok: true, status: 200 } as Response;
+      });
+      globalThis.fetch = fetchSpy as unknown as typeof fetch;
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+      const res = await fetchWithPolicy("https://x.test.invalid/a", {}, { retryDelayMs: 5 });
+
+      expect(res.ok).toBe(true);
+      const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
+      expect(delays).toEqual(expect.arrayContaining([5]));
+      expect(delays).not.toEqual(expect.arrayContaining([60_000]));
     });
 
     it("retries on HTTP 503 then succeeds", async () => {
@@ -436,5 +488,25 @@ describe("fetchWithPolicy", () => {
       expect(Date.now() - start).toBeGreaterThanOrEqual(15);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("joinEndpointPath", () => {
+  it("preserves an endpoint's base path (the Pyth Pro '/hermes' regression)", () => {
+    expect(
+      joinEndpointPath("https://pyth.dourolabs.app/hermes", "v2/updates/price/latest").href,
+    ).toBe("https://pyth.dourolabs.app/hermes/v2/updates/price/latest");
+  });
+
+  it("is identical to plain concat for a bare-origin endpoint", () => {
+    expect(joinEndpointPath("https://hermes.pyth.network", "v1/latest_price").href).toBe(
+      "https://hermes.pyth.network/v1/latest_price",
+    );
+  });
+
+  it("normalizes trailing endpoint slashes and leading path slashes", () => {
+    expect(joinEndpointPath("https://x.test/base///", "///v1/p").href).toBe(
+      "https://x.test/base/v1/p",
+    );
   });
 });

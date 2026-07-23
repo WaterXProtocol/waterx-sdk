@@ -133,7 +133,6 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
     wormhole_bridge: {
       published_at: "0x8a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef12",
       wormhole_state: "0x9b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
-      trusted_emitters: [],
       bridge: "0x7a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234",
       emitter_cap: "0x6a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234",
     },

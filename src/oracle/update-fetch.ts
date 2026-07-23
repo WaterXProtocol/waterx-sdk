@@ -16,7 +16,11 @@
  *   `Authorization` header at all). This is the Phase-0 invariant of the
  *   Pyth Pro migration: existing keyless deployments see no behavior change.
  * - Retries on network errors, HTTP 429, and HTTP 5xx, with exponential
- *   backoff (`retryDelayMs * 2^attempt`, capped at `MAX_BACKOFF_MS`). Other
+ *   backoff (`retryDelayMs * 2^attempt`, capped at `MAX_BACKOFF_MS`). A 429
+ *   carrying a numeric `Retry-After` header uses the SERVER'S delay instead,
+ *   when it fits under the same cap — a longer ask degrades to normal
+ *   backoff rather than stalling a money-path build for tens of seconds.
+ *   Other
  *   4xx statuses (401/400/403/404/…) are NOT retried — auth/bad-request
  *   failures are deterministic, so that `Response` (`ok: false`) is handed
  *   back on the first attempt for the caller to format its own
@@ -90,12 +94,43 @@ export class FetchPolicyError extends Error {
   }
 }
 
+/**
+ * Join an API `path` onto an `endpoint` PRESERVING the endpoint's own base
+ * path. `new URL(path, endpoint)` is the footgun this replaces: a
+ * leading-slash path is *absolute* and silently discards the endpoint's path
+ * — harmless for a bare-origin endpoint (`https://hermes.pyth.network`) but
+ * it dropped the `/hermes` prefix of the Pyth Pro compat endpoint and 404'd
+ * every feed (see `fetchPriceFeedsUpdateData`). Every oracle fetch that
+ * targets `<endpoint><fixed path>` must build its URL here.
+ */
+/** One canonical trailing-slash trim — `joinEndpointPath` (URL building) and
+ * `pyth.ts`'s `memoKey` (endpoint identity) must never drift apart on it. */
+export function trimTrailingSlashes(endpoint: string): string {
+  return endpoint.replace(/\/+$/, "");
+}
+
+export function joinEndpointPath(endpoint: string, path: string): URL {
+  return new URL(`${trimTrailingSlashes(endpoint)}/${path.replace(/^\/+/, "")}`);
+}
+
 function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
 function backoffMs(retryDelayMs: number, attempt: number): number {
   return Math.min(retryDelayMs * 2 ** attempt, MAX_BACKOFF_MS);
+}
+
+/**
+ * The server's own `Retry-After` (numeric-seconds form only), when present
+ * and within `MAX_BACKOFF_MS` — `undefined` otherwise (absent, HTTP-date
+ * form, zero/garbage, or an ask too long to honor inside a build path).
+ */
+function retryAfterMs(response: Response): number | undefined {
+  // Optional-chained: minimal test doubles (and some fetch shims) carry no
+  // `headers` — a missing header must read as "no hint", never throw.
+  const ms = Number(response.headers?.get?.("retry-after")) * 1_000;
+  return ms > 0 && ms <= MAX_BACKOFF_MS ? ms : undefined;
 }
 
 /** `host + pathname` only — never the query string (feed ids are noise, not diagnostic). */
@@ -211,10 +246,12 @@ export async function fetchWithPolicy(
     let status: number | undefined;
     let bodySnippet: string | undefined;
     let cause: unknown;
+    let serverRetryDelay: number | undefined;
     try {
       const response = await doFetch(url, { ...init, headers, signal });
       if (response.ok || !isRetryableStatus(response.status)) return response;
       status = response.status;
+      serverRetryDelay = retryAfterMs(response);
       if (attempt === retries) {
         bodySnippet = await readBodySnippet(response);
       } else {
@@ -243,7 +280,7 @@ export async function fetchWithPolicy(
         { status, bodySnippet, cause, attempts: attempt + 1 },
       );
     }
-    await sleep(backoffMs(retryDelayMs, attempt), combinedExternalSignal);
+    await sleep(serverRetryDelay ?? backoffMs(retryDelayMs, attempt), combinedExternalSignal);
   }
 
   // Unreachable: the loop above always returns or throws on its final
