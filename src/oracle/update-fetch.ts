@@ -99,8 +99,14 @@ export class FetchPolicyError extends Error {
  * every feed (see `fetchPriceFeedsUpdateData`). Every oracle fetch that
  * targets `<endpoint><fixed path>` must build its URL here.
  */
+/** One canonical trailing-slash trim — `joinEndpointPath` (URL building) and
+ * `pyth.ts`'s `memoKey` (endpoint identity) must never drift apart on it. */
+export function trimTrailingSlashes(endpoint: string): string {
+  return endpoint.replace(/\/+$/, "");
+}
+
 export function joinEndpointPath(endpoint: string, path: string): URL {
-  return new URL(`${endpoint.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`);
+  return new URL(`${trimTrailingSlashes(endpoint)}/${path.replace(/^\/+/, "")}`);
 }
 
 function isRetryableStatus(status: number): boolean {

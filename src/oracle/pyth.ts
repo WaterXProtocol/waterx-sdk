@@ -20,7 +20,7 @@ import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "./host.ts";
-import { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "./update-fetch.ts";
+import { FetchPolicyError, fetchWithPolicy, joinEndpointPath, trimTrailingSlashes } from "./update-fetch.ts";
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -55,14 +55,15 @@ type FetchOpts = { apiKey?: string; fetch?: { timeoutMs?: number; retries?: numb
 const missingFeedIdsByEndpoint = new Map<string, Set<string>>();
 
 /**
- * Memo key for `endpoint` — trailing slashes trimmed, mirroring what
- * {@link joinEndpointPath} does to the request URL. Without this, two
- * consumers spelling the same endpoint differently (`…/hermes` vs
- * `…/hermes/`) would fragment the memo into two entries and re-run the whole
- * 404 discovery despite one of them having already paid for it.
+ * Memo key for `endpoint` — the same trailing-slash trim
+ * {@link joinEndpointPath} applies to the request URL (shared helper, so the
+ * two can't drift). Without this, two consumers spelling the same endpoint
+ * differently (`…/hermes` vs `…/hermes/`) would fragment the memo into two
+ * entries and re-run the whole 404 discovery despite one of them having
+ * already paid for it.
  */
 function memoKey(endpoint: string): string {
-  return endpoint.replace(/\/+$/, "");
+  return trimTrailingSlashes(endpoint);
 }
 
 function recordMissingFeed(endpoint: string, feedId: string): void {
