@@ -512,14 +512,16 @@ describe("resolveOracleRule", () => {
 
   it("throws OracleSourceNotImplemented for a genuinely unregistered source", () => {
     // Deliberately-invalid input: only a cast can reach the unregistered path
-    // now that both real sources resolve.
+    // now that all three real sources (pyth / lazer / waterx) resolve.
+    // `supra_rule` is a PriceUpdateRuleKind but NOT a selectable OracleSource,
+    // so it stays unregistered — the clean stand-in for the unregistered path.
     let caught: unknown;
     try {
-      resolveOracleRule("waterx_rule" as OracleSource);
+      resolveOracleRule("supra_rule" as OracleSource);
     } catch (e) {
       caught = e;
     }
-    expect((caught as Error).message).toBe("OracleSourceNotImplemented: waterx_rule");
+    expect((caught as Error).message).toBe("OracleSourceNotImplemented: supra_rule");
     // instanceof-able (mirrors OracleFeeSourceUnavailableError) — a consumer
     // can branch on the error type directly instead of string-matching
     // `.message`.

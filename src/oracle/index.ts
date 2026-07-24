@@ -60,6 +60,15 @@ export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
 export { PythLazerRule, LazerApiKeyMissingError } from "./rules/pyth-lazer-rule.ts";
 export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
+// WaterX quote-center rule (first-party ed25519 signed batches; `feedWaterxRule`
+// stays internal to `aggregate.ts`).
+export { WaterxRule } from "./rules/waterx-rule.ts";
+export type {
+  WaterxUpdatePayload,
+  WaterxSignedEnvelope,
+  WaterxBatchItem,
+} from "./rules/waterx-rule.ts";
+
 // `resolveOracleRule` (rule-registry.ts) is NOT re-exported here — it has one
 // production consumer (`refreshOraclePrices` below) and no external caller;
 // per repo convention ("no unused exports") it stays module-internal. Tests

@@ -92,6 +92,41 @@ export interface SupraRulePackage extends BasePackageEntry {
   enabled?: boolean;
 }
 
+/**
+ * Per-ticker `waterx_rule` feed entry. Keyed in `feeds` by the oracle **ticker**
+ * (e.g. `"SUIUSD"`, the same key `pyth_rule.feeds` uses), so
+ * `Object.keys(feeds)` is the SDK's supported-ticker set. The fields are
+ * informational off-chain — the SDK keys routing/support off the entry's
+ * presence and pushes the enclave-signed price verbatim, never re-deriving it.
+ */
+export interface WaterxRuleFeedEntry {
+  /** Exchange ticker the quote-center aggregates from (e.g. `"SUIUSDT"`). */
+  ticker?: string;
+}
+
+/**
+ * `waterx_rule` deployment entry — the first-party Nautilus-TEE oracle rule.
+ * Read by `WaterxRule` (`rules/waterx-rule.ts`): `feeds` for ticker support,
+ * `config`/`enclave_config`/`enclave` for the `collect_batch_latest` call,
+ * `published_at` for the package address. The off-chain signed price is pulled
+ * from the quote-center (endpoint from {@link WATERX_DEFAULTS}), not this JSON.
+ *
+ * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
+ * which rule prices a ticker is decided solely by the client's `oracleSource`
+ * create option (see `OracleHost.oracleSource`), mirroring `pyth_lazer_rule`.
+ */
+export interface WaterxRulePackage extends BasePackageEntry {
+  /** Shared `waterx_rule::Config` (per-symbol on-chain feed_config). */
+  config: string;
+  /** Shared `EnclaveConfig<WATERX_RULE>` the on-chain signature verify runs against. */
+  enclave_config: string;
+  /** Shared `Enclave<WATERX_RULE>` holding the registered TEE signing pubkey. */
+  enclave: string;
+  enabled?: boolean;
+  /** Oracle ticker → feed entry; presence marks the ticker as waterx-served. */
+  feeds: Record<string, WaterxRuleFeedEntry>;
+}
+
 export interface WaterxOraclePackage extends BasePackageEntry {
   listing_cap: string;
   oracle: string;
@@ -110,6 +145,8 @@ export interface OraclePackages {
   pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;
   supra_rule?: SupraRulePackage;
+  /** See {@link WaterxRulePackage} — read by `WaterxRule` when `oracleSource` selects it. */
+  waterx_rule?: WaterxRulePackage;
   waterx_oracle: WaterxOraclePackage;
 }
 
@@ -238,6 +275,18 @@ export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_packag
     endpoint: "https://pyth-lazer.dourolabs.app",
     verifier_package: "0xf5bd2141967507050a91b58de3d95e77c432cd90d1799ee46effc27430a68c21",
   },
+};
+
+/**
+ * WaterX quote-center base URL by network — the first-party TEE-signed price
+ * hub `WaterxRule` pulls from (`GET /v1/quotes/update?symbols=…`). Mirrors
+ * {@link LAZER_DEFAULTS}: infra WaterX operates, not part of the `waterx-config`
+ * JSON. Public read (no auth), so there is no api_key. `endpoint` has no
+ * trailing slash — the rule appends the path.
+ */
+export const WATERX_DEFAULTS: Record<Network, { endpoint: string }> = {
+  MAINNET: { endpoint: "https://quote-center.waterx.app" },
+  TESTNET: { endpoint: "https://quote-center-staging.waterx.app" },
 };
 
 // ============================================================================

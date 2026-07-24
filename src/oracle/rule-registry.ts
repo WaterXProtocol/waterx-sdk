@@ -6,8 +6,9 @@
  * (ultimately `OracleHost.oracleSource`, a client create option) — never by a
  * config JSON `enabled` flag and never by `process.env`.
  *
- * Both sources are registered: `pyth_rule` (`PythCoreRule`, Hermes VAA) and
- * `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates). Resolving a
+ * Three sources are registered: `pyth_rule` (`PythCoreRule`, Hermes VAA),
+ * `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates), and `waterx_rule`
+ * (`WaterxRule`, first-party quote-center ed25519 signed batches). Resolving a
  * source with no registered rule throws a clear `OracleSourceNotImplemented`
  * error instead of silently falling back to Pyth Core.
  */
@@ -15,6 +16,7 @@
 import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";
 import { PythCoreRule } from "./rules/pyth-core-rule.ts";
 import { PythLazerRule } from "./rules/pyth-lazer-rule.ts";
+import { WaterxRule } from "./rules/waterx-rule.ts";
 
 /**
  * Production registry. Frozen — tests inject a fake rule via
@@ -23,6 +25,7 @@ import { PythLazerRule } from "./rules/pyth-lazer-rule.ts";
 const DEFAULT_RULES: Partial<Record<OracleSource, PriceUpdateRule>> = Object.freeze({
   pyth_rule: PythCoreRule,
   pyth_lazer_rule: PythLazerRule,
+  waterx_rule: WaterxRule,
 });
 
 /**
