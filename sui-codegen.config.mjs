@@ -94,6 +94,14 @@ const config = {
       },
     },
     {
+      package: "@waterx/rule",
+      path: resolve(contracts, "waterx_oracle_rule/waterx_rule"),
+      generate: {
+        types: true,
+        functions: true,
+      },
+    },
+    {
       package: "@bucket/framework",
       path: resolve(contracts, "bucket_framework"),
       generate: {

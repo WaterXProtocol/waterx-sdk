@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
+## [Unreleased]
+
+### Added
+
+- **`WaterxRule` — the first-party WaterX quote-center as a selectable oracle
+  source (`oracleSource: "waterx_rule"`).** Users can now price their perp
+  operations from the Nautilus-TEE quote-center instead of Pyth. The rule pulls
+  one enclave-signed batch envelope covering the requested tickers from the
+  quote-center (`GET /v1/quotes/update?symbols=…`; endpoint per network from the
+  new `WATERX_DEFAULTS`, public read — no auth), then — unlike Pyth Lazer, whose
+  verify is a single shared PTB step — verifies AND feeds in ONE
+  `waterx_rule::collect_batch_latest` call per collector (the Move API bundles
+  the two): it rebuilds the signed `BatchPricePayload` in-PTB (`new_batch_payload`
+  + `new_batch_item`/`push_batch_item` per item, byte-identical to what the
+  enclave signed), re-verifies the ed25519 signature, and feeds the item matching
+  `collector.symbol()`. Being the dual-rule collect path, a waterx-routed ticker
+  composes onto the same collector as Pyth/Supra; on-chain a freshness miss /
+  replayed timestamp ABSTAINS so the other weighted rules cover, while a
+  config/integrity mismatch or bad signature aborts.
+
+  Wiring mirrors `PythLazerRule`: `WaterxRule` is registered in `rule-registry.ts`
+  and routed by the client's `oracleSource` option alone (never a config
+  `enabled` flag); `refreshOraclePrices`/`aggregateTicker` thread the signed
+  envelope to the per-ticker feed leg. New config surface: `WaterxRulePackage`
+  (`config`/`enclave_config`/`enclave`/`feeds`, `feeds` keyed by oracle ticker =
+  the supported-ticker set) on `OraclePackages.waterx_rule`, and `WATERX_DEFAULTS`
+  (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`).
+  Generated `waterx_rule` Move bindings added (`@waterx/rule`).
+
 ## [4.0.0] - 2026-07-21
 
 _All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). Released as the next **major** (`4.0.0`) because the change set carries several **BREAKING** changes (see `### Changed`): the config-driven fee-source rework, the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object collapse, and the `OracleFeeSource` consolidation._
