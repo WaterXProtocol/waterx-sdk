@@ -97,7 +97,10 @@ describe("WaterxRule — port", () => {
 
   it("narrowUpdateData serves the whole (indivisible) envelope iff fully covered", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    const data = { kind: "waterx_rule" as const, payload: { envelope: sampleEnvelope(["BTCUSD"]) } };
+    const data = {
+      kind: "waterx_rule" as const,
+      payload: { envelope: sampleEnvelope(["BTCUSD"]) },
+    };
     expect(WaterxRule.narrowUpdateData(client, data, ["BTCUSD"])).toEqual(data);
     // A ticker the envelope does not carry → miss (null), never a partial.
     expect(WaterxRule.narrowUpdateData(client, data, ["ETHUSD"])).toBeNull();

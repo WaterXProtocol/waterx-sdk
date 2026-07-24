@@ -19,6 +19,12 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import {
+  collectBatchLatest,
+  newBatchItem,
+  newBatchPayload,
+  pushBatchItem,
+} from "../../generated/waterx_rule/waterx_rule.ts";
 import { WATERX_DEFAULTS, type WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
@@ -28,12 +34,6 @@ import {
   type RuleUpdateData,
 } from "../price-update-rule.ts";
 import { FetchPolicyError, fetchWithPolicy } from "../update-fetch.ts";
-import {
-  collectBatchLatest,
-  newBatchItem,
-  newBatchPayload,
-  pushBatchItem,
-} from "../../generated/waterx_rule/waterx_rule.ts";
 
 /** The single signing intent (`BATCH_PRICE_INTENT`) the quote-center emits. */
 const BATCH_PRICE_INTENT = 1;
