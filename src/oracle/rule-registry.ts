@@ -3,13 +3,17 @@
  * `PriceUpdateRule` implementation. `refreshOraclePrices` (`aggregate.ts`) is
  * the only production caller; this is the one place `OracleSource` values are
  * wired to a rule instance. Selection is driven purely by the value passed in
- * (ultimately `OracleHost.oracleSource`, a client create option) — never by a
- * config JSON `enabled` flag and never by `process.env`.
+ * (ultimately `OracleHost.oracleSource`, the `oracleSource` client create
+ * option) — never by a config JSON `enabled` flag and never by `process.env`.
  *
- * Both sources are registered: `pyth_rule` (`PythCoreRule`, Hermes VAA) and
- * `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates). Resolving a
- * source with no registered rule throws a clear `OracleSourceNotImplemented`
- * error instead of silently falling back to Pyth Core.
+ * Each source is self-contained: it owns its own infra + config and does NOT
+ * back-stop any other source. Both are registered: `pyth_rule` (`PythCoreRule`,
+ * Hermes VAA) and `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates).
+ * Resolving a source with no registered rule throws a clear
+ * `OracleSourceNotImplemented` error. There is deliberately no cross-source
+ * fallback and no client-creation config guard: selecting a source whose feeds
+ * are absent is not an error at init — it surfaces at tx-build time for the
+ * specific tickers that source can't serve (see `refreshOraclePrices`).
  */
 
 import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";
@@ -40,51 +44,6 @@ export class OracleSourceNotImplementedError extends Error {
     super(`OracleSourceNotImplemented: ${source}`);
     this.name = "OracleSourceNotImplementedError";
     this.source = source;
-  }
-}
-
-/**
- * Thrown by {@link assertOracleSourceConfigured} when a client selects an
- * `oracleSource` whose on-chain rule package is not configured on the network.
- */
-export class OracleSourceNotConfiguredError extends Error {
-  /** The selected `OracleSource` that the network config does not support. */
-  readonly source: OracleSource;
-  readonly network: string;
-
-  constructor(source: OracleSource, network: string) {
-    super(
-      `OracleSourceNotConfigured: oracleSource '${source}' has no on-chain rule ` +
-        `package (packages.${source} with feeds) in the ${network} config — that ` +
-        `network does not support it. Configure it, or use the default 'pyth_rule'.`,
-    );
-    this.name = "OracleSourceNotConfiguredError";
-    this.source = source;
-    this.network = network;
-  }
-}
-
-/**
- * Fail-fast guard for client creation. A selected `oracleSource` OTHER than the
- * always-present default `pyth_rule` must have its rule package (with feeds)
- * present in the loaded config for the network. Without this check, an
- * `oracleSource` whose config is absent — e.g. `pyth_lazer_rule` on mainnet —
- * would NOT error: `PythLazerRule.supportedTickers` returns `[]` (its
- * `packages.pyth_lazer_rule?.feeds ?? {}`), and `refreshOraclePrices` then
- * silently routes EVERY ticker through the `pyth_rule` fallback. The client
- * would run entirely on Pyth Core while believing it is on the selected source
- * — a dangerous silent misconfiguration. Throw {@link
- * OracleSourceNotConfiguredError} instead.
- */
-export function assertOracleSourceConfigured(
-  network: string,
-  packages: Partial<Record<OracleSource, { feeds?: Record<string, unknown> }>>,
-  source: OracleSource,
-): void {
-  if (source === "pyth_rule") return; // Pyth Core rule — the default, always present.
-  const feeds = packages[source]?.feeds;
-  if (!feeds || Object.keys(feeds).length === 0) {
-    throw new OracleSourceNotConfiguredError(source, network);
   }
 }
 

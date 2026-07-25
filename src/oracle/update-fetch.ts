@@ -50,7 +50,7 @@
  * - Retry worst case: with the defaults (15s timeout × 3 attempts + ~0.75s of
  *   backoff between them) a FULL outage takes up to ~46s to surface as a
  *   `FetchPolicyError`, vs ~15s pre-3.2.0's single bare-`fetch` attempt.
- *   Tunable per client via `config.pyth.fetch.{timeoutMs,retries}`.
+ *   Tunable per client via the `pythFetch` create option (`{timeoutMs,retries}`).
  */
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -92,6 +92,30 @@ export class FetchPolicyError extends Error {
     this.bodySnippet = opts.bodySnippet;
     this.attempts = opts.attempts;
   }
+}
+
+/**
+ * Rethrow a `catch`-ed {@link fetchWithPolicy} failure. When it is a
+ * status-carrying `FetchPolicyError` — a retryable status (429/5xx) that never
+ * recovered — throw a new Error `${describe(err)} (retries exhausted after N
+ * attempts)` with the original as `cause`; otherwise (a network-level
+ * exhaustion with no status, or any non-`FetchPolicyError`) rethrow it verbatim,
+ * since there is no domain reframing to add. `describe` builds the
+ * status-bearing prefix so each caller keeps its own message shape (the e2e
+ * transient detector keys off those prefixes) while the guard, the `retries
+ * exhausted` suffix, and the `cause` wrapping live in one place. `: never` so a
+ * caller's `catch` block is understood not to fall through.
+ */
+export function rethrowExhaustedFetch(
+  err: unknown,
+  describe: (err: FetchPolicyError) => string,
+): never {
+  if (err instanceof FetchPolicyError && err.status !== undefined) {
+    throw new Error(`${describe(err)} (retries exhausted after ${err.attempts} attempts)`, {
+      cause: err,
+    });
+  }
+  throw err;
 }
 
 /**

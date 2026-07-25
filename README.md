@@ -100,39 +100,38 @@ const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // o
 
 Read-only queries use gRPC `simulateTransaction` (no signer) — the `getX` view helpers, e.g. `await perp.simulate(tx)` or `getMarketData(perp, …)`.
 
-## Oracle sources & the Pyth Pro migration
+## Oracle sources
 
-ONE client create option controls oracle behavior. The SDK **never reads `process.env`** — each consumer wires it from its own env var, so every environment runs the **same SDK version** and differs only by env:
+ONE client create option, `oracleSource`, selects the price-update source. Each source is **self-contained** — it owns its own infra + config and does **not** back-stop any other source. The name is source-neutral on purpose: a future source need not be Pyth. The SDK **never reads `process.env`** — each consumer wires it from its own env var, so every environment runs the **same SDK version** and differs only by env:
 
-| Option           | Values                        | What it flips                                                                                                                                                                                                                                                                     |
-| ---------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pythGeneration` | `'core'` (default) \| `'pro'` | The whole oracle mode. `'core'` = `pyth_rule` updates on Core infra (keyless `hermes.pyth.network`). `'pro'` = `pyth_lazer_rule` updates (ONE Lazer leEcdsa verify per PTB, no per-feed update fees) + the auth-first Pro Hermes (`https://pyth.dourolabs.app/hermes`) for reads. |
+| Option         | Values                                         | What it selects                                                                                                                                                                                                                                                                           |
+| -------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oracleSource` | `'pyth_rule'` (default) \| `'pyth_lazer_rule'` | The price-update source. `'pyth_rule'` = Pyth Core updates (Hermes VAA + per-feed update fees, keyless `hermes.pyth.network`). `'pyth_lazer_rule'` = Pyth Lazer signed updates (ONE `leEcdsa` verify per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` feeds + a `pythApiKey`. |
 
-The on-chain rule source is **derived** (`'pro'` → `pyth_lazer_rule`) — there is no separate `oracleSource` option, so the previously-broken off-diagonal combinations are unrepresentable. `PerpClient.create` fails fast (`OracleSourceNotConfiguredError`) when `'pro'` is selected against a config with no `packages.pyth_lazer_rule`.
+**No cross-source fallback, no init guard.** Selecting a source whose feed for a requested ticker is absent is **not** an error at client creation — it fails at **tx-build** for exactly those tickers (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
 
-The `pyth_rule` path (the `'core'` mode, and the per-ticker fallback under `'pro'` for tickers without a Lazer feed) is **Core-infra by construction** — the deployed rule package is compiled against Core pyth, so both its feed leg (Core `PythState`) and its update leg (Core price-info objects, keyless Core Hermes) pin Core via `resolveCorePythInfra`, regardless of generation. An explicit `pyth` block in the config JSON overrides the generation constants for the paths that read `client.pyth` (Lazer/read infra under `'pro'`; everything under `'core'`).
+The Pyth Core infra (`client.pyth`: state ids + Hermes endpoint) is **fixed per network** by `PYTH_DEFAULTS` and is **not** deployment-overridable — the canonical `waterx-config` JSON carries no `pyth` block. The `pyth_lazer_rule` source reads only the credential/policy (`api_key`/`fetch`) from `client.pyth`; its on-chain infra comes from `LAZER_DEFAULTS` + config. The credential and fetch policy are passed at client init (`pythApiKey` / `pythFetch`), never through the JSON.
 
 ```ts
 // Per-environment wiring — the consumer owns the env var, not the SDK:
 const perp = await PerpClient.create(network, {
   waterxConfigUrl,
-  pythGeneration: process.env.PYTH_GENERATION as PythGeneration | undefined, // e.g. staging: 'pro'
+  oracleSource: process.env.ORACLE_SOURCE as OracleSource | undefined, // e.g. staging: 'pyth_lazer_rule'
+  pythApiKey: process.env.PYTH_API_KEY, // Lazer is auth-first; unused by 'pyth_rule'
 });
-// Pro-generation Hermes requires a key (Lazer signed updates + auth-first reads):
-perp.pyth = { ...perp.pyth, api_key: process.env.PYTH_API_KEY };
 ```
 
-This is the staging-Pro / prod-Core rollout pattern: staging sets `PYTH_GENERATION=pro` (+ `PYTH_API_KEY`) while production leaves it unset — flipping an environment is an env-var change, never an SDK release. After August 18, 2026 (the Core-upgrade cutover — see https://docs.pyth.network/price-feeds/core/upgrade), consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
+This is the staging-Lazer / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` (+ `PYTH_API_KEY`) while production leaves it unset — flipping an environment is an env-var change, never an SDK release.
 
 ### Adding an oracle source (runbook)
 
-Every rule generation plugs in the same way — routing is driven **only** by the client's derived `OracleHost.oracleSource` (never a config `enabled` flag, never `process.env`):
+Every source plugs in the same way — routing is driven **only** by the client's `oracleSource` option (never a config `enabled` flag, never `process.env`):
 
 1. **Implement `PriceUpdateRule`** in `src/oracle/rules/<name>-rule.ts` — all port fields (`src/oracle/price-update-rule.ts`): `kind`, `requiresFeeSource` (`true` iff the on-chain verify draws a per-update fee — gates the fail-fast fee-source check), `supportedTickers`, `fetchUpdateData`, `narrowUpdateData` (subset a cached whole-universe payload to one build's tickers — a divisible payload returns a per-feed subset, an indivisible one returns itself whole iff fully covered; uncovered ticker → `null` miss), `buildUpdateCalls`.
 2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value (added to the union in `price-update-rule.ts`).
 3. **Publish the on-chain rule package** — its config entry (package ids, per-ticker `feeds`) arrives via the normal `waterx-config` deploy pipeline; type it in `OraclePackages` (`src/oracle/config.ts`).
-4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a per-network map in `src/oracle/config.ts`, mirroring `LAZER_DEFAULTS` / `PYTH_PRO_DEFAULTS`.
-5. **Consumers flip `PYTH_GENERATION`** per environment (the rule source derives from it) — no consumer code change, no SDK re-release.
+4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a per-network map in `src/oracle/config.ts`, mirroring `LAZER_DEFAULTS`.
+5. **Consumers flip `oracleSource`** per environment — no consumer code change, no SDK re-release.
 
 The in-house `waterx_rule` (ed25519 enclave-signed CEX prices) follows exactly this path when it lands.
 

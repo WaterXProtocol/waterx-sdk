@@ -35,7 +35,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import * as accountOps from "./account/index.ts";
 import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
-import type { PythGeneration } from "./oracle/config.ts";
+import type { PythFetchPolicy } from "./oracle/config.ts";
+import type { OracleSource } from "./oracle/price-update-rule.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
 import * as perpFetch from "./perp/fetch.ts";
@@ -157,15 +158,28 @@ export interface ClientCreateOptions {
   /** Memoize the fetched config JSON. */
   cache?: boolean;
   /**
-   * Selects which `PriceUpdateRule` the perp line's `refreshOraclePrices` uses
-  /**
-   * Selects which Pyth Core contract generation feeds the perp line's
-   * `client.perp.pyth` when the config JSON has no explicit `pyth` override:
-   * `'core'` (default) or `'pro'` (post-2026-08-18 Pro-compatible contracts +
-   * Hermes-compatible endpoint; pair with `pyth.api_key`). Perp-line only.
-   * See `PythGeneration` / `PYTH_PRO_DEFAULTS`.
+   * The perp line's oracle price-update source (perp-line only — the
+   * prediction line has no oracle leg), forwarded to `PerpClient.create`.
+   * Source-neutral by design: a future source need not be Pyth.
+   *
+   * - `'pyth_rule'` (default) — Pyth Core updates on Core infra.
+   * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`
+   *   and a config carrying `packages.pyth_lazer_rule`).
+   *
+   * Each source is self-contained with no cross-source fallback; selecting a
+   * source whose feed for a ticker is absent fails at tx-build (not at init).
+   * See perp `CreateClientOptions.oracleSource` for the full note.
    */
-  pythGeneration?: PythGeneration;
+  oracleSource?: OracleSource;
+  /**
+   * Pyth Lazer access token, forwarded to the perp line. Required under
+   * `oracleSource: 'pyth_lazer_rule'`, unused by `'pyth_rule'`. A SECRET —
+   * pass it at init from your own env var; it is never read from the config
+   * JSON or `process.env`.
+   */
+  pythApiKey?: string;
+  /** Retry/timeout policy for the perp line's off-chain oracle fetches. */
+  pythFetch?: PythFetchPolicy;
   /** Perp-line overrides (network, grpcUrl, waterxConfigUrl, cache, …). */
   perp?: PerpLineOptions;
   /** Prediction-line overrides (network, grpcUrl, waterxConfigUrl, cache, settlement, …). */
@@ -252,7 +266,9 @@ export class WaterXClient {
       grpcUrl: opts.grpcUrl,
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
-      pythGeneration: opts.pythGeneration,
+      oracleSource: opts.oracleSource,
+      pythApiKey: opts.pythApiKey,
+      pythFetch: opts.pythFetch,
       ...perpRest,
     });
     const predictClient = await PredictClient.create(resolvedPredictNetwork, {

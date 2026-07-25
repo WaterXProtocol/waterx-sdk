@@ -117,6 +117,27 @@ export interface OraclePackages {
 // Pyth — external chain infra, defaults by network
 // ============================================================================
 
+/**
+ * Resolved Pyth Core infra as it lives on `client.pyth` — NOT a config-JSON
+ * shape. `state_id` / `wormhole_state_id` / `hermes_endpoint` come verbatim
+ * from the fixed per-network constant ({@link PYTH_DEFAULTS}); `api_key` /
+ * `fetch` are layered on from the caller's `pythApiKey` / `pythFetch` create
+ * options. None of it is sourced from the canonical `waterx-config` JSON — the
+ * SDK never reads a `pyth` block there (a Bearer secret has no place in a
+ * public CDN document). The infra is the same for every `oracleSource`; the
+ * `pyth_lazer_rule` source reads only the `api_key` / `fetch` from here and
+ * gets its on-chain infra from {@link LAZER_DEFAULTS} + config instead.
+ */
+/**
+ * The caller-tunable subset of `fetchWithPolicy`'s policy exposed on the
+ * `pythFetch` create option and `client.pyth.fetch` — the retry/timeout budget
+ * for the off-chain Hermes (`fetchPriceFeedsUpdateData`) and Lazer
+ * (`PythLazerRule`) update fetches. Deliberately narrower than the internal
+ * `FetchPolicy` (no `retryDelayMs` / `apiKey` / `fetchImpl`). Both fetches fall
+ * back to `fetchWithPolicy`'s defaults (15s timeout, 2 retries) when unset.
+ */
+export type PythFetchPolicy = { timeoutMs?: number; retries?: number };
+
 export interface PythInfraConfig {
   state_id: string;
   wormhole_state_id: string;
@@ -125,8 +146,8 @@ export interface PythInfraConfig {
    * Pyth Pro / Lazer access token (`Authorization: Bearer …`) for
    * `PythLazerRule`'s signed-update fetch — Lazer is auth-first, so there is
    * no keyless default. Optional: Pyth-Core-only deployments never need it.
-   * Consumers pass it through client config (`config.pyth`); the SDK never
-   * reads `process.env`. Absent when a lazer-routed fetch runs →
+   * Supplied via the `pythApiKey` create option (the SDK never reads
+   * `process.env` or the config JSON). Absent when a lazer-routed fetch runs →
    * `LazerApiKeyMissing` is thrown at fetch time. As of the Pyth Pro
    * migration (post-2026-08-18, per
    * https://docs.pyth.network/price-feeds/core/upgrade) this is ALSO required
@@ -135,14 +156,14 @@ export interface PythInfraConfig {
    */
   api_key?: string;
   /**
-   * Retry/timeout policy override for the Hermes (`fetchPriceFeedsUpdateData`)
-   * and Lazer (`PythLazerRule`) off-chain update fetches — see
-   * `fetchWithPolicy` (`./update-fetch.ts`) for the full policy (backoff,
-   * which statuses retry, Bearer attachment). Optional: both fetches default
-   * to `fetchWithPolicy`'s built-in defaults (15s timeout, 2 retries) when
-   * unset.
+   * Retry/timeout policy for the Hermes (`fetchPriceFeedsUpdateData`) and
+   * Lazer (`PythLazerRule`) off-chain update fetches — see `fetchWithPolicy`
+   * (`./update-fetch.ts`) for the full policy (backoff, which statuses retry,
+   * Bearer attachment). Supplied via the `pythFetch` create option. Optional:
+   * both fetches default to `fetchWithPolicy`'s built-in defaults (15s
+   * timeout, 2 retries) when unset.
    */
-  fetch?: { timeoutMs?: number; retries?: number };
+  fetch?: PythFetchPolicy;
 }
 
 export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
@@ -155,65 +176,6 @@ export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
     state_id: "0x243759059f4c3111179da5878c12f68d612c21a8d54d85edc86164bb18be1c7c",
     wormhole_state_id: "0x31358d198147da50db32eda2562951d53973a0c0ad5ed738e9b17d88b213d790",
     hermes_endpoint: "https://hermes-beta.pyth.network",
-  },
-};
-
-/**
- * Which Pyth Core contract generation feeds `host.pyth` when the config JSON
- * carries no explicit `pyth` override:
- *
- * - `'core'` (default) — the original contracts + keyless Hermes
- *   ({@link PYTH_DEFAULTS}).
- * - `'pro'` — the Pro-compatible upgraded contracts + the Hermes-compatible
- *   endpoint ({@link PYTH_PRO_DEFAULTS}); pair with `pyth.api_key` after the
- *   2026-08-18 cutover.
- *
- * Resolved once at client creation from the `pythGeneration` create option.
- * Orthogonal to `oracleSource` — this flips the Pyth-Core *infra* (state ids
- * + endpoint), not which `PriceUpdateRule` routes tickers.
- */
-export type PythGeneration = "core" | "pro";
-
-/**
- * Pyth **Pro-generation** Core-compatible infra — the post-2026-08-18
- * contracts (cutover date per
- * https://docs.pyth.network/price-feeds/core/upgrade) from Pyth's Core-Upgrade
- * docs
- * (https://docs.pyth.network/price-feeds/core/upgrade/contracts, Sui section;
- * package revs `sui-pro-compatible-contract-mainnet` /
- * `sui-pro-compatible-contract-testnet`). Selected via the client's
- * `pythGeneration: 'pro'` create option; `config.pyth` still overrides
- * wholesale (see `PerpClient`). All four state ids were verified on-chain
- * (shared `state::State` objects under the docs' upgraded package ids).
- *
- * Kept as a second flat map beside {@link PYTH_DEFAULTS} rather than a nested
- * `PYTH_INFRA[network][generation]` — `PYTH_DEFAULTS` is a published export
- * with external consumers, so the smallest honest surface is an additive
- * sibling (same deferral note as {@link LAZER_DEFAULTS}).
- *
- * The Hermes-compatible endpoint (`pyth.dourolabs.app/hermes`) serves the
- * same REST surface as `hermes.pyth.network` but requires `pyth.api_key`
- * (`Authorization: Bearer …`) after the cutover — see
- * {@link PythInfraConfig.api_key}.
- */
-export const PYTH_PRO_DEFAULTS: Record<Network, PythInfraConfig> = {
-  MAINNET: {
-    state_id: "0x03719fae774ddab3cfcaa53bbc046f0cbe21410019b6280811bf3f9f4b05839d",
-    wormhole_state_id: "0xdbca52b9fb4f712e25f61f974586d93ac541bcf8389564f0323bb07215168b5c",
-    hermes_endpoint: "https://pyth.dourolabs.app/hermes",
-  },
-  TESTNET: {
-    state_id: "0x3c48fe392912de6c18087a2b3f5fdbfbfdb4598e180947feff1f12f8e9ea073e",
-    wormhole_state_id: "0x750da8e6d16b6a363a39fe2eaa8295ac224a1e6fce4e47b58845e2e8746164f0",
-    // Same endpoint as mainnet ON PURPOSE: Pyth Pro has NO beta channel. The
-    // Pro TESTNET deployment's price table is keyed by PROD Hermes feed ids
-    // (verified on-chain 2026-07-22 — its 11 seeded feeds incl. BTC/ETH/SUI/
-    // USDC are all prod ids), i.e. it verifies the same prod-signed VAAs the
-    // auth endpoint serves. A testnet config carrying BETA feed ids (the
-    // hermes-beta channel, correct for `pythGeneration: 'core'`) is therefore
-    // structurally incompatible with 'pro' — migrating testnet to Pro means
-    // re-pointing the config's pyth feeds at PROD ids, not changing this URL.
-    hermes_endpoint: "https://pyth.dourolabs.app/hermes",
   },
 };
 
@@ -259,6 +221,4 @@ export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_packag
  */
 export interface OracleConfig extends BaseLineConfig {
   packages: OraclePackages;
-  /** Pyth infra override (defaults from {@link PYTH_DEFAULTS}). */
-  pyth?: PythInfraConfig;
 }

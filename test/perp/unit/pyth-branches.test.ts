@@ -14,7 +14,12 @@ import {
   refreshOraclePrices,
   reimbursePythSponsor,
 } from "../../../src/oracle/index.ts";
-import { __resetMissingFeedCacheForTest, probeMissingFeeds } from "../../../src/oracle/pyth.ts";
+import {
+  __resetMissingFeedCacheForTest,
+  HermesEndpointRejectedAllFeedsError,
+  MISSING_FEED_MEMO_TTL_MS,
+  probeMissingFeeds,
+} from "../../../src/oracle/pyth.ts";
 import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
@@ -157,6 +162,82 @@ describe("pyth on-chain helper branches", () => {
     expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
   });
 
+  it("reads the catalog at most once per discovery run, not once per bisection node", async () => {
+    // 404 (not 5xx) so one catalog READ is one request — no retry cycles to
+    // confound the count. Bisection then recurses over 4 ids; the catalog must
+    // NOT be re-read at every 404 node it visits (that multiplied a
+    // money-path build by a full catalog fetch — with retries and backoff when
+    // the catalog is 5xx — per node).
+    const fetchSpy = vi.fn(async (url: string) =>
+      url.includes("price_feeds")
+        ? new Response("", { status: 404 })
+        : url.includes("0xWTI")
+          ? new Response("", { status: 404 })
+          : new Response(JSON.stringify({ binary: { data: ["aabb"] } }), { status: 200 }),
+    );
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xETH", "0xSOL", "0xWTI"]);
+
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
+    const catalogReads = fetchSpy.mock.calls.filter((c) =>
+      String(c[0]).includes("price_feeds"),
+    ).length;
+    expect(catalogReads).toBe(1);
+  });
+
+  it("memo matches a feed regardless of 0x-prefix spelling (bare vs prefixed)", async () => {
+    const fetchSpy = wtiUnknownFetch();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    // Discover the missing feed using the 0x-prefixed spelling …
+    await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+
+    // … then look it up in the BARE spelling: the memo normalizes on the bare
+    // (0x-stripped, lowercased) form — same as the catalog + in-flight latch —
+    // so the missing feed stays filtered and can't slip back through as
+    // unfiltered under a different prefix spelling.
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["BTC", "WTI"])).toEqual(["BTC"]);
+    // …and the prefixed spelling stays filtered too.
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
+  });
+
+  it("dedupes concurrent cold discoveries — one discovery run serves both callers", async () => {
+    const fetchSpy = wtiUnknownFetch();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    // Two tx-builds racing on a cold memo (the common BE shape). Each still
+    // gets its own survivor data, but the discovery behind them runs once.
+    const [first, second] = await Promise.all([
+      fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]),
+      fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]),
+    ]);
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    const catalogReads = fetchSpy.mock.calls.filter((c) =>
+      String(c[0]).includes("price_feeds"),
+    ).length;
+    expect(catalogReads).toBe(1);
+  });
+
+  it("a failed discovery is not left latched — the next caller retries it", async () => {
+    // The in-flight entry must be cleared on rejection too, or one endpoint
+    // blip would pin every later caller to the same stale failure.
+    globalThis.fetch = vi.fn(
+      async () => new Response("", { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    await expect(probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).rejects.toBeInstanceOf(
+      HermesEndpointRejectedAllFeedsError,
+    );
+
+    const fetchSpy = wtiUnknownFetch();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
+  });
+
   it("memo key ignores trailing slashes — one entry per endpoint however callers spell it", async () => {
     const fetchSpy = wtiUnknownFetch();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
@@ -202,14 +283,110 @@ describe("pyth on-chain helper branches", () => {
     expect(fetchSpy.mock.calls[0]?.[0] as string).not.toContain("0xWTI");
   });
 
-  it("returns [] when every requested feed is missing on the endpoint", async () => {
-    globalThis.fetch = vi.fn(
-      async () => new Response("", { status: 404 }),
+  it("returns [] when a readable catalog confirms every requested feed is absent", async () => {
+    // The catalog is alive and lists BTC — it just doesn't carry WTI/BRENT.
+    // That IS authoritative per-feed absence, so memoize and abstain quietly.
+    globalThis.fetch = vi.fn(async (url: string) =>
+      url.includes("price_feeds")
+        ? new Response(JSON.stringify([{ id: "BTC" }]), { status: 200 })
+        : new Response("", { status: 404 }),
     ) as unknown as typeof fetch;
 
     await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"])).resolves.toEqual(
       [],
     );
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"])).toEqual([]);
+  });
+
+  it("surfaces a 404 that isn't a missing-feed rejection as a Hermes error, not a body-reuse TypeError", async () => {
+    // Catalog vouches for every requested id, so discovery records nothing and
+    // the impl falls through to its own throw — where the 404 body must still
+    // be readable (the discovery branch used to cancel it first, turning this
+    // into `TypeError: Body is unusable`).
+    globalThis.fetch = vi.fn(async (url: string) =>
+      url.includes("price_feeds")
+        ? new Response(JSON.stringify([{ id: "BTC" }]), { status: 200 })
+        : new Response("upstream said no", { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    await expect(fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC"])).rejects.toThrow(
+      /Hermes price fetch failed: 404 upstream said no/,
+    );
+  });
+
+  it("throws instead of memoizing when the endpoint rejects every requested feed", async () => {
+    // Wrong base path / changed route / revoked entitlement: the catalog 404s
+    // too, so every bisection leaf 404s. "Everything is missing" is an
+    // endpoint-level fault, not N individually-absent feeds — stay loud.
+    globalThis.fetch = vi.fn(
+      async () => new Response("", { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    const rejection = expect(
+      fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"]),
+    ).rejects;
+    await rejection.toThrow(/Hermes price fetch failed: 404/);
+    await rejection.toBeInstanceOf(HermesEndpointRejectedAllFeedsError);
+
+    // Nothing memoized → the next call retries the endpoint instead of
+    // silently returning [] for the rest of the process's life.
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xWTI", "0xBRENT"])).toEqual([
+      "0xWTI",
+      "0xBRENT",
+    ]);
+  });
+
+  it("treats an empty catalog as an endpoint fault, not as every feed being absent", async () => {
+    // Entitlement revoked/downgraded to nothing: the catalog reads fine but
+    // serves zero feeds. That vouches for nothing.
+    globalThis.fetch = vi.fn(async (url: string) =>
+      url.includes("price_feeds")
+        ? new Response("[]", { status: 200 })
+        : new Response("", { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      fetchPriceFeedsUpdateData(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]),
+    ).rejects.toBeInstanceOf(HermesEndpointRejectedAllFeedsError);
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual([
+      "0xBTC",
+      "0xWTI",
+    ]);
+  });
+
+  it("probeMissingFeeds throws on an endpoint-wide rejection instead of poisoning the memo", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("", { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    await expect(probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).rejects.toBeInstanceOf(
+      HermesEndpointRejectedAllFeedsError,
+    );
+    expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual([
+      "0xBTC",
+      "0xWTI",
+    ]);
+  });
+
+  it("expires a memoized missing feed after the TTL so a recovered endpoint self-heals", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(0);
+      globalThis.fetch = wtiUnknownFetch() as unknown as typeof fetch;
+
+      await probeMissingFeeds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"]);
+      expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual(["0xBTC"]);
+
+      // Entitlement granted / feed listed since — the memo must not outlive
+      // the TTL, or the client never notices the endpoint recovered.
+      vi.setSystemTime(MISSING_FEED_MEMO_TTL_MS + 1);
+      expect(endpointSupportedFeedIds(MOCK_HERMES_URL, ["0xBTC", "0xWTI"])).toEqual([
+        "0xBTC",
+        "0xWTI",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("buildPythPriceUpdateCalls rejects multiple accumulator messages", async () => {

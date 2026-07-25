@@ -19,13 +19,12 @@ import { bcs } from "@mysten/sui/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { PythInfraConfig } from "./config.ts";
-import { PYTH_DEFAULTS } from "./config.ts";
+import type { PythFetchPolicy } from "./config.ts";
 import type { OracleHost } from "./host.ts";
 import {
-  FetchPolicyError,
   fetchWithPolicy,
   joinEndpointPath,
+  rethrowExhaustedFetch,
   trimTrailingSlashes,
 } from "./update-fetch.ts";
 
@@ -47,7 +46,17 @@ export class PythCache {
 // Hermes REST
 // ============================================================================
 
-type FetchOpts = { apiKey?: string; fetch?: { timeoutMs?: number; retries?: number } };
+type FetchOpts = { apiKey?: string; fetch?: PythFetchPolicy };
+
+/**
+ * How long a "this endpoint lacks feed X" verdict stays memoized. The verdict
+ * is a claim about *someone else's* deployment — a feed can be added to the
+ * catalog, an entitlement can be granted, a Pro plan can be upgraded — so it
+ * must expire rather than bind the whole process lifetime. Long enough that a
+ * genuinely-absent feed costs one discovery per window instead of one per
+ * build; short enough that a recovered endpoint self-heals without a restart.
+ */
+export const MISSING_FEED_MEMO_TTL_MS = 15 * 60_000;
 
 /**
  * Per-endpoint memo of feed ids this endpoint has rejected as unknown (a 404
@@ -56,10 +65,50 @@ type FetchOpts = { apiKey?: string; fetch?: { timeoutMs?: number; retries?: numb
  * USOILSPOT/UKOILSPOT) are absent, for example. Pyth 404s the WHOLE batch if
  * ANY id is unknown, and the body naming the bad ids is NOT reliably delivered
  * to `fetch` (Cloudflare returns it to curl but `content-length: 0` to node's
- * undici), so the ids are isolated by bisection and remembered here — later
- * batches skip them instead of 404ing every time. Cleared on process restart.
+ * undici), so the ids are isolated by catalog read (or bisection) and
+ * remembered here — later batches skip them instead of 404ing every time.
+ *
+ * Entries carry an expiry ({@link MISSING_FEED_MEMO_TTL_MS}); an
+ * endpoint-level fault never lands here at all (see {@link
+ * HermesEndpointRejectedAllFeedsError}).
  */
-const missingFeedIdsByEndpoint = new Map<string, Set<string>>();
+const missingFeedIdsByEndpoint = new Map<string, Map<string, number>>();
+
+/**
+ * Thrown when discovery concludes that an endpoint rejects EVERY requested
+ * feed id without a catalog vouching for that verdict. `instanceof`-able
+ * (mirrors `FetchPolicyError` / {@link OracleFeeSourceUnavailableError}).
+ *
+ * "All of them are missing" is the signature of an endpoint/credential fault —
+ * a wrong base path (the Pyth Pro `/hermes` prefix dropped), a changed route,
+ * a revoked or downgraded entitlement — not of N individually-absent feeds.
+ * Memoizing it would convert a loud, fixable misconfiguration into a silent
+ * permanent one: every id marked missing ⇒ `fetchPriceFeedsUpdateData` returns
+ * `[]` ⇒ `buildPythPriceUpdateCalls` throws "Hermes returned empty results",
+ * blaming Hermes for having no data, for the rest of the process's life. So
+ * this case writes NOTHING to the memo and throws instead; the next call
+ * re-probes and recovers on its own once the endpoint does.
+ *
+ * The message keeps the `Hermes price fetch failed: <status>` prefix on its
+ * first line — the documented contract downstream consumers string-match (see
+ * {@link fetchPriceFeedsUpdateData} and the e2e transient detector).
+ */
+export class HermesEndpointRejectedAllFeedsError extends Error {
+  constructor(
+    readonly endpoint: string,
+    readonly requestedCount: number,
+    catalogState: "unreadable" | "empty",
+  ) {
+    super(
+      `Hermes price fetch failed: 404 — endpoint rejected ALL ${requestedCount} requested feed id(s) ` +
+        `and its feed catalog was ${catalogState}, so nothing vouches for those feeds being ` +
+        `individually absent. Treating this as an endpoint/credential fault (wrong base path — ` +
+        `e.g. a dropped Pyth Pro '/hermes' prefix — changed route, or revoked entitlement) rather ` +
+        `than caching every feed as missing. Endpoint: ${endpoint}`,
+    );
+    this.name = "HermesEndpointRejectedAllFeedsError";
+  }
+}
 
 /**
  * Memo key for `(endpoint, credential)` — the same trailing-slash trim
@@ -75,53 +124,90 @@ function memoKey(endpoint: string, apiKey: string | undefined): string {
   return `${trimTrailingSlashes(endpoint)}\u0000${apiKey ?? ""}`;
 }
 
-function recordMissingFeed(endpoint: string, feedId: string, apiKey: string | undefined): void {
+function recordMissingFeeds(
+  endpoint: string,
+  feedIds: Iterable<string>,
+  apiKey: string | undefined,
+): void {
   const key = memoKey(endpoint, apiKey);
-  let set = missingFeedIdsByEndpoint.get(key);
-  if (!set) {
-    set = new Set<string>();
-    missingFeedIdsByEndpoint.set(key, set);
+  let entries = missingFeedIdsByEndpoint.get(key);
+  if (!entries) {
+    entries = new Map<string, number>();
+    missingFeedIdsByEndpoint.set(key, entries);
   }
-  set.add(feedId.toLowerCase());
+  const expiresAt = Date.now() + MISSING_FEED_MEMO_TTL_MS;
+  // Key on the bare (0x-stripped, lowercased) form — the SAME normalization the
+  // catalog comparison and the in-flight latch use — so a feed can't fragment
+  // the memo across `0xAB`/`ab` spellings and slip back through as unfiltered.
+  for (const feedId of feedIds) entries.set(bareFeedId(feedId), expiresAt);
 }
 
 /**
  * The subset of `feedIds` this `endpoint` is known to serve — i.e. minus any
- * previously discovered to be absent (see {@link fetchPriceFeedsUpdateData}).
- * Callers building a `{ updates, feedIds }` payload use this to keep `feedIds`
- * aligned with the feeds the fetch actually returned data for, so
- * `buildPythPriceUpdateCalls` (one moveCall per feed id) never references a
- * feed the accumulator blob doesn't cover.
+ * discovered to be absent within the last {@link MISSING_FEED_MEMO_TTL_MS}
+ * (see {@link fetchPriceFeedsUpdateData}). Callers building a
+ * `{ updates, feedIds }` payload use this to keep `feedIds` aligned with the
+ * feeds the fetch actually returned data for, so `buildPythPriceUpdateCalls`
+ * (one moveCall per feed id) never references a feed the accumulator blob
+ * doesn't cover.
+ *
+ * Expired entries are pruned here rather than on a timer: the memo is only
+ * ever consulted through this function, so a lazy sweep is both sufficient and
+ * free of a dangling interval in a library.
  */
 export function endpointSupportedFeedIds(
   endpoint: string,
   feedIds: string[],
   apiKey?: string,
 ): string[] {
-  const missing = missingFeedIdsByEndpoint.get(memoKey(endpoint, apiKey));
-  return missing ? feedIds.filter((id) => !missing.has(id.toLowerCase())) : feedIds;
+  const key = memoKey(endpoint, apiKey);
+  const entries = missingFeedIdsByEndpoint.get(key);
+  if (!entries) return feedIds;
+
+  const now = Date.now();
+  for (const [id, expiresAt] of entries) {
+    if (expiresAt <= now) entries.delete(id);
+  }
+  if (entries.size === 0) {
+    missingFeedIdsByEndpoint.delete(key);
+    return feedIds;
+  }
+  return feedIds.filter((id) => !entries.has(bareFeedId(id)));
 }
+
+/**
+ * Discovery runs currently in flight, keyed by `(endpoint, credential,
+ * requested id set)`. A cold memo plus two concurrent tx-builds asking the
+ * same question ran two full independent discoveries — duplicate catalog reads
+ * (or duplicate bisection probe trees) on the money path, for one answer. The
+ * second caller now joins the first run's promise: each still gets its own
+ * survivor data, but they share the one discovery behind it.
+ */
+const inFlightDiscoveries = new Map<string, Promise<void>>();
 
 /** Test-only: forget everything learned about which feeds an endpoint lacks. */
 export function __resetMissingFeedCacheForTest(): void {
   missingFeedIdsByEndpoint.clear();
+  inFlightDiscoveries.clear();
 }
 
 /**
- * Catalog-first discovery: one `GET /v2/price_feeds` names every feed id the
- * endpoint serves for THIS credential (verified against the Pro compat
- * endpoint: WTI absent from the catalog AND 404 on latest-price; BTC present
- * AND 200 — entitlement-filtered per key). Any requested id missing from the
- * catalog is memoized; no bisection, no per-batch probe storm. Returns false
- * (caller falls back to bisection) when the catalog itself is unavailable —
- * the catalog is an optimization, the bisection remains the ground truth
- * derived from the money-path fetch itself.
+ * One `GET /v2/price_feeds` — the set of feed ids this endpoint serves for
+ * THIS credential (verified against the Pro compat endpoint: WTI absent from
+ * the catalog AND 404 on latest-price; BTC present AND 200 —
+ * entitlement-filtered per key), normalized to bare lowercase hex.
+ *
+ * Returns `null` when the catalog is unreadable (non-2xx, unparseable, network
+ * error) — the catalog is an optimization, {@link bisectMissingFeeds} remains
+ * the ground truth derived from the money-path fetch itself. Note that "read
+ * fine, served nothing" (`size === 0`) is NOT the same as unreadable: an empty
+ * catalog is an entitlement/route fault in its own right, and the caller
+ * treats it as one.
  */
-async function discoverViaCatalog(
+async function readEndpointCatalog(
   endpoint: string,
-  ids: string[],
   opts?: FetchOpts,
-): Promise<boolean> {
+): Promise<Set<string> | null> {
   try {
     const res = await fetchWithPolicy(
       joinEndpointPath(endpoint, "v2/price_feeds").toString(),
@@ -130,35 +216,20 @@ async function discoverViaCatalog(
     );
     if (!res.ok) {
       void res.body?.cancel().catch(() => {});
-      return false;
+      return null;
     }
     const catalog = (await res.json()) as { id: string }[];
+    if (!Array.isArray(catalog)) return null;
     // Catalog ids come WITHOUT the 0x prefix; callers pass either form.
-    const served = new Set(catalog.map((f) => f.id.toLowerCase().replace(/^0x/, "")));
-    for (const id of ids) {
-      if (!served.has(id.toLowerCase().replace(/^0x/, ""))) {
-        recordMissingFeed(endpoint, id, opts?.apiKey);
-      }
-    }
-    return true;
+    return new Set(catalog.map((f) => bareFeedId(f.id)));
   } catch {
-    return false;
+    return null;
   }
 }
 
-/**
- * The Pyth infra the `pyth_rule` (Core) path must use. Under `'pro'` the
- * host's `pyth` block is the PRO infra — auth-first, entitlement-gated
- * endpoint and PRO state/price-info objects, intended for the Lazer/read
- * paths. But `pyth_rule` is compiled against CORE pyth: its update leg must
- * post to CORE objects (updating Pro objects while `feed` reads Core ones
- * left fallback tickers permanently stale), and its update data must come
- * from the keyless CORE Hermes — which also serves exactly the fallback
- * tickers the Pro endpoint lacks (e.g. WTI/BRENT). Under `'core'` the host
- * block IS the Core infra (including any config override) and is used as-is.
- */
-export function resolveCorePythInfra(host: OracleHost): PythInfraConfig {
-  return host.oracleSource === "pyth_lazer_rule" ? PYTH_DEFAULTS[host.network] : host.pyth;
+/** Feed ids are compared prefix- and case-insensitively (`0xAB` ≡ `ab`). */
+function bareFeedId(feedId: string): string {
+  return feedId.toLowerCase().replace(/^0x/, "");
 }
 
 async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Promise<Response> {
@@ -171,19 +242,84 @@ async function rawFetch(endpoint: string, ids: string[], opts?: FetchOpts): Prom
 }
 
 /**
- * Bisect `ids` to find which ones this endpoint 404s on and {@link
- * recordMissingFeed} them — the response body isn't readable, so a single id
- * that still 404s IS the unknown one. Data is discarded; this only populates
- * the memo. A non-404 (the subset is fine) or a network error stops that
- * branch. Runs at most once per endpoint per unknown-feed set (survivors are
- * memoized, so steady-state fetches never reach here).
+ * Bisect `ids` down to the individual ones this endpoint 404s on — the
+ * response body isn't readable, so a single id that still 404s IS the unknown
+ * one. Data is discarded; this only *reports* (the caller decides whether the
+ * verdict is trustworthy enough to memoize). A non-404 (the subset is fine) or
+ * a network error stops that branch and contributes nothing.
  *
  * `known404: true` skips the root probe — the caller has already watched this
  * exact batch 404, so re-fetching it would only re-learn a fact in hand (a
  * wasted round trip on the money path during cold discovery). Recursive
  * half-calls always probe: their status is genuinely unknown.
  */
-async function discoverMissingFeeds(
+async function bisectMissingFeeds(
+  endpoint: string,
+  ids: string[],
+  opts?: FetchOpts,
+  known404 = false,
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  if (!known404) {
+    let res: Response;
+    try {
+      res = await rawFetch(endpoint, ids, opts);
+    } catch {
+      return new Set(); // transient/network failure — can't classify
+    }
+    void res.body?.cancel().catch(() => {});
+    if (res.status !== 404) return new Set(); // this subset is serveable
+  }
+  if (ids.length === 1) return new Set([ids[0]!]);
+  const mid = Math.floor(ids.length / 2);
+  const [lo, hi] = await Promise.all([
+    bisectMissingFeeds(endpoint, ids.slice(0, mid), opts),
+    bisectMissingFeeds(endpoint, ids.slice(mid), opts),
+  ]);
+  return new Set([...lo, ...hi]);
+}
+
+/**
+ * Work out which of `ids` this endpoint lacks and memoize exactly those.
+ *
+ * Catalog first: one `GET /v2/price_feeds` answers for the whole batch, so a
+ * confirmed 404 costs one extra request instead of O(log n) bisection probes.
+ * The catalog is also the only *authoritative* source here — it says what the
+ * endpoint DOES serve, which is what separates "these two feeds are absent"
+ * from "this endpoint is serving nothing to me". Bisection can only observe
+ * 404s, and a wrong base path 404s identically to an unknown feed.
+ *
+ * Hence the guard: a verdict of "every requested id is missing" is only
+ * committed when a non-empty catalog vouches for it. Otherwise nothing is
+ * written and {@link HermesEndpointRejectedAllFeedsError} is thrown — see its
+ * docblock for why silently memoizing that case is worse than failing.
+ *
+ * Concurrent callers asking the identical question share ONE run (see {@link
+ * inFlightDiscoveries}); the latch is released on failure too, so a blip never
+ * pins later callers to a stale outcome.
+ *
+ * @throws HermesEndpointRejectedAllFeedsError on an endpoint-level rejection.
+ */
+function discoverMissingFeeds(
+  endpoint: string,
+  ids: string[],
+  opts?: FetchOpts,
+  known404 = false,
+): Promise<void> {
+  // Same endpoint + credential + requested set ⇒ same answer; anything else
+  // is a different question and runs on its own.
+  const key = `${memoKey(endpoint, opts?.apiKey)} ${ids.map(bareFeedId).sort().join(",")}`;
+  const inFlight = inFlightDiscoveries.get(key);
+  if (inFlight) return inFlight;
+
+  const run = runDiscovery(endpoint, ids, opts, known404).finally(() => {
+    inFlightDiscoveries.delete(key);
+  });
+  inFlightDiscoveries.set(key, run);
+  return run;
+}
+
+async function runDiscovery(
   endpoint: string,
   ids: string[],
   opts?: FetchOpts,
@@ -198,32 +334,39 @@ async function discoverMissingFeeds(
       return; // transient/network failure — can't classify; leave the memo untouched
     }
     void res.body?.cancel().catch(() => {});
-    if (res.status !== 404) return; // this subset is serveable — nothing to record
+    if (res.status !== 404) return; // this batch is serveable — nothing to record
   }
-  // A confirmed 404: prefer ONE catalog read over O(log n) bisection probes.
-  // Only the top-level call tries it (recursive halves inherit known404=true
-  // from... no: halves pass known404=false and re-probe — the catalog path
-  // returns before any recursion, so halves only run on catalog failure).
-  if (await discoverViaCatalog(endpoint, ids, opts)) return;
-  if (ids.length === 1) {
-    recordMissingFeed(endpoint, ids[0], opts?.apiKey);
-    return;
+
+  const catalog = await readEndpointCatalog(endpoint, opts);
+  if (catalog !== null && catalog.size === 0) {
+    // Read fine, serves nothing: an entitlement/route fault, not N absent feeds.
+    throw new HermesEndpointRejectedAllFeedsError(endpoint, ids.length, "empty");
   }
-  const mid = Math.floor(ids.length / 2);
-  await Promise.all([
-    discoverMissingFeeds(endpoint, ids.slice(0, mid), opts),
-    discoverMissingFeeds(endpoint, ids.slice(mid), opts),
-  ]);
+
+  const missing =
+    catalog !== null
+      ? new Set(ids.filter((id) => !catalog.has(bareFeedId(id))))
+      : await bisectMissingFeeds(endpoint, ids, opts, true);
+
+  if (missing.size === 0) return;
+  if (catalog === null && missing.size === ids.length) {
+    throw new HermesEndpointRejectedAllFeedsError(endpoint, ids.length, "unreadable");
+  }
+  recordMissingFeeds(endpoint, missing, opts?.apiKey);
 }
 
 /**
  * Discovery-only entry for consumers that fetch Hermes THEMSELVES (e.g. a
- * parsed latest-price reader) and just observed a whole-batch 404: bisects
- * `ids`, memoizes the endpoint-missing ones (see {@link
+ * parsed latest-price reader) and just observed a whole-batch 404: resolves
+ * which ids the endpoint lacks, memoizes them (see {@link
  * endpointSupportedFeedIds}), fetches NO survivor data. Without this, such a
  * consumer's only way to populate the memo was calling {@link
  * fetchPriceFeedsUpdateData} and discarding its accumulator blob — two full
  * redundant transfers per cold discovery.
+ *
+ * @throws HermesEndpointRejectedAllFeedsError when the rejection looks
+ * endpoint-wide rather than per-feed — the caller's own 404 is then a
+ * misconfiguration to surface, not a set of feeds to quietly drop.
  */
 export function probeMissingFeeds(
   endpoint: string,
@@ -246,34 +389,32 @@ export async function fetchPriceFeedsUpdateData(
   try {
     res = await rawFetch(endpoint, ids, opts);
   } catch (err) {
-    // A retryable status (429/5xx) that never recovered surfaces as a
-    // FetchPolicyError with `status` set — reformat it into this function's
-    // own message shape so callers (and the e2e transient-failure detector,
-    // which keys off "Hermes price fetch failed") see the same text whether
-    // the failure was retried or not. A network-level exhaustion (no status)
-    // has no domain-specific reframing to add — propagate it as-is.
-    if (err instanceof FetchPolicyError && err.status !== undefined) {
-      const body = err.bodySnippet ? ` ${err.bodySnippet}` : "";
-      throw new Error(
-        `Hermes price fetch failed: ${err.status}${body} (retries exhausted after ${err.attempts} attempts)`,
-        { cause: err },
-      );
-    }
-    throw err;
+    rethrowExhaustedFetch(
+      err,
+      (e) => `Hermes price fetch failed: ${e.status}${e.bodySnippet ? ` ${e.bodySnippet}` : ""}`,
+    );
   }
 
   if (!res.ok) {
+    // Drain the body ONCE, here. A `Response` body can only be read once, and
+    // the 404 branch below finishes with it before the throw is reached — so
+    // reading it inside the throw surfaced `TypeError: Body is unusable`
+    // instead of this function's documented message whenever a 404 fell
+    // through. Reading up front also releases the connection on every path.
+    const body = await res.text().catch(() => "");
+
     // Pyth 404s the ENTIRE batch if ANY id is unknown to the endpoint (a Core
     // feed absent from the Pyth Pro compat endpoint). This is on the money
     // path of every order/position/WLP tx-build, so instead of failing the
-    // whole refresh: discover the unknown ids (bisection — the body isn't
-    // readable), memoize them, and re-fetch the survivors as ONE clean batch
-    // (a single combined accumulator blob, which buildPythPriceUpdateCalls
-    // requires). A genuinely-absent ticker just isn't in the payload — its
-    // on-chain aggregate abstains/aborts, which is correct. Steady state:
-    // once discovered, survivors are filtered up front and this never runs.
+    // whole refresh: discover the unknown ids (catalog, else bisection — the
+    // body isn't reliably delivered), memoize them, and re-fetch the survivors
+    // as ONE clean batch (a single combined accumulator blob, which
+    // buildPythPriceUpdateCalls requires). A genuinely-absent ticker just
+    // isn't in the payload — its on-chain aggregate abstains/aborts, which is
+    // correct. Steady state: once discovered, survivors are filtered up front
+    // and this never runs. A rejection that looks endpoint-wide instead of
+    // per-feed throws out of here (HermesEndpointRejectedAllFeedsError).
     if (res.status === 404) {
-      void res.body?.cancel().catch(() => {});
       // known404: this exact batch just 404'd above — skip the root re-probe.
       await discoverMissingFeeds(endpoint, ids, opts, true);
       const survivors = endpointSupportedFeedIds(endpoint, ids, opts?.apiKey);
@@ -285,7 +426,7 @@ export async function fetchPriceFeedsUpdateData(
         return fetchPriceFeedsUpdateData(endpoint, survivors, opts);
       }
     }
-    throw new Error(`Hermes price fetch failed: ${res.status} ${await res.text()}`);
+    throw new Error(`Hermes price fetch failed: ${res.status}${body ? ` ${body}` : ""}`);
   }
 
   const json = (await res.json()) as { binary?: { data?: string[] } };
@@ -525,7 +666,7 @@ export async function buildPythPriceUpdateCalls(
   }
 
   const cache = opts?.cache;
-  const pyth = resolveCorePythInfra(host);
+  const pyth = host.pyth;
   const [stateInfo, wormholePackageId, table] = await Promise.all([
     getPythStateInfo(host.grpcClient, pyth.state_id, cache),
     getWormholePackageId(host.grpcClient, pyth.wormhole_state_id, cache),
@@ -602,9 +743,10 @@ export async function updatePythPrices(
   feedIds: string[],
   opts?: { cache?: PythCache; feeSource?: OracleFeeSource },
 ): Promise<string[]> {
-  const corePyth = resolveCorePythInfra(host);
-  const updates = await fetchPriceFeedsUpdateData(corePyth.hermes_endpoint, feedIds, {
-    apiKey: corePyth.api_key,
+  // `host.pyth` is the Pyth Core infra (fixed per network) plus the caller's
+  // api_key/fetch — endpoint, credential and policy all come from it.
+  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
+    apiKey: host.pyth.api_key,
     fetch: host.pyth.fetch,
   });
   return buildPythPriceUpdateCalls(tx, host, updates, feedIds, opts);

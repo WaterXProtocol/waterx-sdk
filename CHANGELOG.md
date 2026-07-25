@@ -10,35 +10,50 @@ reference the PR that introduced them.
 
 ### Changed
 
-- **BREAKING: one oracle knob (#77).** The `oracleSource` create option is
-  REMOVED; `pythGeneration: 'core' | 'pro'` is the single mode switch —
-  `'core'` = `pyth_rule` updates on Core infra (today's prod), `'pro'` =
-  `pyth_lazer_rule` updates (one Lazer verify per PTB, no per-feed update
-  fees) + the authenticated Pro Hermes for reads. The rule source is derived
-  (`'pro'` → `pyth_lazer_rule`), making the previously-broken off-diagonal
-  combinations unrepresentable; `assertOracleSourceConfigured` gates the
-  DERIVED source at create (`'pro'` requires a config carrying
-  `packages.pyth_lazer_rule` with feeds, throwing
-  `OracleSourceNotConfiguredError` instead of silently running entirely on
-  the `pyth_rule` fallback). `OracleHost.oracleSource` remains as the
-  internal routing contract. The interim two-knob guards added earlier in
-  this cycle (`assertPythGenerationCompatible` / `PythGenerationMismatchError`)
-  never shipped and are gone — the invalid cell no longer exists to guard.
+- **BREAKING: `oracleSource` create option; each source self-contained, no
+  fallback, no init guard (#77).** The oracle mode knob `oracleSource` takes
+  `'pyth_rule'` (default) or `'pyth_lazer_rule'`, on `PerpClient.create` /
+  `WaterXClient.create` — a source-neutral name, since a future source need not
+  be Pyth. The interim `pythGeneration: 'core' | 'pro'` knob (which bundled the
+  rule choice with a Pyth contract-generation) is
+  REMOVED and never shipped. Each source now owns its own infra + config and
+  does NOT back-stop another:
+  - The cross-source `pyth_rule` fallback in `refreshOraclePrices` is GONE.
+    Under `'pyth_lazer_rule'`, a requested ticker with no Lazer feed no longer
+    silently reroutes to Pyth Core — it **fails the tx-build** with a clear
+    error naming the ticker and source (constant-only tickers, which need no
+    price-update leg, are exempt). A present-but-wrong feed id is not
+    validated: it aborts on-chain at dry-run.
+  - The client-creation guard `assertOracleSourceConfigured` /
+    `OracleSourceNotConfiguredError` is REMOVED. Selecting a source whose feeds
+    are absent is not an init error; it surfaces per-ticker at tx-build.
+  - `PYTH_PRO_DEFAULTS`, the `PythGeneration` type, and `resolveCorePythInfra`
+    are REMOVED. `client.pyth` is now the fixed per-network Pyth **Core** infra
+    (`PYTH_DEFAULTS`) for every source; the `pyth_lazer_rule` source reads only
+    `api_key`/`fetch` from it and gets its on-chain infra from config plus
+    `LAZER_DEFAULTS`. (The 2026-08-18 Pyth core→pro contract cutover becomes a
+    future update to the `PYTH_DEFAULTS` constant, not a separate knob.)
 
-- **The whole `pyth_rule` path is Core-infra by construction (#77).** Under
-  `'pro'` the client's `pyth` block is the PRO infra (auth-first,
-  entitlement-gated endpoint; Pro state/price-info objects) intended for the
-  Lazer/read paths — but the deployed `pyth_rule` package is compiled against
-  CORE pyth. `resolveCorePythInfra` now pins the ENTIRE path: the feed leg
-  binds the Core `PythState` (the infra-selected state aborted every `'pro'`
-  tx-build with `CommandArgumentError { arg 3, TypeMismatch }` — verified on
-  mainnet 2026-07-22; with the pin a `'pro'` order build passes the full
-  oracle leg, devInspect-verified), AND the update leg posts to Core
-  state/price-info objects with update data fetched from the keyless Core
-  Hermes. Previously the update leg still used the host's (Pro) objects and
-  endpoint — updates landed on objects `feed` never read, and the fallback
-  tickers (exactly the ones Pro lacks, e.g. WTI/BRENT) could never refresh
-  under a partial Lazer config.
+  Migration: replace `pythGeneration: 'pro'` with
+  `oracleSource: 'pyth_lazer_rule'` (drop `'core'` — it is the default); a
+  deployment that relied on the silent Pro→Core fallback for tickers Lazer
+  lacks must now either add those Lazer feeds or run those tickers under
+  `'pyth_rule'`.
+
+- **BREAKING: the config JSON no longer carries a `pyth` block; the
+  credential moves to a create option (#77).** The `pyth?: PythInfraConfig`
+  field is REMOVED from `WaterXConfig` / `OracleConfig` — the Pyth Core infra
+  (state ids + endpoint) is fixed per network by `PYTH_DEFAULTS` and is no
+  longer deployment-overridable. The two things an override actually carried —
+  the Lazer Bearer token and the fetch policy — become the `pythApiKey` and
+  `pythFetch` create options (on `PerpClient.create` / `WaterXClient.create`,
+  threaded onto `client.pyth`). A Bearer secret never belonged in a public
+  CDN JSON; this makes that structural. Migration: a caller who set
+  `config.pyth.api_key` (or mutated `client.pyth.api_key` post-construction)
+  passes `pythApiKey` at `create` instead; `config.pyth.fetch` →
+  `pythFetch`; any state-id/endpoint override in a `pyth` block is dropped
+  (those were always equal to the constants). `PythInfraConfig` remains
+  exported as the shape of the resolved `client.pyth`.
 
 ### Fixed
 
@@ -62,6 +77,42 @@ reference the PR that introduced them.
   backward-compatible). Survivors re-fetch as one clean batch;
   `probeMissingFeeds` is the discovery-only entry for consumers that observed
   a batch 404 themselves.
+
+- **An endpoint-wide 404 no longer memoizes every feed as missing (#77).**
+  A wrong base path, a changed route, or a revoked/downgraded entitlement
+  404s every batch, so the discovery bisection concluded that EVERY feed was
+  absent and cached exactly that — `fetchPriceFeedsUpdateData` then returned
+  `[]` and the build died on "Hermes returned empty results", blaming Hermes
+  for a misconfigured endpoint, with no recovery short of a process restart.
+  Discovery now only commits an "all requested ids are missing" verdict when
+  a non-empty catalog vouches for it; an unreadable or empty catalog writes
+  NOTHING and throws `HermesEndpointRejectedAllFeedsError` (exported,
+  `instanceof`-able, message keeps the `Hermes price fetch failed: 404`
+  prefix) naming the likely cause. The memo also gained a TTL
+  (`MISSING_FEED_MEMO_TTL_MS`, 15 min, exported) and prunes lazily on read,
+  so a granted entitlement or a newly-listed feed self-heals without a
+  restart. `probeMissingFeeds` throws on the same condition instead of
+  poisoning the memo.
+
+- **Missing-feed discovery no longer multiplies requests on the money path
+  (#77).** The catalog is read at most ONCE per discovery run: the bisection
+  fallback is now a pure probe tree that never re-reads it, where previously
+  every 404 node of the recursion re-ran a full catalog fetch — with a 5xx
+  catalog that meant ~8–10 retry cycles (3 attempts + backoff each) inside a
+  single tx-build. Concurrent callers asking the identical question (same
+  endpoint, credential and id set) now also share one in-flight discovery
+  instead of each running their own; the latch is released on failure too, so
+  a blip never pins later callers to a stale outcome.
+
+- **404 error message no longer replaced by `TypeError: Body is unusable`
+  (#77).** `fetchPriceFeedsUpdateData` cancelled the response body inside the
+  404 discovery branch, then read it again with `await res.text()` in the
+  throw. A 404 that was NOT a missing-feed rejection (discovery recorded
+  nothing, so survivors == requested) fell through to that throw and surfaced
+  a body-reuse `TypeError` instead of `Hermes price fetch failed: 404 …` —
+  breaking the very string-matching contract downstream consumers (the e2e
+  transient detector, `run-smoke-chain`) rely on. The body is now drained
+  once, up front, and reused by every path.
 
 - **Lazer requests pin `channel: 'fixed_rate@200ms'` (#77)** — `real_time`
   400s the whole batch because only the majors publish it; the deployed

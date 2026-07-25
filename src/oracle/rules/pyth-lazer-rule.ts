@@ -3,7 +3,7 @@
  * updates, plus `feedLazerRule`, the collector-feed leg `aggregateTicker`
  * appends per lazer-routed ticker. Fetches one `leEcdsa` payload for all
  * requested integer feed ids from the Lazer HTTP API (Bearer-authenticated
- * via `config.pyth.api_key`), verifies it ONCE on-chain via
+ * via the `pythApiKey` create option), verifies it ONCE on-chain via
  * `pyth_lazer::parse_and_verify_le_ecdsa_update`, and hands the resulting
  * `Update` PTB value back through a `RuleUpdateHandle` for the feed calls.
  */
@@ -11,7 +11,7 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import { LAZER_DEFAULTS, type PythLazerRulePackage } from "../config.ts";
+import { LAZER_DEFAULTS, type PythFetchPolicy, type PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -20,7 +20,7 @@ import {
   type RuleUpdateData,
   type RuleUpdateHandle,
 } from "../price-update-rule.ts";
-import { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "../update-fetch.ts";
+import { fetchWithPolicy, joinEndpointPath, rethrowExhaustedFetch } from "../update-fetch.ts";
 
 /** `pyth_lazer_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythLazerUpdatePayload {
@@ -74,17 +74,17 @@ function isPythLazerUpdatePayloadShape(payload: unknown): payload is PythLazerUp
 
 /**
  * Thrown by {@link PythLazerRule.fetchUpdateData} when `pyth_lazer_rule` is
- * deployed in config but no `pyth.api_key` is set — the Lazer HTTP API
- * requires a Bearer token and the SDK never reads `process.env` to find one.
- * `instanceof`-able (mirrors `OracleFeeSourceUnavailableError` in `pyth.ts`)
- * so a consumer can branch on the failure type directly instead of
- * string-matching `error.message`.
+ * deployed in config but no `pythApiKey` was supplied at client init — the
+ * Lazer HTTP API requires a Bearer token and the SDK never reads
+ * `process.env` to find one. `instanceof`-able (mirrors
+ * `OracleFeeSourceUnavailableError` in `pyth.ts`) so a consumer can branch on
+ * the failure type directly instead of string-matching `error.message`.
  */
 export class LazerApiKeyMissingError extends Error {
   constructor() {
     super(
       "LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token — " +
-        "set `pyth.api_key` in the client config (the SDK never reads process.env)",
+        "pass `pythApiKey` when creating the client (the SDK never reads process.env)",
     );
     this.name = "LazerApiKeyMissingError";
   }
@@ -109,7 +109,7 @@ async function fetchLazerSignedUpdate(
   endpoint: string,
   apiKey: string,
   feedIds: number[],
-  fetchOpts?: { timeoutMs?: number; retries?: number },
+  fetchOpts?: PythFetchPolicy,
 ): Promise<Uint8Array> {
   // joinEndpointPath preserves any base path on the endpoint — the same
   // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
@@ -128,18 +128,10 @@ async function fetchLazerSignedUpdate(
       { apiKey, ...fetchOpts },
     );
   } catch (err) {
-    // Mirrors fetchPriceFeedsUpdateData's reframing: a retryable status that
-    // never recovered carries `status` on the FetchPolicyError — reformat
-    // into this function's own message shape; a network-level exhaustion
-    // (no status) propagates as-is.
-    if (err instanceof FetchPolicyError && err.status !== undefined) {
-      const body = err.bodySnippet ? ` ${err.bodySnippet}` : "";
-      throw new Error(
-        `Lazer price fetch failed: ${err.status}${body} (retries exhausted after ${err.attempts} attempts)`,
-        { cause: err },
-      );
-    }
-    throw err;
+    rethrowExhaustedFetch(
+      err,
+      (e) => `Lazer price fetch failed: ${e.status}${e.bodySnippet ? ` ${e.bodySnippet}` : ""}`,
+    );
   }
   if (!res.ok) throw new Error(`Lazer price fetch failed: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { leEcdsa?: { data?: string } };

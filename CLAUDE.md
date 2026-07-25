@@ -51,12 +51,22 @@ SDK types (`WaterXConfig`, `WaterxPerpPackage`, `WlpPackage`, etc.) in
 
 External chain infra (Pyth state, Wormhole state, Hermes endpoint) is
 **not** in the JSON — it lives in `PYTH_DEFAULTS[network]` /
-`PYTH_PRO_DEFAULTS[network]` (`src/oracle/config.ts`, re-exported from
-`perp/config.ts`) and is exposed on `client.pyth`. Which map applies is the
-client's `pythGeneration` create option (`'core'` default \| `'pro'` — the
-post-2026-08-18 Pro-compatible contracts + auth-first compat endpoint).
-Override per-deployment by setting `pyth` on the JSON if you ever need to
-(always wins wholesale over the generation constants).
+`LAZER_DEFAULTS[network]` (`src/oracle/config.ts`, re-exported from
+`perp/config.ts`) and the Pyth Core block is exposed on `client.pyth`. It is
+**fixed per network** and **not** deployment-overridable — there is **no `pyth`
+block in the JSON** and the SDK never reads one. The Lazer Bearer token and the
+fetch policy are supplied at client init via the `pythApiKey` / `pythFetch`
+create options (a secret has no place in a public CDN JSON), layered onto
+`client.pyth`.
+
+Which price-update **source** runs is the client's `oracleSource` create option
+(`'pyth_rule'` default \| `'pyth_lazer_rule'`). Each source is self-contained
+with **no cross-source fallback** and **no client-creation guard**: selecting a
+source whose feed for a ticker is absent fails at **tx-build** for that ticker
+(constant-only tickers are exempt), not at init; a present-but-wrong feed id is
+left to abort on-chain at dry-run. `client.pyth` is the same Core infra for
+every source — the `pyth_lazer_rule` source reads only `api_key`/`fetch` from it
+and gets its on-chain infra from `LAZER_DEFAULTS` + config.
 
 `WaterXClient` is the **umbrella** entry point exposing three namespaces:
 `client.account` (shared `waterx_account` + credit/custody), `client.perp` (the
@@ -68,6 +78,10 @@ alias of the umbrella.) The factory is **async**:
 
 ```ts
 import { WaterXClient } from "@waterx/sdk";
+// network default
+
+// Or construct a single line directly:
+import { PerpClient } from "@waterx/sdk/perp";
 
 const client = await WaterXClient.create({
   network: "TESTNET",
@@ -82,16 +96,14 @@ const c2 = await WaterXClient.create({
 });
 
 // Canonical-schema lookups live on the perp sub-client (client.perp):
-client.perp.config.packages.waterx_perp.global_config;  // shared GlobalConfig
+client.perp.config.packages.waterx_perp.global_config; // shared GlobalConfig
 client.perp.config.packages.waterx_perp.markets["BTCUSD"]; // { market, config }
-client.perp.config.packages.wlp.pool_tokens["USDCUSD"];    // pool token Move type
-client.perp.getMarket("BTCUSD");                        // throwing helper
-client.perp.getPythFeed("BTCUSD");                      // { feed_id, price_info_object }
-client.perp.wlpType();                                  // `${wlp.original_id}::wlp::WLP`
-client.perp.pyth.state_id;                              // network default
+client.perp.config.packages.wlp.pool_tokens["USDCUSD"]; // pool token Move type
+client.perp.getMarket("BTCUSD"); // throwing helper
+client.perp.getPythFeed("BTCUSD"); // { feed_id, price_info_object }
+client.perp.wlpType(); // `${wlp.original_id}::wlp::WLP`
+client.perp.pyth.state_id;
 
-// Or construct a single line directly:
-import { PerpClient } from "@waterx/sdk/perp";
 const perp = await PerpClient.create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL });
 ```
 
@@ -244,7 +256,7 @@ src/
     - Withdraw (Sui → EVM / native): `routeWormhole` / `routeNative` (`route_native` takes `min_output`, audit M15) encode `extra_data`, fed to `requestCreditWithdraw` (`account::request_withdraw<CREDIT>`) → `enqueueWithdrawal` parks a FIFO `Queue<CREDIT>` entry.
     - Keeper drain: `executeWithdrawalWormhole` / `executeWithdrawalNative` (caller must be on the executor allowlist).
     - PSM direct: `custodyMint` (against the native `CustodyVault`).
-    Needs `waterx_credit` + `wormhole_bridge` + `withdrawal_queue` (+ `native_custody` for the native paths) in config.
+      Needs `waterx_credit` + `wormhole_bridge` + `withdrawal_queue` (+ `native_custody` for the native paths) in config.
   - `referral.ts` — referral builders backed by the standalone `waterx_referral` package (`setReferralCode` / `useReferralCode` / …). Requires `config.packages.waterx_referral.{published_at,referral_table}`; each builder throws (config guard) when that is unset so misconfigured deployments fail loudly rather than aborting on-chain.
 - **`perp/fetch.ts`** — barrel over `perp/fetch/` read-only `simulate`-based queries, split by domain: `market.ts` (account data + market / pool / token-pool / global config via `waterx_perp_view`), `positions.ts` (position / order reads + paginated lists + redeem requests), `account.ts` (wxa account reads + `getSpendableCreditBalance` inclusive wxUSD read), `custody.ts` (`native_custody` PSM: `getCustodyVaultData` / `getCustodyAssetData`), `bridge.ts` (`getBridgeLimits` rate-limit/cap snapshot + `getBridgeFee` withdrawal-queue estimate). Referral reads (`waterx_referral`: `getRefererFor` / `isValidReferralCode` / `referralCodeExists`) live in the **account base** (`account/fetch/referral.ts`, typed to `WxaClientLike`) and are re-exported through this barrel for the perp surface. The generic simulate/decode plumbing also lives in the base (`account/fetch/simulate.ts`); `fetch/simulate.ts` re-exports it and adds the perp-only `withLp` (both internal). Returns parsed BCS structs (`PositionDataView`, `MarketDataView`, `BridgeLimitsView`, etc.).
 - **`perp/tx-builders.ts`** — barrel over `perp/tx-builders/` high-level async `build*Tx` composers, split by domain: `common.ts` (`CommonBuildOpts` + request/execute envelope + WLP oracle refresh), `consolidate.ts` (`appendConsolidate*` parked-balance → wxUSD pre-sweep, `consolidateToUsd` default `true`), `trading.ts` (position lifecycle + collateral + order lifecycle), `wlp.ts` (mint / mint+stake / unstake+redeem / cancel-redeem+restake), `rewards.ts` (claim staking rewards), `credit.ts` (cross-chain bridge). Sync low-level builders never auto-prepend the sweep — apps must call async `build*Tx` (or `buildConsolidateToUsdTx` separately).

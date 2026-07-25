@@ -31,10 +31,13 @@ export type { OracleHost } from "./host.ts";
 export { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "./update-fetch.ts";
 export type { FetchPolicy } from "./update-fetch.ts";
 
-// Pyth source — `OracleFeeSourceUnavailableError` is re-exported (not just
-// the type) for the same `instanceof` reason as `FetchPolicyError` above: a
-// consumer of `buildPythPriceUpdateCalls` / `updatePythPrices` /
-// `refreshOraclePrices` can branch on the fee-source failure directly.
+// Pyth source — `OracleFeeSourceUnavailableError` and
+// `HermesEndpointRejectedAllFeedsError` are re-exported (not just the types)
+// for the same `instanceof` reason as `FetchPolicyError` above: a consumer of
+// `buildPythPriceUpdateCalls` / `updatePythPrices` / `refreshOraclePrices` can
+// branch on the fee-source failure directly, and a consumer of
+// `fetchPriceFeedsUpdateData` / `probeMissingFeeds` can tell a misconfigured
+// or unentitled endpoint apart from feeds that endpoint genuinely lacks.
 export {
   PythCache,
   fetchPriceFeedsUpdateData,
@@ -42,6 +45,8 @@ export {
   probeMissingFeeds,
   buildPythPriceUpdateCalls,
   updatePythPrices,
+  HermesEndpointRejectedAllFeedsError,
+  MISSING_FEED_MEMO_TTL_MS,
   OracleFeeSourceUnavailableError,
 } from "./pyth.ts";
 export type { OracleFeeSource } from "./pyth.ts";

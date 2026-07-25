@@ -24,30 +24,31 @@ export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx
 
 Frontend-facing read paths via `simulateTransaction` + BCS-decode:
 
-| File | What it shows |
-| --- | --- |
-| `view-market-data.ts` | `getMarketData(ticker)` — market config + OI + funding |
-| `view-global-config.ts` | `getGlobalConfigData()` — protocol-wide config |
-| `view-pool-data.ts` | `getPoolData()` — WLP pool aggregate (TVL, supply) |
-| `view-token-pool-data.ts` | `getTokenPoolData(tokenIndex)` — per-pool-token entry |
-| `view-account-data.ts` | `getAccountData(accountId)` — perp data slot |
-| `view-account-positions.ts` | `getAccountPositions({ ticker, ... })` |
-| `view-account-orders.ts` | `getAccountOrders({ ticker, ... })` |
-| `view-position.ts` | `getPosition({ positionId, ... })` with live PnL |
-| `view-order.ts` | `getOrder({ orderId, orderTypeTag, ... })` |
-| `view-position-exists.ts` | `positionExists({ positionId })` |
-| `view-market-positions.ts` | paginated `getMarketPositions({ ticker, ... })` |
-| `view-market-orders.ts` | paginated `getMarketOrders({ ticker, ... })` |
-| `view-redeem-requests.ts` | paginated `getRedeemRequests()` |
-| `view-referer-for.ts` | `getRefererFor(referee)` |
-| `view-is-valid-referral-code.ts` | `isValidReferralCode(code)` syntax check |
-| `view-referral-code-exists.ts` | `referralCodeExists(code)` on-chain check |
+| File                             | What it shows                                          |
+| -------------------------------- | ------------------------------------------------------ |
+| `view-market-data.ts`            | `getMarketData(ticker)` — market config + OI + funding |
+| `view-global-config.ts`          | `getGlobalConfigData()` — protocol-wide config         |
+| `view-pool-data.ts`              | `getPoolData()` — WLP pool aggregate (TVL, supply)     |
+| `view-token-pool-data.ts`        | `getTokenPoolData(tokenIndex)` — per-pool-token entry  |
+| `view-account-data.ts`           | `getAccountData(accountId)` — perp data slot           |
+| `view-account-positions.ts`      | `getAccountPositions({ ticker, ... })`                 |
+| `view-account-orders.ts`         | `getAccountOrders({ ticker, ... })`                    |
+| `view-position.ts`               | `getPosition({ positionId, ... })` with live PnL       |
+| `view-order.ts`                  | `getOrder({ orderId, orderTypeTag, ... })`             |
+| `view-position-exists.ts`        | `positionExists({ positionId })`                       |
+| `view-market-positions.ts`       | paginated `getMarketPositions({ ticker, ... })`        |
+| `view-market-orders.ts`          | paginated `getMarketOrders({ ticker, ... })`           |
+| `view-redeem-requests.ts`        | paginated `getRedeemRequests()`                        |
+| `view-referer-for.ts`            | `getRefererFor(referee)`                               |
+| `view-is-valid-referral-code.ts` | `isValidReferralCode(code)` syntax check               |
+| `view-referral-code-exists.ts`   | `referralCodeExists(code)` on-chain check              |
 
 ## User actions (`examples/actions/`)
 
 Each builds the PTB, runs `client.simulate(tx)`, optionally executes:
 
 ### Account / wxa
+
 - `action-create-account.ts` — `createAccount({ alias })`
 - `action-set-alias.ts` — rename a wxa account
 - `action-request-deposit.ts` — deposit USDC via `requestDeposit` + `consumeDepositDirect`
@@ -59,6 +60,7 @@ Each builds the PTB, runs `client.simulate(tx)`, optionally executes:
 - `action-set-delegate-permission.ts` — per-protocol permission grant
 
 ### Trading
+
 - `action-place-market-order.ts` — `triggerPrice: undefined`, parks at tick 0
 - `action-place-limit-order.ts` — limit/stop at a real tick
 - `action-place-order-with-tp-sl.ts` — main + reduce-only TP/SL pre-orders
@@ -73,15 +75,18 @@ Each builds the PTB, runs `client.simulate(tx)`, optionally executes:
 - `action-withdraw-collateral.ts` — pull collateral (re-lever)
 
 ### WLP
+
 - `action-mint-wlp.ts` — convert deposit asset → WLP
 - `action-request-redeem-wlp.ts` — enqueue redeem
 - `action-cancel-redeem-wlp.ts` — drop a pending redeem
 - `action-settle-redeem-wlp.ts` — keeper-side settle
 
 ### Staking
+
 - `action-stake.ts` / `action-unstake.ts` / `action-claim-reward.ts`
 
 ### Referral
+
 - `action-set-referral-code.ts` — claim a code
 - `action-use-referral-code.ts` — bind as referee
 
