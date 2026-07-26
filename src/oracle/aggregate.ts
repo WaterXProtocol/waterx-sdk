@@ -293,11 +293,17 @@ export async function refreshOraclePrices(
 
   // Fail the tx-build (NOT client init, NOT a silent reroute) when the selected
   // source has no feed for a requested ticker that actually needs a price
-  // update. A constant-only ticker is exempt — it is priced by `constant_rule`
-  // and needs no update leg from any source. This catches a MISSING feed; a
-  // present-but-WRONG feed id is deliberately not validated here (it aborts
-  // on-chain at dry-run).
-  const unservable = tickers.filter((t) => !selectedSupported.has(t) && !host.isConstantTicker(t));
+  // update. Only a CONSTANT-ONLY ticker is exempt — priced entirely by
+  // `constant_rule`, it needs no update leg from any source. A DUAL-FEED ticker
+  // (constant AND pyth) still needs its Pyth leg refreshed, so `isConstantTicker`
+  // alone must NOT exempt it: under a source that can't serve it, with no
+  // fallback, feeding an unrefreshed Pyth leg would price it stale (or abort on a
+  // missing weighted source). `priceInfoByTicker.has(t)` ⇔ the ticker has a
+  // `pyth_rule.feeds` entry, so `constant && !hasPyth` is exactly constant-only.
+  // This catches a MISSING feed; a present-but-WRONG feed id is deliberately not
+  // validated here (it aborts on-chain at dry-run).
+  const isConstantOnly = (t: string) => host.isConstantTicker(t) && !priceInfoByTicker.has(t);
+  const unservable = tickers.filter((t) => !selectedSupported.has(t) && !isConstantOnly(t));
   if (unservable.length > 0) {
     throw new Error(
       `oracleSource '${host.oracleSource}' has no feed configured for ticker(s): ` +

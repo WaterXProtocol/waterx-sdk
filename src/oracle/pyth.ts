@@ -745,9 +745,16 @@ export async function updatePythPrices(
 ): Promise<string[]> {
   // `host.pyth` is the Pyth Core infra (fixed per network) plus the caller's
   // api_key/fetch — endpoint, credential and policy all come from it.
-  const updates = await fetchPriceFeedsUpdateData(host.pyth.hermes_endpoint, feedIds, {
+  const endpoint = host.pyth.hermes_endpoint;
+  const updates = await fetchPriceFeedsUpdateData(endpoint, feedIds, {
     apiKey: host.pyth.api_key,
     fetch: host.pyth.fetch,
   });
-  return buildPythPriceUpdateCalls(tx, host, updates, feedIds, opts);
+  // Align feedIds with the feeds the endpoint actually served — the fetch drops
+  // (and memoizes) any it lacks, and `buildPythPriceUpdateCalls` emits one
+  // update call per feedId, so a dropped feed would reference a PriceInfoObject
+  // the accumulator blob doesn't cover (invalid PTB / on-chain abort). Mirrors
+  // `PythCoreRule.fetchUpdateData`.
+  const servedFeedIds = endpointSupportedFeedIds(endpoint, feedIds, host.pyth.api_key);
+  return buildPythPriceUpdateCalls(tx, host, updates, servedFeedIds, opts);
 }

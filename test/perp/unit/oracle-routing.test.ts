@@ -271,6 +271,31 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
     ).rejects.toThrow(/no feed configured.*BTCUSD/);
     expect(coreSpy).not.toHaveBeenCalled();
   });
+
+  it("a DUAL-FEED ticker (constant + pyth) missing the selected feed throws — not exempted as constant", async () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    attachPythGrpcMocks(client);
+    mockHermesFetch();
+
+    // BTCUSD keeps its pyth_rule.feeds entry AND is pinned in constant_rule →
+    // dual-feed. It still NEEDS its Pyth leg refreshed, so `isConstantTicker`
+    // must NOT exempt it: under lazer (fake serves nothing) with no fallback,
+    // it must fail the build rather than silently feed a stale/unrefreshed Pyth
+    // leg. Only a constant-ONLY ticker (no pyth_rule.feeds) is exempt.
+    client.config.packages.constant_rule!.feeds = { BTCUSD: { price: "1000000000" } };
+    expect(client.config.packages.pyth_rule!.feeds.BTCUSD).toBeDefined(); // still dual-feed
+    expect(client.isConstantTicker("BTCUSD")).toBe(true); // would have been wrongly exempted
+
+    const fakeLazer = createFakeRule("pyth_lazer_rule", []);
+    const coreSpy = vi.spyOn(PythCoreRule, "fetchUpdateData");
+
+    await expect(
+      refreshOraclePrices(new Transaction(), client, ["BTCUSD"], {
+        ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      }),
+    ).rejects.toThrow(/no feed configured.*BTCUSD/);
+    expect(coreSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe("refreshOraclePrices — per-environment acceptance (staging Lazer vs prod Core split)", () => {

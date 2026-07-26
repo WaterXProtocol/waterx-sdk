@@ -57,6 +57,24 @@ reference the PR that introduced them.
 
 ### Fixed
 
+- **Dual-feed tickers missing the selected source's feed now fail the
+  tx-build (#77).** The no-feed guard in `refreshOraclePrices` exempted any
+  ticker `isConstantTicker` reported true for — but that predicate is also
+  true for a DUAL-FEED ticker (both `constant_rule.feeds` and
+  `pyth_rule.feeds`). Under a source that couldn't serve such a ticker, the
+  build neither fell back (correct) nor threw (wrong): it fed an unrefreshed
+  Pyth leg, risking a stale price or a missing-weighted-source abort. The
+  exemption is now strictly constant-ONLY (constant and NOT also Pyth-fed);
+  dual-feed tickers with no selected-source feed fail at build like any other.
+
+- **`updatePythPrices` now aligns `feedIds` with the served survivors (#77).**
+  After a whole-batch 404 dropped some feeds, the public helper still handed
+  the ORIGINAL `feedIds` to `buildPythPriceUpdateCalls`, which emits one
+  update call per id — building calls for dropped feeds the single accumulator
+  blob doesn't cover (invalid PTB / on-chain abort). It now passes the
+  `endpointSupportedFeedIds` survivor set, mirroring
+  `PythCoreRule.fetchUpdateData`.
+
 - **Pyth Hermes fetch dropped the endpoint's base path — EVERY feed 404'd
   under Pyth Pro (#77).** `new URL("/v2/updates/price/latest", endpoint)`
   treats a leading-slash path as absolute, replacing the Pro compat

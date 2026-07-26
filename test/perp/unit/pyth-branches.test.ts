@@ -828,6 +828,7 @@ describe("buildPythPriceUpdateCalls — fee source resolution (Task 5)", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    __resetMissingFeedCacheForTest();
     vi.restoreAllMocks();
   });
 
@@ -950,6 +951,42 @@ describe("buildPythPriceUpdateCalls — fee source resolution (Task 5)", () => {
     const ids = await updatePythPrices(tx, client, [feedId], { feeSource: { kind: "gas" } });
     expect(ids.length).toBe(1);
     expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
+  });
+
+  it("updatePythPrices aligns feedIds with survivors after a 404 drops a feed (no call for the dropped one)", async () => {
+    const { updatePythPrices } = await import("../../../src/oracle/index.ts");
+    const { toHex } = await import("@mysten/bcs");
+    const client = createUnitTestClient();
+    const { feedId } = attachPythGrpcMocks(client); // the served feed
+    const badFeed = "0x" + "ab".repeat(32); // absent from this endpoint
+    const update = mockAccumulatorUpdate();
+
+    // Catalog serves only the good feed; latest-price 404s any batch carrying
+    // the bad feed and 200s the survivor-only batch.
+    globalThis.fetch = vi.fn(async (url: string) => {
+      if (url.includes("price_feeds")) {
+        return new Response(JSON.stringify([{ id: feedId.replace(/^0x/, "") }]), { status: 200 });
+      }
+      if (url.includes("abab")) return new Response("", { status: 404 });
+      return new Response(JSON.stringify({ binary: { data: [toHex(update)] } }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    const ids = await updatePythPrices(tx, client, [feedId, badFeed], {
+      feeSource: { kind: "gas" },
+    });
+
+    // buildPythPriceUpdateCalls returns one PriceInfoObject id per SERVED feed
+    // and emits one update call per served feed — the dropped feed must NOT be
+    // built (it would reference a feed the accumulator blob doesn't cover). With
+    // the old code (original feedIds) this would be 2.
+    expect(ids).toHaveLength(1);
+    const updateCalls = tx
+      .getData()
+      .commands?.filter(
+        (c) => c.$kind === "MoveCall" && c.MoveCall?.function === "update_single_price_feed",
+      );
+    expect(updateCalls).toHaveLength(1);
   });
 
   it("updatePythPrices rejects when no fee source is available", async () => {
