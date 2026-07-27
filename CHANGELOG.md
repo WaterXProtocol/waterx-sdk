@@ -10,11 +10,14 @@ reference the PR that introduced them.
 
 ### Added
 
-- Restore `pnpm oracle:aggregates` (`scripts/print-oracle-aggregates.ts`) for v3:
-  Hermes/Lazer refresh + `refreshOraclePrices` simulate per configured oracle ticker
-  (legacy `--format pretty|raw`, `--testnet` / `--mainnet`; **default network mainnet**;
-  `pnpm oracle:aggregates:testnet`, no private key). Network flags rewrite a
-  `WATERX_CONFIG_URL` ending in `testnet.json` ↔ `mainnet.json` when needed.
+- Restore `pnpm oracle:aggregates` (`scripts/print-oracle-aggregates.ts`) for v3
+  (#79): Hermes/Lazer refresh + `refreshOraclePrices` simulate per configured
+  oracle ticker (legacy `--format pretty|raw`, `--testnet` / `--mainnet`;
+  **default network mainnet**; `pnpm oracle:aggregates:testnet`, no private
+  key). Network flags rewrite a `WATERX_CONFIG_URL` ending in `testnet.json` ↔
+  `mainnet.json` when needed. Harness wires `ORACLE_SOURCE` / `PYTH_API_KEY`
+  into `oracleSource` / `pythApiKey`; a failed refresh prints `WARN` (does not
+  silently claim a fresh OK).
 
 ## [4.0.1] - 2026-07-27
 

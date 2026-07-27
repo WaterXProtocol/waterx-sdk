@@ -7,12 +7,23 @@
 import { Transaction } from "@mysten/sui/transactions";
 
 import { DRY_RUN_SENDER } from "../src/constants.ts";
-import { aggregateTicker, PythCache, refreshOraclePrices } from "../src/oracle/index.ts";
+import {
+  aggregateTicker,
+  PythCache,
+  refreshOraclePrices,
+  type OracleSource,
+} from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import type { Network } from "../src/perp/constants.ts";
 import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 
 type OutputFormat = "pretty" | "raw";
+
+const ORACLE_SOURCES = ["pyth_rule", "pyth_lazer_rule"] as const;
+
+function isOracleSource(v: string): v is OracleSource {
+  return (ORACLE_SOURCES as readonly string[]).includes(v);
+}
 
 type TickerFeed = {
   label: string;
@@ -79,6 +90,25 @@ function resolveNetwork(argv: string[]): Network {
   return "MAINNET";
 }
 
+/** CLI `--oracle-source` → `ORACLE_SOURCE` env → default `pyth_rule`. */
+function resolveOracleSource(cliValue: string | undefined): OracleSource | undefined {
+  const raw = (cliValue ?? process.env.ORACLE_SOURCE)?.trim();
+  if (!raw) return undefined;
+  if (!isOracleSource(raw)) {
+    console.error(
+      `Unknown oracle source ${JSON.stringify(raw)} (use ${ORACLE_SOURCES.join(" | ")})`,
+    );
+    process.exit(1);
+  }
+  return raw;
+}
+
+/** Lazer Bearer token from harness env — SDK never reads process.env itself. */
+function resolvePythApiKey(): string | undefined {
+  const raw = process.env.PYTH_API_KEY?.trim();
+  return raw || undefined;
+}
+
 /** Swap \`testnet.json\` ↔ \`mainnet.json\` when CLI network disagrees with the env URL. */
 function waterxConfigUrlForNetwork(network: Network): string | undefined {
   const raw = waterxConfigUrlFromEnv();
@@ -92,17 +122,23 @@ function waterxConfigUrlForNetwork(network: Network): string | undefined {
   return raw;
 }
 
-function parseArgs(argv: string[]): { format: OutputFormat; network: Network } {
+function parseArgs(argv: string[]): {
+  format: OutputFormat;
+  network: Network;
+  oracleSource: OracleSource | undefined;
+} {
   const tail = argv.slice(2);
   const tokens = tail[0] && !tail[0].startsWith("-") ? tail.slice(1) : tail;
 
   let format: OutputFormat = "pretty";
+  let oracleSourceCli: string | undefined;
   const network = resolveNetwork(argv);
 
   for (let i = 0; i < tokens.length; i++) {
     const a = tokens[i]!;
     if (a === "--help" || a === "-h") {
       console.log(`Usage: pnpm oracle:aggregates [-- --format pretty|raw] [--testnet|--mainnet]
+       [--oracle-source pyth_rule|pyth_lazer_rule]
        pnpm oracle:aggregates:testnet
        pnpm oracle:aggregates:mainnet
 
@@ -110,13 +146,16 @@ function parseArgs(argv: string[]): { format: OutputFormat; network: Network } {
   --format raw      Original debug style (compact JSON, one field per line).
   --testnet         Use TESTNET (pnpm oracle:aggregates:testnet).
   --mainnet         Use MAINNET (default when no network flag).
+  --oracle-source   Price-update source (default pyth_rule). Overrides ORACLE_SOURCE.
 
   Network precedence: --testnet / --mainnet → WATERX_E2E_NETWORK → mainnet.
+  Oracle source: --oracle-source → ORACLE_SOURCE → pyth_rule.
+  Lazer token: PYTH_API_KEY (required when source is pyth_lazer_rule).
 
   Dry-runs each ticker via gRPC simulateTransaction (no private key, no on-chain execution).
-  Before each aggregate, refreshes prices via refreshOraclePrices (Pyth Core or Lazer per
-  client oracleSource), so weighted Pyth legs are not dropped as stale when Supra still
-  contributes.
+  Before each aggregate, refreshes prices via refreshOraclePrices for the selected
+  oracleSource (pyth_rule = Hermes Core; pyth_lazer_rule = Lazer). A refresh failure
+  prints WARN and continues with on-chain state (result labeled STALE).
 
   Requires WATERX_CONFIG_URL (or .env). With --mainnet, a URL ending in testnet.json is
   rewritten to mainnet.json (and vice versa for --testnet).
@@ -132,9 +171,19 @@ function parseArgs(argv: string[]): { format: OutputFormat; network: Network } {
         console.error(`Unknown --format value (use pretty or raw): ${v ?? "(missing)"}`);
         process.exit(1);
       }
+      continue;
+    }
+    if (a === "--oracle-source") {
+      oracleSourceCli = tokens[i + 1];
+      i++;
+      if (!oracleSourceCli) {
+        console.error(`--oracle-source requires a value (${ORACLE_SOURCES.join(" | ")})`);
+        process.exit(1);
+      }
+      continue;
     }
   }
-  return { format, network };
+  return { format, network, oracleSource: resolveOracleSource(oracleSourceCli) };
 }
 
 function allTickerFeeds(client: PerpClient): TickerFeed[] {
@@ -356,14 +405,18 @@ async function runOne(
 
   try {
     let refreshed = false;
+    let refreshError: string | undefined;
     try {
       await refreshOraclePrices(tx, client, [feed.ticker], {
         cache,
         feeSource: { kind: "gas" },
       });
       refreshed = true;
-    } catch {
-      // Hermes / Lazer flaky — still feed + aggregate with on-chain Pyth state.
+    } catch (e) {
+      // Hermes / Lazer flaky — still feed + aggregate with on-chain Pyth state,
+      // but surface the miss so OK is not mistaken for a fresh refresh.
+      refreshError = e instanceof Error ? e.message : String(e);
+      console.warn(`[${feed.label}] WARN refresh skipped: ${refreshError}`);
     }
     if (!refreshed) {
       const hasPyth = client.config.packages.pyth_rule?.feeds?.[feed.ticker] !== undefined;
@@ -386,12 +439,14 @@ async function runOne(
     }
     const events = eventsFromSimulateResult(res);
     let views = getAggregatedViews(events);
+    const statusLabel = refreshed ? "OK" : "OK (STALE — refresh skipped)";
 
     if (format === "pretty") {
       console.log(`\n${sep}`);
-      console.log(`[${feed.label}] OK`);
+      console.log(`[${feed.label}] ${statusLabel}`);
       console.log(`  Ticker      ${feed.ticker}`);
       if (feed.aggregatorId) console.log(`  Aggregator  ${feed.aggregatorId}`);
+      if (refreshError) console.log(`  Refresh     ${formatErrorMessage(refreshError)}`);
       if (!views.length && events.length) {
         const v = parseAggregatedView(events[0]!);
         if (v) views = [v];
@@ -412,9 +467,10 @@ async function runOne(
         }
       }
     } else {
-      console.log(`\n[${feed.label}] OK`);
+      console.log(`\n[${feed.label}] ${statusLabel}`);
       console.log(`  ticker=${feed.ticker}`);
       console.log(`  aggregator=${feed.aggregatorId ?? "-"}`);
+      if (refreshError) console.log(`  refresh_error=${refreshError}`);
       if (!views.length && events.length) {
         const v = parseAggregatedView(events[0]!);
         if (v) views = [v];
@@ -455,12 +511,21 @@ async function runOne(
 
 async function main() {
   loadRepoEnvFiles();
-  const { format, network } = parseArgs(process.argv);
+  const { format, network, oracleSource } = parseArgs(process.argv);
   const waterxConfigUrl = waterxConfigUrlForNetwork(network);
+  const pythApiKey = resolvePythApiKey();
   const client = await PerpClient.create(network, {
     cache: true,
     waterxConfigUrl,
+    ...(oracleSource !== undefined ? { oracleSource } : {}),
+    ...(pythApiKey !== undefined ? { pythApiKey } : {}),
   });
+
+  if (client.oracleSource === "pyth_lazer_rule" && !pythApiKey) {
+    throw new Error(
+      "oracleSource is pyth_lazer_rule but PYTH_API_KEY is unset — set it in the env (or .env.local)",
+    );
+  }
 
   const feeds = allTickerFeeds(client);
   const modeLabel = format === "pretty" ? "pretty" : "raw";
