@@ -154,8 +154,10 @@ function parseArgs(argv: string[]): {
 
   Dry-runs each ticker via gRPC simulateTransaction (no private key, no on-chain execution).
   Before each aggregate, refreshes prices via refreshOraclePrices for the selected
-  oracleSource (pyth_rule = Hermes Core; pyth_lazer_rule = Lazer). A refresh failure
-  prints WARN and continues with on-chain state (result labeled STALE).
+  oracleSource (pyth_rule = Hermes Core; pyth_lazer_rule = Lazer). Under pyth_rule,
+  a flaky Hermes refresh prints WARN and continues with on-chain Core state
+  (result labeled STALE). Under pyth_lazer_rule there is NO Core fallback —
+  a missing Lazer feed or refresh failure fails the ticker.
 
   Requires WATERX_CONFIG_URL (or .env). With --mainnet, a URL ending in testnet.json is
   rewritten to mainnet.json (and vice versa for --testnet).
@@ -413,9 +415,14 @@ async function runOne(
       });
       refreshed = true;
     } catch (e) {
-      // Hermes / Lazer flaky — still feed + aggregate with on-chain Pyth state,
-      // but surface the miss so OK is not mistaken for a fresh refresh.
       refreshError = e instanceof Error ? e.message : String(e);
+      // Same-source stale continue is ONLY for pyth_rule (Hermes flaky →
+      // aggregate against on-chain Core PIO). Never cross-source fall back to
+      // Core when oracleSource is pyth_lazer_rule — that would violate the SDK
+      // no-cross-source-fallback contract (missing Lazer feed must fail).
+      if (client.oracleSource !== "pyth_rule") {
+        throw e instanceof Error ? e : new Error(refreshError);
+      }
       console.warn(`[${feed.label}] WARN refresh skipped: ${refreshError}`);
     }
     if (!refreshed) {

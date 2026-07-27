@@ -16,8 +16,9 @@ reference the PR that introduced them.
   **default network mainnet**; `pnpm oracle:aggregates:testnet`, no private
   key). Network flags rewrite a `WATERX_CONFIG_URL` ending in `testnet.json` ↔
   `mainnet.json` when needed. Harness wires `ORACLE_SOURCE` / `PYTH_API_KEY`
-  into `oracleSource` / `pythApiKey`; a failed refresh prints `WARN` (does not
-  silently claim a fresh OK).
+  into `oracleSource` / `pythApiKey`; under `pyth_rule`, a failed Hermes refresh
+  prints `WARN` / `OK (STALE)` (no silent fresh OK); under `pyth_lazer_rule`
+  there is no Core fallback — missing Lazer feed fails the ticker.
 
 ## [4.0.1] - 2026-07-27
 

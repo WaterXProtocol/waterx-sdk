@@ -106,6 +106,6 @@ Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/\*.ts`** a
 
 | Command                  | Purpose                                                                                                                                                    |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes/Lazer refresh + oracle PTB **simulate** (`-- --format raw`). Wire `ORACLE_SOURCE` / `PYTH_API_KEY` (or `--oracle-source`); failed refresh prints `WARN` / `OK (STALE)` |
+| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes/Lazer refresh + oracle PTB **simulate** (`-- --format raw`). Wire `ORACLE_SOURCE` / `PYTH_API_KEY` (or `--oracle-source`); `pyth_rule` refresh miss → `WARN` / `OK (STALE)`; `pyth_lazer_rule` never falls back to Core |
 
 Admin-keystore flows live on branch **`integration/admin-e2e-parked`**.
