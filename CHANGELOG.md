@@ -8,6 +8,10 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-07-27
+
+_All entries in this section were introduced by [#77](https://github.com/WaterXProtocol/waterx-sdk/pull/77). Although the entries below carry **BREAKING** changes relative to `4.0.0`, this ships as a patch (`4.0.1`) rather than a major: `4.0.0` (published 2026-07-21) landed the interim oracle rework only days earlier, and `4.0.1` supersedes it before it stabilized — treat the `4.0.x` oracle surface as unstable-until-settled._
+
 ### Changed
 
 - **BREAKING: `oracleSource` create option; each source self-contained, no
@@ -145,9 +149,6 @@ reference the PR that introduced them.
 - **Ghost config fields removed (#77):** `hourly_mint_limit` /
   `hourly_burn_limit` (the JSON carries `daily_*`) and the never-populated
   `trusted_emitters` block.
-
-_Releases as `4.0.1`; `package.json` stays at the last released version per
-the repo's release-tagging rule._
 
 ## [4.0.0] - 2026-07-21
 
