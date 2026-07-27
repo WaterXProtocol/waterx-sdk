@@ -17,10 +17,9 @@ import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
   PYTH_DEFAULTS,
-  PYTH_PRO_DEFAULTS,
   WORMHOLE_DEFAULTS,
   type LoadConfigOptions,
-  type PythGeneration,
+  type PythFetchPolicy,
   type PythInfraConfig,
   type WaterXConfig,
   type WormholeInfraConfig,
@@ -30,43 +29,59 @@ import type { Network } from "./constants.ts";
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
   /**
-   * Selects which `PriceUpdateRule` `refreshOraclePrices` uses for the
-   * on-chain price-update leg (see `OracleHost.oracleSource`). Default:
-   * `'pyth_rule'`. The SDK never reads `process.env` — pass this from your
-   * own env var (e.g. `ORACLE_SOURCE`).
+   * Which oracle price-update source drives `refreshOraclePrices`. Each source
+   * is self-contained (own infra + config) with NO cross-source fallback:
+   *
+   * - `'pyth_rule'` (default) — Pyth Core `pyth_rule` updates (Hermes VAA +
+   *   per-feed update fees), Core state + keyless Core Hermes.
+   * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
+   *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
+   *   and a `pythApiKey` (Lazer is auth-first).
+   *
+   * A source-neutral name on purpose — a future source need not be Pyth.
+   * Selecting a source whose feed for a requested ticker is absent is NOT an
+   * error at client creation: it fails at tx-build time for exactly those
+   * tickers (see `refreshOraclePrices`). The Pyth Core infra is fixed per
+   * network by `PYTH_DEFAULTS` and is not deployment-overridable.
    */
   oracleSource?: OracleSource;
   /**
-   * Selects which Pyth Core contract generation feeds `client.pyth` when the
-   * config JSON has no explicit `pyth` override: `'core'` (default,
-   * `PYTH_DEFAULTS`) or `'pro'` (`PYTH_PRO_DEFAULTS` — the post-2026-08-18
-   * Pro-compatible contracts + Hermes-compatible endpoint; pair with
-   * `pyth.api_key`). Orthogonal to `oracleSource`. An explicit `config.pyth`
-   * always wins wholesale (see `PythGeneration`).
+   * Pyth Lazer access token (`Authorization: Bearer …`). Required under
+   * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
+   * `'pyth_rule'` (keyless Core Hermes). This is a SECRET and never belongs in
+   * the canonical `waterx-config` JSON — pass it at client init from your own
+   * env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
    */
-  pythGeneration?: PythGeneration;
+  pythApiKey?: string;
+  /**
+   * Retry/timeout policy for the off-chain Hermes / Lazer update fetches (see
+   * `fetchWithPolicy`). Optional — defaults to 15s timeout, 2 retries.
+   */
+  pythFetch?: PythFetchPolicy;
 }
 
 export class PerpClient extends BaseLineClient<WaterXConfig> {
-  /** Pyth infra (network defaults unless overridden in JSON). */
+  /** Pyth Core infra (fixed per network) plus the caller-supplied credential/policy. */
   pyth: PythInfraConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
-  /** Selected oracle rule source (client option, resolved at creation; default `'pyth_rule'`). See `OracleHost.oracleSource`. */
+  /** Selected oracle price-update source (`oracleSource` create option; default `'pyth_rule'`). */
   readonly oracleSource: OracleSource;
 
   /** Canonical-schema lookups (delegated to below); no transport. */
   private readonly view: PerpConfigView;
 
-  constructor(
-    network: Network,
-    config: WaterXConfig,
-    opts: { grpcUrl?: string; oracleSource?: OracleSource; pythGeneration?: PythGeneration } = {},
-  ) {
+  constructor(network: Network, config: WaterXConfig, opts: CreateClientOptions = {}) {
     super(network, config, opts);
-    // Precedence: explicit config.pyth override > generation constants.
-    this.pyth =
-      config.pyth ?? (opts.pythGeneration === "pro" ? PYTH_PRO_DEFAULTS : PYTH_DEFAULTS)[network];
+    // Pyth Core infra is fixed per network — NOT deployment-overridable and
+    // NOT source-dependent (the pyth_lazer_rule source reads only api_key/fetch
+    // from here). The api_key + fetch policy are caller-supplied at init: a
+    // secret has no place in the canonical waterx-config JSON.
+    this.pyth = {
+      ...PYTH_DEFAULTS[network],
+      ...(opts.pythApiKey !== undefined ? { api_key: opts.pythApiKey } : {}),
+      ...(opts.pythFetch !== undefined ? { fetch: opts.pythFetch } : {}),
+    };
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
     this.oracleSource = opts.oracleSource ?? "pyth_rule";
     this.view = new PerpConfigView(
@@ -78,14 +93,14 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   /**
    * Async factory: fetches the deployment config for `network` and returns
    * a ready-to-use client. Pass `opts.cache=true` to memoize the JSON.
+   *
+   * No oracle-config guard here: selecting a source whose feeds are absent is
+   * not an error at init — it surfaces at tx-build time for the specific
+   * tickers that source can't serve (see `refreshOraclePrices`).
    */
   static async create(network: Network, opts: CreateClientOptions = {}): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
-    return new PerpClient(network, config, {
-      grpcUrl: opts.grpcUrl,
-      oracleSource: opts.oracleSource,
-      pythGeneration: opts.pythGeneration,
-    });
+    return new PerpClient(network, config, opts);
   }
 
   static mainnet(opts: CreateClientOptions = {}): Promise<PerpClient> {

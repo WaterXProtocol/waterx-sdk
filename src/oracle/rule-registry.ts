@@ -3,13 +3,17 @@
  * `PriceUpdateRule` implementation. `refreshOraclePrices` (`aggregate.ts`) is
  * the only production caller; this is the one place `OracleSource` values are
  * wired to a rule instance. Selection is driven purely by the value passed in
- * (ultimately `OracleHost.oracleSource`, a client create option) — never by a
- * config JSON `enabled` flag and never by `process.env`.
+ * (ultimately `OracleHost.oracleSource`, the `oracleSource` client create
+ * option) — never by a config JSON `enabled` flag and never by `process.env`.
  *
- * Both sources are registered: `pyth_rule` (`PythCoreRule`, Hermes VAA) and
- * `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates). Resolving a
- * source with no registered rule throws a clear `OracleSourceNotImplemented`
- * error instead of silently falling back to Pyth Core.
+ * Each source is self-contained: it owns its own infra + config and does NOT
+ * back-stop any other source. Both are registered: `pyth_rule` (`PythCoreRule`,
+ * Hermes VAA) and `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates).
+ * Resolving a source with no registered rule throws a clear
+ * `OracleSourceNotImplemented` error. There is deliberately no cross-source
+ * fallback and no client-creation config guard: selecting a source whose feeds
+ * are absent is not an error at init — it surfaces at tx-build time for the
+ * specific tickers that source can't serve (see `refreshOraclePrices`).
  */
 
 import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";

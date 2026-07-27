@@ -6,6 +6,149 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
 reference the PR that introduced them.
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: `oracleSource` create option; each source self-contained, no
+  fallback, no init guard (#77).** The oracle mode knob `oracleSource` takes
+  `'pyth_rule'` (default) or `'pyth_lazer_rule'`, on `PerpClient.create` /
+  `WaterXClient.create` — a source-neutral name, since a future source need not
+  be Pyth. The interim `pythGeneration: 'core' | 'pro'` knob (which bundled the
+  rule choice with a Pyth contract-generation) is
+  REMOVED and never shipped. Each source now owns its own infra + config and
+  does NOT back-stop another:
+  - The cross-source `pyth_rule` fallback in `refreshOraclePrices` is GONE.
+    Under `'pyth_lazer_rule'`, a requested ticker with no Lazer feed no longer
+    silently reroutes to Pyth Core — it **fails the tx-build** with a clear
+    error naming the ticker and source (constant-only tickers, which need no
+    price-update leg, are exempt). A present-but-wrong feed id is not
+    validated: it aborts on-chain at dry-run.
+  - The client-creation guard `assertOracleSourceConfigured` /
+    `OracleSourceNotConfiguredError` is REMOVED. Selecting a source whose feeds
+    are absent is not an init error; it surfaces per-ticker at tx-build.
+  - `PYTH_PRO_DEFAULTS`, the `PythGeneration` type, and `resolveCorePythInfra`
+    are REMOVED. `client.pyth` is now the fixed per-network Pyth **Core** infra
+    (`PYTH_DEFAULTS`) for every source; the `pyth_lazer_rule` source reads only
+    `api_key`/`fetch` from it and gets its on-chain infra from config plus
+    `LAZER_DEFAULTS`. (The 2026-08-18 Pyth core→pro contract cutover becomes a
+    future update to the `PYTH_DEFAULTS` constant, not a separate knob.)
+
+  Migration: replace `pythGeneration: 'pro'` with
+  `oracleSource: 'pyth_lazer_rule'` (drop `'core'` — it is the default); a
+  deployment that relied on the silent Pro→Core fallback for tickers Lazer
+  lacks must now either add those Lazer feeds or run those tickers under
+  `'pyth_rule'`.
+
+- **BREAKING: the config JSON no longer carries a `pyth` block; the
+  credential moves to a create option (#77).** The `pyth?: PythInfraConfig`
+  field is REMOVED from `WaterXConfig` / `OracleConfig` — the Pyth Core infra
+  (state ids + endpoint) is fixed per network by `PYTH_DEFAULTS` and is no
+  longer deployment-overridable. The two things an override actually carried —
+  the Lazer Bearer token and the fetch policy — become the `pythApiKey` and
+  `pythFetch` create options (on `PerpClient.create` / `WaterXClient.create`,
+  threaded onto `client.pyth`). A Bearer secret never belonged in a public
+  CDN JSON; this makes that structural. Migration: a caller who set
+  `config.pyth.api_key` (or mutated `client.pyth.api_key` post-construction)
+  passes `pythApiKey` at `create` instead; `config.pyth.fetch` →
+  `pythFetch`; any state-id/endpoint override in a `pyth` block is dropped
+  (those were always equal to the constants). `PythInfraConfig` remains
+  exported as the shape of the resolved `client.pyth`.
+
+### Fixed
+
+- **Dual-feed tickers missing the selected source's feed now fail the
+  tx-build (#77).** The no-feed guard in `refreshOraclePrices` exempted any
+  ticker `isConstantTicker` reported true for — but that predicate is also
+  true for a DUAL-FEED ticker (both `constant_rule.feeds` and
+  `pyth_rule.feeds`). Under a source that couldn't serve such a ticker, the
+  build neither fell back (correct) nor threw (wrong): it fed an unrefreshed
+  Pyth leg, risking a stale price or a missing-weighted-source abort. The
+  exemption is now strictly constant-ONLY (constant and NOT also Pyth-fed);
+  dual-feed tickers with no selected-source feed fail at build like any other.
+
+- **`updatePythPrices` now aligns `feedIds` with the served survivors (#77).**
+  After a whole-batch 404 dropped some feeds, the public helper still handed
+  the ORIGINAL `feedIds` to `buildPythPriceUpdateCalls`, which emits one
+  update call per id — building calls for dropped feeds the single accumulator
+  blob doesn't cover (invalid PTB / on-chain abort). It now passes the
+  `endpointSupportedFeedIds` survivor set, mirroring
+  `PythCoreRule.fetchUpdateData`.
+
+- **Pyth Hermes fetch dropped the endpoint's base path — EVERY feed 404'd
+  under Pyth Pro (#77).** `new URL("/v2/updates/price/latest", endpoint)`
+  treats a leading-slash path as absolute, replacing the Pro compat
+  endpoint's `/hermes` prefix. Both oracle fetches (Hermes + Lazer) now build
+  URLs through one `joinEndpointPath` helper; regression test pins the
+  base-path survival.
+
+- **Endpoint-missing feeds self-heal — catalog-first, credential-scoped
+  (#77).** Pyth 404s the whole batch when ANY id is unknown, and the 404
+  body naming the ids is not reliably delivered to `fetch`. Discovery now
+  reads the endpoint's own catalog (`GET /v2/price_feeds` — one request
+  naming every id served for THIS credential; verified live: WTI absent from
+  the Pro catalog AND 404 on latest-price, BTC present AND 200) with the
+  batch-bisection retained as fallback when the catalog is unavailable.
+  Results are memoized per `(endpoint, apiKey)` — Pro entitlements are
+  per-key, so two clients in one process no longer cross-poison each other's
+  view (`endpointSupportedFeedIds` gains an optional `apiKey`,
+  backward-compatible). Survivors re-fetch as one clean batch;
+  `probeMissingFeeds` is the discovery-only entry for consumers that observed
+  a batch 404 themselves.
+
+- **An endpoint-wide 404 no longer memoizes every feed as missing (#77).**
+  A wrong base path, a changed route, or a revoked/downgraded entitlement
+  404s every batch, so the discovery bisection concluded that EVERY feed was
+  absent and cached exactly that — `fetchPriceFeedsUpdateData` then returned
+  `[]` and the build died on "Hermes returned empty results", blaming Hermes
+  for a misconfigured endpoint, with no recovery short of a process restart.
+  Discovery now only commits an "all requested ids are missing" verdict when
+  a non-empty catalog vouches for it; an unreadable or empty catalog writes
+  NOTHING and throws `HermesEndpointRejectedAllFeedsError` (exported,
+  `instanceof`-able, message keeps the `Hermes price fetch failed: 404`
+  prefix) naming the likely cause. The memo also gained a TTL
+  (`MISSING_FEED_MEMO_TTL_MS`, 15 min, exported) and prunes lazily on read,
+  so a granted entitlement or a newly-listed feed self-heals without a
+  restart. `probeMissingFeeds` throws on the same condition instead of
+  poisoning the memo.
+
+- **Missing-feed discovery no longer multiplies requests on the money path
+  (#77).** The catalog is read at most ONCE per discovery run: the bisection
+  fallback is now a pure probe tree that never re-reads it, where previously
+  every 404 node of the recursion re-ran a full catalog fetch — with a 5xx
+  catalog that meant ~8–10 retry cycles (3 attempts + backoff each) inside a
+  single tx-build. Concurrent callers asking the identical question (same
+  endpoint, credential and id set) now also share one in-flight discovery
+  instead of each running their own; the latch is released on failure too, so
+  a blip never pins later callers to a stale outcome.
+
+- **404 error message no longer replaced by `TypeError: Body is unusable`
+  (#77).** `fetchPriceFeedsUpdateData` cancelled the response body inside the
+  404 discovery branch, then read it again with `await res.text()` in the
+  throw. A 404 that was NOT a missing-feed rejection (discovery recorded
+  nothing, so survivors == requested) fell through to that throw and surfaced
+  a body-reuse `TypeError` instead of `Hermes price fetch failed: 404 …` —
+  breaking the very string-matching contract downstream consumers (the e2e
+  transient detector, `run-smoke-chain`) rely on. The body is now drained
+  once, up front, and reused by every path.
+
+- **Lazer requests pin `channel: 'fixed_rate@200ms'` (#77)** — `real_time`
+  400s the whole batch because only the majors publish it; the deployed
+  on-chain rule accepts the 200ms channel (verified live against the full
+  29-feed batch).
+
+- **`fetchWithPolicy` honors a numeric `Retry-After` on 429 (#77)** when it
+  fits under the existing backoff cap — the server's own delay instead of
+  blind exponential backoff; a longer ask degrades to normal backoff rather
+  than stalling a money-path build.
+
+- **Ghost config fields removed (#77):** `hourly_mint_limit` /
+  `hourly_burn_limit` (the JSON carries `daily_*`) and the never-populated
+  `trusted_emitters` block.
+
+_Releases as `4.0.1`; `package.json` stays at the last released version per
+the repo's release-tagging rule._
+
 ## [4.0.0] - 2026-07-21
 
 _All entries in this section were introduced by [#76](https://github.com/WaterXProtocol/waterx-sdk/pull/76) — the SDK phase of the cross-repo price-stack refactor (Pyth Core→Pro migration groundwork). Released as the next **major** (`4.0.0`) because the change set carries several **BREAKING** changes (see `### Changed`): the config-driven fee-source rework, the `buildPythPriceUpdateCalls`/`updatePythPrices` positional-args → options-object collapse, and the `OracleFeeSource` consolidation._
@@ -44,7 +187,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   which set feeds `client.pyth` when the config JSON has no explicit `pyth`
   block; an explicit `config.pyth` override still wins wholesale (unchanged
   precedence). Orthogonal to `oracleSource` — this flips the Pyth-Core
-  *infra* (state ids + endpoint), not which `PriceUpdateRule` routes tickers,
+  _infra_ (state ids + endpoint), not which `PriceUpdateRule` routes tickers,
   so after the 2026-08-18 cutover
   (https://docs.pyth.network/price-feeds/core/upgrade) consumers set
   `pythGeneration: 'pro'` +
@@ -99,7 +242,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
     tighter bound.
 
   `PythInfraConfig` gains an optional `fetch?: { timeoutMs?: number; retries?:
-  number }` policy override (`src/oracle/config.ts`), threaded through by
+number }` policy override (`src/oracle/config.ts`), threaded through by
   `fetchPriceFeedsUpdateData`'s new optional third param
   (`{ apiKey?, fetch? }`), `updatePythPrices`, `PythCoreRule.fetchUpdateData`,
   and `PythLazerRule.fetchUpdateData` — all existing call signatures stay
@@ -157,7 +300,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   carrying the verified `Update` PTB value, and the collector-feed leg is
   rule-aware: each lazer-served ticker's `aggregateTicker` (new optional
   `lazerUpdate` arg) appends `pyth_lazer_rule::feed(collector, config, clock,
-  update)` **in addition to** its unchanged `pyth_rule::feed` leg — required
+update)` **in addition to** its unchanged `pyth_rule::feed` leg — required
   on-chain while `pyth_rule` stays in the ticker's weighted set
   (`remove_outliers` demands every weighted rule appear in the collector;
   `pyth_rule::feed` abstains on a stale `PriceInfoObject` rather than
@@ -167,7 +310,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   by every client) for the per-network Lazer defaults.
 - **`oracleSource` client create option — env-selected oracle rule routing.**
   `WaterXClient.create` / `PerpClient.create` accept a new `oracleSource?:
-  OracleSource` option (`'pyth_rule' | 'pyth_lazer_rule'`, default
+OracleSource` option (`'pyth_rule' | 'pyth_lazer_rule'`, default
   `'pyth_rule'`) that selects which `PriceUpdateRule` `refreshOraclePrices`
   uses for the on-chain price-update leg before aggregating. Exposed
   read-only as `OracleHost.oracleSource` / `PerpClient.oracleSource`. Routing
@@ -188,7 +331,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   (Hermes VAA) path mechanically — no logic change — and is the only rule
   registered today; a future `PythLazerRule` will register `'pyth_lazer_rule'`.
 - **`pyth_lazer_rule` config typing.** `OraclePackages.pyth_lazer_rule?:
-  PythLazerRulePackage` mirrors the deployed config JSON's `pyth_lazer_rule`
+PythLazerRulePackage` mirrors the deployed config JSON's `pyth_lazer_rule`
   entry (`config`, `state`, `enabled?`, `feeds: Record<string, number>`
   integer Lazer feed ids) for lossless round-tripping. Typed only — no SDK
   code reads `enabled` for routing (see `oracleSource` above), and
@@ -275,7 +418,7 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
   deployed, no change is needed for order/position flows (the fund now
   opens automatically); `useSponsor` can be dropped from call sites at your
   convenience. To detect the new failure mode at runtime, `instanceof
-  OracleFeeSourceUnavailableError` — exported from `@waterx/sdk` (root),
+OracleFeeSourceUnavailableError` — exported from `@waterx/sdk` (root),
   `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
 
   **Follow-up (same 4.0.0, still unpublished): `OracleFeeSource`
@@ -318,10 +461,10 @@ _All entries in this section were introduced by [#76](https://github.com/WaterXP
 
   **Migration (fee-source consolidation)**: a direct caller of
   `buildPythPriceUpdateCalls(tx, host, updates, feedIds, cache, sponsorFund,
-  allowGasFee)` or `updatePythPrices(tx, host, feedIds, cache, sponsorFund,
-  allowGasFee)` moves those trailing positionals into one options object:
+allowGasFee)` or `updatePythPrices(tx, host, feedIds, cache, sponsorFund,
+allowGasFee)` moves those trailing positionals into one options object:
   `{ cache, feeSource: sponsorFund ? { kind: 'sponsor', ...sponsorFund } :
-  allowGasFee ? { kind: 'gas' } : undefined }`. A direct caller of
+allowGasFee ? { kind: 'gas' } : undefined }`. A direct caller of
   `refreshOraclePrices(tx, host, tickers, { sponsorFund, allowGasFee })` makes
   the same substitution for `feeSource`. A caller of any `build*Tx` composer
   (`CommonBuildOpts.allowGasFee`) needs no change — the builder resolves

@@ -39,6 +39,8 @@ export function attachPythGrpcMocks(client: PerpClient) {
 
   client.grpcClient = {
     getObject: vi.fn(async ({ objectId }: { objectId: string }) => {
+      // `client.pyth` is the fixed per-network Core infra for every source, so
+      // the Pyth update/feed path always reads these ids.
       if (objectId === client.pyth.state_id) {
         return { object: { json: pythStateJson } };
       }

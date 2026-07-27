@@ -10,8 +10,8 @@
  */
 
 import type { AccountPackages, BasePackageEntry, WormholeInfraConfig } from "../account/config.ts";
-import type { OraclePackages, PythInfraConfig } from "../oracle/config.ts";
-import { FetchPolicyError, fetchWithPolicy } from "../oracle/update-fetch.ts";
+import type { OraclePackages } from "../oracle/config.ts";
+import { fetchWithPolicy, rethrowExhaustedFetch } from "../oracle/update-fetch.ts";
 import type { Network } from "./constants.ts";
 
 // The account-layer schema (account / funding / referral package entries +
@@ -23,7 +23,6 @@ export type {
   BasePackageEntry,
   NativeCustodyAsset,
   NativeCustodyPackage,
-  TrustedEmitterRow,
   WaterxCreditPackage,
   WaterxReferralPackage,
   WithdrawalQueuePackage,
@@ -40,7 +39,7 @@ export type {
   ConstantFeedEntry,
   OracleConfig,
   OraclePackages,
-  PythGeneration,
+  PythFetchPolicy,
   PythInfraConfig,
   PythLazerRulePackage,
   PythRulePackage,
@@ -50,7 +49,7 @@ export type {
   WaterxConstantRulePackage,
   WaterxOraclePackage,
 } from "../oracle/config.ts";
-export { PYTH_DEFAULTS, PYTH_PRO_DEFAULTS } from "../oracle/config.ts";
+export { PYTH_DEFAULTS } from "../oracle/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -184,8 +183,6 @@ export interface WaterXConfig {
   /** Sui gRPC base URL (default: public Mysten fullnode for the network). */
   grpcUrl?: string;
   packages: WaterXPackages;
-  /** Pyth infra override (defaults from `PYTH_DEFAULTS[network]`). */
-  pyth?: PythInfraConfig;
   /** Wormhole infra override (defaults from `WORMHOLE_DEFAULTS[network]`). */
   wormhole?: WormholeInfraConfig;
   /** Sui `CoinRegistry` shared object (credit deployments). */
@@ -313,19 +310,13 @@ export async function loadConfig(
   } catch (err) {
     const stale = configCache.get(cacheKey);
     if (stale) return stale;
-    // Reformat a status-carrying FetchPolicyError (retries exhausted on a
-    // retryable status) into this function's own message shape, mirroring
-    // the non-retried `!response.ok` throw above. A network-level
-    // exhaustion (no status), a `!response.ok` throw, or a JSON parse /
-    // `validateConfig` failure has no domain-specific reframing to add —
-    // propagate that error's own message as-is.
-    if (err instanceof FetchPolicyError && err.status !== undefined) {
-      throw new Error(
-        `loadConfig: HTTP ${err.status} fetching ${url} (retries exhausted after ${err.attempts} attempts)`,
-        { cause: err },
-      );
-    }
-    throw err;
+    // Reframe a status-carrying FetchPolicyError into this function's own
+    // message shape, mirroring the non-retried `!response.ok` throw above and
+    // carrying the URL (the key datum for a config-fetch failure). A
+    // network-level exhaustion (no status), a `!response.ok` throw, or a JSON
+    // parse / `validateConfig` failure has no reframing to add — the helper
+    // propagates those verbatim.
+    rethrowExhaustedFetch(err, (e) => `loadConfig: HTTP ${e.status} fetching ${url}`);
   }
 
   configCache.set(cacheKey, raw);

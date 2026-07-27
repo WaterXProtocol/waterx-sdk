@@ -19,7 +19,7 @@ export interface OracleHost {
   readonly network: Network;
   /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
   readonly config: OracleConfig;
-  /** External Pyth/Wormhole/Hermes infra (network default, overridable via config). */
+  /** External Pyth/Wormhole/Hermes infra — fixed per `(network, generation)`; api_key/fetch layered from create options. */
   readonly pyth: PythInfraConfig;
   /** gRPC client for the on-chain reads the Pyth update path needs. */
   readonly grpcClient: SuiGrpcClient;

@@ -64,29 +64,12 @@ export interface NativeCustodyPackage {
   assets: NativeCustodyAsset[];
 }
 
-export interface TrustedEmitterRow {
-  /** Source EVM chain's Wormhole chain id (e.g. 10002 = Sepolia). */
-  chain_id: number;
-  /** 32-byte left-padded EVM bridge address (0x form). */
-  evm_bridge_address_32b: string;
-  /** Whitelisted 20-byte EVM token addresses (0x form). */
-  evm_tokens_20b: string[];
-}
-
 export interface WormholeBridgePackage {
   published_at: string;
   /** Shared Sui Wormhole `State` object id for this deployment. */
   wormhole_state: string;
-  hourly_mint_limit?: string;
   max_mint_per_tx?: string;
-  hourly_burn_limit?: string;
   max_burn_per_tx?: string;
-  /**
-   * @deprecated EVM emitter↔token config now lives solely under `evm.bridge.chains`
-   * (deposit_vault = emitter, wormhole_chain_id = chain key). The runtime allowlist is
-   * read from the on-chain `Bridge` object, not from config. Kept optional for back-compat.
-   */
-  trusted_emitters?: TrustedEmitterRow[];
   /** Shared `Bridge` (phase-5 output). */
   bridge?: string;
   /**

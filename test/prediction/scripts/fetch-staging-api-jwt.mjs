@@ -8,6 +8,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { loadSignerKeypair } from "./resolve-signer-key.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -15,7 +16,7 @@ const REPO_ROOT = resolve(__dirname, "../../..");
 const SDK_ENV = resolve(REPO_ROOT, ".env");
 const STAGING_ENV_FILE = resolve(REPO_ROOT, "test/prediction/api/environments/staging.json");
 
-function parseEnvFile(path) {
+function _parseEnvFile(path) {
   if (!existsSync(path)) return {};
   const out = {};
   for (const line of readFileSync(path, "utf8").split("\n")) {

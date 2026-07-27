@@ -36,20 +36,20 @@ If `E2E_KEEPER_PRIVATE_KEY` is unset the script checks whether the owner itself 
 
 Scans `GET /predict/browse?sort=trending` (and optionally feed), then places + fills on every tradeable side. Default stake **$1.11** (`E2E_STAGING_BET_USD`). Requires `SUI_PRIVATE_KEY` + staging API (`E2E_API_ENV=staging` is set by the npm script).
 
-| Command / env | Effect |
-| ------------- | ------ |
-| `pnpm predict:place-dry-run` | `E2E_PLACE_ALL_DRY_RUN=1` — list markets/odds/caps only |
-| `pnpm predict:place-broker-only` | 1 market, broker-only fill (`BROKER_ONLY` + `LIMIT=1` + `ONE_SIDE`) |
-| `pnpm predict:place-and-watch` | Place one **$1.12** order, print `orderId`, exit |
-| `E2E_STAGING_BET_USD=1.03` | Override stake in USD (6-decimal settlement base internally) |
-| `E2E_PLACE_ALL_LIMIT=5` | First N markets (× sides unless `ONE_SIDE`) |
-| `E2E_PLACE_ALL_ONE_SIDE=1` | First side only per market |
-| *(default)* | Broker-only — no local `fillOrder` (backend owns fill) |
-| `E2E_CATALOG_KEEPER_FALLBACK=1` | After broker wait, local keeper `fillOrder` (backend down / decoupled) |
-| `E2E_PLACE_ALL_BROKER_ONLY=1` | Force broker-only even if keeper fallback env is set |
-| `E2E_PLACE_ALL_CONCURRENCY=3` | Parallel broker wait (place txs stay sequential) |
-| `E2E_PLACE_ALL_CRYPTO_EPOCHS=1` | Extra crypto time windows from `neighbors.upcoming` |
-| `E2E_PLACE_ALL_SEGMENTS=sport,crypto` | Segment filter |
+| Command / env                         | Effect                                                                 |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm predict:place-dry-run`          | `E2E_PLACE_ALL_DRY_RUN=1` — list markets/odds/caps only                |
+| `pnpm predict:place-broker-only`      | 1 market, broker-only fill (`BROKER_ONLY` + `LIMIT=1` + `ONE_SIDE`)    |
+| `pnpm predict:place-and-watch`        | Place one **$1.12** order, print `orderId`, exit                       |
+| `E2E_STAGING_BET_USD=1.03`            | Override stake in USD (6-decimal settlement base internally)           |
+| `E2E_PLACE_ALL_LIMIT=5`               | First N markets (× sides unless `ONE_SIDE`)                            |
+| `E2E_PLACE_ALL_ONE_SIDE=1`            | First side only per market                                             |
+| _(default)_                           | Broker-only — no local `fillOrder` (backend owns fill)                 |
+| `E2E_CATALOG_KEEPER_FALLBACK=1`       | After broker wait, local keeper `fillOrder` (backend down / decoupled) |
+| `E2E_PLACE_ALL_BROKER_ONLY=1`         | Force broker-only even if keeper fallback env is set                   |
+| `E2E_PLACE_ALL_CONCURRENCY=3`         | Parallel broker wait (place txs stay sequential)                       |
+| `E2E_PLACE_ALL_CRYPTO_EPOCHS=1`       | Extra crypto time windows from `neighbors.upcoming`                    |
+| `E2E_PLACE_ALL_SEGMENTS=sport,crypto` | Segment filter                                                         |
 
 Full env matrix: [`../README.md`](../README.md#api-environments-postman-style).
 
@@ -125,16 +125,16 @@ phase. Default stake: `betUsd` in JSON, or `E2E_STRESS_BET_START_USD=1.01` + `E2
 
 ### Representative modes
 
-| npm script | Parallelism | Fill poll | Timing metrics | Total places (8 wallets) | Use when |
-| ---------- | ----------- | --------- | -------------- | ------------------------ | -------- |
-| `predict:place-stress-dry-run` | — | — | — | 0 | Verify API + catalog + wallet file |
-| `predict:place-stress-smoke` | 1 | no | place digest only | 1 | Fastest on-chain sanity check |
-| `predict:place-stress-smoke-fill` | 1 | yes | `build` / `placeTx` / `fill` / `total` | 1 | Measure single-wallet broker latency |
-| `predict:place-stress-ramp` | 1→2→4→8 | yes | per-phase p50 fill + e2e | 15 | **Default** progressive load + broker timing |
-| `predict:place-stress-timing` | 1→2→4→8 | yes | same as ramp | 15 | Alias of ramp (explicit name) |
-| `predict:place-stress-timing-max` | 8 | yes | same; watch RPC 429 on fill poll | 8 | Max parallel **with** latency measurement |
-| `predict:place-stress-hammer-smoke` | 8 (all) | no | place digest only | 8 | One full parallel wave, no fill wait |
-| `predict:place-stress-hammer` | 8 × 10 rounds | no | wall time per round | 80 | **Hammer** staging API + chain place path |
+| npm script                          | Parallelism   | Fill poll | Timing metrics                         | Total places (8 wallets) | Use when                                     |
+| ----------------------------------- | ------------- | --------- | -------------------------------------- | ------------------------ | -------------------------------------------- |
+| `predict:place-stress-dry-run`      | —             | —         | —                                      | 0                        | Verify API + catalog + wallet file           |
+| `predict:place-stress-smoke`        | 1             | no        | place digest only                      | 1                        | Fastest on-chain sanity check                |
+| `predict:place-stress-smoke-fill`   | 1             | yes       | `build` / `placeTx` / `fill` / `total` | 1                        | Measure single-wallet broker latency         |
+| `predict:place-stress-ramp`         | 1→2→4→8       | yes       | per-phase p50 fill + e2e               | 15                       | **Default** progressive load + broker timing |
+| `predict:place-stress-timing`       | 1→2→4→8       | yes       | same as ramp                           | 15                       | Alias of ramp (explicit name)                |
+| `predict:place-stress-timing-max`   | 8             | yes       | same; watch RPC 429 on fill poll       | 8                        | Max parallel **with** latency measurement    |
+| `predict:place-stress-hammer-smoke` | 8 (all)       | no        | place digest only                      | 8                        | One full parallel wave, no fill wait         |
+| `predict:place-stress-hammer`       | 8 × 10 rounds | no        | wall time per round                    | 80                       | **Hammer** staging API + chain place path    |
 
 `predict:place-stress` is equivalent to `predict:place-stress-ramp`.
 
@@ -151,13 +151,13 @@ Phase summary also shows fill latency min/p50/p95/max and e2e p50.
 
 ### Hammer tuning
 
-| Env | Default (hammer script) | Effect |
-| --- | ----------------------- | ------ |
-| `E2E_STRESS_HAMMER=1` | on in hammer scripts | Skip progressive phases; fixed parallel wave |
-| `E2E_STRESS_PLACE_ONLY=1` | on | No fill poll (avoids RPC 429 under load) |
-| `E2E_STRESS_ROUNDS` | `10` | Repeat full parallel wave N times |
-| `E2E_STRESS_PARALLEL` | all wallets | Wave size (cap at wallet count) |
-| `E2E_STRESS_COOLDOWN_MS` | `0` | Pause between waves/phases |
+| Env                       | Default (hammer script) | Effect                                       |
+| ------------------------- | ----------------------- | -------------------------------------------- |
+| `E2E_STRESS_HAMMER=1`     | on in hammer scripts    | Skip progressive phases; fixed parallel wave |
+| `E2E_STRESS_PLACE_ONLY=1` | on                      | No fill poll (avoids RPC 429 under load)     |
+| `E2E_STRESS_ROUNDS`       | `10`                    | Repeat full parallel wave N times            |
+| `E2E_STRESS_PARALLEL`     | all wallets             | Wave size (cap at wallet count)              |
+| `E2E_STRESS_COOLDOWN_MS`  | `0`                     | Pause between waves/phases                   |
 
 Examples:
 
@@ -174,12 +174,12 @@ E2E_STRESS_PHASES=1,2,4 E2E_STRESS_COOLDOWN_MS=10000 pnpm predict:place-stress-t
 
 ### Other env
 
-| Env | Effect |
-| --- | ------ |
-| `E2E_STRESS_WALLETS_FILE` | Override wallet JSON path |
-| `E2E_STRESS_SEGMENTS` | Catalog filter (default `crypto,sport`) |
-| `E2E_STRESS_BROKER_WAIT_MS` | Fill poll deadline (default `45000`) |
-| `E2E_STRESS_BET_USDS` | Comma list override per-wallet stake |
+| Env                         | Effect                                  |
+| --------------------------- | --------------------------------------- |
+| `E2E_STRESS_WALLETS_FILE`   | Override wallet JSON path               |
+| `E2E_STRESS_SEGMENTS`       | Catalog filter (default `crypto,sport`) |
+| `E2E_STRESS_BROKER_WAIT_MS` | Fill poll deadline (default `45000`)    |
+| `E2E_STRESS_BET_USDS`       | Comma list override per-wallet stake    |
 
 ## List accounts (`list-accounts.ts`)
 
