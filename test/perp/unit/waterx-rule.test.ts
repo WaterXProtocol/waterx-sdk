@@ -224,4 +224,24 @@ describe("WaterxRule — routing", () => {
     // No Pyth Lazer verify on the waterx path.
     expect(targets).not.toContain("pyth_lazer::parse_and_verify_le_ecdsa_update");
   });
+
+  it("multi-ticker refresh collects each ticker; one with a Pyth feed also keeps pyth_rule::feed", async () => {
+    // One PTB, several tickers, one shared envelope covering both. BTCUSD and
+    // ETHUSD are in BOTH waterx_rule.feeds AND pyth_rule.feeds, so each
+    // collector gets its waterx collect AND — because the ticker is still in the
+    // aggregator's Pyth-weighted set — an (abstaining, read-only) pyth_rule::feed
+    // on the same collector before one aggregate. (The multi-ticker case
+    // subsumes the single-ticker-fed-by-two-rules case; no separate test.)
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockQuoteCenterFetch(rawEnvelope(["BTCUSD", "ETHUSD"]));
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"]);
+
+    const targets = moveTargets(tx);
+    const count = (t: string) => targets.filter((x) => x === t).length;
+    expect(count("oracle::new_collector")).toBe(2);
+    expect(count("waterx_rule::collect_batch_latest")).toBe(2);
+    expect(count("pyth_rule::feed")).toBe(2); // dual-rule: additive, one per ticker
+    expect(count("oracle::aggregate")).toBe(2);
+  });
 });
