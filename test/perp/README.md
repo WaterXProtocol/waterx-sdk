@@ -106,6 +106,6 @@ Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/\*.ts`** a
 
 | Command                  | Purpose                                                                                                                                                    |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm oracle:aggregates` | `scripts/print-oracle-aggregates.ts` (Hermes Pyth refresh + oracle PTB **simulate** for markets/collaterals; no private key; `-- --format raw` / `--help`) |
+| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes + oracle PTB **simulate** (`-- --format raw`) |
 
 Admin-keystore flows live on branch **`integration/admin-e2e-parked`**.
