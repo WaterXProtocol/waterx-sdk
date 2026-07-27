@@ -17,15 +17,23 @@ import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { aggregateTicker, refreshOraclePrices } from "../../../src/oracle/index.ts";
-import { WaterxRule, type WaterxSignedEnvelope } from "../../../src/oracle/rules/waterx-rule.ts";
+import {
+  parseSignedEnvelope,
+  WaterxRule,
+  type WaterxSignedEnvelope,
+} from "../../../src/oracle/rules/waterx-rule.ts";
 import { moveCalls, moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 /** Arbitrary 64-byte ed25519 signature (hex), standing in for a real one. */
 const SIG_HEX = "ab".repeat(64);
 
-/** One signed batch envelope covering BTCUSD, shaped like `/v1/quotes/update`. */
-function sampleEnvelope(symbols: string[] = ["BTCUSD"]): WaterxSignedEnvelope {
+/**
+ * Server-shape raw object (u64s as plain JSON numbers, as the quote-center
+ * emits them) — fed to the fetch mock's `text()` so the rule parses it exactly
+ * as it would a live response.
+ */
+function rawEnvelope(symbols: string[] = ["BTCUSD"]): Record<string, unknown> {
   return {
     intent: 1,
     timestamp_ms: 1_784_800_000_000,
@@ -48,13 +56,19 @@ function sampleEnvelope(symbols: string[] = ["BTCUSD"]): WaterxSignedEnvelope {
   };
 }
 
-/** Spy `globalThis.fetch` to return `envelope` as the quote-center response. */
-function mockQuoteCenterFetch(envelope = sampleEnvelope()): ReturnType<typeof vi.spyOn> {
+/** The parsed (bigint-typed) envelope, for direct feed / narrow tests. */
+function sampleEnvelope(symbols: string[] = ["BTCUSD"]): WaterxSignedEnvelope {
+  return parseSignedEnvelope(JSON.stringify(rawEnvelope(symbols)));
+}
+
+/** Spy `globalThis.fetch` to return `raw` (server-shape JSON text). */
+function mockQuoteCenterFetch(
+  raw: Record<string, unknown> = rawEnvelope(),
+): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue({
     ok: true,
     status: 200,
-    json: async () => envelope,
-    text: async () => JSON.stringify(envelope),
+    text: async () => JSON.stringify(raw),
   } as unknown as Response);
 }
 
@@ -82,7 +96,7 @@ describe("WaterxRule — port", () => {
 
   it("fetchUpdateData rejects a wrong intent", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    mockQuoteCenterFetch({ ...sampleEnvelope(), intent: 2 });
+    mockQuoteCenterFetch({ ...rawEnvelope(), intent: 2 });
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(/intent/);
   });
 
@@ -93,6 +107,38 @@ describe("WaterxRule — port", () => {
       /No waterx_rule feed/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("parses u64 fields as bigint (exact); a value > 2^53 never silently truncates", () => {
+    // A price_n of exactly 2^53 + 1 is not representable as an IEEE-754 double
+    // (JSON.parse would round it to 2^53). parseSignedEnvelope must either
+    // recover it exactly (ES2023 JSON source access) or throw loudly — never
+    // return the truncated 9_007_199_254_740_992n.
+    const text =
+      `{"intent":1,"timestamp_ms":1784800000000,"signature":"${SIG_HEX}",` +
+      `"payload":{"items":[{"symbol":"BTCUSD","ticker":"BTCUSDT","sources":[2],` +
+      `"method":"median","price_timestamp_ms":1784799999000,` +
+      `"price_n":9007199254740993,"price_scale":1000000000,"confidence_n":0,` +
+      `"confidence_scale":1000000000,"max_source_deviation_bps":0,"num_sources":1}]}}`;
+    let parsed: WaterxSignedEnvelope | undefined;
+    try {
+      parsed = parseSignedEnvelope(text);
+    } catch {
+      parsed = undefined; // runtime without JSON source access → fails loud (acceptable)
+    }
+    if (parsed) {
+      expect(parsed.payload.items[0]!.price_n).toBe(9_007_199_254_740_993n);
+      expect(parsed.payload.items[0]!.price_n).not.toBe(9_007_199_254_740_992n);
+    }
+  });
+
+  it("parses ordinary u64 fields to exact bigints", () => {
+    const env = sampleEnvelope();
+    const item = env.payload.items[0]!;
+    expect(item.price_n).toBe(63_700_000_000_000n);
+    expect(item.price_scale).toBe(1_000_000_000n);
+    expect(env.timestamp_ms).toBe(1_784_800_000_000n);
+    expect(item.num_sources).toBe(3); // u8 stays a number
   });
 
   it("narrowUpdateData serves the whole (indivisible) envelope iff fully covered", () => {

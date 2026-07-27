@@ -62,7 +62,7 @@ export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
 // WaterX quote-center rule (first-party ed25519 signed batches; `feedWaterxRule`
 // stays internal to `aggregate.ts`).
-export { WaterxRule } from "./rules/waterx-rule.ts";
+export { WaterxRule, parseSignedEnvelope } from "./rules/waterx-rule.ts";
 export type {
   WaterxUpdatePayload,
   WaterxSignedEnvelope,

@@ -40,30 +40,33 @@ const BATCH_PRICE_INTENT = 1;
 
 /**
  * One item inside a signed batch payload, mirroring the quote-center
- * `/v1/quotes/update` JSON 1:1 (snake_case). Integer fields are the exact
- * values the enclave signed over BCS — `collect_batch_latest` rebuilds the
- * payload on-chain and re-verifies, so they must round-trip byte-for-byte.
- * Realistic prices at 1e9 scale stay well under `Number.MAX_SAFE_INTEGER`
- * (2^53), so `JSON.parse` preserves them exactly.
+ * `/v1/quotes/update` JSON 1:1 (snake_case). The u64 integer fields are the
+ * EXACT values the enclave signed over BCS — `collect_batch_latest` rebuilds
+ * the payload on-chain and re-verifies, so they must round-trip byte-for-byte.
+ * They are `bigint` (not `number`): {@link parseSignedEnvelope} decodes them
+ * from the raw JSON integer literals so a value above `Number.MAX_SAFE_INTEGER`
+ * (2^53) can never lose precision and silently abort the on-chain signature
+ * check. `num_sources` is a `u8` (≤ 255) and stays a `number`.
  */
 export interface WaterxBatchItem {
   symbol: string;
   ticker: string;
-  sources: number[];
+  sources: bigint[];
   method: string;
-  price_timestamp_ms: number;
-  price_n: number;
-  price_scale: number;
-  confidence_n: number;
-  confidence_scale: number;
-  max_source_deviation_bps: number;
+  price_timestamp_ms: bigint;
+  price_n: bigint;
+  price_scale: bigint;
+  confidence_n: bigint;
+  confidence_scale: bigint;
+  max_source_deviation_bps: bigint;
   num_sources: number;
 }
 
 /** The enclave-signed batch envelope from `GET /v1/quotes/update`. */
 export interface WaterxSignedEnvelope {
   intent: number;
-  timestamp_ms: number;
+  /** Enclave signing timestamp (ms) — the on-chain `timestamp_ms` argument. */
+  timestamp_ms: bigint;
   payload: { items: WaterxBatchItem[] };
   /** ed25519 signature over `BCS(IntentMessage<BatchPricePayload>)`, hex (± `0x`). */
   signature: string;
@@ -85,9 +88,58 @@ function isWaterxUpdatePayloadShape(payload: unknown): payload is WaterxUpdatePa
     typeof env === "object" &&
     env !== null &&
     typeof env.signature === "string" &&
-    typeof env.timestamp_ms === "number" &&
+    typeof env.timestamp_ms === "bigint" &&
     Array.isArray(env.payload?.items)
   );
+}
+
+/**
+ * Parse a quote-center `/v1/quotes/update` response body into a
+ * {@link WaterxSignedEnvelope} with the u64 fields decoded as `bigint`, exact.
+ *
+ * The signature is over `BCS(IntentMessage<BatchPricePayload>)`, so every u64
+ * the SDK rebuilds in-PTB must equal the enclave's byte-for-byte or
+ * `collect_batch_latest` aborts the whole trade PTB (bad signature — not an
+ * abstain). A plain `JSON.parse` yields IEEE-754 doubles that lose precision
+ * above 2^53, so instead we recover each integer's exact source literal via the
+ * ES2023 reviver `context.source` (Node 21+ / modern browsers) and `BigInt()`
+ * it. On an older runtime that passes no `context`, a value within 2^53 is
+ * still exact (`BigInt(number)`); a value ABOVE it throws loudly here rather
+ * than silently corrupting the payload into an on-chain abort. `num_sources`
+ * (u8) and `intent` are coerced back to `number` — both are tiny.
+ */
+export function parseSignedEnvelope(text: string): WaterxSignedEnvelope {
+  const raw = JSON.parse(
+    text,
+    (_key: string, value: unknown, context?: { source?: string }): unknown => {
+      if (typeof value !== "number" || !Number.isInteger(value)) return value;
+      if (context?.source !== undefined) return BigInt(context.source);
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(
+          "waterx envelope carries an integer above 2^53 and this runtime lacks JSON " +
+            "source access — cannot preserve u64 precision for the signed payload",
+        );
+      }
+      return BigInt(value);
+    },
+  ) as {
+    intent?: bigint;
+    timestamp_ms?: bigint;
+    signature?: string;
+    payload?: { items?: WaterxBatchItem[] };
+  };
+
+  if (typeof raw.signature !== "string" || !Array.isArray(raw.payload?.items)) {
+    throw new Error("WaterX quote-center returned a malformed signed envelope");
+  }
+  return {
+    intent: Number(raw.intent),
+    timestamp_ms: (raw.timestamp_ms ?? 0n) as bigint,
+    signature: raw.signature,
+    payload: {
+      items: raw.payload.items.map((i) => ({ ...i, num_sources: Number(i.num_sources) })),
+    },
+  };
 }
 
 /** The `waterx_rule` deployment entry; throws when the config carries none. */
@@ -128,14 +180,13 @@ async function fetchWaterxSignedUpdate(
   if (!res.ok) {
     throw new Error(`WaterX quote-center fetch failed: ${res.status} ${await res.text()}`);
   }
-  const envelope = (await res.json()) as WaterxSignedEnvelope;
-  if (envelope?.intent !== BATCH_PRICE_INTENT) {
+  // Parse from raw text (not res.json()) so the u64 fields are decoded exact as
+  // bigint — see parseSignedEnvelope. Malformed-shape check lives there.
+  const envelope = parseSignedEnvelope(await res.text());
+  if (envelope.intent !== BATCH_PRICE_INTENT) {
     throw new Error(
-      `WaterX quote-center returned intent ${envelope?.intent}, expected BATCH_PRICE_INTENT ${BATCH_PRICE_INTENT}`,
+      `WaterX quote-center returned intent ${envelope.intent}, expected BATCH_PRICE_INTENT ${BATCH_PRICE_INTENT}`,
     );
-  }
-  if (typeof envelope.signature !== "string" || !Array.isArray(envelope.payload?.items)) {
-    throw new Error("WaterX quote-center returned a malformed signed envelope");
   }
   return envelope;
 }
@@ -177,19 +228,21 @@ export function feedWaterxRule(
 
   const payload = newBatchPayload({ package: pkg })(tx);
   for (const item of envelope.payload.items) {
+    // u64 fields are already exact bigints (see parseSignedEnvelope) — passed
+    // through verbatim so the rebuilt BCS matches the enclave's signed bytes.
     const itemArg = newBatchItem({
       package: pkg,
       arguments: {
         symbol: item.symbol,
         ticker: item.ticker,
-        sources: item.sources.map((s) => BigInt(s)),
+        sources: item.sources,
         method: item.method,
-        priceTimestampMs: BigInt(item.price_timestamp_ms),
-        priceN: BigInt(item.price_n),
-        priceScale: BigInt(item.price_scale),
-        confidenceN: BigInt(item.confidence_n),
-        confidenceScale: BigInt(item.confidence_scale),
-        maxSourceDeviationBps: BigInt(item.max_source_deviation_bps),
+        priceTimestampMs: item.price_timestamp_ms,
+        priceN: item.price_n,
+        priceScale: item.price_scale,
+        confidenceN: item.confidence_n,
+        confidenceScale: item.confidence_scale,
+        maxSourceDeviationBps: item.max_source_deviation_bps,
         numSources: item.num_sources,
       },
     })(tx);
@@ -203,7 +256,7 @@ export function feedWaterxRule(
       config: tx.object(wr.config),
       enclaveConfig: tx.object(wr.enclave_config),
       enclave: tx.object(wr.enclave),
-      timestampMs: BigInt(envelope.timestamp_ms),
+      timestampMs: envelope.timestamp_ms,
       payload,
       sig: Array.from(decodeSig(envelope.signature)),
     },
