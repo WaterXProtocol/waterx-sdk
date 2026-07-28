@@ -55,6 +55,18 @@ reference the PR that introduced them.
   on the umbrella `WaterXClient.create` too (forwarded to the perp line beside
   `oracleSource` / `pythApiKey` / `pythFetch`) — not reachable only through the
   nested `perp: {…}` override.
+### Deprecated
+
+- **`MAINTENANCE_MARGIN_RATE` — do not use for liq-price / margin-safety math
+  ([#80](https://github.com/WaterXProtocol/waterx-sdk/pull/80)).** The real
+  maintenance margin rate is per-market (`MarketConfig.maintenance_margin` on
+  chain — 1% SUIUSD vs 5% AAPLXUSD) and admin-adjustable; this flat 1.5%
+  understated stock-market liq risk >3x (2026-07-28 mainnet incident: AAPLX
+  shorts displayed est. liq ~$364 but liquidated at $343). Pass the market's
+  actual rate into `calcEstLiqPrice`; when it is unavailable treat the liq
+  price as not estimable — never substitute this constant. Kept temporarily
+  for source-compatibility; scheduled for removal once consumers drop their
+  imports.
 
 ## [4.0.1] - 2026-07-27
 

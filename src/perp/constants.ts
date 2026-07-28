@@ -11,14 +11,18 @@ export const CRYPTO_FEE_RATE = 0.0003;
 /** Default stock / commodity market trading fee rate (5 bps). Per-market value lives in MarketConfig. */
 export const STOCK_FEE_RATE = 0.0005;
 /**
- * @deprecated FALLBACK ONLY — do NOT use for liquidation-price or margin-safety math.
+ * @deprecated Do NOT use for liquidation-price or margin-safety math — there is
+ * no safe flat fallback.
  *
  * The real maintenance margin rate is PER MARKET (`MarketConfig.maintenance_margin`
  * on chain — e.g. 1% for SUIUSD but 5% for AAPLXUSD) and is admin-adjustable.
  * Computing est. liq price with this flat 1.5% understates risk on stock markets
  * by >3x (mainnet incident 2026-07-28: AAPLX shorts displayed liq ~$364 but were
- * liquidated at $343). Always pass the market's actual rate into `calcEstLiqPrice`;
- * fall back to this constant only when market config is unavailable.
+ * liquidated at $343). Always pass the market's actual rate into `calcEstLiqPrice`.
+ * When the market rate is unavailable, treat the liq price as NOT estimable
+ * (surface "cannot estimate" / fail safe) — never substitute this constant.
+ * Kept only for source-compatibility until all consumers drop their imports;
+ * scheduled for removal.
  */
 export const MAINTENANCE_MARGIN_RATE = 0.015;
 
