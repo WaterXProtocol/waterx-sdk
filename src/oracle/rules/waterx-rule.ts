@@ -34,7 +34,12 @@ import {
   type PriceUpdateRule,
   type RuleUpdateData,
 } from "../price-update-rule.ts";
-import { FetchPolicyError, fetchWithPolicy, type FetchPolicy } from "../update-fetch.ts";
+import {
+  FetchPolicyError,
+  fetchWithPolicy,
+  joinEndpointPath,
+  type FetchPolicy,
+} from "../update-fetch.ts";
 
 /** The single signing intent (`BATCH_PRICE_INTENT`) the quote-center emits. */
 const BATCH_PRICE_INTENT = 1;
@@ -172,13 +177,20 @@ function resolveWaterxInfra(host: OracleHost): { endpoint: string; fetch?: Fetch
  * quote-center. Goes through the shared `fetchWithPolicy` (`../update-fetch.ts`)
  * — same retry/timeout policy as the Pyth/Lazer fetches. No auth: the
  * quote-center read surface is public.
+ *
+ * The URL is built with `joinEndpointPath`, not `new URL(path, endpoint)`: a
+ * leading-slash path is ABSOLUTE and silently drops the endpoint's own base
+ * path, which is exactly what a `waterxEndpoint` proxy route is (a
+ * `https://app.example/api/quote-center` override would have been rewritten to
+ * `https://app.example/v1/quotes/update`, bypassing the proxy). Same footgun
+ * that 404'd every Pyth Pro feed by dropping its `/hermes` prefix.
  */
 async function fetchWaterxSignedUpdate(
   endpoint: string,
   symbols: string[],
   fetchOpts?: FetchPolicy,
 ): Promise<WaterxSignedEnvelope> {
-  const url = new URL("/v1/quotes/update", endpoint);
+  const url = joinEndpointPath(endpoint, "v1/quotes/update");
   url.searchParams.set("symbols", symbols.join(","));
   let res: Response;
   try {

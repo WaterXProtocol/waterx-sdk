@@ -182,16 +182,29 @@ swept on cancel/liquidation. Per-leg cancel/add via
 ### Oracle (single shared object)
 
 `waterx_oracle::Oracle` is one shared object keyed by ticker string. PTB
-refresh flow per ticker:
+refresh flow per ticker — one `feed` leg per rule the ticker is configured for,
+then one aggregate:
 
 ```
 collector = oracle::new_collector(ticker)
-pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)
+[pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)]
+[pyth_lazer_rule::feed(collector, …, verifiedUpdate)]   // selected source produced one
+[waterx_rule::collect_batch_latest(collector, …, envelope)]  // verify + feed in ONE call
+[supra_rule::feed / constant_rule::feed]
 oracle::aggregate(oracle, collector, clock)
 ```
 
-`oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` does
-Hermes fetch + Pyth on-chain update + per-ticker aggregate in one call.
+The fed set must cover the aggregator's on-chain `weights` — `remove_outliers`
+aborts `EMissingPriceSource` when a weighted rule is absent from the collector
+(an ABSTAINING feed counts as present).
+
+`oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` runs the
+selected source's off-chain fetch + on-chain update leg, then the per-ticker
+feeds + aggregate, in one call. Which source runs is `oracleSource`: Hermes
+fetch + Pyth update for `'pyth_rule'`, a signed Lazer update for
+`'pyth_lazer_rule'`, a quote-center batch envelope for `'waterx_rule'` (that one
+emits no separate update leg — verify and feed are bundled into
+`collect_batch_latest`).
 
 ### WLP pool
 

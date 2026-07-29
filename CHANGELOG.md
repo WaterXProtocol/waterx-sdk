@@ -44,7 +44,11 @@ reference the PR that introduced them.
   egress through its own backend — now sets `waterxEndpoint` to a same-origin
   proxy that forwards `GET /v1/quotes/update`, and/or `waterxFetch.fetchImpl` to
   its own transport, instead of being locked to the hardcoded host and global
-  `fetch`. Both resolve onto `client.waterx` (`WaterxInfraConfig`), default to
+  `fetch`. The endpoint's base PATH is preserved (the fetch builds its URL via
+  the shared `joinEndpointPath`, not `new URL(path, endpoint)` — which would
+  have rewritten `https://app.example/api/quote-center` to the origin root and
+  bypassed the proxy, the same footgun that once dropped Pyth Pro's `/hermes`
+  prefix). Both resolve onto `client.waterx` (`WaterxInfraConfig`), default to
   `WATERX_DEFAULTS[network]` (fetch policy falling back to `pythFetch`), and are
   inert under the Pyth sources. `OracleHost` gains an optional `waterx` field, so
   an existing host object stays a valid `OracleHost`.

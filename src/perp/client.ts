@@ -70,6 +70,11 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * allowlist. A front end whose origin is not allowed — or one that must route
    * egress through its own backend — points this at a same-origin proxy that
    * forwards `GET /v1/quotes/update`. Unused by the Pyth sources.
+   *
+   * An absolute URL. Any base PATH is preserved (`joinEndpointPath`), so
+   * `https://app.example/api/quote-center` fetches
+   * `https://app.example/api/quote-center/v1/quotes/update` — a proxy route
+   * survives instead of being rewritten to the origin root.
    */
   waterxEndpoint?: string;
   /**

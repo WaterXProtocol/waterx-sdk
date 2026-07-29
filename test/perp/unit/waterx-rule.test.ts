@@ -94,7 +94,9 @@ describe("WaterxRule — port", () => {
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
   });
 
-  it("waterxEndpoint routes the fetch at a proxy (the browser-CORS escape hatch)", async () => {
+  it("waterxEndpoint routes the fetch at a proxy, KEEPING its base path", async () => {
+    // The proxy route is the endpoint's base path — `new URL("/v1/…", endpoint)`
+    // would drop it and bypass the proxy entirely (the Pyth-Pro `/hermes` bug).
     const client = createUnitTestClient({
       oracleSource: "waterx_rule",
       waterxEndpoint: "https://app.example/api/quote-center",
@@ -103,8 +105,29 @@ describe("WaterxRule — port", () => {
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     const url = new URL(fetchSpy.mock.calls[0]![0] as string);
     expect(url.origin).toBe("https://app.example");
-    expect(url.pathname).toBe("/v1/quotes/update");
+    expect(url.pathname).toBe("/api/quote-center/v1/quotes/update");
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
+  });
+
+  it("a trailing slash on waterxEndpoint does not double up the path", async () => {
+    const client = createUnitTestClient({
+      oracleSource: "waterx_rule",
+      waterxEndpoint: "https://app.example/api/quote-center/",
+    });
+    const fetchSpy = mockQuoteCenterFetch();
+    await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    expect(new URL(fetchSpy.mock.calls[0]![0] as string).pathname).toBe(
+      "/api/quote-center/v1/quotes/update",
+    );
+  });
+
+  it("the default (bare-origin) endpoint still hits /v1/quotes/update", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = mockQuoteCenterFetch();
+    await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    const url = new URL(fetchSpy.mock.calls[0]![0] as string);
+    expect(url.origin).toBe("https://quote-center-staging.waterx.app");
+    expect(url.pathname).toBe("/v1/quotes/update");
   });
 
   it("waterxFetch.fetchImpl replaces the transport (global fetch never called)", async () => {

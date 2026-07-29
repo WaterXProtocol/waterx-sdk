@@ -261,7 +261,12 @@ export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_packag
  * being locked to the hardcoded host.
  */
 export interface WaterxInfraConfig {
-  /** Quote-center base URL. No trailing slash — the rule appends the path. */
+  /**
+   * Quote-center base URL. A base PATH is preserved — the rule appends via
+   * `joinEndpointPath`, so `https://app.example/api/quote-center` resolves to
+   * `…/api/quote-center/v1/quotes/update` and a proxy route is not rewritten
+   * away. A trailing slash is trimmed.
+   */
   endpoint: string;
   /**
    * Retry/timeout policy (and `fetchImpl`) for the quote-center fetch — see
