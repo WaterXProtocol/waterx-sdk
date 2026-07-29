@@ -109,8 +109,10 @@ const perp = await PerpClient.create("TESTNET", { waterxConfigUrl: process.env.W
 
 `src/constants.ts` holds only shared, line-agnostic primitives (`Network`,
 `FLOAT_SCALE` / `BPS_SCALE` / `DOUBLE_SCALE`, decimals, `MS_PER_YEAR`). Perp-domain
-enums (`PERM_*`, `ORDER_*`, `ACTION_*`, fee rates) live in `src/perp/constants.ts`,
-which re-exports the shared ones. Both stay **chain-agnostic**.
+enums (`PERM_*`, `ORDER_*`, `ACTION_*`) live in `src/perp/constants.ts`,
+which re-exports the shared ones. Both stay **chain-agnostic**. There are
+deliberately **no fee-rate / maintenance-margin constants** — per-market
+`MarketConfig` on chain is the only source for those values.
 
 ## Development Commands
 

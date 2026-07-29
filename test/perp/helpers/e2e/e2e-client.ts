@@ -119,6 +119,12 @@ export function pythFeedIdsForE2e(c = client): Record<string, string> {
   return out;
 }
 
+/**
+ * Human USD → raw 1e9-scaled bigint. For **tx-build / u128 order-key** args
+ * only (`acceptablePrice` / `triggerPrice` / size). Do NOT use for the
+ * view-read params `basePriceUsd` / `collateralPriceUsd` — those take
+ * WHOLE-DOLLAR integer USD (the Move view applies `float::from` internally).
+ */
 export function rawPrice(usd: number): bigint {
   return BigInt(Math.round(usd * 1e9));
 }

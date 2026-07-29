@@ -1,17 +1,14 @@
 // Perp-line domain constants (trading permissions / order tags / action codes /
-// fee rates / well-known addresses). Re-exports the shared primitives from
+// well-known addresses). Re-exports the shared primitives from
 // `../constants.ts` so perp code and the `./perp` barrel get the full set from
 // a single import.
+//
+// NOTE: there are deliberately NO fee-rate / maintenance-margin constants here.
+// `CRYPTO_FEE_RATE` / `STOCK_FEE_RATE` / `MAINTENANCE_MARGIN_RATE` were removed
+// — they were defaults masquerading as truth; per-market `MarketConfig` on
+// chain is the only source for fee and margin parameters.
 
 export * from "../constants.ts";
-
-// ======== Fee rates & risk parameters ========
-/** Default crypto market trading fee rate (3 bps). Per-market value lives in MarketConfig. */
-export const CRYPTO_FEE_RATE = 0.0003;
-/** Default stock / commodity market trading fee rate (5 bps). Per-market value lives in MarketConfig. */
-export const STOCK_FEE_RATE = 0.0005;
-/** Default maintenance margin rate (150 bps = 1.5%). Per-market value lives in MarketConfig. */
-export const MAINTENANCE_MARGIN_RATE = 0.015;
 
 // ======== Permission Bitmasks (matches account_data.move) ========
 export const PERM_OPEN_POSITION = 1;

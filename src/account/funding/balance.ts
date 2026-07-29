@@ -24,7 +24,15 @@ export interface ParkedBackingAssetBalance {
   coinsRaw: bigint;
 }
 
-/** Rescale a u64 raw amount between token decimal precisions (truncates on downscale). */
+/**
+ * Rescale a u64 raw amount between token decimal precisions (truncates on
+ * downscale). `toDecimals` defaults to {@link COLLATERAL_DECIMALS} — the
+ * CREDIT/wxUSD (collateral-typed) scale, 6 on every current deployment — for
+ * the common backing-asset → CREDIT direction. When rescaling a custody
+ * backing asset, always pass its per-asset config `decimal`
+ * (`NativeCustodyAsset.decimal`) as `fromDecimals`; never assume flat 6 — a
+ * 9-dec backing asset would otherwise mis-scale by 1000×.
+ */
 export function rescaleRawAmount(
   raw: bigint,
   fromDecimals: number,
@@ -119,7 +127,15 @@ export async function probeAddressCreditBalance(
   return { fundsRaw, coinsRaw };
 }
 
-/** Sum parked backing assets into CREDIT base units at the 1:1 PSM peg. */
+/**
+ * Sum parked backing assets into CREDIT base units at the 1:1 PSM peg.
+ * Each row rescales from its own per-asset `decimals` (sourced from config
+ * `NativeCustodyAsset.decimal` by {@link probeParkedBackingAssets}), so
+ * mixed-decimal backing sets (e.g. a 9-dec asset next to 6-dec USDC) sum
+ * correctly. `creditDecimals` is the CREDIT/wxUSD **target** scale —
+ * collateral-typed, 6 on all current deployments (the config JSON carries no
+ * credit decimal).
+ */
 export function sumParkedBackingAsCreditRaw(
   parked: readonly ParkedBackingAssetBalance[],
   creditDecimals: number = COLLATERAL_DECIMALS,

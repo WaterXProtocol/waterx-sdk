@@ -8,14 +8,16 @@
  */
 import { buildClient, dump, requireEnv, run } from "../_shared.ts";
 import { getPosition } from "../../src/perp/fetch.ts";
-import { rawPrice } from "../../src/utils/math.ts";
 
 run(async () => {
   const client = await buildClient();
   const positionId = BigInt(requireEnv("WATERX_POSITION_ID"));
   const ticker = process.env.WATERX_TICKER ?? "BTCUSD";
-  const basePriceUsd = rawPrice(Number(process.env.WATERX_BASE_PRICE_USD ?? "0"));
-  const collateralPriceUsd = rawPrice(Number(process.env.WATERX_COLLATERAL_PRICE_USD ?? "1"));
+  // whole-dollar u64 — the view applies float::from; do NOT pass 1e9-scaled rawPrice()
+  const basePriceUsd = BigInt(Math.round(Number(process.env.WATERX_BASE_PRICE_USD ?? "0")));
+  const collateralPriceUsd = BigInt(
+    Math.round(Number(process.env.WATERX_COLLATERAL_PRICE_USD ?? "1")),
+  );
 
   const pos = await getPosition(client, {
     ticker,

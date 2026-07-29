@@ -52,8 +52,16 @@ export async function getPosition(
   args: {
     ticker: string;
     positionId: bigint | number;
-    /** Human-readable USD prices for Pnl / liq price calc; pass 0n if unsure. */
+    /**
+     * WHOLE-DOLLAR integer USD price (`80000n` for BTC at $80k). The Move view
+     * applies `float::from(...)` internally — do NOT pass a 1e9-scaled
+     * `rawPrice()` value or every pnl/notional-derived field inflates by 1e9.
+     * Sub-$1 prices cannot be represented (u64 whole dollars). Only bases the
+     * pnl / close-fee derived fields — 0n zero-bases them (still computed with
+     * price 0, not skipped).
+     */
     basePriceUsd: bigint | number;
+    /** Same scaling as `basePriceUsd`: whole-dollar integer USD, NOT `rawPrice()`. */
     collateralPriceUsd: bigint | number;
     lpType?: string;
   },
@@ -86,7 +94,15 @@ export async function getOrder(
     ticker: string;
     orderId: bigint | number;
     orderTypeTag: number;
+    /** Raw 1e9-scaled u128 order-book key — same scale as tx-build `rawPrice()`. */
     triggerPrice: bigint | number;
+    /**
+     * WHOLE-DOLLAR integer USD price (`80000n` for $80k). The Move view applies
+     * `float::from(...)` internally — do NOT pass a 1e9-scaled `rawPrice()`
+     * value. Sub-$1 prices cannot be represented (u64 whole dollars). Only
+     * bases the pnl/notional-derived fields — 0n zero-bases them (still
+     * computed with price 0, not skipped).
+     */
     basePriceUsd: bigint | number;
     lpType?: string;
   },
@@ -120,6 +136,13 @@ export async function getMarketOrders(
   client: PerpClient,
   args: {
     ticker: string;
+    /**
+     * WHOLE-DOLLAR integer USD price (`80000n` for $80k), NOT a 1e9-scaled
+     * `rawPrice()` value — the Move view applies `float::from(...)` internally.
+     * Sub-$1 prices cannot be represented. Defaults to 0n, which zero-bases
+     * the pnl/notional-derived fields (still computed with price 0, not
+     * skipped).
+     */
     basePriceUsd?: bigint | number;
     lpType?: string;
   } & PageOpts,
@@ -159,7 +182,15 @@ export async function getMarketPositions(
   client: PerpClient,
   args: {
     ticker: string;
+    /**
+     * WHOLE-DOLLAR integer USD price (`80000n` for $80k), NOT a 1e9-scaled
+     * `rawPrice()` value — the Move view applies `float::from(...)` internally.
+     * Sub-$1 prices cannot be represented. Only bases the pnl / close-fee
+     * derived fields — 0n zero-bases them (still computed with price 0, not
+     * skipped).
+     */
     basePriceUsd: bigint | number;
+    /** Same scaling as `basePriceUsd`: whole-dollar integer USD, NOT `rawPrice()`. */
     collateralPriceUsd?: bigint | number;
     lpType?: string;
   } & PageOpts,
@@ -202,7 +233,15 @@ export async function getAccountPositions(
   args: {
     ticker: string;
     accountObjectAddress: string;
+    /**
+     * WHOLE-DOLLAR integer USD price (`80000n` for $80k), NOT a 1e9-scaled
+     * `rawPrice()` value — the Move view applies `float::from(...)` internally.
+     * Sub-$1 prices cannot be represented. Only bases the pnl / close-fee
+     * derived fields — 0n zero-bases them (still computed with price 0, not
+     * skipped).
+     */
     basePriceUsd: bigint | number;
+    /** Same scaling as `basePriceUsd`: whole-dollar integer USD, NOT `rawPrice()`. */
     collateralPriceUsd?: bigint | number;
     lpType?: string;
   },
@@ -229,6 +268,13 @@ export async function getAccountOrders(
   args: {
     ticker: string;
     accountObjectAddress: string;
+    /**
+     * WHOLE-DOLLAR integer USD price (`80000n` for $80k), NOT a 1e9-scaled
+     * `rawPrice()` value — the Move view applies `float::from(...)` internally.
+     * Sub-$1 prices cannot be represented. Defaults to 0n, which zero-bases
+     * the pnl/notional-derived fields (still computed with price 0, not
+     * skipped).
+     */
     basePriceUsd?: bigint | number;
     lpType?: string;
   },

@@ -21,6 +21,14 @@ describe("consolidate-balance utils", () => {
     expect(rescaleRawAmount(1_000_000_000n, 9, 6)).toBe(1_000_000n);
   });
 
+  it("rescaleRawAmount defaults the target to COLLATERAL_DECIMALS (6) for a 9-dec source", () => {
+    // hypothetical 9-dec backing asset → CREDIT (6-dec) via the default target
+    expect(rescaleRawAmount(1_500_000_000n, 9)).toBe(1_500_000n);
+    // truncation on downscale: sub-CREDIT-unit dust is dropped, never rounded up
+    expect(rescaleRawAmount(1_999n, 9)).toBe(1n);
+    expect(rescaleRawAmount(999n, 9)).toBe(0n);
+  });
+
   it("sumParkedBackingAsCreditRaw sums at 1:1 peg", () => {
     const sum = sumParkedBackingAsCreditRaw([
       {
@@ -31,6 +39,26 @@ describe("consolidate-balance utils", () => {
       },
     ]);
     expect(sum).toBe(2_500_000n);
+  });
+
+  it("sumParkedBackingAsCreditRaw rescales a hypothetical 9-dec backing asset per-row", () => {
+    // mixed-decimal backing set: 6-dec USDC-like + 9-dec asset, summed into
+    // 6-dec CREDIT — each row must use its own config `decimals`, not flat 6
+    const sum = sumParkedBackingAsCreditRaw([
+      {
+        assetType: MOCK_CUSTODY_ASSET_TYPE,
+        decimals: 6,
+        fundsRaw: 2_000_000n, // 2.0 units
+        coinsRaw: 500_000n, // 0.5 units
+      },
+      {
+        assetType: "0x9::mock_nine_dec::MOCK_NINE_DEC",
+        decimals: 9,
+        fundsRaw: 3_000_000_000n, // 3.0 units
+        coinsRaw: 250_000_000n, // 0.25 units
+      },
+    ]);
+    expect(sum).toBe(5_750_000n); // 5.75 units at 6-dec CREDIT scale
   });
 
   it("probeParkedBackingAssets returns rows with non-zero funds or coins", async () => {

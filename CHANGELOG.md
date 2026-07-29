@@ -8,6 +8,41 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING: `CRYPTO_FEE_RATE`, `STOCK_FEE_RATE`, and `MAINTENANCE_MARGIN_RATE`
+  are removed** from `src/perp/constants.ts` and the `@waterx/sdk/perp` export
+  surface (calc-audit remediation). They were defaults masquerading as truth:
+  per-market `MarketConfig` is the only source for fee and maintenance-margin
+  parameters, and a consumer falling back to the flat `MAINTENANCE_MARGIN_RATE`
+  caused a real est-liq-price incident on 2026-07-28. Removed so they cannot be
+  imported. Migration: read `trading_fee_rate` / `maintenance_margin_rate` (and
+  siblings) from the market's on-chain `MarketConfig` (`getMarketData` /
+  `MarketConfigBcs`) — there is no flat-rate replacement on purpose.
+
+### Fixed
+
+- **Docs: view-read price params are whole-dollar integers, not `rawPrice()`**
+  (calc-audit remediation). The `basePriceUsd` / `collateralPriceUsd` params on
+  `getPosition` / `getOrder` / `getMarketOrders` / `getMarketPositions` /
+  `getAccountPositions` / `getAccountOrders` are documented as whole-dollar
+  integer USD (`80000n` for $80k) — the Move view applies `float::from`
+  internally, so passing a 1e9-scaled `rawPrice()` value inflates
+  pnl/notional-derived fields by 1e9. The `examples/views/*` scripts and the
+  perp e2e read tests that made exactly that mistake are corrected. Tx-build
+  price args (`acceptablePrice` / `triggerPrice`, including u128 order-book
+  keys) still take 1e9-scaled `rawPrice()` — unchanged.
+- **Docs: `calcBorrowRateAccrual` docstring claimed flooring to completed
+  intervals** (calc-audit remediation). The implementation (and
+  `lp_pool.move::calculate_borrow_rate_accrual`) prorate continuously —
+  `rate × elapsedMs / intervalMs` — with no flooring; the docstring now says so.
+- **Docs/tests: per-asset custody decimals vs flat `COLLATERAL_DECIMALS`**
+  (calc-audit remediation). `rescaleRawAmount` / `sumParkedBackingAsCreditRaw`
+  already thread the per-asset `decimal` from `NativeCustodyAsset` config on
+  the source side; the `COLLATERAL_DECIMALS = 6` target is documented as the
+  CREDIT/wxUSD (collateral-typed) decimal only — never a per-backing-asset
+  assumption — with unit tests covering a hypothetical 9-dec backing asset.
+
 ## [4.0.1] - 2026-07-27
 
 _All entries in this section were introduced by [#77](https://github.com/WaterXProtocol/waterx-sdk/pull/77). Although the entries below carry **BREAKING** changes relative to `4.0.0`, this ships as a patch (`4.0.1`) rather than a major: `4.0.0` (published 2026-07-21) landed the interim oracle rework only days earlier, and `4.0.1` supersedes it before it stabilized — treat the `4.0.x` oracle surface as unstable-until-settled._

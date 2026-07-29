@@ -5,6 +5,13 @@ import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../constants.
 /**
  * Convert a human-readable USD price to the raw 1e9-scaled `u128` value
  * that on-chain `Float`-typed parameters expect.
+ *
+ * Use for **tx-build** price args only (`acceptablePrice` / `triggerPrice` /
+ * size args). Do NOT use for the view-read params `basePriceUsd` /
+ * `collateralPriceUsd` on `perp/fetch` (`getPosition`, `getMarketPositions`,
+ * `getOrder`, …) — those take WHOLE-DOLLAR integer USD (the Move view applies
+ * `float::from` internally; a 1e9-scaled value inflates pnl/notional-derived
+ * fields by 1e9).
  */
 export function rawPrice(usd: number | string): bigint {
   const n = typeof usd === "string" ? Number(usd) : usd;
@@ -438,8 +445,11 @@ export function calcBorrowRate(
 /**
  * Time-weighted borrow rate accrual for a given elapsed period.
  *
- * Matches `calculate_borrow_rate_accrual` in `lp_pool.move`.
- * `elapsedMs / intervalMs` gives the number of completed intervals.
+ * Continuous proration: `rate × elapsedMs / intervalMs`, matching the formula
+ * of `lp_pool.move::calculate_borrow_rate_accrual`
+ * (`borrow_rate.mul_u64(elapsed_ms).div_u64(interval_ms)`) — the contract does
+ * NOT floor to completed intervals; a partial interval accrues pro rata
+ * (verified against the Move source 2026-07-29).
  */
 export function calcBorrowRateAccrual(
   borrowRate: number,
