@@ -68,6 +68,20 @@ reference the PR that introduced them.
   for source-compatibility; scheduled for removal once consumers drop their
   imports.
 
+- Restore `pnpm oracle:aggregates` (`scripts/print-oracle-aggregates.ts`) for v3
+  (#79): Hermes/Lazer refresh + `refreshOraclePrices` simulate per configured
+  oracle ticker (legacy `--format pretty|raw`, `--testnet` / `--mainnet`;
+  **default network mainnet**; `pnpm oracle:aggregates:testnet`, no private
+  key). Network flags rewrite a `WATERX_CONFIG_URL` ending in `testnet.json` ↔
+  `mainnet.json` when needed. Harness wires `ORACLE_SOURCE` / `PYTH_API_KEY`
+  into `oracleSource` / `pythApiKey`; under `pyth_rule`, a failed Hermes refresh
+  prints `WARN` / `OK (STALE)` (no silent fresh OK); under `pyth_lazer_rule`
+  there is no Core fallback — missing Lazer feed fails the ticker.
+- `oracle:aggregates`: `--ticker T[,T...]` flag to aggregate only the given ticker(s)
+  (repeatable and/or comma-separated, case-insensitive, e.g.
+  `pnpm oracle:aggregates -- --ticker WTIUSD`). Omitted, it still runs every configured
+  aggregator; an unconfigured ticker aborts non-zero with the list of valid tickers.
+
 ## [4.0.1] - 2026-07-27
 
 _All entries in this section were introduced by [#77](https://github.com/WaterXProtocol/waterx-sdk/pull/77). Although the entries below carry **BREAKING** changes relative to `4.0.0`, this ships as a patch (`4.0.1`) rather than a major: `4.0.0` (published 2026-07-21) landed the interim oracle rework only days earlier, and `4.0.1` supersedes it before it stabilized — treat the `4.0.x` oracle surface as unstable-until-settled._
