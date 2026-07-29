@@ -78,6 +78,35 @@ export function skipSimulateIfOracleTransient(
 }
 
 /**
+ * TEMPORARY (2026-07-29): skip a simulate that aborted `EMissingPriceSource`.
+ *
+ * Testnet's oracle aggregators were reconfigured to weight THREE rules —
+ * `pyth_rule` + `pyth_lazer_rule` + `waterx_rule`, all `1.0`, e.g. BTCUSD
+ * `0x5bbc030f…` — and `aggregator::remove_outliers` aborts when ANY weighted
+ * rule is absent from the collector (an abstaining feed counts as present). A
+ * default `oracleSource: 'pyth_rule'` build carries only the Pyth leg, so every
+ * crypto ticker aborts; the Lazer leg additionally needs a `pythApiKey` CI does
+ * not hold. That is a chain-config state, not an SDK regression: it reproduces
+ * on `main` with no PR code, and the same suites passed on 2026-07-27.
+ *
+ * Scoped deliberately to the two suites that hit it (it is NOT folded into
+ * {@link isOracleTransientFailureMessage}) so a genuine collector bug elsewhere
+ * still fails loudly. REMOVE once the testnet weights match the rules a default
+ * build feeds — or once the SDK feeds every configured rule.
+ */
+export function skipSimulateIfWeightedSourceMissing(
+  ctx: { skip: (reason?: string) => void },
+  result: unknown,
+): boolean {
+  const r = result as SimulateResult;
+  if (r.$kind !== "FailedTransaction") return false;
+  const msg = extractSimulateError(r);
+  if (!msg.includes("EMissingPriceSource")) return false;
+  ctx.skip(`Testnet aggregator weights a rule this build does not feed: ${msg}`);
+  return true;
+}
+
+/**
  * When {@link refreshOraclePrices} fails before dry-run — Hermes gateway / feed infra, not SDK logic.
  * Covers **404** feed mismatch, **5xx** bursts (503/521), and HTML error pages from Cloudflare.
  */

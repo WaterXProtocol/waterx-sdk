@@ -23,6 +23,7 @@ import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateSuccess,
   skipSimulateIfStateDependent,
+  skipSimulateIfWeightedSourceMissing,
 } from "../helpers/e2e/simulate-assertions.ts";
 import { runBuiltTradingTx } from "../helpers/trading/run-trading-scenario.ts";
 import {
@@ -33,6 +34,10 @@ import {
 function assertDiscoveredTradingSim(ctx: { skip: (reason?: string) => void }, sim: unknown): void {
   if (sim === undefined) return;
   if (skipSimulateIfStateDependent(ctx, sim)) return;
+  // TEMPORARY — testnet weights waterx_rule + pyth_lazer_rule alongside
+  // pyth_rule, so a default pyth-only collector aborts EMissingPriceSource for
+  // every crypto ticker; see skipSimulateIfWeightedSourceMissing.
+  if (skipSimulateIfWeightedSourceMissing(ctx, sim)) return;
   assertSimulateSuccess(sim, 1);
 }
 
@@ -70,8 +75,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    if (sim === undefined) return;
-    assertSimulateSuccess(sim, 1);
+    assertDiscoveredTradingSim(ctx, sim);
   }, 180_000);
 
   it("simulates partial decrease on discovered row", async (ctx) => {
@@ -132,8 +136,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    if (sim === undefined) return;
-    assertSimulateSuccess(sim, 1);
+    assertDiscoveredTradingSim(ctx, sim);
   }, 180_000);
 
   it("simulates tiny withdraw collateral", async (ctx) => {
@@ -160,8 +163,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    if (sim === undefined) return;
-    assertSimulateSuccess(sim, 1);
+    assertDiscoveredTradingSim(ctx, sim);
   }, 180_000);
 
   it("simulates close with wide acceptable price", async (ctx) => {

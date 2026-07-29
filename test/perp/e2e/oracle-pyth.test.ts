@@ -12,6 +12,7 @@ import {
   skipHermesIfFeedUnavailable,
   skipIfTransientInfrastructureError,
   skipSimulateIfOracleTransient,
+  skipSimulateIfWeightedSourceMissing,
 } from "../helpers/e2e/simulate-assertions.ts";
 
 describe(`oracle Pyth refresh (${e2eNetwork})`, () => {
@@ -33,6 +34,9 @@ describe(`oracle Pyth refresh (${e2eNetwork})`, () => {
     }
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
+    // TEMPORARY — testnet weights waterx_rule + pyth_lazer_rule alongside
+    // pyth_rule; see skipSimulateIfWeightedSourceMissing.
+    if (skipSimulateIfWeightedSourceMissing(ctx, sim)) return;
     assertSimulateSuccess(sim, 1);
   }, 180_000);
 });
