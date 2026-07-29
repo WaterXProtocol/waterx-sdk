@@ -14,7 +14,7 @@ import { MS_PER_HOUR, MS_PER_MINUTE } from "../constants.ts";
  *   1_800_000  → "30M"
  *
  * Single source for the label the BE tickers payload emits and the FE reader
- * must reproduce byte-identically (ported verbatim from bucket-backend-mono
+ * must reproduce byte-identically (output-identical port of bucket-backend-mono
  * `apps/waterx/src/core/utils/funding.ts::formatFundingInterval`).
  */
 export function formatFundingInterval(intervalMs: number): string {

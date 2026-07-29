@@ -37,58 +37,63 @@ for (const ticker of tickers) {
   }
   const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE);
 
-  let page;
-  try {
-    page = await getMarketPositions(client, {
-      ticker,
-      basePriceUsd: PROBE_PRICE_USD,
-      collateralPriceUsd: 1n,
-      cursor: 0n,
-      pageSize: 50n,
-    });
-  } catch (e) {
-    console.log(`  [${ticker}] getMarketPositions failed: ${(e as Error).message}`);
-    continue;
-  }
+  // Follow nextCursor until the market is exhausted — "every live position"
+  // must mean every page, not the first 50.
+  let cursor: bigint | undefined = 0n;
+  while (cursor !== undefined) {
+    let page;
+    try {
+      page = await getMarketPositions(client, {
+        ticker,
+        basePriceUsd: PROBE_PRICE_USD,
+        collateralPriceUsd: 1n,
+        cursor,
+        pageSize: 50n,
+      });
+    } catch (e) {
+      console.log(`  [${ticker}] getMarketPositions failed: ${(e as Error).message}`);
+      break;
+    }
+    cursor = page.nextCursor;
 
-  for (const p of page.positions) {
-    total += 1;
-    const dec = Number(p.collateral_decimal);
-    const denom = 10 ** dec;
-    const collateralUsd = Number(p.collateral_amount) / denom; // collPrice = $1
-    const borrowOpenUsd = (Number(p.borrow_fee) + Number(p.unrealized_trading_fee)) / denom;
-    const fundingUsd = Number(p.funding_fee) / denom;
-    // View semantics: owed → add; income → saturating-sub. NO close fee.
-    const totalFeesUsd = p.funding_fee_positive
-      ? borrowOpenUsd + fundingUsd
-      : Math.max(0, borrowOpenUsd - fundingUsd);
+    for (const p of page.positions) {
+      total += 1;
+      const dec = Number(p.collateral_decimal);
+      const denom = 10 ** dec;
+      const collateralUsd = Number(p.collateral_amount) / denom; // collPrice = $1
+      const borrowOpenUsd = (Number(p.borrow_fee) + Number(p.unrealized_trading_fee)) / denom;
+      const fundingUsd = Number(p.funding_fee) / denom;
+      // View semantics: owed → add; income → saturating-sub. NO close fee.
+      const totalFeesUsd = p.funding_fee_positive
+        ? borrowOpenUsd + fundingUsd
+        : Math.max(0, borrowOpenUsd - fundingUsd);
 
-    const sdkLiq = calcEstLiqPrice({
-      isLong: p.is_long,
-      avgPrice: Number(p.average_price) / Number(FLOAT_SCALE),
-      sizeInAsset: Number(p.size) / Number(FLOAT_SCALE),
-      collateralUsd,
-      maintenanceMarginRate: mmr,
-      spotPrice: Number(PROBE_PRICE_USD),
-      totalFeesUsd,
-    });
-    const chainLiq = Number(p.est_liq_price) / Number(FLOAT_SCALE);
-    const delta = Math.abs(sdkLiq - chainLiq);
-    maxAbsDelta = Math.max(maxAbsDelta, delta);
-    // 1 tick on the 1e9 Float encoding, scaled up generously for f64 noise on big prices
-    // AC3 bound: well under 1 display tick. f64 vs Move 1e9 fixed-point makes
-    // exact 1e-9-grid equality unattainable at 1e5 magnitudes; 1e-6 relative
-    // (with a 1e-6 absolute floor) is ~4 orders tighter than any price tick.
-    const tol = Math.max(1e-6, chainLiq * 1e-6);
-    const ok = delta <= tol;
-    if (!ok) failures += 1;
-    console.log(
-      `  [${ticker}] pos ${p.position_id} ${p.is_long ? "L" : "S"} avg=${(
-        Number(p.average_price) / Number(FLOAT_SCALE)
-      ).toFixed(4)} chain=${chainLiq.toFixed(6)} sdk=${sdkLiq.toFixed(6)} Δ=${delta.toExponential(
-        2,
-      )} ${ok ? "OK" : "FAIL"}`,
-    );
+      const sdkLiq = calcEstLiqPrice({
+        isLong: p.is_long,
+        avgPrice: Number(p.average_price) / Number(FLOAT_SCALE),
+        sizeInAsset: Number(p.size) / Number(FLOAT_SCALE),
+        collateralUsd,
+        maintenanceMarginRate: mmr,
+        spotPrice: Number(PROBE_PRICE_USD),
+        totalFeesUsd,
+      });
+      const chainLiq = Number(p.est_liq_price) / Number(FLOAT_SCALE);
+      const delta = Math.abs(sdkLiq - chainLiq);
+      maxAbsDelta = Math.max(maxAbsDelta, delta);
+      // AC3 bound: well under 1 display tick. f64 vs Move 1e9 fixed-point makes
+      // exact 1e-9-grid equality unattainable at 1e5 magnitudes; 1e-6 relative
+      // (with a 1e-6 absolute floor) is ~4 orders tighter than any price tick.
+      const tol = Math.max(1e-6, chainLiq * 1e-6);
+      const ok = delta <= tol;
+      if (!ok) failures += 1;
+      console.log(
+        `  [${ticker}] pos ${p.position_id} ${p.is_long ? "L" : "S"} avg=${(
+          Number(p.average_price) / Number(FLOAT_SCALE)
+        ).toFixed(4)} chain=${chainLiq.toFixed(6)} sdk=${sdkLiq.toFixed(6)} Δ=${delta.toExponential(
+          2,
+        )} ${ok ? "OK" : "FAIL"}`,
+      );
+    }
   }
 }
 

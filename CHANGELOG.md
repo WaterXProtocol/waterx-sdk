@@ -27,9 +27,9 @@ reference the PR that introduced them.
 - **`formatFundingInterval(intervalMs)`**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
   funding-interval wire label (`"1H"` / `"8H"` / `"1.5H"` / `"30M"`,
-  non-integer hours preserved), ported verbatim from the BE so FE and BE emit
-  byte-identical strings from one implementation. `MS_PER_HOUR` /
-  `MS_PER_MINUTE` join `MS_PER_YEAR` in the shared constants.
+  non-integer hours preserved), an output-identical port of the BE
+  implementation so FE and BE emit byte-identical strings from one source.
+  `MS_PER_HOUR` / `MS_PER_MINUTE` join `MS_PER_YEAR` in the shared constants.
 - **`WholeDollarUsdPrice` type alias**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
   whole-dollar view-price warning on the six `perp/fetch` read functions is now
@@ -41,18 +41,23 @@ reference the PR that introduced them.
 
 - **BREAKING: `CRYPTO_FEE_RATE`, `STOCK_FEE_RATE`, and `MAINTENANCE_MARGIN_RATE`
   are removed** from `src/perp/constants.ts` and the `@waterx/sdk/perp` export
-  surface (calc-audit remediation). They were defaults masquerading as truth:
-  per-market `MarketConfig` is the only source for fee and maintenance-margin
-  parameters, and a consumer falling back to the flat `MAINTENANCE_MARGIN_RATE`
-  caused a real est-liq-price incident on 2026-07-28. Removed so they cannot be
-  imported. Migration: read `trading_fee_rate` / `maintenance_margin_rate` (and
-  siblings) from the market's on-chain `MarketConfig` (`getMarketData` /
-  `MarketConfigBcs`) — there is no flat-rate replacement on purpose.
+  surface (calc-audit remediation,
+  [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). They were
+  defaults masquerading as truth: per-market `MarketConfig` is the only source
+  for fee and maintenance-margin parameters, and a consumer falling back to the
+  flat `MAINTENANCE_MARGIN_RATE` caused a real est-liq-price incident on
+  2026-07-28. Removed so they cannot be imported. Migration: read the
+  `trading_fee` / `maintenance_margin` fields (and siblings) from the market's
+  on-chain `MarketConfig` (`getMarketData` / `MarketConfigBcs`). Both are
+  1e9-scaled `Float` values, NOT plain decimals like the deleted constants —
+  descale before use:
+  `const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE); // e.g. 50_000_000 → 0.05`.
+  There is no flat-rate replacement on purpose.
 
 ### Fixed
 
 - **Docs: view-read price params are whole-dollar integers, not `rawPrice()`**
-  (calc-audit remediation). The `basePriceUsd` / `collateralPriceUsd` params on
+  (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The `basePriceUsd` / `collateralPriceUsd` params on
   `getPosition` / `getOrder` / `getMarketOrders` / `getMarketPositions` /
   `getAccountPositions` / `getAccountOrders` are documented as whole-dollar
   integer USD (`80000n` for $80k) — the Move view applies `float::from`
@@ -62,11 +67,11 @@ reference the PR that introduced them.
   price args (`acceptablePrice` / `triggerPrice`, including u128 order-book
   keys) still take 1e9-scaled `rawPrice()` — unchanged.
 - **Docs: `calcBorrowRateAccrual` docstring claimed flooring to completed
-  intervals** (calc-audit remediation). The implementation (and
+  intervals** (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The implementation (and
   `lp_pool.move::calculate_borrow_rate_accrual`) prorate continuously —
   `rate × elapsedMs / intervalMs` — with no flooring; the docstring now says so.
 - **Docs/tests: per-asset custody decimals vs flat `COLLATERAL_DECIMALS`**
-  (calc-audit remediation). `rescaleRawAmount` / `sumParkedBackingAsCreditRaw`
+  (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). `rescaleRawAmount` / `sumParkedBackingAsCreditRaw`
   already thread the per-asset `decimal` from `NativeCustodyAsset` config on
   the source side; the `COLLATERAL_DECIMALS = 6` target is documented as the
   CREDIT/wxUSD (collateral-typed) decimal only — never a per-backing-asset
