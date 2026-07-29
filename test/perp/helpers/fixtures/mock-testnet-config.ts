@@ -58,6 +58,23 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       enabled: true,
       feeds: { BTCUSD: 1, ETHUSD: 2, USDCUSD: 7 },
     },
+    // Real deployed testnet waterx_rule (v2). `enabled` mirrors the JSON but is
+    // never read for routing — routing is the client `oracleSource` option alone.
+    // `feeds` keyed by oracle ticker (== the SDK's supported-ticker set).
+    waterx_rule: {
+      published_at: "0xe1500e0c522eab37d2487e2d0babb08c48a425474455ba262f0caa339c503524",
+      original_id: "0xa74191aad31907bbbd870626dd251b797a12a3841b0fdaf2af1e1cb5952572fb",
+      version: 2,
+      config: "0x9589a1f56c631dc8b2b86b8c186e95baa2c1a85b433373a8266fa377137e6e38",
+      enclave_config: "0xa4ea6c16cd136056e6a77d71185126da6187e7435b91ddf255d8462c95cd501d",
+      enclave: "0x1273470e0ade24beae168bd5aa16e50bf54c8c9e33d7b4d105fcb425f9468680",
+      enabled: true,
+      feeds: {
+        BTCUSD: { ticker: "BTCUSDT" },
+        ETHUSD: { ticker: "ETHUSDT" },
+        USDCUSD: { ticker: "USDCUSDT" },
+      },
+    },
     constant_rule: {
       published_at: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",
       original_id: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",

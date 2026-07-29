@@ -39,6 +39,11 @@ import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
 import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
+import {
+  feedWaterxRule,
+  waterxEnvelopeOf,
+  type WaterxSignedEnvelope,
+} from "./rules/waterx-rule.ts";
 
 /**
  * Resolve one group's off-chain update payload for {@link refreshOraclePrices}:
@@ -113,7 +118,12 @@ async function resolveGroupUpdateData(
 export function aggregateTicker(
   tx: Transaction,
   host: OracleHost,
-  args: { ticker: string; priceInfoObjectId?: string; lazerUpdate?: TransactionArgument },
+  args: {
+    ticker: string;
+    priceInfoObjectId?: string;
+    lazerUpdate?: TransactionArgument;
+    waterxEnvelope?: WaterxSignedEnvelope;
+  },
 ): void {
   const oraclePkg = host.config.packages.waterx_oracle.published_at;
   const collector = newCollector({
@@ -130,6 +140,15 @@ export function aggregateTicker(
 
   if (args.lazerUpdate !== undefined) {
     feedLazerRule(tx, host, collector, args.lazerUpdate);
+    fed = true;
+  }
+
+  if (args.waterxEnvelope !== undefined) {
+    // waterx_rule::collect_batch_latest verifies the batch signature and feeds
+    // this collector's symbol from the batch. If the ticker's aggregator does
+    // not (yet) weight `WaterxRule`, the contribution is silently dropped
+    // on-chain — feeding ahead of the weight migration is harmless.
+    feedWaterxRule(tx, host, collector, args.waterxEnvelope);
     fed = true;
   }
 
@@ -329,6 +348,11 @@ export async function refreshOraclePrices(
   // moveCalls in a caller-owned tx. Map each lazer-served ticker to the one
   // verified `Update` PTB value for the collector-feed leg below.
   const lazerUpdateByTicker = new Map<string, TransactionArgument>();
+  // Signed batch envelope per waterx-served ticker. Unlike Lazer's shared PTB
+  // handle, waterx's verify+feed is bundled into `collect_batch_latest` in the
+  // per-ticker feed leg, so its `buildUpdateCalls` emits nothing and the
+  // envelope is carried straight from the group's fetched data.
+  const waterxEnvelopeByTicker = new Map<string, WaterxSignedEnvelope>();
   if (selectedGroup.length > 0) {
     const group = { source: host.oracleSource, rule: selectedRule, tickers: selectedGroup };
     const data = await resolveGroupUpdateData(host, group, opts.updateDataProvider);
@@ -338,10 +362,19 @@ export async function refreshOraclePrices(
         feeSource: opts.feeSource,
       })) ?? undefined;
     // Route by the handle's kind discriminant — the one site the tag exists to
-    // protect: a future non-lazer handle (e.g. a WaterxRule value) must never
-    // be silently fed into pyth_lazer_rule::feed.
+    // protect: a future non-lazer handle must never be silently fed into
+    // pyth_lazer_rule::feed.
     if (handle?.kind === "pyth_lazer_rule") {
       for (const ticker of selectedGroup) lazerUpdateByTicker.set(ticker, handle.update);
+    }
+    // waterx_rule emits no shared handle (verify+feed is bundled into the
+    // per-ticker `collect_batch_latest`), so the envelope is carried straight
+    // from this group's fetched data to the feed leg below.
+    if (selectedRule.kind === "waterx_rule") {
+      const envelope = waterxEnvelopeOf(data);
+      if (envelope) {
+        for (const ticker of selectedGroup) waterxEnvelopeByTicker.set(ticker, envelope);
+      }
     }
   }
 
@@ -351,6 +384,7 @@ export async function refreshOraclePrices(
       ticker,
       priceInfoObjectId: priceInfoByTicker.get(ticker),
       lazerUpdate: lazerUpdateByTicker.get(ticker),
+      waterxEnvelope: waterxEnvelopeByTicker.get(ticker),
     });
   }
 }
