@@ -161,7 +161,7 @@ export interface ClientCreateOptions {
   /**
    * The perp line's oracle price-update source (perp-line only — the
    * prediction line has no oracle leg), forwarded to `PerpClient.create`.
-   * Source-neutral by design: a future source need not be Pyth.
+   * Source-neutral by design: a source need not be Pyth (see `'waterx_rule'`).
    *
    * - `'pyth_rule'` (default) — Pyth Core updates on Core infra.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`

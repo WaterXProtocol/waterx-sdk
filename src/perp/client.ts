@@ -40,12 +40,20 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
    *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
    *   and a `pythApiKey` (Lazer is auth-first).
+   * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
+   *   ed25519-signed batches): ONE envelope covering the build's tickers,
+   *   verified AND fed by a single `collect_batch_latest` per collector. No
+   *   credential and no per-update fee; needs `packages.waterx_rule` with
+   *   feeds. Endpoint/transport via {@link CreateClientOptions.waterxEndpoint}
+   *   / {@link CreateClientOptions.waterxFetch} — the browser-CORS proxy hook,
+   *   since this is the one source fetched from the page.
    *
-   * A source-neutral name on purpose — a future source need not be Pyth.
-   * Selecting a source whose feed for a requested ticker is absent is NOT an
-   * error at client creation: it fails at tx-build time for exactly those
-   * tickers (see `refreshOraclePrices`). The Pyth Core infra is fixed per
-   * network by `PYTH_DEFAULTS` and is not deployment-overridable.
+   * The name is source-neutral on purpose — a source need not be Pyth (as
+   * `'waterx_rule'` shows). Selecting a source whose feed for a requested
+   * ticker is absent is NOT an error at client creation: it fails at tx-build
+   * time for exactly those tickers (see `refreshOraclePrices`). The Pyth Core
+   * infra is fixed per network by `PYTH_DEFAULTS` and is not
+   * deployment-overridable.
    */
   oracleSource?: OracleSource;
   /**
