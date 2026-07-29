@@ -23,6 +23,11 @@ export function feedPythRule(
     arguments: {
       collector,
       config: tx.object(host.config.packages.pyth_rule.config),
+      // The deployed pyth_rule package is compiled against the Core pyth
+      // dependency, so its `&PythState` parameter is the Core-package-qualified
+      // type and `host.pyth` (the fixed per-network Core infra) is always the
+      // right state to pass. The config's price_info_object entries are Core
+      // objects to match.
       pythState: tx.object(host.pyth.state_id),
       pythPriceInfo: tx.object(priceInfoObjectId),
     },

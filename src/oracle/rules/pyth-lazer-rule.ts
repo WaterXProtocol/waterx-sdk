@@ -3,7 +3,7 @@
  * updates, plus `feedLazerRule`, the collector-feed leg `aggregateTicker`
  * appends per lazer-routed ticker. Fetches one `leEcdsa` payload for all
  * requested integer feed ids from the Lazer HTTP API (Bearer-authenticated
- * via `config.pyth.api_key`), verifies it ONCE on-chain via
+ * via the `pythApiKey` create option), verifies it ONCE on-chain via
  * `pyth_lazer::parse_and_verify_le_ecdsa_update`, and hands the resulting
  * `Update` PTB value back through a `RuleUpdateHandle` for the feed calls.
  */
@@ -11,7 +11,7 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import { LAZER_DEFAULTS, type PythLazerRulePackage } from "../config.ts";
+import { LAZER_DEFAULTS, type PythFetchPolicy, type PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -20,7 +20,7 @@ import {
   type RuleUpdateData,
   type RuleUpdateHandle,
 } from "../price-update-rule.ts";
-import { FetchPolicyError, fetchWithPolicy } from "../update-fetch.ts";
+import { fetchWithPolicy, joinEndpointPath, rethrowExhaustedFetch } from "../update-fetch.ts";
 
 /** `pyth_lazer_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythLazerUpdatePayload {
@@ -37,10 +37,17 @@ export interface PythLazerUpdatePayload {
  *   `confidence` is optional on-chain but requested so the rule's
  *   fail-closed confidence gate actually engages (a payload without
  *   confidence passes the gate unchecked).
- * - `channel` — `real_time`: the deployed rule binds the v1 Lazer API, whose
- *   `channel::from_u8` aborts on the 1000ms fixed-rate channel; real_time /
- *   50ms / 200ms are the safe subscriptions, and for an on-demand pull
- *   real_time is the freshest.
+ * - `channel` — `fixed_rate@200ms`, NOT `real_time`: Lazer rejects a request
+ *   whose channel is faster than ANY requested feed's `min_channel`, and it
+ *   rejects the WHOLE batch (`400 Feeds do not support channel …`). Only the
+ *   majors (BTC/ETH/SOL/USDC/DOGE/XRP/BNB/HYPE + EUR/JPY FX) publish
+ *   `real_time`; the other 19 of the 29 configured feeds — including SUIUSD
+ *   and every xStock — are `min_channel: fixed_rate@200ms` (Lazer symbol
+ *   registry, verified 2026-07-22: the same 29-feed batch 400s at
+ *   `real_time`/`50ms` and serves 200 with the leEcdsa blob at `200ms`).
+ *   200ms is the fastest channel every configured feed supports, and the
+ *   deployed rule accepts it: the v1 on-chain `channel::from_u8` aborts only
+ *   on the 1000ms fixed-rate channel (real_time / 50ms / 200ms are safe).
  * - `formats: leEcdsa` + `jsonBinaryEncoding: hex` — the Sui verifier takes
  *   the `leEcdsa` framing; hex matches `fromHex` below.
  */
@@ -48,7 +55,7 @@ const LAZER_LATEST_PRICE_REQUEST = {
   properties: ["price", "exponent", "confidence"],
   formats: ["leEcdsa"],
   jsonBinaryEncoding: "hex",
-  channel: "real_time",
+  channel: "fixed_rate@200ms",
 } as const;
 
 /**
@@ -67,17 +74,17 @@ function isPythLazerUpdatePayloadShape(payload: unknown): payload is PythLazerUp
 
 /**
  * Thrown by {@link PythLazerRule.fetchUpdateData} when `pyth_lazer_rule` is
- * deployed in config but no `pyth.api_key` is set — the Lazer HTTP API
- * requires a Bearer token and the SDK never reads `process.env` to find one.
- * `instanceof`-able (mirrors `OracleFeeSourceUnavailableError` in `pyth.ts`)
- * so a consumer can branch on the failure type directly instead of
- * string-matching `error.message`.
+ * deployed in config but no `pythApiKey` was supplied at client init — the
+ * Lazer HTTP API requires a Bearer token and the SDK never reads
+ * `process.env` to find one. `instanceof`-able (mirrors
+ * `OracleFeeSourceUnavailableError` in `pyth.ts`) so a consumer can branch on
+ * the failure type directly instead of string-matching `error.message`.
  */
 export class LazerApiKeyMissingError extends Error {
   constructor() {
     super(
       "LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token — " +
-        "set `pyth.api_key` in the client config (the SDK never reads process.env)",
+        "pass `pythApiKey` when creating the client (the SDK never reads process.env)",
     );
     this.name = "LazerApiKeyMissingError";
   }
@@ -102,9 +109,13 @@ async function fetchLazerSignedUpdate(
   endpoint: string,
   apiKey: string,
   feedIds: number[],
-  fetchOpts?: { timeoutMs?: number; retries?: number },
+  fetchOpts?: PythFetchPolicy,
 ): Promise<Uint8Array> {
-  const url = new URL("/v1/latest_price", endpoint);
+  // joinEndpointPath preserves any base path on the endpoint — the same
+  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
+  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
+  // Lazer endpoint has no base path, but a config override may.
+  const url = joinEndpointPath(endpoint, "v1/latest_price");
   let res: Response;
   try {
     res = await fetchWithPolicy(
@@ -117,18 +128,10 @@ async function fetchLazerSignedUpdate(
       { apiKey, ...fetchOpts },
     );
   } catch (err) {
-    // Mirrors fetchPriceFeedsUpdateData's reframing: a retryable status that
-    // never recovered carries `status` on the FetchPolicyError — reformat
-    // into this function's own message shape; a network-level exhaustion
-    // (no status) propagates as-is.
-    if (err instanceof FetchPolicyError && err.status !== undefined) {
-      const body = err.bodySnippet ? ` ${err.bodySnippet}` : "";
-      throw new Error(
-        `Lazer price fetch failed: ${err.status}${body} (retries exhausted after ${err.attempts} attempts)`,
-        { cause: err },
-      );
-    }
-    throw err;
+    rethrowExhaustedFetch(
+      err,
+      (e) => `Lazer price fetch failed: ${e.status}${e.bodySnippet ? ` ${e.bodySnippet}` : ""}`,
+    );
   }
   if (!res.ok) throw new Error(`Lazer price fetch failed: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { leEcdsa?: { data?: string } };

@@ -11,19 +11,19 @@ non-zero exit aborts the chain and prints a summary.
 
 ## Chain order
 
-| # | Step | Requires | Produces | Idempotent? |
-|---|------|----------|----------|-------------|
-| 0 | `smoke-remote` | network reachable | — | yes |
-| 1 | `smoke` | none | — (PTB simulate sanity) | yes |
-| 2 | `create-wxa-account` | local sui CLI keypair | `WATERX_SMOKE_ACCOUNT_ID` (printed) | no — creates a new account each run |
-| 3 | `mint-usd-from-collateral` | step 2, USDC + USDSUI in wallet | USD CREDIT in wxa (one mint per vault asset) | yes |
-| 4 | `smoke-credit-withdraw` | step 3, USD in wxa | requestCreditWithdraw + enqueue (sim unless `WATERX_CREDIT_WITHDRAW_EXECUTE=1`) | yes |
-| 5 | `deposit-to-wlp` | step 3, USD in wxa | WLP in wxa | yes |
-| 6 | `smoke-staking` | step 5, ≥1M WLP in wxa | stake then unstake (no net state) | yes |
-| 7 | `mint-and-stake-wlp` | step 3, ≥1 USD CREDIT in wxa | atomic mint WLP + stake in one PTB | yes |
-| 8 | `smoke-happy-path` | step 2 | deposit + mint + place + cancel (no resting orders) | yes |
-| 9 | `smoke-keeper-match` | steps 2–5, USD in wxa | market BUY → keeper match → close (no resting position) | yes |
-| 10 | `smoke-custody` | USDC in wallet | CREDIT round-trip (no net state) | yes |
+| #   | Step                       | Requires                        | Produces                                                                        | Idempotent?                         |
+| --- | -------------------------- | ------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------- |
+| 0   | `smoke-remote`             | network reachable               | —                                                                               | yes                                 |
+| 1   | `smoke`                    | none                            | — (PTB simulate sanity)                                                         | yes                                 |
+| 2   | `create-wxa-account`       | local sui CLI keypair           | `WATERX_SMOKE_ACCOUNT_ID` (printed)                                             | no — creates a new account each run |
+| 3   | `mint-usd-from-collateral` | step 2, USDC + USDSUI in wallet | USD CREDIT in wxa (one mint per vault asset)                                    | yes                                 |
+| 4   | `smoke-credit-withdraw`    | step 3, USD in wxa              | requestCreditWithdraw + enqueue (sim unless `WATERX_CREDIT_WITHDRAW_EXECUTE=1`) | yes                                 |
+| 5   | `deposit-to-wlp`           | step 3, USD in wxa              | WLP in wxa                                                                      | yes                                 |
+| 6   | `smoke-staking`            | step 5, ≥1M WLP in wxa          | stake then unstake (no net state)                                               | yes                                 |
+| 7   | `mint-and-stake-wlp`       | step 3, ≥1 USD CREDIT in wxa    | atomic mint WLP + stake in one PTB                                              | yes                                 |
+| 8   | `smoke-happy-path`         | step 2                          | deposit + mint + place + cancel (no resting orders)                             | yes                                 |
+| 9   | `smoke-keeper-match`       | steps 2–5, USD in wxa           | market BUY → keeper match → close (no resting position)                         | yes                                 |
+| 10  | `smoke-custody`            | USDC in wallet                  | CREDIT round-trip (no net state)                                                | yes                                 |
 
 Each step's preflight throws an actionable error naming the prior step
 that would produce the missing state, so a forgotten dependency is
@@ -31,8 +31,8 @@ visible at step 1 instead of step 5.
 
 ## Opt-in steps (not in default chain)
 
-| Step | Flag | Why opt-in |
-|------|------|------------|
+| Step                  | Flag              | Why opt-in                                                                                                  |
+| --------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------- |
 | `smoke-staking-claim` | `--include-claim` | testnet's WLP staking pool has no rewarders configured; the script aborts in preflight unless that changes. |
 
 ## Running

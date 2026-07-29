@@ -304,6 +304,46 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("buildMintWlpTx with skipOraclePriceRefresh does NOT fail when a pool token has no feed for the selected source", async () => {
+    // Under a source that serves NO pool-token feed, an actual refresh would
+    // throw "no feed configured" (no fallback). skipOraclePriceRefresh must be
+    // a clean escape: it bypasses refreshOraclePrices entirely, so the build
+    // succeeds and freshness is left to other traffic.
+    const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
+
+    const tx = await buildMintWlpTx(lazerClient, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      depositTokenType: MOCK_USDC_TYPE,
+      depositTicker: "USDCUSD",
+      depositAmount: 10_000_000n,
+      minLpAmount: 0n,
+      skipOraclePriceRefresh: true,
+      consolidateToUsd: false,
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("buildMintWlpTx WITHOUT skip fails when a pool token has no feed for the selected source (no fallback)", async () => {
+    // The companion to the skip test above — proves the skip is what avoids the
+    // failure, not that the scenario is benign. allowGasFee rules out the
+    // fee-source throw, so the rejection is the missing-feed one.
+    const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
+
+    await expect(
+      buildMintWlpTx(lazerClient, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        depositTokenType: MOCK_USDC_TYPE,
+        depositTicker: "USDCUSD",
+        depositAmount: 10_000_000n,
+        minLpAmount: 0n,
+        allowGasFee: true,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toThrow(/no feed configured/);
+  });
+
   it("buildPlaceOrderTx with oracle refresh and sponsor reimburse", async () => {
     const { attachPythGrpcMocks, mockAccumulatorUpdate } =
       await import("../helpers/fixtures/pyth-mock-grpc.ts");

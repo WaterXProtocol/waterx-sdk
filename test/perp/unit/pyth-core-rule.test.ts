@@ -76,6 +76,42 @@ describe("PythCoreRule.fetchUpdateData", () => {
     expect(parsedUrl.searchParams.getAll("ids[]")).toEqual([client.getPythFeed("BTCUSD").feed_id]);
   });
 
+  it("applies the client's fetch policy (from client.pyth) to the Hermes fetch", async () => {
+    const client = createUnitTestClient({ pythFetch: { retries: 0 } });
+    const fetchSpy = vi.fn(async () => new Response("nope", { status: 500 }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    await expect(PythCoreRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+      /Hermes price fetch failed: 500/,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // retries: 0 ⇒ one attempt
+  });
+
+  it("fetches from client.pyth's endpoint + api_key (the source's own infra)", async () => {
+    const client = createUnitTestClient({ pythApiKey: "core-key" });
+    const update = mockAccumulatorUpdate();
+    let requestedUrl: string | undefined;
+    let authHeader: string | undefined;
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      requestedUrl = url.toString();
+      authHeader = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => mockAccumulatorUpdate().buffer,
+        json: async () => ({ binary: { data: [toHex(update)] } }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+    await PythCoreRule.fetchUpdateData(client, ["BTCUSD"]);
+
+    const parsedUrl = new URL(requestedUrl ?? "");
+    expect(parsedUrl.origin + parsedUrl.pathname).toBe(
+      new URL("/v2/updates/price/latest", client.pyth.hermes_endpoint).toString(),
+    );
+    expect(authHeader).toBe("Bearer core-key");
+  });
+
   it("resolves multiple tickers to their respective feed ids", async () => {
     const client = createUnitTestClient();
     const update = mockAccumulatorUpdate();

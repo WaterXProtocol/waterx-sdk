@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PerpClient } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
-import { PYTH_DEFAULTS, PYTH_PRO_DEFAULTS } from "../../../src/perp/config.ts";
-import type { PythInfraConfig, WlpPackage } from "../../../src/perp/config.ts";
+import { PYTH_DEFAULTS } from "../../../src/perp/config.ts";
+import type { PythInfraConfig, WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
@@ -169,47 +169,53 @@ describe("PerpClient (offline)", () => {
   });
 });
 
-describe("pythGeneration (Pyth Core vs Pro infra selection)", () => {
-  it("defaults to the core generation (PYTH_DEFAULTS)", () => {
-    const client = createUnitTestClient();
+describe("client.pyth (fixed Core infra + caller-supplied credential/policy)", () => {
+  it("is the per-network Pyth Core constant regardless of oracleSource", () => {
+    expect(createUnitTestClient().pyth).toEqual(PYTH_DEFAULTS.TESTNET);
+    // The lazer source reads only api_key/fetch from client.pyth; its on-chain
+    // infra is LAZER_DEFAULTS + config, so client.pyth stays Core here too.
+    expect(createUnitTestClient({ oracleSource: "pyth_lazer_rule" }).pyth).toEqual(
+      PYTH_DEFAULTS.TESTNET,
+    );
+  });
+
+  it("a `pyth` block in the config JSON is ignored — infra comes from the constant only", () => {
+    // The canonical waterx-config JSON has never carried one; the SDK no
+    // longer looks. State ids / endpoint are not deployment-overridable.
+    const config = {
+      ...structuredClone(MOCK_TESTNET_CONFIG),
+      pyth: {
+        state_id: "0x" + "ab".repeat(32),
+        wormhole_state_id: "0x" + "cd".repeat(32),
+        hermes_endpoint: "https://hermes.example.invalid",
+        api_key: "from-json",
+      } satisfies PythInfraConfig,
+    } as unknown as WaterXConfig;
+
+    const client = new PerpClient("TESTNET", config, { oracleSource: "pyth_lazer_rule" });
+
     expect(client.pyth).toEqual(PYTH_DEFAULTS.TESTNET);
+    expect(client.pyth.api_key).toBeUndefined();
   });
 
-  it("explicit 'core' picks PYTH_DEFAULTS", () => {
-    const client = createUnitTestClient({ pythGeneration: "core" });
-    expect(client.pyth).toEqual(PYTH_DEFAULTS.TESTNET);
+  it("pythApiKey is supplied at client init, never through the config JSON", () => {
+    const client = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
+      oracleSource: "pyth_lazer_rule",
+      pythApiKey: "caller-supplied",
+    });
+
+    expect(client.pyth).toEqual({ ...PYTH_DEFAULTS.TESTNET, api_key: "caller-supplied" });
   });
 
-  it("'pro' picks the Pro-compatible set (PYTH_PRO_DEFAULTS)", () => {
-    const client = createUnitTestClient({ pythGeneration: "pro" });
-    expect(client.pyth).toEqual(PYTH_PRO_DEFAULTS.TESTNET);
-  });
+  it("pythFetch is supplied at client init and rides on client.pyth", () => {
+    const client = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
+      pythFetch: { timeoutMs: 8_000, retries: 1 },
+    });
 
-  it("an explicit config.pyth override wins over the generation constants", () => {
-    const override: PythInfraConfig = {
-      state_id: "0x" + "ab".repeat(32),
-      wormhole_state_id: "0x" + "cd".repeat(32),
-      hermes_endpoint: "https://hermes.example.invalid",
-      api_key: "test-key",
-    };
-    const config = { ...structuredClone(MOCK_TESTNET_CONFIG), pyth: override };
-    const client = new PerpClient("TESTNET", config, { pythGeneration: "pro" });
-    expect(client.pyth).toEqual(override);
-  });
-
-  it("PYTH_PRO_DEFAULTS carries full-length ids distinct from core, on the compat endpoint", () => {
-    for (const network of ["MAINNET", "TESTNET"] as const) {
-      const core = PYTH_DEFAULTS[network];
-      const pro = PYTH_PRO_DEFAULTS[network];
-      // Full 32-byte object ids — guards against a truncated paste ever shipping.
-      expect(pro.state_id).toMatch(/^0x[0-9a-f]{64}$/);
-      expect(pro.wormhole_state_id).toMatch(/^0x[0-9a-f]{64}$/);
-      // The upgraded contracts are NEW objects, not the core ones re-listed.
-      expect(pro.state_id).not.toBe(core.state_id);
-      expect(pro.wormhole_state_id).not.toBe(core.wormhole_state_id);
-      // Both networks share the Hermes-compatible (auth-first) endpoint.
-      expect(pro.hermes_endpoint).toBe("https://pyth.dourolabs.app/hermes");
-    }
+    expect(client.pyth).toEqual({
+      ...PYTH_DEFAULTS.TESTNET,
+      fetch: { timeoutMs: 8_000, retries: 1 },
+    });
   });
 });
 
@@ -226,10 +232,25 @@ describe("PerpClient.create", () => {
     expect(client.network).toBe("TESTNET");
   });
 
-  it("create() threads pythGeneration through to the client", async () => {
+  it("create() threads oracleSource + pythApiKey through to the client", async () => {
     vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", { pythGeneration: "pro" });
-    expect(client.pyth).toEqual(PYTH_PRO_DEFAULTS.TESTNET);
+    const client = await PerpClient.create("TESTNET", {
+      oracleSource: "pyth_lazer_rule",
+      pythApiKey: "k",
+    });
+    expect(client.oracleSource).toBe("pyth_lazer_rule");
+    expect(client.pyth).toEqual({ ...PYTH_DEFAULTS.TESTNET, api_key: "k" });
+  });
+
+  it("does NOT throw at init when the selected source has no feeds configured", async () => {
+    // The old assertOracleSourceConfigured threw here; now selecting a source
+    // with empty feeds is fine at init — it surfaces per-ticker at tx-build
+    // (see refreshOraclePrices). No cross-source fallback, no init guard.
+    const noLazerFeeds = structuredClone(MOCK_TESTNET_CONFIG);
+    noLazerFeeds.packages.pyth_lazer_rule!.feeds = {};
+    vi.spyOn(configModule, "loadConfig").mockResolvedValue(noLazerFeeds);
+    const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
+    expect(client.oracleSource).toBe("pyth_lazer_rule");
   });
 
   it("mainnet() and testnet() delegate to create()", async () => {

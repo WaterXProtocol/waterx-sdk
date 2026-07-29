@@ -46,7 +46,10 @@
  *    (`POST {LAZER_DEFAULTS.endpoint}/v1/latest_price`, `Authorization:
  *    Bearer <pyth.api_key>`; path + required `channel` field + Bearer auth
  *    verified live against the endpoint). The v1 on-chain `channel::from_u8`
- *    aborts on the 1000ms fixed-rate channel → request `real_time`.
+ *    aborts on the 1000ms fixed-rate channel; the request pins
+ *    `fixed_rate@200ms` — the fastest channel every configured feed supports
+ *    (19/29 don't publish `real_time`, and one incapable feed rejects the
+ *    whole batch). See LAZER_LATEST_PRICE_REQUEST's doc.
  *
  * 5. AGGREGATE SEMANTICS (`aggregator::remove_outliers`) — decides the feed
  *    branch implemented in `aggregate.ts`: it aborts `EMissingPriceSource`
@@ -190,9 +193,7 @@ describe("PythLazerRule.fetchUpdateData", () => {
 
     await PythLazerRule.fetchUpdateData(client, ["BTCUSD"]);
 
-    expect(captured?.url).toBe(
-      new URL("/v1/latest_price", LAZER_DEFAULTS.TESTNET.endpoint).toString(),
-    );
+    expect(captured?.url).toBe(`${LAZER_DEFAULTS.TESTNET.endpoint}/v1/latest_price`);
     expect(captured?.init?.method).toBe("POST");
     expect(captured?.init?.headers).toEqual({
       "Content-Type": "application/json",
@@ -203,7 +204,11 @@ describe("PythLazerRule.fetchUpdateData", () => {
       properties: ["price", "exponent", "confidence"],
       formats: ["leEcdsa"],
       jsonBinaryEncoding: "hex",
-      channel: "real_time",
+      // fixed_rate@200ms, not real_time: 19 of the 29 configured feeds
+      // (incl. SUIUSD and every xStock) don't publish real_time, and one
+      // incapable feed 400s the WHOLE batch. 200ms is the fastest channel
+      // every configured feed supports (see LAZER_LATEST_PRICE_REQUEST).
+      channel: "fixed_rate@200ms",
     });
   });
 
@@ -548,70 +553,49 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     ]);
   });
 
-  it("carries a lazer block AND a Pyth Core fallback block in one PTB when a ticker lacks a lazer feed", async () => {
+  it("fails the build (no Pyth Core fallback) when a ticker lacks a lazer feed, appending zero PTB commands", async () => {
     const client = createLazerTestClient("pyth_lazer_rule");
     attachPythGrpcMocks(client);
-    // ETHUSD drops out of lazer support → falls back to the Pyth Core group.
+    // ETHUSD drops out of lazer support. Under the old design it fell back to a
+    // Pyth Core block in the same PTB; now there is no fallback — the build
+    // throws for ETHUSD and mutates nothing (the missing-feed check is hoisted
+    // above every fetch and PTB command).
     delete client.config.packages.pyth_lazer_rule?.feeds.ETHUSD;
-    const hermesUpdate = mockAccumulatorUpdate();
-    globalThis.fetch = vi.fn(async (url: string | URL) =>
-      url.toString().includes("/v1/latest_price")
-        ? {
-            ok: true,
-            json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),
-          }
-        : {
-            ok: true,
-            json: async () => ({ binary: { data: [toHex(hermesUpdate)] } }),
-          },
-    ) as unknown as typeof fetch;
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),
+    }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { feeSource: { kind: "gas" } });
+    await expect(
+      refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { feeSource: { kind: "gas" } }),
+    ).rejects.toThrow(/oracleSource 'pyth_lazer_rule' has no feed configured.*ETHUSD/);
+
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled(); // thrown before any off-chain fetch
+  });
+
+  it("a lazer-only refresh needs no fee source (Lazer verification is fee-free) and appends no Pyth Core update block", async () => {
+    const client = createLazerTestClient("pyth_lazer_rule");
+    attachPythGrpcMocks(client);
+    // Both tickers have lazer feeds → the whole request is served by the one
+    // selected source. Lazer charges no per-feed fee, so no feeSource is
+    // required and no `pyth::update_single_price_feed` block appears.
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),
+    })) as unknown as typeof fetch;
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"]); // no feeSource — must not throw
 
     const targets = moveTargets(tx);
-    // Lazer generation: one verify, one feed (BTCUSD only).
     expect(
       targets.filter((t) => t === "pyth_lazer::parse_and_verify_le_ecdsa_update"),
     ).toHaveLength(1);
-    expect(targets.filter((t) => t === "pyth_lazer_rule::feed")).toHaveLength(1);
-    // Pyth Core generation for the fallback ticker (its own verify + update block).
-    expect(targets).toContain("pyth::update_single_price_feed");
-    // Both tickers aggregate, and both feed pyth_rule (ETHUSD refreshed, BTCUSD abstain-on-stale).
-    expect(targets.filter((t) => t === "pyth_rule::feed")).toHaveLength(2);
+    expect(targets.filter((t) => t === "pyth_lazer_rule::feed")).toHaveLength(2);
+    expect(targets).not.toContain("pyth::update_single_price_feed");
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
-  });
-
-  it("mixed shape with no fee source throws OracleFeeSourceUnavailable before the lazer group can mutate tx (zero commands appended)", async () => {
-    const client = createLazerTestClient("pyth_lazer_rule");
-    attachPythGrpcMocks(client);
-    // ETHUSD drops out of lazer support → falls back to the Pyth Core group,
-    // which needs a fee source; BTCUSD stays lazer-covered (fee-free, and
-    // would build first — see the group-ordering comment in
-    // `refreshOraclePrices`). If the lazer group ran before the Pyth Core
-    // fallback's own per-call guard fired, it would already have mutated
-    // `tx`. The hoisted pre-check in `refreshOraclePrices` must catch this
-    // BEFORE either group builds, so the whole call is atomic: throw or
-    // zero PTB commands, never a partial mutation.
-    delete client.config.packages.pyth_lazer_rule?.feeds.ETHUSD;
-    const hermesUpdate = mockAccumulatorUpdate();
-    globalThis.fetch = vi.fn(async (url: string | URL) =>
-      url.toString().includes("/v1/latest_price")
-        ? {
-            ok: true,
-            json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),
-          }
-        : {
-            ok: true,
-            json: async () => ({ binary: { data: [toHex(hermesUpdate)] } }),
-          },
-    ) as unknown as typeof fetch;
-
-    const tx = new Transaction();
-    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
-      /OracleFeeSourceUnavailable/,
-    );
-
-    expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 });
