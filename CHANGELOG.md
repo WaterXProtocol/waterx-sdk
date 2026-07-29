@@ -36,6 +36,64 @@ reference the PR that introduced them.
   carried once by a documented `bigint | number` alias used at every
   `basePriceUsd` / `collateralPriceUsd` site, instead of six drifting JSDoc
   copies; only the per-function required-vs-defaults-to-`0n` note stays inline.
+- **`WaterxRule` — the first-party WaterX quote-center as a selectable oracle
+  source (`oracleSource: "waterx_rule"`)**
+  ([#78](https://github.com/WaterXProtocol/waterx-sdk/pull/78)). Users can now price their perp
+  operations from the Nautilus-TEE quote-center instead of Pyth. The rule pulls
+  one enclave-signed batch envelope covering the requested tickers from the
+  quote-center (`GET /v1/quotes/update?symbols=…`; endpoint per network from the
+  new `WATERX_DEFAULTS`, public read — no auth), then — unlike Pyth Lazer, whose
+  verify is a single shared PTB step — verifies AND feeds in ONE
+  `waterx_rule::collect_batch_latest` call per collector (the Move API bundles
+  the two): it rebuilds the signed `BatchPricePayload` in-PTB (`new_batch_payload`
+  + `new_batch_item`/`push_batch_item` per item, byte-identical to what the
+  enclave signed), re-verifies the ed25519 signature, and feeds the item matching
+  `collector.symbol()`. Being the dual-rule collect path, a waterx-routed ticker
+  composes onto the same collector as Pyth/Supra; on-chain a freshness miss /
+  replayed timestamp ABSTAINS so the other weighted rules cover, while a
+  config/integrity mismatch or bad signature aborts.
+
+  Wiring mirrors `PythLazerRule`: `WaterxRule` is registered in `rule-registry.ts`
+  and routed by the client's `oracleSource` option alone (never a config
+  `enabled` flag); `refreshOraclePrices`/`aggregateTicker` thread the signed
+  envelope to the per-ticker feed leg. New config surface: `WaterxRulePackage`
+  (`config`/`enclave_config`/`enclave`/`feeds`, `feeds` keyed by oracle ticker =
+  the supported-ticker set) on `OraclePackages.waterx_rule`, and `WATERX_DEFAULTS`
+  (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`).
+  Generated `waterx_rule` Move bindings added (`@waterx/rule`).
+
+- **`waterxEndpoint` / `waterxFetch` create options — the quote-center host and
+  transport are overridable** ([#78](https://github.com/WaterXProtocol/waterx-sdk/pull/78)).
+  `waterx_rule` is the one source a BROWSER fetches itself (the signed envelope
+  is pulled from the page), so it is bound by the quote-center deployment's CORS
+  allowlist. A front end whose origin is not allowed — or one that must route
+  egress through its own backend — now sets `waterxEndpoint` to a same-origin
+  proxy that forwards `GET /v1/quotes/update`, and/or `waterxFetch.fetchImpl` to
+  its own transport, instead of being locked to the hardcoded host and global
+  `fetch`. The endpoint's base PATH is preserved (the fetch builds its URL via
+  the shared `joinEndpointPath`, not `new URL(path, endpoint)` — which would
+  have rewritten `https://app.example/api/quote-center` to the origin root and
+  bypassed the proxy, the same footgun that once dropped Pyth Pro's `/hermes`
+  prefix). Both resolve onto `client.waterx` (`WaterxInfraConfig`), default to
+  `WATERX_DEFAULTS[network]` (fetch policy falling back to `pythFetch`), and are
+  inert under the Pyth sources. `OracleHost` gains an optional `waterx` field, so
+  an existing host object stays a valid `OracleHost`. Both are top-level options
+  on the umbrella `WaterXClient.create` too (forwarded to the perp line beside
+  `oracleSource` / `pythApiKey` / `pythFetch`) — not reachable only through the
+  nested `perp: {…}` override.
+- Restore `pnpm oracle:aggregates` (`scripts/print-oracle-aggregates.ts`) for v3
+  (#79): Hermes/Lazer refresh + `refreshOraclePrices` simulate per configured
+  oracle ticker (legacy `--format pretty|raw`, `--testnet` / `--mainnet`;
+  **default network mainnet**; `pnpm oracle:aggregates:testnet`, no private
+  key). Network flags rewrite a `WATERX_CONFIG_URL` ending in `testnet.json` ↔
+  `mainnet.json` when needed. Harness wires `ORACLE_SOURCE` / `PYTH_API_KEY`
+  into `oracleSource` / `pythApiKey`; under `pyth_rule`, a failed Hermes refresh
+  prints `WARN` / `OK (STALE)` (no silent fresh OK); under `pyth_lazer_rule`
+  there is no Core fallback — missing Lazer feed fails the ticker.
+- `oracle:aggregates`: `--ticker T[,T...]` flag to aggregate only the given ticker(s)
+  (repeatable and/or comma-separated, case-insensitive, e.g.
+  `pnpm oracle:aggregates -- --ticker WTIUSD`). Omitted, it still runs every configured
+  aggregator; an unconfigured ticker aborts non-zero with the list of valid tickers.
 
 ### Removed
 
@@ -53,6 +111,9 @@ reference the PR that introduced them.
   descale before use:
   `const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE); // e.g. 50_000_000 → 0.05`.
   There is no flat-rate replacement on purpose.
+  (PR [#80](https://github.com/WaterXProtocol/waterx-sdk/pull/80) had marked
+  `MAINTENANCE_MARGIN_RATE` `@deprecated` in this same unreleased window; the
+  removal supersedes that deprecation entry.)
 
 ### Fixed
 

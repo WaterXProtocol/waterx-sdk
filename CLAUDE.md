@@ -60,13 +60,18 @@ create options (a secret has no place in a public CDN JSON), layered onto
 `client.pyth`.
 
 Which price-update **source** runs is the client's `oracleSource` create option
-(`'pyth_rule'` default \| `'pyth_lazer_rule'`). Each source is self-contained
-with **no cross-source fallback** and **no client-creation guard**: selecting a
-source whose feed for a ticker is absent fails at **tx-build** for that ticker
-(constant-only tickers are exempt), not at init; a present-but-wrong feed id is
-left to abort on-chain at dry-run. `client.pyth` is the same Core infra for
-every source — the `pyth_lazer_rule` source reads only `api_key`/`fetch` from it
-and gets its on-chain infra from `LAZER_DEFAULTS` + config.
+(`'pyth_rule'` default \| `'pyth_lazer_rule'` \| `'waterx_rule'`). Each source is
+self-contained with **no cross-source fallback** and **no client-creation guard**:
+selecting a source whose feed for a ticker is absent fails at **tx-build** for
+that ticker (constant-only tickers are exempt), not at init; a present-but-wrong
+feed id is left to abort on-chain at dry-run. `client.pyth` is the same Core infra
+for every source — the `pyth_lazer_rule` source reads only `api_key`/`fetch` from
+it and gets its on-chain infra from `LAZER_DEFAULTS` + config. `'waterx_rule'`
+(first-party Nautilus-TEE quote-center, ed25519 signed batches) touches no Pyth
+infra: its host comes from `WATERX_DEFAULTS[network]` onto `client.waterx`,
+overridable per client via the `waterxEndpoint` / `waterxFetch` create options
+(fetch policy/transport precedence: `waterxFetch` → `pythFetch` → the
+`fetchWithPolicy` defaults).
 
 `WaterXClient` is the **umbrella** entry point exposing three namespaces:
 `client.account` (shared `waterx_account` + credit/custody), `client.perp` (the
@@ -129,9 +134,9 @@ pnpm codegen         # scripts/codegen-summaries.ts → sui-ts-codegen → fix-g
 
 `pnpm codegen` runs `sui move summary` for each package listed in
 `scripts/codegen-summaries.ts` (resolves under `../waterx-contract/<pkg>/`).
-`waterx_rule` is excluded because of a `nautilus/move/enclave` dependency
-with a Windows-style path bug; SDK builders can use raw `tx.moveCall` if ever
-needed.
+`waterx_rule` **is** in codegen (`waterx_oracle_rule/waterx_rule`) and its
+generated bindings are committed — `WaterxRule` calls them directly, so no raw
+`tx.moveCall` is needed for the enclave rule.
 
 ## Contract surface (v3 specifics)
 
@@ -181,16 +186,29 @@ swept on cancel/liquidation. Per-leg cancel/add via
 ### Oracle (single shared object)
 
 `waterx_oracle::Oracle` is one shared object keyed by ticker string. PTB
-refresh flow per ticker:
+refresh flow per ticker — one `feed` leg per rule the ticker is configured for,
+then one aggregate:
 
 ```
 collector = oracle::new_collector(ticker)
-pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)
+[pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)]
+[pyth_lazer_rule::feed(collector, …, verifiedUpdate)]   // selected source produced one
+[waterx_rule::collect_batch_latest(collector, …, envelope)]  // verify + feed in ONE call
+[supra_rule::feed / constant_rule::feed]
 oracle::aggregate(oracle, collector, clock)
 ```
 
-`oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` does
-Hermes fetch + Pyth on-chain update + per-ticker aggregate in one call.
+The fed set must cover the aggregator's on-chain `weights` — `remove_outliers`
+aborts `EMissingPriceSource` when a weighted rule is absent from the collector
+(an ABSTAINING feed counts as present).
+
+`oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` runs the
+selected source's off-chain fetch + on-chain update leg, then the per-ticker
+feeds + aggregate, in one call. Which source runs is `oracleSource`: Hermes
+fetch + Pyth update for `'pyth_rule'`, a signed Lazer update for
+`'pyth_lazer_rule'`, a quote-center batch envelope for `'waterx_rule'` (that one
+emits no separate update leg — verify and feed are bundled into
+`collect_batch_latest`).
 
 ### WLP pool
 
@@ -281,4 +299,4 @@ src/
 - Cancel-order wildcard: pass `orderTypeTag: ORDER_TAG_WILDCARD` (255) and `triggerPrice: 0n` to scan all 4 books by `orderId`.
 - Price scaling: human-readable USD (`50000`) → raw 1e9-scaled bigint via `rawPrice(usd)`. Pass the raw form to `acceptablePrice` / `triggerPrice` / size args.
 - Mainnet config is **not yet deployed**; loading `MAINNET` will fail until the maintainers publish `mainnet.json` to the config repo.
-- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) is intentionally not in codegen — only `pyth_rule` is. If a deployment needs the enclave rule, add a raw `tx.moveCall` against the contract's published ID.
+- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) ships as `oracleSource: 'waterx_rule'` — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls ONE enclave-signed batch envelope covering the build's tickers from the quote-center (`GET /v1/quotes/update`, public read) and then verifies AND feeds in a single `collect_batch_latest` per collector, so its `buildUpdateCalls` emits nothing. The quote-center host comes from `WATERX_DEFAULTS[network]`, overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy/transport precedence `waterxFetch` → `pythFetch` → defaults) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live envelope that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain.

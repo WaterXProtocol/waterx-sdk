@@ -7,18 +7,20 @@
  * option) — never by a config JSON `enabled` flag and never by `process.env`.
  *
  * Each source is self-contained: it owns its own infra + config and does NOT
- * back-stop any other source. Both are registered: `pyth_rule` (`PythCoreRule`,
- * Hermes VAA) and `pyth_lazer_rule` (`PythLazerRule`, Lazer signed updates).
- * Resolving a source with no registered rule throws a clear
- * `OracleSourceNotImplemented` error. There is deliberately no cross-source
- * fallback and no client-creation config guard: selecting a source whose feeds
- * are absent is not an error at init — it surfaces at tx-build time for the
- * specific tickers that source can't serve (see `refreshOraclePrices`).
+ * back-stop any other source. Three are registered: `pyth_rule`
+ * (`PythCoreRule`, Hermes VAA), `pyth_lazer_rule` (`PythLazerRule`, Lazer
+ * signed updates), and `waterx_rule` (`WaterxRule`, first-party quote-center
+ * ed25519 signed batches). Resolving a source with no registered rule throws a
+ * clear `OracleSourceNotImplemented` error. There is deliberately no
+ * cross-source fallback and no client-creation config guard: selecting a source
+ * whose feeds are absent is not an error at init — it surfaces at tx-build time
+ * for the specific tickers that source can't serve (see `refreshOraclePrices`).
  */
 
 import type { OracleSource, PriceUpdateRule } from "./price-update-rule.ts";
 import { PythCoreRule } from "./rules/pyth-core-rule.ts";
 import { PythLazerRule } from "./rules/pyth-lazer-rule.ts";
+import { WaterxRule } from "./rules/waterx-rule.ts";
 
 /**
  * Production registry. Frozen — tests inject a fake rule via
@@ -27,6 +29,7 @@ import { PythLazerRule } from "./rules/pyth-lazer-rule.ts";
 const DEFAULT_RULES: Partial<Record<OracleSource, PriceUpdateRule>> = Object.freeze({
   pyth_rule: PythCoreRule,
   pyth_lazer_rule: PythLazerRule,
+  waterx_rule: WaterxRule,
 });
 
 /**

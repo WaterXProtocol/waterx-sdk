@@ -37,6 +37,7 @@ import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
 import type { PythFetchPolicy } from "./oracle/config.ts";
 import type { OracleSource } from "./oracle/price-update-rule.ts";
+import type { FetchPolicy } from "./oracle/update-fetch.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
 import * as perpFetch from "./perp/fetch.ts";
@@ -160,11 +161,14 @@ export interface ClientCreateOptions {
   /**
    * The perp line's oracle price-update source (perp-line only — the
    * prediction line has no oracle leg), forwarded to `PerpClient.create`.
-   * Source-neutral by design: a future source need not be Pyth.
+   * Source-neutral by design: a source need not be Pyth (see `'waterx_rule'`).
    *
    * - `'pyth_rule'` (default) — Pyth Core updates on Core infra.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`
    *   and a config carrying `packages.pyth_lazer_rule`).
+   * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
+   *   ed25519 signed batches; no credential, no per-update fee). Pair with
+   *   `waterxEndpoint` / `waterxFetch` when the browser needs a proxy.
    *
    * Each source is self-contained with no cross-source fallback; selecting a
    * source whose feed for a ticker is absent fails at tx-build (not at init).
@@ -180,6 +184,22 @@ export interface ClientCreateOptions {
   pythApiKey?: string;
   /** Retry/timeout policy for the perp line's off-chain oracle fetches. */
   pythFetch?: PythFetchPolicy;
+  /**
+   * Quote-center base URL for `oracleSource: 'waterx_rule'`, forwarded to the
+   * perp line — overrides the per-network `WATERX_DEFAULTS` host.
+   *
+   * `waterx_rule` is the one source a BROWSER fetches itself, so it is bound by
+   * the quote-center deployment's CORS allowlist: a front end whose origin is
+   * not allowed points this at its own same-origin proxy. An absolute URL whose
+   * base PATH is preserved — `https://app.example/api/quote-center` fetches
+   * `…/api/quote-center/v1/quotes/update`. Unused by the Pyth sources.
+   */
+  waterxEndpoint?: string;
+  /**
+   * Retry/timeout policy — and `fetchImpl` — for the perp line's quote-center
+   * fetch. Falls back to `pythFetch`, then to the built-in defaults.
+   */
+  waterxFetch?: FetchPolicy;
   /** Perp-line overrides (network, grpcUrl, waterxConfigUrl, cache, …). */
   perp?: PerpLineOptions;
   /** Prediction-line overrides (network, grpcUrl, waterxConfigUrl, cache, settlement, …). */
@@ -269,6 +289,8 @@ export class WaterXClient {
       oracleSource: opts.oracleSource,
       pythApiKey: opts.pythApiKey,
       pythFetch: opts.pythFetch,
+      waterxEndpoint: opts.waterxEndpoint,
+      waterxFetch: opts.waterxFetch,
       ...perpRest,
     });
     const predictClient = await PredictClient.create(resolvedPredictNetwork, {
