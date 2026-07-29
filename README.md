@@ -105,23 +105,23 @@ Two independent client create options control oracle behavior. The SDK **never r
 
 | Option | Values | What it flips |
 |--------|--------|---------------|
-| `oracleSource` | `'pyth_rule'` (default) \| `'pyth_lazer_rule'` | Which `PriceUpdateRule` `refreshOraclePrices` uses for the on-chain price-update leg. |
+| `oracleSource` | `'pyth_rule'` (default) \| `'pyth_lazer_rule'` \| `'waterx_rule'` | Which `PriceUpdateRule` `refreshOraclePrices` uses for the on-chain price-update leg. `'waterx_rule'` is the first-party WaterX quote-center (Nautilus-TEE, ed25519-signed CEX prices) — needs `packages.waterx_rule` feeds in the config JSON; no API key, no per-update fee. |
 | `pythGeneration` | `'core'` (default) \| `'pro'` | Which Pyth infra constants feed `client.pyth` when the config JSON has no explicit `pyth` block: `PYTH_DEFAULTS` (original contracts, keyless `hermes.pyth.network`) or `PYTH_PRO_DEFAULTS` (post-2026-08-18 Pro-compatible contracts + the Hermes-compatible `https://pyth.dourolabs.app/hermes`, auth-first). |
 
-They are orthogonal: `pythGeneration` moves the Pyth **Core** state ids + endpoint; `oracleSource` picks the **rule** (Core VAA vs Lazer signed updates). An explicit `pyth` block in the config JSON always overrides the generation constants wholesale.
+They are orthogonal: `pythGeneration` moves the Pyth **Core** state ids + endpoint; `oracleSource` picks the **rule** (Core VAA vs Lazer signed updates vs WaterX enclave-signed batches). An explicit `pyth` block in the config JSON always overrides the generation constants wholesale. `pythGeneration` is inert under `oracleSource: 'waterx_rule'` — that source touches no Pyth infra; its endpoint comes from `WATERX_DEFAULTS` (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`).
 
 ```ts
 // Per-environment wiring — the consumer owns the env vars, not the SDK:
 const perp = await PerpClient.create(network, {
   waterxConfigUrl,
-  oracleSource: process.env.ORACLE_SOURCE as OracleSource | undefined, // e.g. staging: pyth_lazer_rule
+  oracleSource: process.env.ORACLE_SOURCE as OracleSource | undefined, // e.g. staging: pyth_lazer_rule | waterx_rule
   pythGeneration: process.env.PYTH_GENERATION as PythGeneration | undefined, // e.g. staging: pro
 });
 // After the 2026-08-18 cutover, Pro-generation Hermes requires a key:
 perp.pyth = { ...perp.pyth, api_key: process.env.PYTH_API_KEY };
 ```
 
-This is the staging-Pro / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` and/or `PYTH_GENERATION=pro` while production leaves both unset (Core defaults) — flipping an environment is an env-var change, never an SDK release. After August 18, 2026 (the Core-upgrade cutover — see https://docs.pyth.network/price-feeds/core/upgrade), consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
+This is the staging-Pro / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` (or `waterx_rule`) and/or `PYTH_GENERATION=pro` while production leaves both unset (Core defaults) — flipping an environment is an env-var change, never an SDK release. After August 18, 2026 (the Core-upgrade cutover — see https://docs.pyth.network/price-feeds/core/upgrade), consumers set `pythGeneration: 'pro'` + `pyth.api_key`.
 
 ### Adding an oracle source (runbook)
 
@@ -130,10 +130,12 @@ Every rule generation plugs in the same way — routing is driven **only** by th
 1. **Implement `PriceUpdateRule`** in `src/oracle/rules/<name>-rule.ts` — all port fields (`src/oracle/price-update-rule.ts`): `kind`, `requiresFeeSource` (`true` iff the on-chain verify draws a per-update fee — gates the fail-fast fee-source check), `supportedTickers`, `fetchUpdateData`, `narrowUpdateData` (subset a cached whole-universe payload to one build's tickers — a divisible payload returns a per-feed subset, an indivisible one returns itself whole iff fully covered; uncovered ticker → `null` miss), `buildUpdateCalls`.
 2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value (added to the union in `price-update-rule.ts`).
 3. **Publish the on-chain rule package** — its config entry (package ids, per-ticker `feeds`) arrives via the normal `waterx-config` deploy pipeline; type it in `OraclePackages` (`src/oracle/config.ts`).
-4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a per-network map in `src/oracle/config.ts`, mirroring `LAZER_DEFAULTS` / `PYTH_PRO_DEFAULTS`.
+4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a per-network map in `src/oracle/config.ts`, mirroring `LAZER_DEFAULTS` / `PYTH_PRO_DEFAULTS` / `WATERX_DEFAULTS`.
 5. **Consumers flip `ORACLE_SOURCE`** per environment — no consumer code change, no SDK re-release.
 
-The in-house `waterx_rule` (ed25519 enclave-signed CEX prices) follows exactly this path when it lands.
+The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one enclave-signed batch envelope covering the requested tickers from the quote-center (`GET /v1/quotes/update?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_batch_latest` call per collector, so it emits no shared verify step. On-chain a freshness miss / replayed timestamp abstains (the other weighted rules cover); a config mismatch or bad signature aborts.
+
+> **Browser consumers:** this source fetches the quote-center directly from the client, so the quote-center deployment must return `Access-Control-Allow-Origin` for the app's origin. Until that is enabled for a given environment, browsers block the response — front ends should route the call through a same-origin/backend proxy (or run the refresh server-side). Node/keeper consumers are unaffected.
 
 ## Recipes & full surface
 

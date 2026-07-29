@@ -11,7 +11,8 @@ reference the PR that introduced them.
 ### Added
 
 - **`WaterxRule` — the first-party WaterX quote-center as a selectable oracle
-  source (`oracleSource: "waterx_rule"`).** Users can now price their perp
+  source (`oracleSource: "waterx_rule"`).**
+  ([#78](https://github.com/WaterXProtocol/waterx-sdk/pull/78)) Users can now price their perp
   operations from the Nautilus-TEE quote-center instead of Pyth. The rule pulls
   one enclave-signed batch envelope covering the requested tickers from the
   quote-center (`GET /v1/quotes/update?symbols=…`; endpoint per network from the
