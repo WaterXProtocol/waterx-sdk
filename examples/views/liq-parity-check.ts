@@ -26,6 +26,10 @@ console.log(`markets in config: ${tickers.join(", ")}`);
 let total = 0;
 let maxAbsDelta = 0;
 let failures = 0;
+// A fetch failure means a market (or a page of its positions) was silently
+// skipped — the "every live position" claim no longer holds, so the run must
+// NOT report success. Tracked separately from numeric parity failures.
+let fetchFailures = 0;
 
 for (const ticker of tickers) {
   let md;
@@ -33,6 +37,7 @@ for (const ticker of tickers) {
     md = await getMarketData(client, { ticker });
   } catch (e) {
     console.log(`  [${ticker}] getMarketData failed: ${(e as Error).message}`);
+    fetchFailures += 1;
     continue;
   }
   const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE);
@@ -52,6 +57,7 @@ for (const ticker of tickers) {
       });
     } catch (e) {
       console.log(`  [${ticker}] getMarketPositions failed: ${(e as Error).message}`);
+      fetchFailures += 1;
       break;
     }
     cursor = page.nextCursor;
@@ -98,7 +104,12 @@ for (const ticker of tickers) {
 }
 
 console.log(
-  `\nparity: ${total} positions checked, maxΔ=${maxAbsDelta.toExponential(3)}, failures=${failures}`,
+  `\nparity: ${total} positions checked, maxΔ=${maxAbsDelta.toExponential(3)}, failures=${failures}, fetchFailures=${fetchFailures}`,
 );
 if (total === 0) console.log("NOTE: no live positions found — parity not exercised.");
-process.exit(failures > 0 ? 1 : 0);
+if (fetchFailures > 0) {
+  console.log(
+    `INCOMPLETE COVERAGE: ${fetchFailures} market/page fetch(es) failed — some live positions were NOT checked; this run does not verify AC3.`,
+  );
+}
+process.exit(failures > 0 || fetchFailures > 0 ? 1 : 0);

@@ -106,7 +106,9 @@ reference the PR that introduced them.
   flat `MAINTENANCE_MARGIN_RATE` caused a real est-liq-price incident on
   2026-07-28. Removed so they cannot be imported. Migration: read the
   `trading_fee` / `maintenance_margin` fields (and siblings) from the market's
-  on-chain `MarketConfig` (`getMarketData` / `MarketConfigBcs`). Both are
+  on-chain `MarketConfig` — via `getMarketData` (the supported read path) or
+  the raw `MarketConfigBcs` BCS binding (exported from `@waterx/sdk/perp`
+  since 4.x). Both fields are
   1e9-scaled `Float` values, NOT plain decimals like the deleted constants —
   descale before use:
   `const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE); // e.g. 50_000_000 → 0.05`.
