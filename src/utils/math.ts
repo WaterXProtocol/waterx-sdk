@@ -48,6 +48,49 @@ export function calcLeverage(sizeUsd: number, collateralUsd: number): number {
 }
 
 /**
+ * Accrued-fee inputs for the liquidation-price estimate — see
+ * `calcLiqFeeBundleUsd` for the derivation rule and Move semantics.
+ *
+ * `fundingFeeUsd` is SIGNED, cost-positive: > 0 the position owes funding,
+ * < 0 is funding income (credits the bundle).
+ */
+export type LiqFeeBundle = {
+  borrowFeeUsd: number;
+  openFeeUsd: number;
+  closingFeeUsd: number;
+  /** SIGNED, cost-positive: > 0 owed, < 0 income (credits the bundle). */
+  fundingFeeUsd: number;
+};
+
+/**
+ * Total accrued-fee bundle (USD) for the liquidation-price estimate:
+ *
+ *   totalFeesUsd = max(0, borrowFeeUsd + openFeeUsd + closingFeeUsd + fundingFeeUsd)
+ *
+ * `fundingFeeUsd` is SIGNED cost-positive — negative funding (income) CREDITS
+ * the bundle, paying the other fees down first — and the total floors at 0,
+ * matching the contract's saturating-subtract: the bundle never goes negative.
+ *
+ * Three-way Move-semantics relationship (verified against the Move sources
+ * 2026-07-29):
+ * - the REAL liquidation check, `position.move::is_liquidatable`
+ *   (waterx_perp): deducts borrow + open + CLOSING fee and credits funding
+ *   income against them (saturating);
+ * - the view estimate, `view.move::calculate_est_liq_price`
+ *   (waterx_perp_view): same signed funding credit, but OMITS the closing fee;
+ * - this bundle matches the REAL check — WL-2248's normative equity(P) model
+ *   (closing fee included) — deliberately deviating from the view by exactly
+ *   the close-fee term.
+ * Contrast with `calcEffectiveCollateralUsd`, which does NOT credit funding
+ * income: it mirrors the withdrawable-collateral checks
+ * (`calculate_effective_collateral_amount` in `trading.move`), not the
+ * liquidation inequality — do not "fix" either one to match the other.
+ */
+export function calcLiqFeeBundleUsd(fees: LiqFeeBundle): number {
+  return Math.max(0, fees.borrowFeeUsd + fees.openFeeUsd + fees.closingFeeUsd + fees.fundingFeeUsd);
+}
+
+/**
  * Estimated liquidation price.
  *
  * Matches `calculate_est_liq_price` in `waterx_perp_view/sources/view.move`:
@@ -58,26 +101,32 @@ export function calcLeverage(sizeUsd: number, collateralUsd: number): number {
  *
  * Returns 0 when the position is already liquidatable or has no size.
  *
- * @param totalFeesUsd  Sum of all accrued fees in USD: borrow + trading + net funding.
+ * Fees — pass EITHER:
+ * - `fees`: the structured bundle. `totalFeesUsd` is derived via
+ *   `calcLiqFeeBundleUsd` (the saturating rule — funding income credited,
+ *   floored at 0; see its doc for the Move semantics), so a caller
+ *   structurally cannot forget the floor or omit a term. `fees.fundingFeeUsd`
+ *   is SIGNED cost-positive (< 0 = income). Takes precedence when both are
+ *   given; or
+ * - `totalFeesUsd`: a pre-computed sum of accrued fees in USD (back-compat
+ *   path) — the caller is responsible for the saturating rule.
  */
-export function calcEstLiqPrice(params: {
-  isLong: boolean;
-  avgPrice: number;
-  sizeInAsset: number;
-  collateralUsd: number;
-  maintenanceMarginRate: number;
-  spotPrice: number;
-  totalFeesUsd: number;
-}): number {
-  const {
-    isLong,
-    avgPrice,
-    sizeInAsset,
-    collateralUsd,
-    maintenanceMarginRate,
-    spotPrice,
-    totalFeesUsd,
-  } = params;
+export function calcEstLiqPrice(
+  params: {
+    isLong: boolean;
+    avgPrice: number;
+    sizeInAsset: number;
+    collateralUsd: number;
+    maintenanceMarginRate: number;
+    spotPrice: number;
+  } & (
+    | { totalFeesUsd: number; fees?: LiqFeeBundle }
+    | { totalFeesUsd?: number; fees: LiqFeeBundle }
+  ),
+): number {
+  const { isLong, avgPrice, sizeInAsset, collateralUsd, maintenanceMarginRate, spotPrice } = params;
+  const totalFeesUsd =
+    params.fees !== undefined ? calcLiqFeeBundleUsd(params.fees) : (params.totalFeesUsd ?? 0);
   if (sizeInAsset === 0) return 0;
 
   const entryNotional = sizeInAsset * avgPrice;

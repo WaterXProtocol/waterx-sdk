@@ -14,6 +14,7 @@ import {
   calcFundingRate,
   calcImpactFeeRate,
   calcLeverage,
+  calcLiqFeeBundleUsd,
   calcMaxReducibleCollateralUsd,
   calcNotional,
   calcPositionBorrowFee,
@@ -162,6 +163,62 @@ describe("calcEstLiqPrice", () => {
       totalFeesUsd: 40,
     });
     expect(withFees).toBeGreaterThan(withoutFees);
+  });
+
+  const FEES_PATH_BASE = {
+    isLong: true,
+    avgPrice: 100,
+    sizeInAsset: 1,
+    collateralUsd: 50,
+    maintenanceMarginRate: 0.015,
+    spotPrice: 100,
+  };
+
+  it("fees path equals the equivalent explicit totalFeesUsd", () => {
+    const fees = { borrowFeeUsd: 3, openFeeUsd: 2, closingFeeUsd: 1, fundingFeeUsd: -4 };
+    expect(calcLiqFeeBundleUsd(fees)).toBe(2);
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, fees })).toBe(
+      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: calcLiqFeeBundleUsd(fees) }),
+    );
+  });
+
+  it("fees path floors at 0 when funding income exceeds the other fees", () => {
+    const fees = { borrowFeeUsd: 1, openFeeUsd: 1, closingFeeUsd: 1, fundingFeeUsd: -40 };
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, fees })).toBe(
+      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 0 }),
+    );
+  });
+
+  it("fees takes precedence over totalFeesUsd when both are given", () => {
+    const fees = { borrowFeeUsd: 10, openFeeUsd: 10, closingFeeUsd: 10, fundingFeeUsd: 10 };
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 0, fees })).toBe(
+      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 40 }),
+    );
+  });
+});
+
+describe("calcLiqFeeBundleUsd", () => {
+  it("sums borrow + open + closing + owed funding", () => {
+    expect(
+      calcLiqFeeBundleUsd({ borrowFeeUsd: 10, openFeeUsd: 5, closingFeeUsd: 5, fundingFeeUsd: 8 }),
+    ).toBe(28);
+  });
+
+  it("credits funding income (negative fundingFeeUsd) against the bundle", () => {
+    expect(
+      calcLiqFeeBundleUsd({ borrowFeeUsd: 10, openFeeUsd: 5, closingFeeUsd: 5, fundingFeeUsd: -8 }),
+    ).toBe(12);
+  });
+
+  it("floors at 0 when income exceeds the other fees (saturating)", () => {
+    expect(
+      calcLiqFeeBundleUsd({
+        borrowFeeUsd: 10,
+        openFeeUsd: 5,
+        closingFeeUsd: 5,
+        fundingFeeUsd: -30,
+      }),
+    ).toBe(0);
   });
 });
 

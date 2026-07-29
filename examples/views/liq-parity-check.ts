@@ -10,10 +10,10 @@
  * 2026-07-29 testnet run: 69 positions, maxΔ 1.05e-2 abs (~4e-8 rel), 0 failures.
  */
 import { buildClient } from "../_shared.ts";
+import { FLOAT_SCALE } from "../../src/constants.ts";
 import { getMarketData, getMarketPositions } from "../../src/perp/fetch.ts";
 import { calcEstLiqPrice } from "../../src/utils/math.ts";
 
-const FLOAT_SCALE = 1e9;
 const PROBE_PRICE_USD = 1000n; // whole-dollar u64 — any positive value is valid for parity
 
 const client = await buildClient();
@@ -35,7 +35,7 @@ for (const ticker of tickers) {
     console.log(`  [${ticker}] getMarketData failed: ${(e as Error).message}`);
     continue;
   }
-  const mmr = Number(md.maintenance_margin) / FLOAT_SCALE;
+  const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE);
 
   let page;
   try {
@@ -65,14 +65,14 @@ for (const ticker of tickers) {
 
     const sdkLiq = calcEstLiqPrice({
       isLong: p.is_long,
-      avgPrice: Number(p.average_price) / FLOAT_SCALE,
-      sizeInAsset: Number(p.size) / FLOAT_SCALE,
+      avgPrice: Number(p.average_price) / Number(FLOAT_SCALE),
+      sizeInAsset: Number(p.size) / Number(FLOAT_SCALE),
       collateralUsd,
       maintenanceMarginRate: mmr,
       spotPrice: Number(PROBE_PRICE_USD),
       totalFeesUsd,
     });
-    const chainLiq = Number(p.est_liq_price) / FLOAT_SCALE;
+    const chainLiq = Number(p.est_liq_price) / Number(FLOAT_SCALE);
     const delta = Math.abs(sdkLiq - chainLiq);
     maxAbsDelta = Math.max(maxAbsDelta, delta);
     // 1 tick on the 1e9 Float encoding, scaled up generously for f64 noise on big prices
@@ -84,7 +84,7 @@ for (const ticker of tickers) {
     if (!ok) failures += 1;
     console.log(
       `  [${ticker}] pos ${p.position_id} ${p.is_long ? "L" : "S"} avg=${(
-        Number(p.average_price) / FLOAT_SCALE
+        Number(p.average_price) / Number(FLOAT_SCALE)
       ).toFixed(4)} chain=${chainLiq.toFixed(6)} sdk=${sdkLiq.toFixed(6)} Δ=${delta.toExponential(
         2,
       )} ${ok ? "OK" : "FAIL"}`,

@@ -70,6 +70,8 @@ export {
   STAKING_PERM_REDEEM_STAKE,
   STAKING_PERM_CLAIM_REWARD,
   STAKING_PERM_ALL,
+  MS_PER_MINUTE,
+  MS_PER_HOUR,
   MS_PER_YEAR,
   SUI_DECIMALS,
   WLP_DECIMALS,
@@ -93,6 +95,7 @@ export {
   calcFundingRate,
   calcImpactFeeRate,
   calcLeverage,
+  calcLiqFeeBundleUsd,
   calcMaxReducibleCollateralUsd,
   calcNotional,
   calcPositionBorrowFee,
@@ -106,6 +109,8 @@ export {
   decodeFundingIndexDelta,
   rawPrice,
 } from "../utils/math.ts";
+export type { LiqFeeBundle } from "../utils/math.ts";
+export { formatFundingInterval } from "../utils/format.ts";
 
 // ======== Transaction builders (user-side) ========
 export * from "./user/index.ts";

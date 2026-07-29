@@ -1,4 +1,7 @@
 import {
+  MS_PER_HOUR,
+  MS_PER_MINUTE,
+  MS_PER_YEAR,
   ORDER_LIMIT_BUY,
   ORDER_LIMIT_SELL,
   ORDER_STOP_BUY,
@@ -45,6 +48,14 @@ describe("order type tags", () => {
     expect(ORDER_STOP_BUY).toBe(2);
     expect(ORDER_STOP_SELL).toBe(3);
     expect(ORDER_TAG_WILDCARD).toBe(255);
+  });
+});
+
+describe("time constants", () => {
+  it("pins the ms-per-unit values", () => {
+    expect(MS_PER_MINUTE).toBe(60_000);
+    expect(MS_PER_HOUR).toBe(3_600_000);
+    expect(MS_PER_YEAR).toBe(31_536_000_000);
   });
 });
 

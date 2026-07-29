@@ -8,6 +8,35 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+### Added
+
+- **`calcLiqFeeBundleUsd(fees)` + structured `fees` input on `calcEstLiqPrice`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The
+  liq-estimate fee-bundle rule —
+  `totalFeesUsd = max(0, borrowFee + openFee + closingFee + SIGNED funding)`,
+  funding cost-positive with income crediting the bundle, floored at 0 per the
+  contract's saturating-subtract — now lives in the SDK once (next to
+  `calcEstLiqPrice`, with the three-way `position.move::is_liquidatable` /
+  `view.move::calculate_est_liq_price` / WL-2248 equity(P) semantics note)
+  instead of being hand-copied in FE and BE, where the copies had already
+  drifted. `calcEstLiqPrice` now takes EITHER the existing `totalFeesUsd`
+  (unchanged — back-compat for published consumers) or
+  `fees: { borrowFeeUsd, openFeeUsd, closingFeeUsd, fundingFeeUsd }`, which
+  derives the total via the saturating rule and takes precedence, so a caller
+  structurally cannot forget the floor or omit a term.
+- **`formatFundingInterval(intervalMs)`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
+  funding-interval wire label (`"1H"` / `"8H"` / `"1.5H"` / `"30M"`,
+  non-integer hours preserved), ported verbatim from the BE so FE and BE emit
+  byte-identical strings from one implementation. `MS_PER_HOUR` /
+  `MS_PER_MINUTE` join `MS_PER_YEAR` in the shared constants.
+- **`WholeDollarUsdPrice` type alias**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
+  whole-dollar view-price warning on the six `perp/fetch` read functions is now
+  carried once by a documented `bigint | number` alias used at every
+  `basePriceUsd` / `collateralPriceUsd` site, instead of six drifting JSDoc
+  copies; only the per-function required-vs-defaults-to-`0n` note stays inline.
+
 ### Removed
 
 - **BREAKING: `CRYPTO_FEE_RATE`, `STOCK_FEE_RATE`, and `MAINTENANCE_MARGIN_RATE`
