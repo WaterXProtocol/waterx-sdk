@@ -19,6 +19,7 @@ import {
   HermesEndpointRejectedAllFeedsError,
   MISSING_FEED_MEMO_TTL_MS,
   probeMissingFeeds,
+  PYTH_CORE_INFRA,
 } from "../../../src/oracle/pyth.ts";
 import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
@@ -33,8 +34,8 @@ import {
 } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
-const PYTH_STATE = mockSuiAddress("c1");
-const WORMHOLE_STATE = mockSuiAddress("c2");
+const PYTH_STATE = PYTH_CORE_INFRA.TESTNET.state_id;
+const WORMHOLE_STATE = PYTH_CORE_INFRA.TESTNET.wormhole_state_id;
 const PRICE_TABLE_CHILD = mockSuiAddress("c3");
 
 function wirePythGrpc(
@@ -78,8 +79,6 @@ function wirePythGrpc(
       dynamicField: { value: overrides.dynamicFieldValue ?? { bcs: new Uint8Array(32).fill(1) } },
     })),
   } as unknown as typeof client.grpcClient;
-
-  client.pyth = { ...client.pyth, state_id: PYTH_STATE, wormhole_state_id: WORMHOLE_STATE };
 }
 
 describe("pyth on-chain helper branches", () => {
@@ -622,40 +621,6 @@ describe("pyth on-chain helper branches", () => {
       feeSource: { kind: "gas" },
     });
     expect(ids[0]).toBe("0xcached");
-    expect(getDynamicField).not.toHaveBeenCalled();
-  });
-
-  it("reuses priceFeedObjectId cache with feed-only key when pyth state id is empty", async () => {
-    const client = createUnitTestClient();
-    const fieldType = DEFAULT_MOCK_PYTH_ROW_TYPE.replace(
-      /::price_identifier::PriceIdentifier$/,
-      "",
-    );
-    const cache = new PythCache();
-    cache.pythStateInfo = {
-      packageId: MOCK_PYTH_PACKAGE_FOR_GRPC_DEFAULT,
-      baseUpdateFee: 1000n,
-    };
-    cache.wormholePackageId = MOCK_WORMHOLE_PACKAGE_FOR_GRPC_DEFAULT;
-    cache.priceTableInfo = { id: PRICE_TABLE_CHILD, fieldType };
-
-    const getDynamicField = vi.fn(async () => ({
-      dynamicField: { value: { bcs: new Uint8Array(32).fill(2) } },
-    }));
-    wirePythGrpc(client);
-    client.grpcClient.getDynamicField =
-      getDynamicField as unknown as typeof client.grpcClient.getDynamicField;
-    client.pyth = { ...client.pyth, state_id: "" };
-
-    const feedId = "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b";
-    cache.priceFeedObjectIdCache.set(feedId.replace(/^0x/, ""), "0xcached-no-state");
-
-    const tx = new Transaction();
-    const ids = await buildPythPriceUpdateCalls(tx, client, [mockAccumulatorUpdate()], [feedId], {
-      cache,
-      feeSource: { kind: "gas" },
-    });
-    expect(ids[0]).toBe("0xcached-no-state");
     expect(getDynamicField).not.toHaveBeenCalled();
   });
 

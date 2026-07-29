@@ -8,6 +8,51 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-07-31
+
+_Oracle-source decoupling: every oracle source is fully self-contained — its
+endpoints and on-chain object ids live with its rule, nothing source-shaped
+rides on the shared client, and there is no default source and no
+cross-source fallback anywhere._
+
+_Ships as a patch despite the **BREAKING** entries below, for the same reason
+`4.0.1` did: the `4.0.x` oracle surface is explicitly unstable-until-settled
+(see the `4.0.1` note), and this release is what settles it. Consumers on
+`4.0.x` must read the migration lines below before bumping._
+
+### Removed
+
+- **BREAKING: `client.pyth` carries NO infra anymore.** `PythInfraConfig`
+  (`state_id` / `wormhole_state_id` / `hermes_endpoint` on the client) is
+  replaced by `PythAccessConfig` — only the caller-supplied `api_key` /
+  `fetch` policy. Consumers that read `client.pyth.hermes_endpoint` for their
+  own Hermes REST reads must resolve the endpoint per their `ORACLE_SOURCE`
+  instead: `pythCoreHermesEndpoint(network)` (new export) when the source is
+  `'pyth_rule'`; the source's own configured endpoint otherwise — never a
+  Core fallback.
+- **BREAKING: `PYTH_DEFAULTS` is removed** from `oracle/config.ts` and the
+  `@waterx/sdk/perp` export surface. The Core source's infra now lives in its
+  own rule-owned table `PYTH_CORE_INFRA` (`oracle/pyth.ts`), keyed by
+  network. `LAZER_DEFAULTS` is renamed `LAZER_INFRA` and moved into
+  `oracle/rules/pyth-lazer-rule.ts` — co-located with the only rule that
+  reads it (it was internal; the rename is visible only to deep importers).
+
+### Changed
+
+- **BREAKING: `oracleSource` is REQUIRED at client creation** (`PerpClient`
+  and `WaterXClient` create options). There is no `'pyth_rule'` default: every
+  deployment names its source explicitly, wired from the consumer's own env
+  var (convention: `ORACLE_SOURCE`, carrying the SDK rule value verbatim).
+  Migration: add `oracleSource: <your env>` to every `create(...)` call.
+
+### Added
+
+- `pythCoreHermesEndpoint(network)` — the Core source's Hermes REST base, for
+  consumers (BE/FE read planes) whose `ORACLE_SOURCE` is `'pyth_rule'`.
+  Exported from `@waterx/sdk`, `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
+  The full `PYTH_CORE_INFRA` table stays rule-internal (deep import
+  `@waterx/sdk/oracle/pyth` if you genuinely need the object ids).
+
 ## [4.0.1] - 2026-07-27
 
 _All entries in this section were introduced by [#77](https://github.com/WaterXProtocol/waterx-sdk/pull/77). Although the entries below carry **BREAKING** changes relative to `4.0.0`, this ships as a patch (`4.0.1`) rather than a major: `4.0.0` (published 2026-07-21) landed the interim oracle rework only days earlier, and `4.0.1` supersedes it before it stabilized — treat the `4.0.x` oracle surface as unstable-until-settled._

@@ -44,6 +44,11 @@ export {
   endpointSupportedFeedIds,
   probeMissingFeeds,
   buildPythPriceUpdateCalls,
+  // The Core source's own read-plane endpoint accessor — for consumers whose
+  // ORACLE_SOURCE resolves to 'pyth_rule'. There is no client-level endpoint
+  // field: each source owns its infra, and a consumer on another source must
+  // configure that source's endpoint itself (no cross-source fallback).
+  pythCoreHermesEndpoint,
   updatePythPrices,
   HermesEndpointRejectedAllFeedsError,
   MISSING_FEED_MEMO_TTL_MS,

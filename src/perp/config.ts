@@ -3,10 +3,11 @@
  * `waterx-config` repo (default: GitHub raw).
  *
  * The schema mirrors the canonical JSON layout one-to-one (each package
- * groups its own object IDs + per-ticker maps). External chain infra
- * (Pyth state, Wormhole state/core, Hermes & Wormholescan endpoints) is
- * **not** in the JSON — it lives in `PYTH_DEFAULTS` / `WORMHOLE_DEFAULTS`
- * below, keyed by network.
+ * groups its own object IDs + per-ticker maps). External chain infra is
+ * **not** in the JSON — each oracle source owns its own per-network table
+ * (`PYTH_CORE_INFRA` in `oracle/pyth.ts`, `LAZER_INFRA` in
+ * `oracle/rules/pyth-lazer-rule.ts`); Wormhole bridge infra lives in
+ * `WORMHOLE_DEFAULTS` below.
  */
 
 import type { AccountPackages, BasePackageEntry, WormholeInfraConfig } from "../account/config.ts";
@@ -32,15 +33,15 @@ export type {
 } from "../account/config.ts";
 
 // The oracle-layer schema (pyth / supra / constant rule package entries +
-// the `waterx_oracle` package + Pyth infra defaults) lives in `oracle/config.ts`
-// — shared infra. Re-exported here so existing `perp/config` /
+// the `waterx_oracle` package + the caller-supplied Pyth access slice) lives
+// in `oracle/config.ts`. Re-exported here so existing `perp/config` /
 // `@waterx/sdk/perp` type imports keep resolving.
 export type {
   ConstantFeedEntry,
   OracleConfig,
   OraclePackages,
+  PythAccessConfig,
   PythFetchPolicy,
-  PythInfraConfig,
   PythLazerRulePackage,
   PythRulePackage,
   PythSponsorRulePackage,
@@ -49,7 +50,6 @@ export type {
   WaterxConstantRulePackage,
   WaterxOraclePackage,
 } from "../oracle/config.ts";
-export { PYTH_DEFAULTS } from "../oracle/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -146,16 +146,18 @@ export interface WaterXPackages extends AccountPackages, OraclePackages {
 }
 
 // ============================================================================
-// Wormhole / Hermes — external chain infra, defaults by network
+// Wormhole — external chain infra, defaults by network
 // ============================================================================
 //
-// `PythInfraConfig` + `PYTH_DEFAULTS` live in `oracle/config.ts` (shared infra)
-// and are re-exported at the top of this file.
+// Oracle-source infra lives with each source (`PYTH_CORE_INFRA` in
+// `oracle/pyth.ts`, `LAZER_INFRA` in `oracle/rules/pyth-lazer-rule.ts`);
+// `client.pyth` is the caller-supplied access slice only (`PythAccessConfig`,
+// re-exported at the top of this file).
 
 // `WormholeInfraConfig` is defined in `account/config.ts` (funding base) and
 // re-exported at the top of this file. `state_id` is the same shared Sui
 // Wormhole `State` object Pyth uses (kept in sync with
-// `PYTH_DEFAULTS[*].wormhole_state_id`).
+// `PYTH_CORE_INFRA[*].wormhole_state_id`).
 
 export const WORMHOLE_DEFAULTS: Record<Network, WormholeInfraConfig> = {
   MAINNET: {

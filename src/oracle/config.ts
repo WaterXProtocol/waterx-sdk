@@ -12,7 +12,6 @@
 
 import type { BasePackageEntry } from "../account/config.ts";
 import type { BaseLineConfig } from "../base-client.ts";
-import type { Network } from "../constants.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -114,20 +113,9 @@ export interface OraclePackages {
 }
 
 // ============================================================================
-// Pyth — external chain infra, defaults by network
+// Pyth access — caller-supplied credential + fetch policy (NO infra here)
 // ============================================================================
 
-/**
- * Resolved Pyth Core infra as it lives on `client.pyth` — NOT a config-JSON
- * shape. `state_id` / `wormhole_state_id` / `hermes_endpoint` come verbatim
- * from the fixed per-network constant ({@link PYTH_DEFAULTS}); `api_key` /
- * `fetch` are layered on from the caller's `pythApiKey` / `pythFetch` create
- * options. None of it is sourced from the canonical `waterx-config` JSON — the
- * SDK never reads a `pyth` block there (a Bearer secret has no place in a
- * public CDN document). The infra is the same for every `oracleSource`; the
- * `pyth_lazer_rule` source reads only the `api_key` / `fetch` from here and
- * gets its on-chain infra from {@link LAZER_DEFAULTS} + config instead.
- */
 /**
  * The caller-tunable subset of `fetchWithPolicy`'s policy exposed on the
  * `pythFetch` create option and `client.pyth.fetch` — the retry/timeout budget
@@ -138,18 +126,24 @@ export interface OraclePackages {
  */
 export type PythFetchPolicy = { timeoutMs?: number; retries?: number };
 
-export interface PythInfraConfig {
-  state_id: string;
-  wormhole_state_id: string;
-  hermes_endpoint: string;
+/**
+ * `client.pyth` — ONLY the caller-supplied Pyth credential + fetch policy,
+ * shared by the Pyth-family rules (`pyth_rule`, `pyth_lazer_rule`). It carries
+ * NO endpoints and NO on-chain object ids: every oracle source owns its own
+ * infra, co-located with its rule (`PYTH_CORE_INFRA` in
+ * `rules/pyth-core-infra.ts`; the Lazer constants inside
+ * `rules/pyth-lazer-rule.ts`). A non-Pyth source never reads this slice.
+ * Nothing here is sourced from the canonical `waterx-config` JSON — a Bearer
+ * secret has no place in a public CDN document.
+ */
+export interface PythAccessConfig {
   /**
-   * Pyth Pro / Lazer access token (`Authorization: Bearer …`) for
+   * Pyth access token (`Authorization: Bearer …`). Required by
    * `PythLazerRule`'s signed-update fetch — Lazer is auth-first, so there is
-   * no keyless default. Optional: Pyth-Core-only deployments never need it.
-   * Supplied via the `pythApiKey` create option (the SDK never reads
-   * `process.env` or the config JSON). Absent when a lazer-routed fetch runs →
-   * `LazerApiKeyMissing` is thrown at fetch time. As of the Pyth Pro
-   * migration (post-2026-08-18, per
+   * no keyless default; absent when a lazer-routed fetch runs →
+   * `LazerApiKeyMissing` is thrown at fetch time. Supplied via the
+   * `pythApiKey` create option (the SDK never reads `process.env` or the
+   * config JSON). As of the Pyth Pro migration (post-2026-08-18, per
    * https://docs.pyth.network/price-feeds/core/upgrade) this is ALSO required
    * for `pyth_rule`'s Hermes fetch (`fetchPriceFeedsUpdateData`) — see
    * `fetch` below.
@@ -165,50 +159,6 @@ export interface PythInfraConfig {
    */
   fetch?: PythFetchPolicy;
 }
-
-export const PYTH_DEFAULTS: Record<Network, PythInfraConfig> = {
-  MAINNET: {
-    state_id: "0x1f9310238ee9298fb703c3419030b35b22bb1cc37113e3bb5007c99aec79e5b8",
-    wormhole_state_id: "0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c",
-    hermes_endpoint: "https://hermes.pyth.network",
-  },
-  TESTNET: {
-    state_id: "0x243759059f4c3111179da5878c12f68d612c21a8d54d85edc86164bb18be1c7c",
-    wormhole_state_id: "0x31358d198147da50db32eda2562951d53973a0c0ad5ed738e9b17d88b213d790",
-    hermes_endpoint: "https://hermes-beta.pyth.network",
-  },
-};
-
-// ============================================================================
-// Pyth Lazer — external infra, defaults by network
-// ============================================================================
-
-/**
- * Pyth Lazer (Pyth Pro) external infra the `PythLazerRule` needs, by network.
- * Mirrors {@link PYTH_DEFAULTS}: per-network constants for infrastructure Pyth
- * operates (not part of the `waterx-config` JSON). A fuller `PYTH_INFRA`
- * restructure is deferred — this stays a minimal map until then.
- *
- * - `endpoint` — Lazer HTTP API base; signed updates come from
- *   `POST /v1/latest_price` (Bearer-authenticated). The service is
- *   network-agnostic (one signed payload verifies on any chain that trusts the
- *   Lazer signers), so both networks share the production host.
- * - `verifier_package` — the Sui package carrying
- *   `pyth_lazer::parse_and_verify_le_ecdsa_update`. Per-network: testnet is
- *   still the original v1 publish; mainnet is the v2-upgraded package (which
- *   still exposes the v1 entry `pyth_lazer_rule` binds). Values mirror the
- *   contract repo's `pyth_lazer_rule/Move.toml` published-at pins.
- */
-export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_package: string }> = {
-  MAINNET: {
-    endpoint: "https://pyth-lazer.dourolabs.app",
-    verifier_package: "0xefbfd064480777699fd9c557a5804d72ace7bc82661fdc8d1f1a44ea6d92ee10",
-  },
-  TESTNET: {
-    endpoint: "https://pyth-lazer.dourolabs.app",
-    verifier_package: "0xf5bd2141967507050a91b58de3d95e77c432cd90d1799ee46effc27430a68c21",
-  },
-};
 
 // ============================================================================
 // Narrow oracle config (the slice OracleHost reads)

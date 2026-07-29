@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PYTH_CORE_INFRA } from "../../../src/oracle/pyth.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
-import { PYTH_DEFAULTS } from "../../../src/perp/config.ts";
-import type { PythInfraConfig, WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
+import type { WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
@@ -13,10 +13,10 @@ import { createUnitTestClient } from "../helpers/test-client.ts";
 describe("PerpClient (offline)", () => {
   const client = createUnitTestClient();
 
-  it("exposes testnet config and pyth defaults", () => {
+  it("exposes testnet config; Core infra is rule-owned, not on the client", () => {
     expect(client.network).toBe("TESTNET");
     expect(client.config.network).toBe("testnet");
-    expect(client.pyth.state_id).toBe(PYTH_DEFAULTS.TESTNET.state_id);
+    expect(PYTH_CORE_INFRA.TESTNET.state_id).toMatch(/^0x/);
     expect(client.config.packages.waterx_perp.global_config).toMatch(/^0x/);
   });
 
@@ -169,19 +169,18 @@ describe("PerpClient (offline)", () => {
   });
 });
 
-describe("client.pyth (fixed Core infra + caller-supplied credential/policy)", () => {
-  it("is the per-network Pyth Core constant regardless of oracleSource", () => {
-    expect(createUnitTestClient().pyth).toEqual(PYTH_DEFAULTS.TESTNET);
-    // The lazer source reads only api_key/fetch from client.pyth; its on-chain
-    // infra is LAZER_DEFAULTS + config, so client.pyth stays Core here too.
-    expect(createUnitTestClient({ oracleSource: "pyth_lazer_rule" }).pyth).toEqual(
-      PYTH_DEFAULTS.TESTNET,
-    );
+describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)", () => {
+  it("is empty by default and never carries endpoints or object ids", () => {
+    expect(createUnitTestClient().pyth).toEqual({});
+    // Infra is per-source, rule-owned: the Core table lives in oracle/pyth.ts
+    // (`PYTH_CORE_INFRA`), the Lazer table in rules/pyth-lazer-rule.ts —
+    // nothing source-shaped rides on the client for another source to leak.
+    expect(createUnitTestClient({ oracleSource: "pyth_lazer_rule" }).pyth).toEqual({});
   });
 
-  it("a `pyth` block in the config JSON is ignored — infra comes from the constant only", () => {
+  it("a `pyth` block in the config JSON is ignored — access comes from create options only", () => {
     // The canonical waterx-config JSON has never carried one; the SDK no
-    // longer looks. State ids / endpoint are not deployment-overridable.
+    // longer looks. State ids / endpoints are not deployment-overridable.
     const config = {
       ...structuredClone(MOCK_TESTNET_CONFIG),
       pyth: {
@@ -189,12 +188,12 @@ describe("client.pyth (fixed Core infra + caller-supplied credential/policy)", (
         wormhole_state_id: "0x" + "cd".repeat(32),
         hermes_endpoint: "https://hermes.example.invalid",
         api_key: "from-json",
-      } satisfies PythInfraConfig,
+      },
     } as unknown as WaterXConfig;
 
     const client = new PerpClient("TESTNET", config, { oracleSource: "pyth_lazer_rule" });
 
-    expect(client.pyth).toEqual(PYTH_DEFAULTS.TESTNET);
+    expect(client.pyth).toEqual({});
     expect(client.pyth.api_key).toBeUndefined();
   });
 
@@ -204,18 +203,16 @@ describe("client.pyth (fixed Core infra + caller-supplied credential/policy)", (
       pythApiKey: "caller-supplied",
     });
 
-    expect(client.pyth).toEqual({ ...PYTH_DEFAULTS.TESTNET, api_key: "caller-supplied" });
+    expect(client.pyth).toEqual({ api_key: "caller-supplied" });
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {
     const client = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
+      oracleSource: "pyth_rule",
       pythFetch: { timeoutMs: 8_000, retries: 1 },
     });
 
-    expect(client.pyth).toEqual({
-      ...PYTH_DEFAULTS.TESTNET,
-      fetch: { timeoutMs: 8_000, retries: 1 },
-    });
+    expect(client.pyth).toEqual({ fetch: { timeoutMs: 8_000, retries: 1 } });
   });
 });
 
@@ -226,8 +223,8 @@ describe("PerpClient.create", () => {
 
   it("returns async client with loaded config", async () => {
     const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", { cache: true });
-    expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true });
+    const client = await PerpClient.create("TESTNET", { cache: true, oracleSource: "pyth_rule" });
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true, oracleSource: "pyth_rule" });
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
     expect(client.network).toBe("TESTNET");
   });
@@ -239,7 +236,7 @@ describe("PerpClient.create", () => {
       pythApiKey: "k",
     });
     expect(client.oracleSource).toBe("pyth_lazer_rule");
-    expect(client.pyth).toEqual({ ...PYTH_DEFAULTS.TESTNET, api_key: "k" });
+    expect(client.pyth).toEqual({ api_key: "k" });
   });
 
   it("does NOT throw at init when the selected source has no feeds configured", async () => {
@@ -258,8 +255,8 @@ describe("PerpClient.create", () => {
       ...MOCK_TESTNET_CONFIG,
       network: network === "MAINNET" ? "mainnet" : "testnet",
     }));
-    const testnet = await PerpClient.testnet();
-    const mainnet = await PerpClient.mainnet();
+    const testnet = await PerpClient.testnet({ oracleSource: "pyth_rule" });
+    const mainnet = await PerpClient.mainnet({ oracleSource: "pyth_rule" });
     expect(testnet.network).toBe("TESTNET");
     expect(mainnet.network).toBe("MAINNET");
     expect(loadConfig).toHaveBeenCalledTimes(2);

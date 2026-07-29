@@ -54,6 +54,7 @@ async function main(): Promise<void> {
   const doExecute = process.env.EXECUTE === "1";
 
   const client = await PerpClient.create("TESTNET", {
+    oracleSource: "pyth_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

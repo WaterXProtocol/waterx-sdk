@@ -11,6 +11,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { feed as pythRuleFeed } from "../../generated/waterx_pyth_rule/pyth_rule.ts";
 import type { OracleHost } from "../host.ts";
+import { PYTH_CORE_INFRA } from "../pyth.ts";
 
 export function feedPythRule(
   tx: Transaction,
@@ -25,10 +26,10 @@ export function feedPythRule(
       config: tx.object(host.config.packages.pyth_rule.config),
       // The deployed pyth_rule package is compiled against the Core pyth
       // dependency, so its `&PythState` parameter is the Core-package-qualified
-      // type and `host.pyth` (the fixed per-network Core infra) is always the
-      // right state to pass. The config's price_info_object entries are Core
-      // objects to match.
-      pythState: tx.object(host.pyth.state_id),
+      // type and the Core source's own per-network state (`PYTH_CORE_INFRA`)
+      // is always the right state to pass. The config's price_info_object
+      // entries are Core objects to match.
+      pythState: tx.object(PYTH_CORE_INFRA[host.network].state_id),
       pythPriceInfo: tx.object(priceInfoObjectId),
     },
   })(tx);

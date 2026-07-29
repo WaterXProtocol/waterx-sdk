@@ -11,25 +11,26 @@
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import type { Network } from "../constants.ts";
-import type { OracleConfig, PythInfraConfig } from "./config.ts";
+import type { OracleConfig, PythAccessConfig } from "./config.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 
 export interface OracleHost {
-  /** Sui network this client targets — selects per-network external-infra defaults (e.g. `LAZER_DEFAULTS`). */
+  /** Sui network this client targets — each rule keys its OWN infra table by it (`PYTH_CORE_INFRA`, `LAZER_INFRA`). */
   readonly network: Network;
   /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
   readonly config: OracleConfig;
-  /** External Pyth/Wormhole/Hermes infra — fixed per `(network, generation)`; api_key/fetch layered from create options. */
-  readonly pyth: PythInfraConfig;
+  /** Caller-supplied Pyth credential + fetch policy (create options) — NO endpoints, NO object ids. */
+  readonly pyth: PythAccessConfig;
   /** gRPC client for the on-chain reads the Pyth update path needs. */
   readonly grpcClient: SuiGrpcClient;
   /**
    * Client-selected oracle rule source for `refreshOraclePrices`'s on-chain
-   * update leg — resolved at client creation from the `oracleSource` create
-   * option (default `'pyth_rule'`). Routing is driven by this value ALONE:
-   * never by a config JSON `enabled` flag (e.g. a future `pyth_lazer_rule.enabled`)
-   * and never by `process.env` — the SDK never reads it; consumers (BE/FE) wire
-   * this option from their own env var.
+   * update leg — the REQUIRED `oracleSource` create option, no default:
+   * every deployment names its source explicitly. Routing is driven by this
+   * value ALONE: never by a config JSON `enabled` flag (e.g. a future
+   * `pyth_lazer_rule.enabled`) and never by `process.env` — the SDK never
+   * reads it; consumers (BE/FE) wire this option from their own env var
+   * (`ORACLE_SOURCE`).
    */
   readonly oracleSource: OracleSource;
 

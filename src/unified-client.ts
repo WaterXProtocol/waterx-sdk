@@ -3,7 +3,7 @@
  *
  * Exposes three namespaces over the two product-line sub-clients:
  *
- *   const client = await WaterXClient.create({ network: "TESTNET" });
+ *   const client = await WaterXClient.create({ network: "TESTNET", oracleSource: "pyth_rule" });
  *   client.account.createAccount(tx, { alias });   // -> shared waterx_account + funding
  *   client.perp.placeOrderRequest(tx, params);     // -> perp builder
  *   client.predict.placeOrder(tx, params);         // -> prediction builder
@@ -160,17 +160,21 @@ export interface ClientCreateOptions {
   /**
    * The perp line's oracle price-update source (perp-line only — the
    * prediction line has no oracle leg), forwarded to `PerpClient.create`.
+   * REQUIRED — there is NO default source: every deployment names its source
+   * explicitly (wire it from your own env var, e.g. `ORACLE_SOURCE`).
    * Source-neutral by design: a future source need not be Pyth.
    *
-   * - `'pyth_rule'` (default) — Pyth Core updates on Core infra.
+   * - `'pyth_rule'` — Pyth Core updates; infra in the source's own
+   *   `PYTH_CORE_INFRA` table.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`
-   *   and a config carrying `packages.pyth_lazer_rule`).
+   *   and a config carrying `packages.pyth_lazer_rule`); infra in the
+   *   source's own `LAZER_INFRA` table.
    *
    * Each source is self-contained with no cross-source fallback; selecting a
    * source whose feed for a ticker is absent fails at tx-build (not at init).
    * See perp `CreateClientOptions.oracleSource` for the full note.
    */
-  oracleSource?: OracleSource;
+  oracleSource: OracleSource;
   /**
    * Pyth Lazer access token, forwarded to the perp line. Required under
    * `oracleSource: 'pyth_lazer_rule'`, unused by `'pyth_rule'`. A SECRET —
@@ -244,7 +248,7 @@ export class WaterXClient {
    * `waterx-config` JSON) and returns a ready client. Each line can target a
    * different network via `opts.perp.network` / `opts.predict.network`.
    */
-  static async create(opts: ClientCreateOptions = {}): Promise<WaterXClient> {
+  static async create(opts: ClientCreateOptions): Promise<WaterXClient> {
     const baseNetwork: Network = opts.network ?? "TESTNET";
     const { network: perpNetwork, ...perpRest } = opts.perp ?? {};
     const { network: predictNetwork, ...predictRest } = opts.predict ?? {};

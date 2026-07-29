@@ -7,7 +7,11 @@ import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildPythPriceUpdateCalls, PythCache } from "../../../src/oracle/pyth.ts";
+import {
+  buildPythPriceUpdateCalls,
+  PythCache,
+  pythCoreHermesEndpoint,
+} from "../../../src/oracle/pyth.ts";
 import {
   PythCoreRule,
   type PythCoreUpdatePayload,
@@ -71,7 +75,7 @@ describe("PythCoreRule.fetchUpdateData", () => {
     // Hermes queried with the resolved feed id, at the client's configured endpoint.
     const parsedUrl = new URL(requestedUrl ?? "");
     expect(parsedUrl.origin + parsedUrl.pathname).toBe(
-      new URL("/v2/updates/price/latest", client.pyth.hermes_endpoint).toString(),
+      new URL("/v2/updates/price/latest", pythCoreHermesEndpoint("TESTNET")).toString(),
     );
     expect(parsedUrl.searchParams.getAll("ids[]")).toEqual([client.getPythFeed("BTCUSD").feed_id]);
   });
@@ -107,7 +111,7 @@ describe("PythCoreRule.fetchUpdateData", () => {
 
     const parsedUrl = new URL(requestedUrl ?? "");
     expect(parsedUrl.origin + parsedUrl.pathname).toBe(
-      new URL("/v2/updates/price/latest", client.pyth.hermes_endpoint).toString(),
+      new URL("/v2/updates/price/latest", pythCoreHermesEndpoint("TESTNET")).toString(),
     );
     expect(authHeader).toBe("Bearer core-key");
   });

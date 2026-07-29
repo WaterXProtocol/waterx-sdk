@@ -347,12 +347,8 @@ describe("PerpClient.create — oracleSource threads through the async factory",
     vi.restoreAllMocks();
   });
 
-  it("defaults to 'pyth_rule' when omitted", async () => {
-    vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET");
-    expect(client.oracleSource).toBe("pyth_rule");
-  });
-
+  // No "defaults when omitted" case on purpose: `oracleSource` is a REQUIRED
+  // create option — omitting it is a compile error, not a runtime default.
   it("resolves the passed oracleSource option", async () => {
     vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
     const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
@@ -377,15 +373,15 @@ describe("WaterXClient.create — oracleSource threads into PerpClient.create", 
     );
   });
 
-  it("omitting oracleSource reaches PerpClient.create undefined (defaults to 'pyth_rule')", async () => {
+  it("the top-level oracleSource is required and forwarded verbatim", async () => {
     const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     vi.spyOn(PredictClient, "create").mockResolvedValue(createMockPredictClient());
 
-    await WaterXClient.create();
+    await WaterXClient.create({ oracleSource: "pyth_rule" });
 
     expect(perpCreate).toHaveBeenCalledWith(
       "TESTNET",
-      expect.objectContaining({ oracleSource: undefined }),
+      expect.objectContaining({ oracleSource: "pyth_rule" }),
     );
   });
 });

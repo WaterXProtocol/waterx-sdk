@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 
+import { PYTH_CORE_INFRA } from "../../../../src/oracle/pyth.ts";
 import type { PerpClient } from "../../../../src/perp/client.ts";
 import {
   DEFAULT_MOCK_PYTH_ROW_TYPE,
@@ -8,8 +9,11 @@ import {
   mockSuiAddress,
 } from "./sui-mock-fixtures.ts";
 
-const PYTH_STATE = mockSuiAddress("c1");
-const WORMHOLE_STATE = mockSuiAddress("c2");
+// The Core update path resolves its state objects from the rule-owned
+// `PYTH_CORE_INFRA[network]` table (not from `client.pyth`, which is
+// access-only), so the mock answers for the REAL per-network ids.
+const PYTH_STATE = PYTH_CORE_INFRA.TESTNET.state_id;
+const WORMHOLE_STATE = PYTH_CORE_INFRA.TESTNET.wormhole_state_id;
 const PRICE_TABLE_CHILD = mockSuiAddress("c3");
 const PRICE_INFO_OBJECT = mockSuiAddress("c4");
 
@@ -39,12 +43,10 @@ export function attachPythGrpcMocks(client: PerpClient) {
 
   client.grpcClient = {
     getObject: vi.fn(async ({ objectId }: { objectId: string }) => {
-      // `client.pyth` is the fixed per-network Core infra for every source, so
-      // the Pyth update/feed path always reads these ids.
-      if (objectId === client.pyth.state_id) {
+      if (objectId === PYTH_STATE) {
         return { object: { json: pythStateJson } };
       }
-      if (objectId === client.pyth.wormhole_state_id) {
+      if (objectId === WORMHOLE_STATE) {
         return { object: { json: wormholeJson } };
       }
       return { object: { json: null } };
@@ -61,12 +63,6 @@ export function attachPythGrpcMocks(client: PerpClient) {
       dynamicField: { value: { bcs: feedBytes } },
     })),
   } as unknown as PerpClient["grpcClient"];
-
-  client.pyth = {
-    ...client.pyth,
-    state_id: PYTH_STATE,
-    wormhole_state_id: WORMHOLE_STATE,
-  };
 
   return { priceInfoObjectId: PRICE_INFO_OBJECT, feedId: `0x${feedIdHex}` };
 }
