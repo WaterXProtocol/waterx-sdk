@@ -69,7 +69,9 @@ for every source — the `pyth_lazer_rule` source reads only `api_key`/`fetch` f
 it and gets its on-chain infra from `LAZER_DEFAULTS` + config. `'waterx_rule'`
 (first-party Nautilus-TEE quote-center, ed25519 signed batches) touches no Pyth
 infra: its host comes from `WATERX_DEFAULTS[network]` onto `client.waterx`,
-overridable per client via the `waterxEndpoint` / `waterxFetch` create options.
+overridable per client via the `waterxEndpoint` / `waterxFetch` create options
+(fetch policy/transport precedence: `waterxFetch` → `pythFetch` → the
+`fetchWithPolicy` defaults).
 
 `WaterXClient` is the **umbrella** entry point exposing three namespaces:
 `client.account` (shared `waterx_account` + credit/custody), `client.perp` (the
@@ -295,4 +297,4 @@ src/
 - Cancel-order wildcard: pass `orderTypeTag: ORDER_TAG_WILDCARD` (255) and `triggerPrice: 0n` to scan all 4 books by `orderId`.
 - Price scaling: human-readable USD (`50000`) → raw 1e9-scaled bigint via `rawPrice(usd)`. Pass the raw form to `acceptablePrice` / `triggerPrice` / size args.
 - Mainnet config is **not yet deployed**; loading `MAINNET` will fail until the maintainers publish `mainnet.json` to the config repo.
-- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) ships as `oracleSource: 'waterx_rule'` — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls ONE enclave-signed batch envelope covering the build's tickers from the quote-center (`GET /v1/quotes/update`, public read) and then verifies AND feeds in a single `collect_batch_latest` per collector, so its `buildUpdateCalls` emits nothing. The quote-center host comes from `WATERX_DEFAULTS[network]`, overridable per client via `waterxEndpoint` / `waterxFetch` (browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy).
+- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) ships as `oracleSource: 'waterx_rule'` — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls ONE enclave-signed batch envelope covering the build's tickers from the quote-center (`GET /v1/quotes/update`, public read) and then verifies AND feeds in a single `collect_batch_latest` per collector, so its `buildUpdateCalls` emits nothing. The quote-center host comes from `WATERX_DEFAULTS[network]`, overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy/transport precedence `waterxFetch` → `pythFetch` → defaults) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live envelope that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain.

@@ -110,7 +110,7 @@ ONE client create option, `oracleSource`, selects the price-update source. Each 
 
 **No cross-source fallback, no init guard.** Selecting a source whose feed for a requested ticker is absent is **not** an error at client creation — it fails at **tx-build** for exactly those tickers (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
 
-The Pyth Core infra (`client.pyth`: state ids + Hermes endpoint) is **fixed per network** by `PYTH_DEFAULTS` and is **not** deployment-overridable — the canonical `waterx-config` JSON carries no `pyth` block. The `pyth_lazer_rule` source reads only the credential/policy (`api_key`/`fetch`) from `client.pyth`; its on-chain infra comes from `LAZER_DEFAULTS` + config. The credential and fetch policy are passed at client init (`pythApiKey` / `pythFetch`), never through the JSON. `waterx_rule` touches no Pyth infra at all — its quote-center endpoint is fixed per network by `WATERX_DEFAULTS` (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`) and it reuses only the shared fetch policy (`pythFetch`).
+The Pyth Core infra (`client.pyth`: state ids + Hermes endpoint) is **fixed per network** by `PYTH_DEFAULTS` and is **not** deployment-overridable — the canonical `waterx-config` JSON carries no `pyth` block. The `pyth_lazer_rule` source reads only the credential/policy (`api_key`/`fetch`) from `client.pyth`; its on-chain infra comes from `LAZER_DEFAULTS` + config. The credential and fetch policy are passed at client init (`pythApiKey` / `pythFetch`), never through the JSON. `waterx_rule` touches no Pyth infra at all: its quote-center endpoint **defaults** to `WATERX_DEFAULTS[network]` (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`) and is overridable with `waterxEndpoint`; its fetch policy/transport resolves **`waterxFetch` → `pythFetch` → built-in defaults** (15s timeout, 2 retries), so the dedicated override wins and the shared Pyth policy is only the fallback. Both are client-init options — see the browser/CORS note below.
 
 ```ts
 // Per-environment wiring — the consumer owns the env var, not the SDK:
@@ -148,7 +148,7 @@ The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules
 > });
 > ```
 >
-> Both default to `WATERX_DEFAULTS[network]` (+ the shared `pythFetch` policy) when unset, and both are inert under the Pyth sources. They are also top-level options on the umbrella `WaterXClient.create({ oracleSource, waterxEndpoint, waterxFetch, … })`, which forwards them to the perp line. Node/keeper consumers are unaffected by CORS either way.
+> Unset, `waterxEndpoint` falls back to `WATERX_DEFAULTS[network]` and `waterxFetch` to `pythFetch`, then to the built-in policy (15s timeout, 2 retries). Both are inert under the Pyth sources. They are also top-level options on the umbrella `WaterXClient.create({ oracleSource, waterxEndpoint, waterxFetch, … })`, which forwards them to the perp line. Node/keeper consumers are unaffected by CORS either way.
 
 ## Recipes & full surface
 
