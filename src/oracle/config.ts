@@ -13,6 +13,7 @@
 import type { BasePackageEntry } from "../account/config.ts";
 import type { BaseLineConfig } from "../base-client.ts";
 import type { Network } from "../constants.ts";
+import type { FetchPolicy } from "./update-fetch.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -248,13 +249,40 @@ export const LAZER_DEFAULTS: Record<Network, { endpoint: string; verifier_packag
 };
 
 /**
+ * Resolved WaterX quote-center infra for `WaterxRule` — the network default
+ * from {@link WATERX_DEFAULTS}, with both fields overridable at client init
+ * (`waterxEndpoint` / `waterxFetch`).
+ *
+ * The override exists because this is the one oracle source a BROWSER fetches
+ * itself: the rule pulls the signed envelope from the page, so it is subject to
+ * the quote-center deployment's CORS allowlist. A front end whose origin is not
+ * on that list — or one that must route egress through its own backend — points
+ * `endpoint` at a same-origin proxy (or supplies `fetch.fetchImpl`) instead of
+ * being locked to the hardcoded host.
+ */
+export interface WaterxInfraConfig {
+  /** Quote-center base URL. No trailing slash — the rule appends the path. */
+  endpoint: string;
+  /**
+   * Retry/timeout policy (and `fetchImpl`) for the quote-center fetch — see
+   * `fetchWithPolicy` (`./update-fetch.ts`). Supplied via the `waterxFetch`
+   * create option. When unset the rule falls back to the shared `pyth.fetch`
+   * policy, then to `fetchWithPolicy`'s defaults (15s timeout, 2 retries).
+   */
+  fetch?: FetchPolicy;
+}
+
+/**
  * WaterX quote-center base URL by network — the first-party TEE-signed price
  * hub `WaterxRule` pulls from (`GET /v1/quotes/update?symbols=…`). Mirrors
  * {@link LAZER_DEFAULTS}: infra WaterX operates, not part of the `waterx-config`
  * JSON. Public read (no auth), so there is no api_key. `endpoint` has no
  * trailing slash — the rule appends the path.
+ *
+ * These are DEFAULTS, not a hard pin: a consumer overrides them per client via
+ * `waterxEndpoint` / `waterxFetch` (resolved onto `client.waterx`).
  */
-export const WATERX_DEFAULTS: Record<Network, { endpoint: string }> = {
+export const WATERX_DEFAULTS: Record<Network, WaterxInfraConfig> = {
   MAINNET: { endpoint: "https://quote-center.waterx.app" },
   TESTNET: { endpoint: "https://quote-center-staging.waterx.app" },
 };

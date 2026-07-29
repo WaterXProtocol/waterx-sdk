@@ -94,6 +94,36 @@ describe("WaterxRule — port", () => {
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
   });
 
+  it("waterxEndpoint routes the fetch at a proxy (the browser-CORS escape hatch)", async () => {
+    const client = createUnitTestClient({
+      oracleSource: "waterx_rule",
+      waterxEndpoint: "https://app.example/api/quote-center",
+    });
+    const fetchSpy = mockQuoteCenterFetch();
+    await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    const url = new URL(fetchSpy.mock.calls[0]![0] as string);
+    expect(url.origin).toBe("https://app.example");
+    expect(url.pathname).toBe("/v1/quotes/update");
+    expect(url.searchParams.get("symbols")).toBe("BTCUSD");
+  });
+
+  it("waterxFetch.fetchImpl replaces the transport (global fetch never called)", async () => {
+    const globalSpy = mockQuoteCenterFetch();
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(rawEnvelope()),
+    } as unknown as Response);
+    const client = createUnitTestClient({
+      oracleSource: "waterx_rule",
+      waterxFetch: { fetchImpl: fetchImpl as unknown as typeof fetch },
+    });
+    const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    expect(data?.kind).toBe("waterx_rule");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(globalSpy).not.toHaveBeenCalled();
+  });
+
   it("fetchUpdateData rejects a wrong intent", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockQuoteCenterFetch({ ...rawEnvelope(), intent: 2 });

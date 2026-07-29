@@ -135,7 +135,18 @@ Every source plugs in the same way — routing is driven **only** by the client'
 
 The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one enclave-signed batch envelope covering the requested tickers from the quote-center (`GET /v1/quotes/update?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_batch_latest` call per collector, so it emits no shared verify step. On-chain a freshness miss / replayed timestamp abstains (the other weighted rules cover); a config mismatch or bad signature aborts.
 
-> **Browser consumers:** this source fetches the quote-center directly from the client, so the quote-center deployment must return `Access-Control-Allow-Origin` for the app's origin. Until that is enabled for a given environment, browsers block the response — front ends should route the call through a same-origin/backend proxy (or run the refresh server-side). Node/keeper consumers are unaffected.
+> **Browser consumers:** this source fetches the quote-center directly from the page, so the quote-center deployment must return `Access-Control-Allow-Origin` for the app's origin. For an origin that is not on that allowlist, point the SDK at your own proxy instead of the default host — the endpoint and the transport are both overridable at client init:
+>
+> ```ts
+> const perp = await PerpClient.create(network, {
+>   waterxConfigUrl,
+>   oracleSource: "waterx_rule",
+>   waterxEndpoint: "/api/quote-center", // same-origin proxy forwarding GET /v1/quotes/update
+>   waterxFetch: { fetchImpl: myFetch, timeoutMs: 8_000 }, // optional custom transport / policy
+> });
+> ```
+>
+> Both default to `WATERX_DEFAULTS[network]` (+ the shared `pythFetch` policy) when unset, and both are inert under the Pyth sources. Node/keeper consumers are unaffected by CORS either way.
 
 ## Recipes & full surface
 

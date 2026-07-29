@@ -36,6 +36,19 @@ reference the PR that introduced them.
   (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`).
   Generated `waterx_rule` Move bindings added (`@waterx/rule`).
 
+- **`waterxEndpoint` / `waterxFetch` create options — the quote-center host and
+  transport are overridable** ([#78](https://github.com/WaterXProtocol/waterx-sdk/pull/78)).
+  `waterx_rule` is the one source a BROWSER fetches itself (the signed envelope
+  is pulled from the page), so it is bound by the quote-center deployment's CORS
+  allowlist. A front end whose origin is not allowed — or one that must route
+  egress through its own backend — now sets `waterxEndpoint` to a same-origin
+  proxy that forwards `GET /v1/quotes/update`, and/or `waterxFetch.fetchImpl` to
+  its own transport, instead of being locked to the hardcoded host and global
+  `fetch`. Both resolve onto `client.waterx` (`WaterxInfraConfig`), default to
+  `WATERX_DEFAULTS[network]` (fetch policy falling back to `pythFetch`), and are
+  inert under the Pyth sources. `OracleHost` gains an optional `waterx` field, so
+  an existing host object stays a valid `OracleHost`.
+
 ## [4.0.1] - 2026-07-27
 
 _All entries in this section were introduced by [#77](https://github.com/WaterXProtocol/waterx-sdk/pull/77). Although the entries below carry **BREAKING** changes relative to `4.0.0`, this ships as a patch (`4.0.1`) rather than a major: `4.0.0` (published 2026-07-21) landed the interim oracle rework only days earlier, and `4.0.1` supersedes it before it stabilized — treat the `4.0.x` oracle surface as unstable-until-settled._

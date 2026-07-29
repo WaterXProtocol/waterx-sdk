@@ -3,7 +3,8 @@
  * (Nautilus-TEE, ed25519), plus `feedWaterxRule`, the collector-feed leg
  * `aggregateTicker` appends per waterx-routed ticker. Pulls one enclave-signed
  * batch envelope covering every requested ticker from the quote-center
- * (`GET /v1/quotes/update?symbols=…`, endpoint from `WATERX_DEFAULTS`), then —
+ * (`GET /v1/quotes/update?symbols=…`, endpoint from `host.waterx` — the
+ * `waterxEndpoint`/`waterxFetch` create options — else `WATERX_DEFAULTS`), then —
  * unlike Pyth Lazer, whose verify is a single shared PTB step — verifies AND
  * feeds in ONE `waterx_rule::collect_batch_latest` call per collector (the Move
  * API bundles the two). So `buildUpdateCalls` emits nothing and the signed
@@ -33,7 +34,7 @@ import {
   type PriceUpdateRule,
   type RuleUpdateData,
 } from "../price-update-rule.ts";
-import { FetchPolicyError, fetchWithPolicy } from "../update-fetch.ts";
+import { FetchPolicyError, fetchWithPolicy, type FetchPolicy } from "../update-fetch.ts";
 
 /** The single signing intent (`BATCH_PRICE_INTENT`) the quote-center emits. */
 const BATCH_PRICE_INTENT = 1;
@@ -152,6 +153,21 @@ function requireWaterxPackage(host: OracleHost): WaterxRulePackage {
 }
 
 /**
+ * Resolve the quote-center infra for this host: the `waterxEndpoint` /
+ * `waterxFetch` create options when the client carries them, else the network
+ * default. The fetch policy falls back to the shared `pyth.fetch` policy so a
+ * consumer that already tuned timeouts/retries once keeps them here.
+ *
+ * This is the seam a browser consumer needs: the envelope is fetched FROM THE
+ * PAGE, so a front end whose origin the quote-center does not allow (CORS)
+ * points `endpoint` at a same-origin proxy, or supplies its own `fetchImpl`.
+ */
+function resolveWaterxInfra(host: OracleHost): { endpoint: string; fetch?: FetchPolicy } {
+  const infra = host.waterx ?? WATERX_DEFAULTS[host.network];
+  return { endpoint: infra.endpoint, fetch: infra.fetch ?? host.pyth.fetch };
+}
+
+/**
  * Pull one enclave-signed batch envelope covering `symbols` from the
  * quote-center. Goes through the shared `fetchWithPolicy` (`../update-fetch.ts`)
  * — same retry/timeout policy as the Pyth/Lazer fetches. No auth: the
@@ -160,7 +176,7 @@ function requireWaterxPackage(host: OracleHost): WaterxRulePackage {
 async function fetchWaterxSignedUpdate(
   endpoint: string,
   symbols: string[],
-  fetchOpts?: { timeoutMs?: number; retries?: number },
+  fetchOpts?: FetchPolicy,
 ): Promise<WaterxSignedEnvelope> {
   const url = new URL("/v1/quotes/update", endpoint);
   url.searchParams.set("symbols", symbols.join(","));
@@ -286,11 +302,8 @@ export const WaterxRule: PriceUpdateRule = {
         throw new Error(`No waterx_rule feed listed for ticker: ${ticker}`);
       }
     }
-    const envelope = await fetchWaterxSignedUpdate(
-      WATERX_DEFAULTS[host.network].endpoint,
-      tickers,
-      host.pyth.fetch,
-    );
+    const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
+    const envelope = await fetchWaterxSignedUpdate(endpoint, tickers, fetchOpts);
     return { kind: "waterx_rule", payload: { envelope } };
   },
 

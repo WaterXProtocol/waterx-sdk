@@ -47,9 +47,11 @@ export type {
   SupraFeedEntry,
   SupraRulePackage,
   WaterxConstantRulePackage,
+  WaterxInfraConfig,
   WaterxOraclePackage,
+  WaterxRulePackage,
 } from "../oracle/config.ts";
-export { PYTH_DEFAULTS } from "../oracle/config.ts";
+export { PYTH_DEFAULTS, WATERX_DEFAULTS } from "../oracle/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
