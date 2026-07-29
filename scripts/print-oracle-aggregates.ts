@@ -126,6 +126,7 @@ function parseArgs(argv: string[]): {
   format: OutputFormat;
   network: Network;
   oracleSource: OracleSource | undefined;
+  tickers: string[];
 } {
   const tail = argv.slice(2);
   const tokens = tail[0] && !tail[0].startsWith("-") ? tail.slice(1) : tail;
@@ -133,17 +134,22 @@ function parseArgs(argv: string[]): {
   let format: OutputFormat = "pretty";
   let oracleSourceCli: string | undefined;
   const network = resolveNetwork(argv);
+  const tickers: string[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
     const a = tokens[i]!;
     if (a === "--help" || a === "-h") {
-      console.log(`Usage: pnpm oracle:aggregates [-- --format pretty|raw] [--testnet|--mainnet]
+      console.log(`Usage: pnpm oracle:aggregates [-- --format pretty|raw] [--ticker T[,T...]] [--testnet|--mainnet]
        [--oracle-source pyth_rule|pyth_lazer_rule]
        pnpm oracle:aggregates:testnet
        pnpm oracle:aggregates:mainnet
 
   --format pretty   Human-readable output (default): decoded weights, aligned blocks.
   --format raw      Original debug style (compact JSON, one field per line).
+  --ticker T        Only aggregate the given ticker(s). Repeatable and/or comma-separated,
+                    e.g. --ticker WTIUSD or --ticker WTIUSD,BTCUSD. Case-insensitive.
+                    An unconfigured ticker aborts with the list of valid tickers.
+                    Default (omitted): every configured aggregator.
   --testnet         Use TESTNET (pnpm oracle:aggregates:testnet).
   --mainnet         Use MAINNET (default when no network flag).
   --oracle-source   Price-update source (default pyth_rule). Overrides ORACLE_SOURCE.
@@ -184,8 +190,20 @@ function parseArgs(argv: string[]): {
       }
       continue;
     }
+    if (a === "--ticker" || a === "-t") {
+      const v = tokens[i + 1];
+      i++;
+      if (!v || v.startsWith("-")) {
+        console.error(`Missing value for ${a} (expected a ticker, e.g. --ticker WTIUSD)`);
+        process.exit(1);
+      }
+      for (const t of v.split(",")) {
+        const trimmed = t.trim().toUpperCase();
+        if (trimmed) tickers.push(trimmed);
+      }
+    }
   }
-  return { format, network, oracleSource: resolveOracleSource(oracleSourceCli) };
+  return { format, network, oracleSource: resolveOracleSource(oracleSourceCli), tickers };
 }
 
 function allTickerFeeds(client: PerpClient): TickerFeed[] {
@@ -518,7 +536,7 @@ async function runOne(
 
 async function main() {
   loadRepoEnvFiles();
-  const { format, network, oracleSource } = parseArgs(process.argv);
+  const { format, network, oracleSource, tickers } = parseArgs(process.argv);
   const waterxConfigUrl = waterxConfigUrlForNetwork(network);
   const pythApiKey = resolvePythApiKey();
   const client = await PerpClient.create(network, {
@@ -534,7 +552,18 @@ async function main() {
     );
   }
 
-  const feeds = allTickerFeeds(client);
+  let feeds = allTickerFeeds(client);
+  if (tickers.length) {
+    const available = new Set(feeds.map((f) => f.ticker));
+    const unknown = tickers.filter((t) => !available.has(t));
+    if (unknown.length) {
+      console.error(`Unknown ticker(s): ${unknown.join(", ")}`);
+      console.error(`Available tickers: ${[...available].sort().join(", ")}`);
+      process.exit(1);
+    }
+    const want = new Set(tickers);
+    feeds = feeds.filter((f) => want.has(f.ticker));
+  }
   const modeLabel = format === "pretty" ? "pretty" : "raw";
   console.log(
     `printing oracle aggregates for ${feeds.length} feeds (${modeLabel}, ${client.network}, oracleSource=${client.oracleSource})...`,

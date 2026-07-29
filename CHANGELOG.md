@@ -19,6 +19,11 @@ reference the PR that introduced them.
   into `oracleSource` / `pythApiKey`; under `pyth_rule`, a failed Hermes refresh
   prints `WARN` / `OK (STALE)` (no silent fresh OK); under `pyth_lazer_rule`
   there is no Core fallback — missing Lazer feed fails the ticker.
+- `oracle:aggregates`: `--ticker T[,T...]` flag to aggregate only the given ticker(s)
+  (repeatable and/or comma-separated, case-insensitive, e.g.
+  `pnpm oracle:aggregates -- --ticker WTIUSD`). Omitted, it still runs every configured
+  aggregator; an unconfigured ticker aborts non-zero with the list of valid tickers.
+
 
 ## [4.0.1] - 2026-07-27
 
