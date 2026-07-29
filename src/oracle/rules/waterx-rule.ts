@@ -303,7 +303,19 @@ export const WaterxRule: PriceUpdateRule = {
     return Object.keys(host.config.packages.waterx_rule?.feeds ?? {});
   },
 
-  /** Pulls one enclave-signed batch envelope covering `tickers` from the quote-center. */
+  /**
+   * Pulls one enclave-signed batch envelope covering `tickers` from the
+   * quote-center, and only returns it when it actually covers ALL of them.
+   *
+   * A 200 whose `items` omit a requested symbol is a valid, well-signed
+   * envelope — nothing downstream would reject it, and the build would emit a
+   * `collect_batch_latest` that abstains for the missing symbol, surfacing as
+   * an on-chain `EMissingPriceSource` (or a silently thinner weighted set) much
+   * later. Same coverage rule the cached path enforces in
+   * {@link WaterxRule.narrowUpdateData}; the difference is disposition — a
+   * cache miss falls back to this live fetch, whereas the live source itself
+   * coming up short has no fallback left, so it throws deterministically here.
+   */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
     // Package-level check first: a config without the deployment must say so,
@@ -316,6 +328,14 @@ export const WaterxRule: PriceUpdateRule = {
     }
     const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
     const envelope = await fetchWaterxSignedUpdate(endpoint, tickers, fetchOpts);
+    const covered = new Set(envelope.payload.items.map((i) => i.symbol));
+    const missing = tickers.filter((t) => !covered.has(t));
+    if (missing.length > 0) {
+      throw new Error(
+        `WaterX quote-center envelope does not cover ticker(s): ${missing.join(", ")} ` +
+          `(requested ${tickers.join(", ")}; served ${[...covered].join(", ") || "none"})`,
+      );
+    }
     return { kind: "waterx_rule", payload: { envelope } };
   },
 

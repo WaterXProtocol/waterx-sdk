@@ -5,6 +5,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { refreshOraclePrices } from "@waterx/sdk";
 import { describe, it } from "vitest";
 
+import { unfedWeightedRulesForTickers } from "../helpers/e2e/aggregator-weights.ts";
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateSuccess,
@@ -34,9 +35,10 @@ describe(`oracle Pyth refresh (${e2eNetwork})`, () => {
     }
     const sim = await simulateWithTransientRetry(() => client.simulate(tx));
     if (skipSimulateIfOracleTransient(ctx, sim)) return;
-    // TEMPORARY — testnet weights waterx_rule + pyth_lazer_rule alongside
-    // pyth_rule; see skipSimulateIfWeightedSourceMissing.
-    if (skipSimulateIfWeightedSourceMissing(ctx, sim)) return;
+    // TEMPORARY — skip ONLY if the live aggregators for these tickers weight a
+    // rule this build cannot feed; otherwise EMissingPriceSource stays red.
+    const unfed = await unfedWeightedRulesForTickers(client, ["BTCUSD", "USDCUSD"]);
+    if (skipSimulateIfWeightedSourceMissing(ctx, sim, unfed)) return;
     assertSimulateSuccess(sim, 1);
   }, 180_000);
 });

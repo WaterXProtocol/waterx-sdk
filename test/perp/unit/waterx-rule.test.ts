@@ -147,6 +147,24 @@ describe("WaterxRule — port", () => {
     expect(globalSpy).not.toHaveBeenCalled();
   });
 
+  it("fetchUpdateData rejects a partial envelope (fails at fetch, not on-chain)", async () => {
+    // A 200 covering only BTCUSD is a valid, well-signed envelope — without this
+    // guard the build would emit a collect_batch_latest that abstains for ETHUSD
+    // and only surface as an on-chain EMissingPriceSource later.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockQuoteCenterFetch(rawEnvelope(["BTCUSD"]));
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /does not cover ticker\(s\): ETHUSD/,
+    );
+  });
+
+  it("fetchUpdateData accepts an envelope covering every requested ticker", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockQuoteCenterFetch(rawEnvelope(["BTCUSD", "ETHUSD"]));
+    const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"]);
+    expect(data?.kind).toBe("waterx_rule");
+  });
+
   it("fetchUpdateData rejects a wrong intent", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockQuoteCenterFetch({ ...rawEnvelope(), intent: 2 });

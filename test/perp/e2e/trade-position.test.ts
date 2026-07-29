@@ -10,6 +10,7 @@ import {
 } from "@waterx/sdk";
 import { beforeAll, describe, it } from "vitest";
 
+import { unfedWeightedRulesForTickers } from "../helpers/e2e/aggregator-weights.ts";
 import {
   discoverStatefulSimulatePosition,
   DISCOVERY_OPTS_STATEFUL_SIMULATE,
@@ -31,13 +32,18 @@ import {
   keeperOpenAcceptablePrice,
 } from "../integration/helpers/integration-market-snapshot.ts";
 
-function assertDiscoveredTradingSim(ctx: { skip: (reason?: string) => void }, sim: unknown): void {
+async function assertDiscoveredTradingSim(
+  ctx: { skip: (reason?: string) => void },
+  sim: unknown,
+  d: DiscoveredPosition,
+): Promise<void> {
   if (sim === undefined) return;
   if (skipSimulateIfStateDependent(ctx, sim)) return;
-  // TEMPORARY — testnet weights waterx_rule + pyth_lazer_rule alongside
-  // pyth_rule, so a default pyth-only collector aborts EMissingPriceSource for
-  // every crypto ticker; see skipSimulateIfWeightedSourceMissing.
-  if (skipSimulateIfWeightedSourceMissing(ctx, sim)) return;
+  // TEMPORARY — skip ONLY if this position's own aggregators weight a rule the
+  // build cannot feed (verified on-chain); otherwise EMissingPriceSource is a
+  // real regression and stays red. See skipSimulateIfWeightedSourceMissing.
+  const unfed = await unfedWeightedRulesForTickers(client, [d.ticker, d.collateralPoolTicker]);
+  if (skipSimulateIfWeightedSourceMissing(ctx, sim, unfed)) return;
   assertSimulateSuccess(sim, 1);
 }
 
@@ -75,7 +81,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    assertDiscoveredTradingSim(ctx, sim);
+    await assertDiscoveredTradingSim(ctx, sim, d);
   }, 180_000);
 
   it("simulates partial decrease on discovered row", async (ctx) => {
@@ -110,7 +116,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
         }),
     });
     if (sim === undefined) return;
-    assertDiscoveredTradingSim(ctx, sim);
+    await assertDiscoveredTradingSim(ctx, sim, d);
   }, 180_000);
 
   it("simulates deposit collateral (+1 USDC unit)", async (ctx) => {
@@ -136,7 +142,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    assertDiscoveredTradingSim(ctx, sim);
+    await assertDiscoveredTradingSim(ctx, sim, d);
   }, 180_000);
 
   it("simulates tiny withdraw collateral", async (ctx) => {
@@ -163,7 +169,7 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           useSponsor: true,
         }),
     });
-    assertDiscoveredTradingSim(ctx, sim);
+    await assertDiscoveredTradingSim(ctx, sim, d);
   }, 180_000);
 
   it("simulates close with wide acceptable price", async (ctx) => {
@@ -192,6 +198,6 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
         }),
     });
     if (sim === undefined) return;
-    assertDiscoveredTradingSim(ctx, sim);
+    await assertDiscoveredTradingSim(ctx, sim, d);
   }, 180_000);
 });
