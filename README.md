@@ -148,7 +148,7 @@ The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules
 > });
 > ```
 >
-> Both default to `WATERX_DEFAULTS[network]` (+ the shared `pythFetch` policy) when unset, and both are inert under the Pyth sources. Node/keeper consumers are unaffected by CORS either way.
+> Both default to `WATERX_DEFAULTS[network]` (+ the shared `pythFetch` policy) when unset, and both are inert under the Pyth sources. They are also top-level options on the umbrella `WaterXClient.create({ oracleSource, waterxEndpoint, waterxFetch, … })`, which forwards them to the perp line. Node/keeper consumers are unaffected by CORS either way.
 
 ## Recipes & full surface
 

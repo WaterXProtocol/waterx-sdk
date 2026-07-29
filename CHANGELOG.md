@@ -51,7 +51,10 @@ reference the PR that introduced them.
   prefix). Both resolve onto `client.waterx` (`WaterxInfraConfig`), default to
   `WATERX_DEFAULTS[network]` (fetch policy falling back to `pythFetch`), and are
   inert under the Pyth sources. `OracleHost` gains an optional `waterx` field, so
-  an existing host object stays a valid `OracleHost`.
+  an existing host object stays a valid `OracleHost`. Both are top-level options
+  on the umbrella `WaterXClient.create` too (forwarded to the perp line beside
+  `oracleSource` / `pythApiKey` / `pythFetch`) — not reachable only through the
+  nested `perp: {…}` override.
 
 ## [4.0.1] - 2026-07-27
 
