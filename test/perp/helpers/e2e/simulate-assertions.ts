@@ -78,6 +78,46 @@ export function skipSimulateIfOracleTransient(
 }
 
 /**
+ * TEMPORARY (2026-07-29): skip an `EMissingPriceSource` abort ONLY when the live
+ * aggregator proves the environment is unsatisfiable.
+ *
+ * `remove_outliers` raises that one abort for two opposite causes: an SDK
+ * regression that dropped a collector feed (must stay RED), or a deployment
+ * whose aggregator weights a rule this build never feeds (environment). Gating
+ * on the abort text alone would mask the first, so `unfedWeightedRules` must be
+ * non-empty — computed by reading the ticker's on-chain `PriceAggregator.weights`
+ * and subtracting what `aggregateTicker` actually feeds for this client
+ * (`helpers/e2e/aggregator-weights.ts`). An unreadable aggregator yields an
+ * empty list, so an unverifiable environment is never a licence to skip.
+ *
+ * What triggered it: testnet's aggregators were reconfigured to weight
+ * `pyth_rule` + `pyth_lazer_rule` + `waterx_rule` at 1.0 each, so a default
+ * `oracleSource: 'pyth_rule'` build cannot satisfy the set (the Lazer leg also
+ * needs a `pythApiKey` CI does not hold). It reproduces on `main` with no PR
+ * code and the same suites passed on 2026-07-27.
+ *
+ * Wired only into the suites that hit it — deliberately NOT folded into
+ * {@link isOracleTransientFailureMessage}. REMOVE once the testnet weights match
+ * the rules a default build feeds, or once the SDK feeds every configured rule.
+ */
+export function skipSimulateIfWeightedSourceMissing(
+  ctx: { skip: (reason?: string) => void },
+  result: unknown,
+  unfedWeightedRules: string[],
+): boolean {
+  const r = result as SimulateResult;
+  if (r.$kind !== "FailedTransaction") return false;
+  const msg = extractSimulateError(r);
+  if (!msg.includes("EMissingPriceSource")) return false;
+  // Abort text matched but every weighted rule IS fed ⇒ a real regression.
+  if (unfedWeightedRules.length === 0) return false;
+  ctx.skip(
+    `Aggregator weights rule(s) this build does not feed: ${unfedWeightedRules.join(", ")} — ${msg}`,
+  );
+  return true;
+}
+
+/**
  * When {@link refreshOraclePrices} fails before dry-run — Hermes gateway / feed infra, not SDK logic.
  * Covers **404** feed mismatch, **5xx** bursts (503/521), and HTML error pages from Cloudflare.
  */

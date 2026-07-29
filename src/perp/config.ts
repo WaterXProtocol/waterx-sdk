@@ -47,9 +47,11 @@ export type {
   SupraFeedEntry,
   SupraRulePackage,
   WaterxConstantRulePackage,
+  WaterxInfraConfig,
   WaterxOraclePackage,
+  WaterxRulePackage,
 } from "../oracle/config.ts";
-export { PYTH_DEFAULTS } from "../oracle/config.ts";
+export { PYTH_DEFAULTS, WATERX_DEFAULTS } from "../oracle/config.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -139,9 +141,9 @@ export interface WaterXPackages extends AccountPackages, OraclePackages {
   mock_usdc?: MockCoinPackage;
   mock_usdsui?: MockCoinPackage;
   mock_sui?: MockCoinPackage;
-  // Free-form additional packages allowed in the JSON (e.g. `waterx_rule`,
-  // `waterx_rule_nautilus_enclave`) — ignored by the SDK.
-  waterx_rule?: BasePackageEntry;
+  // `waterx_rule` (the first-party quote-center rule) is typed + read via
+  // `OraclePackages.waterx_rule` (`WaterxRulePackage`); the enclave *package*
+  // entry below is free-form and ignored by the SDK.
   waterx_rule_nautilus_enclave?: BasePackageEntry;
 }
 

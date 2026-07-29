@@ -13,15 +13,18 @@
 
 import { BaseLineClient } from "../base-client.ts";
 import type { OracleSource } from "../oracle/price-update-rule.ts";
+import type { FetchPolicy } from "../oracle/update-fetch.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
   PYTH_DEFAULTS,
+  WATERX_DEFAULTS,
   WORMHOLE_DEFAULTS,
   type LoadConfigOptions,
   type PythFetchPolicy,
   type PythInfraConfig,
   type WaterXConfig,
+  type WaterxInfraConfig,
   type WormholeInfraConfig,
 } from "./config.ts";
 import type { Network } from "./constants.ts";
@@ -37,12 +40,20 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
    *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
    *   and a `pythApiKey` (Lazer is auth-first).
+   * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
+   *   ed25519-signed batches): ONE envelope covering the build's tickers,
+   *   verified AND fed by a single `collect_batch_latest` per collector. No
+   *   credential and no per-update fee; needs `packages.waterx_rule` with
+   *   feeds. Endpoint/transport via {@link CreateClientOptions.waterxEndpoint}
+   *   / {@link CreateClientOptions.waterxFetch} — the browser-CORS proxy hook,
+   *   since this is the one source fetched from the page.
    *
-   * A source-neutral name on purpose — a future source need not be Pyth.
-   * Selecting a source whose feed for a requested ticker is absent is NOT an
-   * error at client creation: it fails at tx-build time for exactly those
-   * tickers (see `refreshOraclePrices`). The Pyth Core infra is fixed per
-   * network by `PYTH_DEFAULTS` and is not deployment-overridable.
+   * The name is source-neutral on purpose — a source need not be Pyth (as
+   * `'waterx_rule'` shows). Selecting a source whose feed for a requested
+   * ticker is absent is NOT an error at client creation: it fails at tx-build
+   * time for exactly those tickers (see `refreshOraclePrices`). The Pyth Core
+   * infra is fixed per network by `PYTH_DEFAULTS` and is not
+   * deployment-overridable.
    */
   oracleSource?: OracleSource;
   /**
@@ -58,11 +69,40 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * `fetchWithPolicy`). Optional — defaults to 15s timeout, 2 retries.
    */
   pythFetch?: PythFetchPolicy;
+  /**
+   * Quote-center base URL for `oracleSource: 'waterx_rule'` — overrides the
+   * per-network {@link WATERX_DEFAULTS} host.
+   *
+   * This is the one source a BROWSER fetches itself (the signed envelope is
+   * pulled from the page), so it is bound by the quote-center deployment's CORS
+   * allowlist. A front end whose origin is not allowed — or one that must route
+   * egress through its own backend — points this at a same-origin proxy that
+   * forwards `GET /v1/quotes/update`. Unused by the Pyth sources.
+   *
+   * An absolute URL. Any base PATH is preserved (`joinEndpointPath`), so
+   * `https://app.example/api/quote-center` fetches
+   * `https://app.example/api/quote-center/v1/quotes/update` — a proxy route
+   * survives instead of being rewritten to the origin root.
+   */
+  waterxEndpoint?: string;
+  /**
+   * Retry/timeout policy — and `fetchImpl` — for the quote-center fetch (see
+   * `fetchWithPolicy`). Optional: falls back to `pythFetch`, then to the
+   * built-in defaults. Supply `fetchImpl` to route the request through your own
+   * transport (a proxying `fetch` wrapper, a non-global `fetch`, a test double).
+   */
+  waterxFetch?: FetchPolicy;
 }
 
 export class PerpClient extends BaseLineClient<WaterXConfig> {
   /** Pyth Core infra (fixed per network) plus the caller-supplied credential/policy. */
   pyth: PythInfraConfig;
+  /**
+   * WaterX quote-center infra for `oracleSource: 'waterx_rule'` — the network
+   * default, overridden by the `waterxEndpoint` / `waterxFetch` create options
+   * (a same-origin proxy or a custom `fetchImpl` for browser consumers).
+   */
+  waterx: WaterxInfraConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
   /** Selected oracle price-update source (`oracleSource` create option; default `'pyth_rule'`). */
@@ -83,6 +123,14 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.pythFetch !== undefined ? { fetch: opts.pythFetch } : {}),
     };
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
+    // Quote-center infra: network default, each field independently overridable
+    // — a browser blocked by the quote-center's CORS allowlist swaps `endpoint`
+    // for a same-origin proxy without touching anything else.
+    this.waterx = {
+      ...WATERX_DEFAULTS[network],
+      ...(opts.waterxEndpoint !== undefined ? { endpoint: opts.waterxEndpoint } : {}),
+      ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
+    };
     this.oracleSource = opts.oracleSource ?? "pyth_rule";
     this.view = new PerpConfigView(
       () => this.config,
