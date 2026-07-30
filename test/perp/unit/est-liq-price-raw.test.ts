@@ -16,8 +16,26 @@ import { calcEstLiqPriceRaw } from "../../../src/utils/math.ts";
  * are intentionally different and must never be validated against each other.
  */
 
+/**
+ * Shared scaffold: a ZERO-FEE LONG of size 1.0 at avg $100, base price $100,
+ * 6-dec collateral priced at $1, 1.5% maintenance margin (⇒ maintenance $1.50 on
+ * the $100 current notional). Every fixture spreads it and overrides exactly the
+ * fields it exercises — `collateralAmountRaw` is deliberately NOT here, so each
+ * case always states its own collateral. The fully hand-derived F1/F2/F5/F6
+ * override all of it.
+ */
 const BASE = {
+  isLong: true,
+  sizeRaw: 1_000_000_000n, // 1.0 base token
+  avgPriceRaw: 100_000_000_000n, // $100
+  collateralDecimal: 6,
   collateralPriceUsd: 1n,
+  basePriceUsd: 100n,
+  maintenanceMarginRaw: 15_000_000n, // 1.5% → maintenance $1.50
+  borrowFeeRaw: 0n,
+  fundingSign: true,
+  fundingFeeRaw: 0n,
+  tradingFeeRaw: 0n,
 };
 
 describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
@@ -62,32 +80,13 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
   it("F3: long, income > all fees — VIEW saturates the bundle to 0 (≡ zero-fee run)", () => {
     const incomeBeyondFees = calcEstLiqPriceRaw({
       ...BASE,
-      isLong: true,
-      sizeRaw: 1_000_000_000n,
-      avgPriceRaw: 100_000_000_000n,
       collateralAmountRaw: 30_000_000n,
-      collateralDecimal: 6,
-      basePriceUsd: 100n,
-      maintenanceMarginRaw: 15_000_000n,
       borrowFeeRaw: 1_000_000n,
       fundingSign: false,
       fundingFeeRaw: 50_000_000n, // income far beyond borrow + trading
       tradingFeeRaw: 1_000_000n,
     });
-    const zeroFees = calcEstLiqPriceRaw({
-      ...BASE,
-      isLong: true,
-      sizeRaw: 1_000_000_000n,
-      avgPriceRaw: 100_000_000_000n,
-      collateralAmountRaw: 30_000_000n,
-      collateralDecimal: 6,
-      basePriceUsd: 100n,
-      maintenanceMarginRaw: 15_000_000n,
-      borrowFeeRaw: 0n,
-      fundingSign: true,
-      fundingFeeRaw: 0n,
-      tradingFeeRaw: 0n,
-    });
+    const zeroFees = calcEstLiqPriceRaw({ ...BASE, collateralAmountRaw: 30_000_000n });
     expect(incomeBeyondFees).toBe(71_500_000_000n);
     // The view discards income beyond the other fees — unlike the REAL check.
     expect(incomeBeyondFees).toBe(zeroFees);
@@ -97,12 +96,7 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
     const incomeBeyondFees = calcEstLiqPriceRaw({
       ...BASE,
       isLong: false,
-      sizeRaw: 1_000_000_000n,
-      avgPriceRaw: 100_000_000_000n,
       collateralAmountRaw: 30_000_000n,
-      collateralDecimal: 6,
-      basePriceUsd: 100n,
-      maintenanceMarginRaw: 15_000_000n,
       borrowFeeRaw: 700_000n,
       fundingSign: false,
       fundingFeeRaw: 9_000_000n,
@@ -113,16 +107,8 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
 
   it("F4: near-liquidation boundary — collateral == deductions is 0n; one raw unit above is not", () => {
     const boundary = {
-      ...BASE,
-      isLong: true,
-      sizeRaw: 1_000_000_000n,
-      avgPriceRaw: 100_000_000_000n,
-      collateralDecimal: 6,
-      basePriceUsd: 100n,
-      maintenanceMarginRaw: 15_000_000n, // maintenance = $1.50
+      ...BASE, // maintenance = $1.50
       borrowFeeRaw: 500_000n, // + trading 0.5 → fees $1.00; deductions $2.50
-      fundingSign: true,
-      fundingFeeRaw: 0n,
       tradingFeeRaw: 500_000n,
     };
     // collateral_usd == deductions → lte() → 0n (already liquidatable)
@@ -172,22 +158,10 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
   });
 
   it("F7/F8: long ratio >= 1 and zero size both return 0n", () => {
-    const overCollateralized = {
-      ...BASE,
-      isLong: true,
-      avgPriceRaw: 100_000_000_000n,
-      collateralDecimal: 6,
-      basePriceUsd: 100n,
-      maintenanceMarginRaw: 15_000_000n,
-      borrowFeeRaw: 0n,
-      fundingSign: true,
-      fundingFeeRaw: 0n,
-      tradingFeeRaw: 0n,
-    };
     // $10k collateral against a $1 notional → ratio >= 1 → 0n
     expect(
       calcEstLiqPriceRaw({
-        ...overCollateralized,
+        ...BASE,
         sizeRaw: 10_000_000n,
         collateralAmountRaw: 10_000_000_000n,
       }),
@@ -195,7 +169,7 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
     // zero size → entry_notional == 0 → 0n
     expect(
       calcEstLiqPriceRaw({
-        ...overCollateralized,
+        ...BASE,
         sizeRaw: 0n,
         collateralAmountRaw: 50_000_000n,
       }),
@@ -203,20 +177,7 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
   });
 
   it("throws RangeError on negative bigints and bad collateralDecimal", () => {
-    const valid = {
-      ...BASE,
-      isLong: true,
-      sizeRaw: 1_000_000_000n,
-      avgPriceRaw: 100_000_000_000n,
-      collateralAmountRaw: 50_000_000n,
-      collateralDecimal: 6,
-      basePriceUsd: 100n,
-      maintenanceMarginRaw: 15_000_000n,
-      borrowFeeRaw: 0n,
-      fundingSign: true,
-      fundingFeeRaw: 0n,
-      tradingFeeRaw: 0n,
-    };
+    const valid = { ...BASE, collateralAmountRaw: 50_000_000n };
     expect(() => calcEstLiqPriceRaw({ ...valid, sizeRaw: -1n })).toThrow(RangeError);
     expect(() => calcEstLiqPriceRaw({ ...valid, avgPriceRaw: -1n })).toThrow(RangeError);
     expect(() => calcEstLiqPriceRaw({ ...valid, collateralAmountRaw: -1n })).toThrow(RangeError);

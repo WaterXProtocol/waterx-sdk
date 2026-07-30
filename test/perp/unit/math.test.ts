@@ -30,6 +30,14 @@ import {
   rawPrice,
 } from "../../../src/utils/math.ts";
 
+/** Full `LiqFeeBundle` at zero — spread it and set only the field under test. */
+const ZERO_FEES = {
+  borrowFeeUsd: 0,
+  openFeeUsd: 0,
+  closingFeeUsd: 0,
+  fundingFeeUsd: 0,
+} as const;
+
 describe("rawPrice", () => {
   it("scales USD to 1e9 fixed-point", () => {
     expect(rawPrice(50_000)).toBe(50_000_000_000_000n);
@@ -229,7 +237,7 @@ describe("calcEstLiqPrice", () => {
     expect(
       calcEstLiqPrice({
         ...FEES_PATH_BASE,
-        fees: { borrowFeeUsd: 0, openFeeUsd: 0, closingFeeUsd: 0, fundingFeeUsd: -1e6 },
+        fees: { ...ZERO_FEES, fundingFeeUsd: -1e6 },
       }),
     ).toBe(0);
   });
@@ -302,38 +310,12 @@ describe("calcRealLiqNetCostUsd (REAL model — position.move::is_liquidatable)"
   });
 
   it("throws RangeError on NaN / Infinity / negative unsigned fees", () => {
-    expect(() =>
-      calcRealLiqNetCostUsd({
-        borrowFeeUsd: NaN,
-        openFeeUsd: 0,
-        closingFeeUsd: 0,
-        fundingFeeUsd: 0,
-      }),
-    ).toThrow(RangeError);
-    expect(() =>
-      calcRealLiqNetCostUsd({
-        borrowFeeUsd: 0,
-        openFeeUsd: Infinity,
-        closingFeeUsd: 0,
-        fundingFeeUsd: 0,
-      }),
-    ).toThrow(RangeError);
-    expect(() =>
-      calcRealLiqNetCostUsd({
-        borrowFeeUsd: 0,
-        openFeeUsd: 0,
-        closingFeeUsd: -1,
-        fundingFeeUsd: 0,
-      }),
-    ).toThrow(RangeError);
-    expect(() =>
-      calcRealLiqNetCostUsd({
-        borrowFeeUsd: 0,
-        openFeeUsd: 0,
-        closingFeeUsd: 0,
-        fundingFeeUsd: -Infinity,
-      }),
-    ).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, borrowFeeUsd: NaN })).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, openFeeUsd: Infinity })).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, closingFeeUsd: -1 })).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, fundingFeeUsd: -Infinity })).toThrow(
+      RangeError,
+    );
   });
 });
 

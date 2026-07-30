@@ -11,8 +11,8 @@
  *
  *   WATERX_CONFIG_URL=<waterx-config raw json> pnpm exec tsx examples/views/liq-parity-check.ts
  *
- * 2026-07-30 testnet run: 69 positions across all markets, maxΔraw=0,
- * failures=0, fetchFailures=0 — bit-identical on every position.
+ * 2026-07-30 testnet run: 69 positions across all markets, failures=0,
+ * fetchFailures=0 — bit-identical on every position.
  */
 import { buildClient } from "../_shared.ts";
 import { FLOAT_SCALE } from "../../src/constants.ts";
@@ -29,7 +29,11 @@ const tickers = Object.keys(
 console.log(`markets in config: ${tickers.join(", ")}`);
 
 let total = 0;
-let maxAbsDeltaRaw = 0n;
+// Largest |sdkRaw − chainRaw| AMONG FAILURES only. `sdkRaw === chainRaw` is the
+// sole pass criterion, so a delta is computed exclusively to describe a failure
+// — a passing position's delta is 0n by definition and never worth 69 bigint
+// subtractions to restate.
+let maxFailureDeltaRaw = 0n;
 let failures = 0;
 // A fetch failure means a market (or a page of its positions) was silently
 // skipped — the "every live position" claim no longer holds, so the run must
@@ -86,22 +90,29 @@ for (const ticker of tickers) {
       const chainRaw = BigInt(p.est_liq_price);
       // Exact raw parity — bit-identical or FAIL. No tolerance: both sides are
       // the same truncating u128 fixed-point pipeline, so any delta is a bug.
-      const deltaRaw = sdkRaw >= chainRaw ? sdkRaw - chainRaw : chainRaw - sdkRaw;
-      if (deltaRaw > maxAbsDeltaRaw) maxAbsDeltaRaw = deltaRaw;
       const ok = sdkRaw === chainRaw;
-      if (!ok) failures += 1;
+      let deltaNote = "";
+      if (!ok) {
+        failures += 1;
+        const deltaRaw = sdkRaw >= chainRaw ? sdkRaw - chainRaw : chainRaw - sdkRaw;
+        if (deltaRaw > maxFailureDeltaRaw) maxFailureDeltaRaw = deltaRaw;
+        deltaNote = ` Δraw=${deltaRaw}`;
+      }
       // Display-only conversions below — never part of the comparison above.
       console.log(
         `  [${ticker}] pos ${p.position_id} ${p.is_long ? "L" : "S"} avg=${(
           Number(p.average_price) / Number(FLOAT_SCALE)
-        ).toFixed(4)} chainRaw=${chainRaw} sdkRaw=${sdkRaw} Δraw=${deltaRaw} ${ok ? "OK" : "FAIL"}`,
+        ).toFixed(4)} chainRaw=${chainRaw} sdkRaw=${sdkRaw}${deltaNote} ${ok ? "OK" : "FAIL"}`,
       );
     }
   }
 }
 
 console.log(
-  `\nparity: ${total} positions checked, maxΔraw=${maxAbsDeltaRaw} (1e-9-price units), failures=${failures}, fetchFailures=${fetchFailures}`,
+  `\nparity: ${total} positions checked, failures=${failures}, fetchFailures=${fetchFailures}` +
+    (failures > 0
+      ? `, worst failing Δraw=${maxFailureDeltaRaw} (1e-9-price units)`
+      : " — every checked position bit-identical"),
 );
 if (total === 0) console.log("NOTE: no live positions found — parity not exercised.");
 if (fetchFailures > 0) {
