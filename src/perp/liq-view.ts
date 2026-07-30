@@ -3,9 +3,10 @@
  *
  * `calcEstLiqPriceRaw` (`utils/math.ts`) takes the twelve RAW on-chain values
  * the Move view takes, so every consumer that already holds a fetched
- * `PositionDataView` row had to hand-map ten of them 1:1 — and hand-carry the
- * price invariant below in prose. That mapping is the SDK's job, so it lives
- * here.
+ * `PositionDataView` row had to hand-map nine of them 1:1 off the row (the
+ * other three are the probe prices + maintenance margin, which the row does not
+ * carry) — and hand-carry the price invariant below in prose. That mapping is
+ * the SDK's job, so it lives here.
  *
  * ## Why perp-side and not in `utils/math.ts`
  *
@@ -41,10 +42,11 @@ export type EstLiqPriceViewOpts = {
  * Estimated liquidation price from a fetched `PositionDataView` row —
  * bit-identical to that row's `est_liq_price`.
  *
- * Maps the row's ten raw fields onto {@link calcEstLiqPriceRaw} (the op-for-op
- * mirror of `view.move::calculate_est_liq_price`) and takes the remaining two
- * prices plus the market's maintenance margin from `opts`. Returns the raw
- * 1e9-scaled u128 price; `0n` = already liquidatable / zero size.
+ * Maps the row's nine raw fields onto {@link calcEstLiqPriceRaw} (the op-for-op
+ * mirror of `view.move::calculate_est_liq_price`) and takes the remaining
+ * three — the two probe prices plus the market's maintenance margin — from
+ * `opts`. Returns the raw 1e9-scaled u128 price; `0n` = already liquidatable /
+ * zero size.
  *
  * ## INVARIANT — the prices must be the ones the row was READ AT
  *
@@ -77,7 +79,11 @@ export function calcEstLiqPriceRawFromView(
     collateralPriceUsd: opts.collateralPriceUsd,
     maintenanceMarginRaw: opts.maintenanceMarginRaw,
     // The view pre-combines accrued + unrealized into `borrow_fee` / `funding_fee`
-    // — take those, NOT the `unrealized_*` pair (which would double-count).
+    // — take those, NOT the `unrealized_*` pair, which would UNDER-count:
+    // `view.move` sets `borrow_fee = calculate_borrow_fee(cumul) +
+    // unrealized_borrow_fee`, and `position.move::calculate_funding_fee` returns
+    // the unrealized leg combined with the current period's, so the row's
+    // `unrealized_*` fields are strict SUBSETS of the combined pair.
     borrowFeeRaw: BigInt(position.borrow_fee),
     fundingSign: position.funding_fee_positive,
     fundingFeeRaw: BigInt(position.funding_fee),

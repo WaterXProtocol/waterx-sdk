@@ -168,4 +168,37 @@ describe("write-surface integer guards (representative)", () => {
       }),
     ).toThrow(/acceptablePrice/);
   });
+
+  it("guards the u8 orderTypeTag — the width where BCS truncates instead of throwing", () => {
+    // `bcs.u8().serialize(2.7)` encodes `2`, so a fractional tag would have
+    // silently selected the WRONG order book. 255 (ORDER_TAG_WILDCARD) is the
+    // top of the domain and must still pass.
+    expect(() =>
+      cancelOrderRequest(client, new Transaction(), {
+        ticker,
+        accountId,
+        collateralType,
+        orderId: 1n,
+        orderTypeTag: 2.7,
+      }),
+    ).toThrow(/orderTypeTag/);
+    expect(() =>
+      cancelOrderRequest(client, new Transaction(), {
+        ticker,
+        accountId,
+        collateralType,
+        orderId: 1n,
+        orderTypeTag: 256,
+      }),
+    ).toThrow(/orderTypeTag must be an integer in \[0, 255\]/);
+    expect(() =>
+      cancelOrderRequest(client, new Transaction(), {
+        ticker,
+        accountId,
+        collateralType,
+        orderId: 1n,
+        orderTypeTag: ORDER_TAG_WILDCARD,
+      }),
+    ).not.toThrow();
+  });
 });

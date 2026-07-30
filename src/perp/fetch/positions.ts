@@ -21,6 +21,7 @@ import {
 } from "../../generated/waterx_perp_view/view.ts";
 import {
   parseWholeDollarU64,
+  toU8,
   toU64,
   toU128,
   type WholeDollarUsdPrice,
@@ -112,7 +113,7 @@ export async function getOrder(
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
       basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
-      orderTypeTag: args.orderTypeTag,
+      orderTypeTag: toU8(args.orderTypeTag, "orderTypeTag"),
       triggerPrice: toU128(args.triggerPrice, "triggerPrice"),
       orderId: toU64(args.orderId, "orderId"),
     },

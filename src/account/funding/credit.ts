@@ -33,7 +33,7 @@ import {
   routeWormhole as routeWormholeCall,
 } from "../../generated/withdrawal_queue/withdrawal_queue.ts";
 import { redeemVaa as redeemVaaCall } from "../../generated/wormhole_bridge/wormhole_bridge.ts";
-import { toU64 } from "../../utils/validate.ts";
+import { toU16, toU64 } from "../../utils/validate.ts";
 import { makeSenderRequest } from "../account-request.ts";
 import type { AccountClientLike } from "../client.ts";
 
@@ -183,19 +183,10 @@ export function routeWormhole(
   tx: Transaction,
   params: RouteWormholeParams,
 ): TransactionArgument {
-  if (
-    !Number.isInteger(params.evmDestinationChain) ||
-    params.evmDestinationChain < 0 ||
-    params.evmDestinationChain > 0xffff
-  ) {
-    throw new Error(
-      `evmDestinationChain must be a u16 (0..65535), got ${params.evmDestinationChain}`,
-    );
-  }
   const out = routeWormholeCall({
     package: queuePkg(client),
     arguments: {
-      evmDestinationChain: params.evmDestinationChain,
+      evmDestinationChain: toU16(params.evmDestinationChain, "evmDestinationChain"),
       evmRecipient: toEvmAddressBytes(params.evmRecipient, "evmRecipient"),
       evmToken: toEvmAddressBytes(params.evmToken, "evmToken"),
     },

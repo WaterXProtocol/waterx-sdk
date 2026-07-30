@@ -15,7 +15,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { makeSenderRequest } from "../../account/account-request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
-import { toU64, toU64OrNull, toU128 } from "../../utils/validate.ts";
+import { toU8, toU64, toU64OrNull, toU128 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -339,7 +339,7 @@ export function matchOrders(client: PerpClient, tx: Transaction, params: MatchOr
       pool: tx.object(obj.wlpPool),
       senderRequest: req as unknown as TransactionArgument,
       oracle: tx.object(obj.oracle),
-      orderTypeTag: params.orderTypeTag,
+      orderTypeTag: toU8(params.orderTypeTag, "orderTypeTag"),
       triggerPrice: toU128(params.triggerPrice, "triggerPrice"),
       maxFills: toU64(params.maxFills, "maxFills"),
     },

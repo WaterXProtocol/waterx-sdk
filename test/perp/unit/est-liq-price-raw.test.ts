@@ -159,6 +159,67 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
     ).toBe(107_072_701_817n);
   });
 
+  it("F9: collateralDecimal at the LOWER boundary (0) — raw units are whole tokens", () => {
+    // 0-dec collateral: amount_to_usd's from_fraction divides by 10^0 = 1, so a
+    // raw unit IS a whole token. 40 tokens @ $1 = $40 collateral; borrow+trading
+    // = 2 raw = $2, funding owed 1 raw = $1; maintenance 1.5% × $100 = $1.50.
+    // margin = 40 − 3 − 1.5 = 35.5 ⇒ ratio 0.355 ⇒ long liq = 50 × 0.645 = 32.25.
+    expect(
+      calcEstLiqPriceRaw({
+        ...BASE,
+        isLong: true,
+        sizeRaw: 2_000_000_000n, // 2.0
+        avgPriceRaw: 50_000_000_000n, // $50
+        collateralAmountRaw: 40n, // 40 whole tokens
+        collateralDecimal: 0,
+        basePriceUsd: 50n,
+        collateralPriceUsd: 1n,
+        maintenanceMarginRaw: 15_000_000n, // 1.5%
+        borrowFeeRaw: 1n,
+        fundingSign: true,
+        fundingFeeRaw: 1n,
+        tradingFeeRaw: 1n,
+      }),
+    ).toBe(32_250_000_000n);
+  });
+
+  it("F10: collateralDecimal at the UPPER boundary (19), short, funding income", () => {
+    // 10^19 is the largest power of ten inside u64 (10^19 < 2^64 <= 10^20) — the
+    // exact reason the guard stops at 19. u64::MAX ≈ 1.844e19, so a 19-dec token
+    // holds at most ~1.8 whole tokens in a raw u64 amount. All the truncation
+    // happens in from_fraction here (dividing by 1e19 before the price mul), so
+    // this is the case most sensitive to merging amount_to_usd's two steps.
+    expect(
+      calcEstLiqPriceRaw({
+        ...BASE,
+        isLong: false,
+        sizeRaw: 4_321_000_000n,
+        avgPriceRaw: 101_234_567_891n,
+        collateralAmountRaw: 15_123_456_789_012_345_678n, // ~1.512 tokens, 19 dec
+        collateralDecimal: 19,
+        basePriceUsd: 99n,
+        collateralPriceUsd: 97n,
+        maintenanceMarginRaw: 20_000_000n, // 2%
+        borrowFeeRaw: 1_111_111_111_111_111n,
+        fundingSign: false, // income, partially credited
+        fundingFeeRaw: 999_999_999_999_999n,
+        tradingFeeRaw: 2_222_222_222_222_222n,
+      }),
+    ).toBe(133_199_232_774n);
+  });
+
+  it("F11: basePriceUsd 0n zero-bases the maintenance leg — computed, not skipped", () => {
+    // The documented zero-basing case (see `WholeDollarUsdPrice`): a 0 price is
+    // still USED, not treated as "no price". current_notional = size × 0 = 0, so
+    // maintenance collapses to 0 and the whole $30 collateral becomes margin:
+    // ratio = 30/100 = 0.3 ⇒ long liq = 100 × 0.7 = $70. The same run at the
+    // real $100 base price pays $1.50 maintenance and lands at $71.50 (F3).
+    expect(
+      calcEstLiqPriceRaw({ ...BASE, basePriceUsd: 0n, collateralAmountRaw: 30_000_000n }),
+    ).toBe(70_000_000_000n);
+    expect(calcEstLiqPriceRaw({ ...BASE, collateralAmountRaw: 30_000_000n })).toBe(71_500_000_000n);
+  });
+
   it("F7/F8: long ratio >= 1 and zero size both return 0n", () => {
     // $10k collateral against a $1 notional → ratio >= 1 → 0n
     expect(
@@ -208,8 +269,9 @@ const ADDR = `0x${"1".repeat(64)}`;
 /**
  * F1's inputs as a decoded position row. Fields the adapter must NOT read carry
  * deliberately WRONG decoy values: `unrealized_borrow_fee` /
- * `unrealized_funding_fee` (the view pre-combines into `borrow_fee` /
- * `funding_fee` — reading the `unrealized_*` pair would double-count),
+ * `unrealized_funding_fee` (the view pre-combines accrued + unrealized into
+ * `borrow_fee` / `funding_fee`, so the `unrealized_*` fields are strict SUBSETS
+ * of that pair — reading them instead would UNDER-count the fee legs),
  * `unrealized_funding_sign` (inverted vs `funding_fee_positive`), and
  * `oracle_price` / `collateral_price` (the probe prices come from `opts`, never
  * off the row). Any of those mis-mapped moves the result off F1's hand-derived
@@ -265,23 +327,52 @@ describe("calcEstLiqPriceRawFromView — PositionDataView field mapping", () => 
     expect(calcEstLiqPriceRawFromView(F1_ROW, F1_OPTS)).toBe(BigInt(F1_ROW.est_liq_price));
   });
 
-  it("is exactly the hand-map it replaces — no field silently dropped", () => {
-    expect(calcEstLiqPriceRawFromView(F1_ROW, F1_OPTS)).toBe(
-      calcEstLiqPriceRaw({
-        isLong: F1_ROW.is_long,
-        sizeRaw: BigInt(F1_ROW.size),
-        avgPriceRaw: BigInt(F1_ROW.average_price),
-        collateralAmountRaw: BigInt(F1_ROW.collateral_amount),
-        collateralDecimal: F1_ROW.collateral_decimal,
-        basePriceUsd: F1_OPTS.basePriceUsd,
-        collateralPriceUsd: F1_OPTS.collateralPriceUsd,
-        maintenanceMarginRaw: F1_OPTS.maintenanceMarginRaw,
-        borrowFeeRaw: BigInt(F1_ROW.borrow_fee),
-        fundingSign: F1_ROW.funding_fee_positive,
-        fundingFeeRaw: BigInt(F1_ROW.funding_fee),
-        tradingFeeRaw: BigInt(F1_ROW.unrealized_trading_fee),
-      }),
-    );
+  // Every ROW field the adapter is supposed to read, perturbed one at a time.
+  // Each must move the result off F1's hand-derived expectation — a field
+  // silently dropped from the map would leave it unchanged. (Re-asserting the
+  // map inline instead would pass whenever both copies are wrong the same way,
+  // which is the one failure mode worth catching here.)
+  const READ_FIELDS: [string, Partial<typeof F1_ROW>][] = [
+    ["is_long", { is_long: false }],
+    ["size", { size: "3000000000" }],
+    ["average_price", { average_price: "88000000000" }],
+    ["collateral_amount", { collateral_amount: "60000000" }],
+    ["collateral_decimal", { collateral_decimal: 7 }],
+    ["borrow_fee", { borrow_fee: "9000000" }],
+    ["funding_fee_positive", { funding_fee_positive: false }],
+    ["funding_fee", { funding_fee: "4000000" }],
+    ["unrealized_trading_fee", { unrealized_trading_fee: "8000000" }],
+  ];
+
+  // The complement: fields the view carries but this estimate must NOT consume.
+  // The `unrealized_*` pair is the sharp one — the view pre-combines accrued +
+  // unrealized into `borrow_fee` / `funding_fee`, so reading the `unrealized_*`
+  // fields instead would UNDER-count the fee legs.
+  const IGNORED_FIELDS: [string, Partial<typeof F1_ROW>][] = [
+    ["unrealized_borrow_fee", { unrealized_borrow_fee: "1" }],
+    ["unrealized_funding_fee", { unrealized_funding_fee: "1" }],
+    ["unrealized_funding_sign", { unrealized_funding_sign: true }],
+    ["oracle_price", { oracle_price: "1" }],
+    ["collateral_price", { collateral_price: "1" }],
+    ["est_liq_price", { est_liq_price: "1" }],
+    ["close_fee", { close_fee: "1" }],
+    ["pnl", { pnl: "123456789" }],
+  ];
+
+  it("reads all nine row fields — perturbing any one of them moves the estimate", () => {
+    for (const [label, patch] of READ_FIELDS) {
+      expect(calcEstLiqPriceRawFromView({ ...F1_ROW, ...patch }, F1_OPTS), label).not.toBe(
+        80_663_345_227n,
+      );
+    }
+  });
+
+  it("reads nothing else — perturbing a non-input field leaves the estimate alone", () => {
+    for (const [label, patch] of IGNORED_FIELDS) {
+      expect(calcEstLiqPriceRawFromView({ ...F1_ROW, ...patch }, F1_OPTS), label).toBe(
+        80_663_345_227n,
+      );
+    }
   });
 
   it("takes the probe prices from opts, not from the row's price fields", () => {

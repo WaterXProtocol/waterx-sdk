@@ -27,7 +27,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import { makeSenderRequest } from "../../account/account-request.ts";
 import { newPlaceOrderArgument } from "../../generated/waterx_perp/request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
-import { toU64, toU64OrNull, toU128, toU128OrNull } from "../../utils/validate.ts";
+import { toU8, toU64, toU64OrNull, toU128, toU128OrNull } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -154,7 +154,7 @@ export function cancelOrderRequest(
       accountId: params.accountId,
       orderId: toU64(params.orderId, "orderId"),
       triggerPrice: toU128(params.triggerPrice ?? 0n, "triggerPrice"),
-      orderTypeTag: params.orderTypeTag ?? ORDER_TAG_WILDCARD,
+      orderTypeTag: toU8(params.orderTypeTag ?? ORDER_TAG_WILDCARD, "orderTypeTag"),
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
   })(tx);
@@ -198,7 +198,7 @@ export function updateOrderRequest(
       accountId: params.accountId,
       orderId: toU64(params.orderId, "orderId"),
       currentTriggerPrice: toU128(params.currentTriggerPrice, "currentTriggerPrice"),
-      orderTypeTag: params.orderTypeTag,
+      orderTypeTag: toU8(params.orderTypeTag, "orderTypeTag"),
       newSize: toU128(params.newSize, "newSize"),
       newTriggerPrice: toU128(params.newTriggerPrice, "newTriggerPrice"),
     },

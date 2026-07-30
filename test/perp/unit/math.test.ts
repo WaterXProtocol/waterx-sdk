@@ -526,6 +526,95 @@ describe("calcMaxReducibleCollateralUsd", () => {
     });
     expect(max).toBeCloseTo(5, 5);
   });
+
+  // Tier-1 (money path) domain guards — the same domains calcEstLiqPrice pins.
+  // Every param is checked, not just the two fee legs that were guarded first.
+  const VALID = {
+    grossCollateralUsd: 100,
+    sizeInAsset: 1,
+    spotPrice: 100,
+    isLong: true,
+    entryPrice: 100,
+    maxLeverage: 25,
+    maintenanceMarginRate: 0.01,
+    minCollValueUsd: 0,
+    borrowFeeUsd: 0,
+    tradingFeeUsd: 0,
+    closingFeeUsd: 0,
+    fundingSign: false,
+    fundingFeeUsd: 0,
+    collateralPriceUsd: 1,
+    collateralDecimal: 6,
+  };
+
+  it("rejects a negative or non-finite value for every numeric param", () => {
+    const bad: [string, Partial<typeof VALID>][] = [
+      ["grossCollateralUsd", { grossCollateralUsd: -1 }],
+      ["sizeInAsset", { sizeInAsset: -1 }],
+      ["spotPrice", { spotPrice: -1 }],
+      ["entryPrice", { entryPrice: -1 }],
+      ["maxLeverage", { maxLeverage: -1 }],
+      ["minCollValueUsd", { minCollValueUsd: -1 }],
+      ["borrowFeeUsd", { borrowFeeUsd: -1 }],
+      ["tradingFeeUsd", { tradingFeeUsd: -1 }],
+      ["closingFeeUsd", { closingFeeUsd: -1 }],
+      ["fundingFeeUsd", { fundingFeeUsd: -1 }],
+      ["collateralPriceUsd", { collateralPriceUsd: -1 }],
+      ["sizeInAsset NaN", { sizeInAsset: NaN }],
+      ["spotPrice Infinity", { spotPrice: Infinity }],
+      ["collateralPriceUsd NaN", { collateralPriceUsd: NaN }],
+    ];
+    for (const [label, patch] of bad) {
+      expect(() => calcMaxReducibleCollateralUsd({ ...VALID, ...patch }), label).toThrow(
+        RangeError,
+      );
+    }
+  });
+
+  it("rejects a maintenanceMarginRate outside [0, 1]", () => {
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: -0.01 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: 1.5 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: NaN })).toThrow(
+      RangeError,
+    );
+    // The boundaries themselves are legal.
+    expect(() =>
+      calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: 0 }),
+    ).not.toThrow();
+    expect(() =>
+      calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: 1 }),
+    ).not.toThrow();
+  });
+
+  it("rejects a collateralDecimal outside the u64 10^decimal domain [0, 19]", () => {
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: -1 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 1.5 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 20 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 0 })).not.toThrow();
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 19 })).not.toThrow();
+  });
+
+  it("a negative collateralPriceUsd can no longer silently drop the one-raw-unit back-off", () => {
+    // The regression this guard exists for: the back-off is
+    // `collateralPriceUsd > 0 ? price / 10 ** decimal : 0`, so a NEGATIVE price
+    // used to fall into the `: 0` branch — removing the abort-safety margin
+    // while still returning a plausible-looking dollar figure.
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralPriceUsd: -1 })).toThrow(
+      /collateralPriceUsd must be >= 0/,
+    );
+    // Zero stays a documented domain case (no back-off), not garbage.
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralPriceUsd: 0 })).not.toThrow();
+  });
 });
 
 describe("impact and trading fee rate", () => {

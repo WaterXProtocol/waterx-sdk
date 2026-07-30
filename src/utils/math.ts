@@ -5,8 +5,9 @@
  * ## Validation policy — two tiers, deliberate
  *
  * The per-function `@throws` blocks below are INSTANCES of this rule, not a
- * dozen independent decisions. Guards come from `utils/validate.ts`
- * (`assertFinite` / `assertFiniteNonNegative` / `assertUnsignedBigInt`) and
+ * dozen independent decisions — every tier-1 function carries one. Guards come
+ * from `utils/validate.ts` (`assertFinite` / `assertFiniteNonNegative` /
+ * `assertUnitFraction` / `assertTokenDecimal` / `assertUnsignedBigInt`) and
  * every message names the offending parameter.
  *
  * 1. **MONEY PATH — throws `RangeError`.** The fee bundles
@@ -19,14 +20,18 @@
  *    PLAUSIBLE number — an `Infinity` fee returns 0, indistinguishable from
  *    "already liquidatable"; a negative fee ADDS to equity — so the input dies
  *    at the boundary instead of becoming a wrong price on a screen.
- * 2. **BARE ARITHMETIC — no guards.** The one-line helpers (`calcNotional`,
+ * 2. **BARE ARITHMETIC — no guards.** Mostly one-line helpers (`calcNotional`,
  *    `calcFee`, `calcUnrealizedPnl`, `calcLeverage`, `calcTotalTradingFeeRate`,
- *    `calcImpactFeeRate`, `calcFundingRate`, `calcFundingFeeUsd`,
- *    `decodeFundingIndexDelta`, `calcBorrowRate`, `calcBorrowRateAccrual`,
- *    `calcPositionBorrowFee`, `calcTokenUtilizationBps`,
- *    `annualizeFundingRate`, `calcWlpPrice`). A NaN / Infinity input propagates
- *    VISIBLY to the output — there is no plausible-looking value for it to hide
- *    behind — so a guard would add noise and cost without buying safety.
+ *    `calcFundingRate`, `calcFundingFeeUsd`, `decodeFundingIndexDelta`,
+ *    `calcBorrowRate`, `calcBorrowRateAccrual`, `calcPositionBorrowFee`,
+ *    `calcTokenUtilizationBps`, `annualizeFundingRate`, `calcWlpPrice`), plus
+ *    `calcImpactFeeRate` — NOT a one-liner (a branchy curve with eight early
+ *    returns) but the same category: each of its early returns tests an exact
+ *    zero or an ordering that a NaN never satisfies, so garbage falls straight
+ *    through the branches instead of being absorbed by one. A NaN / Infinity
+ *    input propagates VISIBLY to the output in all of them — there is no
+ *    plausible-looking value for it to hide behind — so a guard would add noise
+ *    and cost without buying safety.
  *
  * `rawPrice` sits in neither tier: it is a PARSE, and throws plain `Error` on
  * malformed input.
@@ -42,7 +47,13 @@
  */
 
 import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../constants.ts";
-import { assertFinite, assertFiniteNonNegative, assertUnsignedBigInt } from "./validate.ts";
+import {
+  assertFinite,
+  assertFiniteNonNegative,
+  assertTokenDecimal,
+  assertUnitFraction,
+  assertUnsignedBigInt,
+} from "./validate.ts";
 
 // ======== On-chain encoding ========
 
@@ -283,12 +294,7 @@ export function calcEstLiqPrice(
   assertFiniteNonNegative("avgPrice", avgPrice);
   assertFiniteNonNegative("spotPrice", spotPrice);
   assertFiniteNonNegative("collateralUsd", collateralUsd);
-  assertFinite("maintenanceMarginRate", maintenanceMarginRate);
-  if (maintenanceMarginRate < 0 || maintenanceMarginRate > 1) {
-    throw new RangeError(
-      `maintenanceMarginRate must be within [0, 1], got ${maintenanceMarginRate}`,
-    );
-  }
+  assertUnitFraction("maintenanceMarginRate", maintenanceMarginRate);
   let totalFeesUsd: number;
   if (params.fees !== undefined) {
     totalFeesUsd = calcRealLiqNetCostUsd(params.fees);
@@ -370,7 +376,7 @@ const POW10: readonly bigint[] = Object.freeze(
  * zero size (the view's N/A signal).
  *
  * Holding a fetched `PositionDataView` row? Use `calcEstLiqPriceRawFromView`
- * (`perp/liq-view.ts`) instead of hand-mapping its ten raw fields — the adapter
+ * (`perp/liq-view.ts`) instead of hand-mapping its nine raw fields — the adapter
  * owns that mapping and carries the invariant below on its own signature.
  *
  * INVARIANT the signature cannot enforce: `basePriceUsd` / `collateralPriceUsd`
@@ -437,11 +443,7 @@ export function calcEstLiqPriceRaw(params: {
   })) {
     assertUnsignedBigInt(label, value);
   }
-  if (!Number.isInteger(collateralDecimal) || collateralDecimal < 0 || collateralDecimal > 19) {
-    throw new RangeError(
-      `collateralDecimal must be an integer in [0, 19], got ${collateralDecimal}`,
-    );
-  }
+  assertTokenDecimal("collateralDecimal", collateralDecimal);
 
   // float::from(u64) — whole dollars onto the 1e9 grid (exact, no truncation).
   const basePrice = basePriceUsd * FLOAT_SCALE;
@@ -572,6 +574,16 @@ export function calcEffectiveCollateralUsd(params: {
  * @param closingFeeUsd           Full closing fee in USD (`close_fee` → USD).
  * @param collateralPriceUsd      Oracle price of the collateral token (USD per token).
  * @param collateralDecimal       Collateral token decimals — sets the smallest withdraw step.
+ * @throws RangeError when any USD / size / price input is not a finite `>= 0`
+ *   number, when `maintenanceMarginRate` is not finite inside `[0, 1]`, or when
+ *   `collateralDecimal` is not an integer in `[0, 19]` — the same domains
+ *   `calcEstLiqPrice` / `calcEstLiqPriceRaw` enforce. Two of these are the
+ *   reason the whole set is here: a negative fee silently INFLATES the
+ *   withdrawable amount, and a negative `collateralPriceUsd` drops the
+ *   one-raw-unit liquidation back-off to 0 — removing the abort-safety margin
+ *   while still returning a plausible-looking dollar figure.
+ *   (`maxLeverage === 0` → no leverage cap and `collateralPriceUsd === 0` → no
+ *   back-off stay documented domain zeros, not garbage.)
  */
 export function calcMaxReducibleCollateralUsd(params: {
   grossCollateralUsd: number;
@@ -607,11 +619,29 @@ export function calcMaxReducibleCollateralUsd(params: {
     collateralPriceUsd,
     collateralDecimal,
   } = params;
-  // Fee params must be finite and unsigned (funding sign travels separately) —
-  // a negative fee would silently INFLATE the withdrawable amount. The
-  // borrow/trading legs are re-checked inside calcEffectiveCollateralUsd.
-  assertFiniteNonNegative("closingFeeUsd", closingFeeUsd);
-  assertFiniteNonNegative("fundingFeeUsd", fundingFeeUsd);
+  // MONEY PATH (see the validation policy at the top of this file): every
+  // numeric input is pinned to the same domains calcEstLiqPrice uses. Fees are
+  // UNSIGNED here — funding's sign travels separately in `fundingSign` — so a
+  // negative one would silently INFLATE the withdrawable amount. One loop so
+  // the guard labels cannot drift from the field names; the grossCollateral /
+  // borrow / trading legs are re-checked inside calcEffectiveCollateralUsd.
+  for (const [label, value] of Object.entries({
+    grossCollateralUsd,
+    sizeInAsset,
+    spotPrice,
+    entryPrice,
+    maxLeverage,
+    minCollValueUsd,
+    borrowFeeUsd,
+    tradingFeeUsd,
+    closingFeeUsd,
+    fundingFeeUsd,
+    collateralPriceUsd,
+  })) {
+    assertFiniteNonNegative(label, value);
+  }
+  assertUnitFraction("maintenanceMarginRate", maintenanceMarginRate);
+  assertTokenDecimal("collateralDecimal", collateralDecimal);
 
   const notional = sizeInAsset * spotPrice;
 
@@ -1043,6 +1073,9 @@ export function calcWlpRedeemOut(
  * @param targetWeightBps    Target allocation weight for this token (bps).
  * @param baseFeeBps         Base mint/burn fee (bps).
  * @param isDeposit          True for mint, false for redeem.
+ * @throws RangeError when any USD / bps input is not a finite `>= 0` number.
+ *   (`tvlUsd` / `operationValueUsd` / `targetWeightBps` of exactly 0 stay
+ *   documented domain cases returning `baseFeeBps` — nothing to deviate from.)
  */
 export function calcDynamicFeeBps(
   tokenValueUsd: number,

@@ -2,21 +2,51 @@
 
 All notable changes to `@waterx/sdk` are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
-package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Entries
 reference the PR that introduced them.
+
+**Versioning policy — SemVer syntax, but NOT the SemVer compatibility promise.** Version
+numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
+package MAY ship a breaking change in a PATCH release. Every consumer is first-party and
+pins the SDK **exact**, so no consumer takes a break implicitly; a `^`-range consumer
+would, and none exists. `4.0.1` and `4.0.2` were both released this way. Each such release
+NAMES its breaking changes at the top of its section — read that note before upgrading,
+and do not infer compatibility from the version number alone.
 
 ## [Unreleased]
 
 ## [4.0.2] - 2026-07-30
 
-> **Released as a PATCH despite the BREAKING removal below** (deliberate, same
-> call as `4.0.1`). The three deleted constants had no in-repo consumers, and
+> **Released as a PATCH carrying THREE breaking changes** (deliberate — see the
+> versioning policy at the top of this file). Do NOT stop at the removed
+> constants; the other two are behavior changes with no compile error to warn
+> you:
+>
+> 1. **Removed exports.** `CRYPTO_FEE_RATE`, `STOCK_FEE_RATE` and
+>    `MAINTENANCE_MARGIN_RATE` are gone from `@waterx/sdk/perp`. Migration in
+>    `### Removed`.
+> 2. **`getSpendableCreditBalance` can now REJECT.** `probeAddressCreditBalance`
+>    stopped swallowing RPC errors, so a call that ALWAYS resolved (reporting a
+>    failed probe as an authoritative zero balance) now propagates the failure.
+>    Callers that relied on always-resolving must catch explicitly. Same for
+>    `appendConsolidateAddressCredit`. See `### Fixed`.
+> 3. **Error TYPE and MESSAGE changed on the integer guards.**
+>    `prediction/utils`' `assertU64` / `toBigInt` throw `RangeError` with the
+>    shared wording instead of plain `Error`, and tighten `isInteger` →
+>    `isSafeInteger` (so `>= 2^53` is newly rejected); `routeWormhole`'s
+>    `evmDestinationChain` check joins the same vocabulary. `RangeError` extends
+>    `Error`, so only code matching on error TYPE or MESSAGE TEXT breaks. See
+>    `### Changed`.
+>
+> Why `4.0.2` and not `5.0.0`: none of the three has an in-repo consumer, and
 > both first-party consumers (`waterx-fe`, `bucket-backend-mono`) pin the SDK
-> **exact**, so neither picks this up implicitly — they bump to `4.0.2` in the
-> same change set that drops the imports. A consumer on a `^4.x` range WOULD
-> take it automatically and fail at build on the removed exports; there is no
-> such consumer today. Migration is in the `### Removed` entry.
+> **exact** — neither picks this up implicitly; they bump to `4.0.2` in the same
+> change set that adapts (waterx-fe#1036, bucket-backend-mono#1060). The one
+> exposure is a consumer on a `^4.x` range, which WOULD take it automatically and
+> fail; there is no such consumer today. (`4.0.1` also shipped
+> breaking-as-patch, but on a different rationale: `4.0.0` was days old and its
+> oracle surface was declared unstable-until-settled, not "no consumers + exact
+> pins".)
 
 ### Added
 
@@ -54,8 +84,10 @@ reference the PR that introduced them.
   `liq-parity-check` harness now requires EXACT raw equality (no tolerance).
 - **`calcEstLiqPriceRawFromView(position, opts)` — view→raw adapter for
   `calcEstLiqPriceRaw`** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
-  `calcEstLiqPriceRaw` takes twelve raw fields, ten of which map 1:1 off a
-  fetched `PositionDataView` row — every consumer was hand-writing that map
+  `calcEstLiqPriceRaw` takes twelve raw fields, nine of which map 1:1 off a
+  fetched `PositionDataView` row (the other three — the two probe prices and the
+  market's maintenance margin — are not on the row) — every consumer was
+  hand-writing that map
   (the parity harness included). The adapter owns it: pass the row plus
   `{ maintenanceMarginRaw, basePriceUsd, collateralPriceUsd }` and get the same
   bit-identical raw price. It also carries, on a signature a caller actually
@@ -78,7 +110,7 @@ reference the PR that introduced them.
   `totalFeesUsd` is finite; `calcEstLiqPriceRaw` rejects negative bigints and
   out-of-range decimals. Previously garbage flowed through — e.g. an
   `Infinity` fee returned 0, indistinguishable from "already liquidatable".
-- **u64/u128 guards extended to the WRITE surface (tx builders)**
+- **Integer guards extended to the WRITE surface (tx builders)**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The
   `toU64`/`toU128` validators moved to a shared `utils/validate.ts` (every
   consumer imports it directly — there is no `perp/fetch/validate.ts` shim) and
@@ -90,15 +122,41 @@ reference the PR that introduced them.
   (stakeAmount / withdrawalAmount when numeric), `account.requestWithdraw`
   amount, credit funding (amount / key / `routeNative.minOutput`), plus the
   fetch stragglers `getTokenPoolData.tokenIndex` and `getBridgeFee.amount`,
-  and `prediction/utils.toBigInt` (now `Number.isSafeInteger`). Rationale:
-  `bcs.u64().serialize(2**53 + 2)` silently encodes the wrong value — a
-  non-safe / fractional / negative number now throws a named `RangeError`
-  before a transaction is built.
+  and `prediction/utils.toBigInt` (now `Number.isSafeInteger`).
+
+  Rationale, stated precisely (the earlier draft of this entry got it wrong):
+  the BCS writer is not the thing that loses the value at u64 — it rejects a
+  negative and a fractional `number` on its own. What it cannot see is precision
+  already lost in JS: `2**53 + 1` collapses to `2**53` at parse time, so BCS
+  faithfully encodes an integer the caller never wrote. (`2**53 + 2` IS exactly
+  representable and encodes correctly.) Hence the `Number.isSafeInteger` floor,
+  and the named `RangeError` that fires before a transaction is built.
+- **`toU8` / `toU16` — the small-width integer guards**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). u8/u16 is the
+  width where the BCS writer's own checks are WEAKEST: it throws on an
+  out-of-range value but SILENTLY TRUNCATES a fractional one
+  (`bcs.u8().serialize(2.7)` encodes `2`). The four unguarded `orderTypeTag`
+  params — `getOrder` on `perp/fetch`, plus `cancelOrderRequest` /
+  `updateOrderRequest` / `matchOrders` on the write side — now go through
+  `toU8`, so a fractional tag throws by name instead of quietly selecting the
+  wrong order book. `routeWormhole`'s hand-rolled `evmDestinationChain` check
+  becomes `toU16` (same accept/reject set, now a `RangeError` with the shared
+  wording — see the release header).
 - **Numeric-domain validation extended to the remaining Number helpers**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
-  `calcEffectiveCollateralUsd` / `calcMaxReducibleCollateralUsd` throw on
-  negative or non-finite fee inputs (a negative fee silently ADDED to
-  effective collateral before); `calcWlpIncentiveApy`,
+  `calcEffectiveCollateralUsd` throws on negative or non-finite fee inputs (a
+  negative fee silently ADDED to effective collateral before);
+  `calcMaxReducibleCollateralUsd` guards its FULL param list against the same
+  domains `calcEstLiqPrice` uses — sizes, prices, entry price, max leverage,
+  min collateral and every fee leg finite `>= 0`, `maintenanceMarginRate` finite
+  in `[0, 1]`, `collateralDecimal` an integer in `[0, 19]` — not just the two
+  fee legs it started with. The sharp one: its liquidation leg backs off one raw
+  collateral unit via
+  `collateralPriceUsd > 0 ? collateralPriceUsd / 10 ** collateralDecimal : 0`,
+  so a NEGATIVE collateral price used to fall into the `: 0` branch and silently
+  delete that abort-safety margin while still returning a plausible dollar
+  figure. `maxLeverage === 0` (no cap) and `collateralPriceUsd === 0` (no
+  back-off) remain documented domain zeros. `calcWlpIncentiveApy`,
   `annualizedApyFromRatio`, `calcWlpMintOut`, `calcWlpRedeemOut`, and
   `calcDynamicFeeBps` throw `RangeError` on NaN / ±Infinity / negative
   operation values instead of mapping garbage to a plausible zero
@@ -138,7 +196,10 @@ reference the PR that introduced them.
   (`basePriceUsd` / `collateralPriceUsd` / `positionId` / `orderId` /
   `cursor` / `pageSize` / `triggerPrice`) is validated (bigint range-checked;
   numbers must be non-negative safe integers) and throws with the parameter
-  name instead of serializing a silently-wrong integer into the PTB.
+  name instead of serializing a silently-wrong integer into the PTB. The one
+  read param that is neither u64 nor u128 — `getOrder`'s u8 `orderTypeTag` — is
+  covered by `toU8` (above), so no unguarded integer is left on the read
+  surface either.
 - **`formatFundingInterval(intervalMs)`**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
   funding-interval wire label (`"1H"` / `"8H"` / `"1.5H"` / `"30M"`,
@@ -226,6 +287,11 @@ reference the PR that introduced them.
   `"<name> must be a non-negative safe integer (< 2^53) or a bigint, got X"`
   instead of `"… exceeds u64 max (…)"` / `"Invalid integer: …"`. `RangeError`
   extends `Error`, so `instanceof Error` / bare `catch` paths are unaffected.
+  The same unification absorbs the last hand-rolled integer check in the SDK:
+  `routeWormhole`'s `evmDestinationChain` guard becomes `toU16`, so its message
+  changes from `"evmDestinationChain must be a u16 (0..65535), got X"` to
+  `"evmDestinationChain must be an integer in [0, 65535] (u16), got X"` and its
+  type from `Error` to `RangeError`. Same accept/reject set.
 - **The whole-dollar price domain moved to `utils/validate.ts` (additive
   re-export — no consumer break)**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
@@ -254,7 +320,17 @@ reference the PR that introduced them.
   defaults masquerading as truth: per-market `MarketConfig` is the only source
   for fee and maintenance-margin parameters, and a consumer falling back to the
   flat `MAINTENANCE_MARGIN_RATE` caused a real est-liq-price incident on
-  2026-07-28. Removed so they cannot be imported. Migration: read the
+  2026-07-28. Removed so they cannot be imported **from the SDK** — which is
+  narrower than "the trap is gone". It RELOCATED: `bucket-backend-mono` now
+  defines `FALLBACK_CRYPTO_FEE_RATE = 0.0003` /
+  `FALLBACK_STOCK_FEE_RATE = 0.0005` /
+  `FALLBACK_MAINTENANCE_MARGIN_RATIO = 0.015` locally, deliberately fenced
+  (display-only, every response built from them flagged `isLive: false`, the MMR
+  excluded from all risk gates via the `MMR_UNKNOWN` sentinel, incident
+  rationale in the file header). What this removal buys is that a flat default
+  can no longer be mistaken for an SDK-blessed constant or be pulled into a new
+  consumer by autocomplete — not that no fallback exists anywhere.
+  Migration: read the
   `trading_fee` / `maintenance_margin` fields (and siblings) from the market's
   on-chain `MarketConfig` — via `getMarketData` (the supported read path) or
   the raw `MarketConfigBcs` BCS binding (exported from `@waterx/sdk/perp`

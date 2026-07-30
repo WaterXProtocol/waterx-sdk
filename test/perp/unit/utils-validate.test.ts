@@ -15,7 +15,11 @@ import { describe, expect, it } from "vitest";
 
 import { parseWholeDollarU64 as parseWholeDollarU64FromFetch } from "../../../src/perp/fetch.ts";
 import {
+  assertTokenDecimal,
+  assertUnitFraction,
   parseWholeDollarU64 as parseWholeDollarU64FromValidate,
+  toU8,
+  toU16,
   toU64,
   toU64Arg,
   toU64OrNull,
@@ -53,6 +57,57 @@ describe("boundary integer guards (toU64 / toU128)", () => {
     expect(() => toU64(U64_MAX + 1n, "basePriceUsd")).toThrow(/u64/);
     expect(() => toU128(2n ** 128n, "triggerPrice")).toThrow(/u128/);
     expect(toU128(2n ** 128n - 1n, "x")).toBe(2n ** 128n - 1n);
+  });
+});
+
+describe("small-width integer guards (toU8 / toU16)", () => {
+  it("passes through in-range integers", () => {
+    expect(toU8(0, "orderTypeTag")).toBe(0);
+    expect(toU8(255, "orderTypeTag")).toBe(255);
+    expect(toU16(0, "evmDestinationChain")).toBe(0);
+    expect(toU16(65_535, "evmDestinationChain")).toBe(65_535);
+  });
+
+  it("rejects the FRACTIONAL case BCS silently truncates", () => {
+    // `bcs.u8().serialize(2.7)` encodes `2` without throwing — unlike u64/u128,
+    // where the BCS writer itself rejects a fractional value. This guard is the
+    // only thing standing between a fractional tag and a wrong PTB byte.
+    expect(() => toU8(2.7, "orderTypeTag")).toThrow(RangeError);
+    expect(() => toU8(2.7, "orderTypeTag")).toThrow(/orderTypeTag/);
+    expect(() => toU16(1.5, "evmDestinationChain")).toThrow(RangeError);
+  });
+
+  it("rejects negative, out-of-width, and non-finite values with the param name", () => {
+    expect(() => toU8(-1, "orderTypeTag")).toThrow(/orderTypeTag must be an integer in \[0, 255\]/);
+    expect(() => toU8(256, "orderTypeTag")).toThrow(/u8/);
+    expect(() => toU8(NaN, "orderTypeTag")).toThrow(RangeError);
+    expect(() => toU16(-1, "evmDestinationChain")).toThrow(RangeError);
+    expect(() => toU16(65_536, "evmDestinationChain")).toThrow(/u16/);
+    expect(() => toU16(Infinity, "evmDestinationChain")).toThrow(RangeError);
+  });
+});
+
+describe("money-path domain guards (assertUnitFraction / assertTokenDecimal)", () => {
+  it("assertUnitFraction accepts [0, 1] and rejects everything outside it", () => {
+    expect(() => assertUnitFraction("maintenanceMarginRate", 0)).not.toThrow();
+    expect(() => assertUnitFraction("maintenanceMarginRate", 0.05)).not.toThrow();
+    expect(() => assertUnitFraction("maintenanceMarginRate", 1)).not.toThrow();
+    expect(() => assertUnitFraction("maintenanceMarginRate", -0.0001)).toThrow(
+      /maintenanceMarginRate must be within \[0, 1\]/,
+    );
+    expect(() => assertUnitFraction("maintenanceMarginRate", 1.0001)).toThrow(RangeError);
+    expect(() => assertUnitFraction("maintenanceMarginRate", NaN)).toThrow(RangeError);
+    expect(() => assertUnitFraction("maintenanceMarginRate", Infinity)).toThrow(RangeError);
+  });
+
+  it("assertTokenDecimal accepts the whole u64 10^decimal domain [0, 19]", () => {
+    expect(() => assertTokenDecimal("collateralDecimal", 0)).not.toThrow();
+    expect(() => assertTokenDecimal("collateralDecimal", 19)).not.toThrow();
+    expect(() => assertTokenDecimal("collateralDecimal", 20)).toThrow(
+      /collateralDecimal must be an integer in \[0, 19\]/,
+    );
+    expect(() => assertTokenDecimal("collateralDecimal", -1)).toThrow(RangeError);
+    expect(() => assertTokenDecimal("collateralDecimal", 1.5)).toThrow(RangeError);
   });
 });
 

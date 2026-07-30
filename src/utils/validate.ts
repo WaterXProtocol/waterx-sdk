@@ -2,16 +2,25 @@
 // domain the callee can honestly compute over?", asked at the three points
 // where garbage enters:
 //
-// 1. INTEGER params (`toU64` / `toU128` + the `*OrNull` / `toU64Arg` variants)
-//    on the fetch AND write (tx-build) surfaces. The generated BCS layer
-//    coerces `number` params only after JS arithmetic has already lost
-//    precision — a non-safe integer (>= 2^53), fractional, or negative value
-//    would serialize a silently-wrong integer into the PTB instead of failing
-//    (verified: `bcs.u64().serialize(2**53 + 2)` encodes the wrong value
-//    without throwing). Every u64/u128 param funnels through these so garbage
-//    throws with the parameter's name before a transaction is built.
+// 1. INTEGER params (`toU64` / `toU128` / `toU8` / `toU16` + the `*OrNull` /
+//    `toU64Arg` variants) on the fetch AND write (tx-build) surfaces. What the
+//    generated BCS layer does with a bad `number` depends on the width, and at
+//    no width is the answer "throw naming the parameter" (verified against
+//    `@mysten/sui`'s `bcs`):
+//    - u64 / u128 throw on negative and on fractional — but a `number` past
+//      2^53 has already lost precision in JS BEFORE BCS sees it. `2**53 + 1`
+//      collapses to `2**53` at parse time, so BCS faithfully encodes a value
+//      the caller never wrote. (`2**53 + 2` IS exactly representable and
+//      encodes correctly — the hazard is the odd side of the f64 cliff, not
+//      BCS.) Hence the `Number.isSafeInteger` floor here.
+//    - u8 / u16 throw when the value is out of range but SILENTLY TRUNCATE a
+//      fractional one (`bcs.u8().serialize(2.7)` encodes `2`), so the
+//      fractional case is the one only a guard can catch.
+//    Every integer param funnels through these so garbage throws with the
+//    parameter's name before a transaction is built.
 // 2. FLOAT / BIGINT domains (`assertFinite` / `assertFiniteNonNegative` /
-//    `assertUnsignedBigInt`) for the money-path math in `utils/math.ts`.
+//    `assertUnitFraction` / `assertTokenDecimal` / `assertUnsignedBigInt`) for
+//    the money-path math in `utils/math.ts`.
 // 3. The WHOLE-DOLLAR USD price domain (`WholeDollarUsdPrice` /
 //    `parseWholeDollarU64`) the `waterx_perp_view` read params live in.
 //
@@ -61,6 +70,31 @@ export function toU128(value: bigint | number, label: string): bigint {
   return toUint(value, label, U128_MAX, "u128");
 }
 
+function toSmallUint(value: number, label: string, max: number, width: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > max) {
+    throw new RangeError(`${label} must be an integer in [0, ${max}] (${width}), got ${value}`);
+  }
+
+  return value;
+}
+
+/**
+ * Validate a u8 param. Returns a `number` (not a bigint) because that is the
+ * shape the generated BCS layer takes at this width.
+ *
+ * Separate from `toU64` on purpose: at u8/u16 the BCS writer already throws on
+ * an out-of-range value, but SILENTLY TRUNCATES a fractional one — so the
+ * fractional case is what this guard exists to catch (see the header note).
+ */
+export function toU8(value: number, label: string): number {
+  return toSmallUint(value, label, 0xff, "u8");
+}
+
+/** Validate a u16 param. Same width caveat as {@link toU8}. */
+export function toU16(value: number, label: string): number {
+  return toSmallUint(value, label, 0xffff, "u16");
+}
+
 /** `Option<u64>` param: `null` / `undefined` pass through as `null`, anything else is validated. */
 export function toU64OrNull(
   value: bigint | number | null | undefined,
@@ -107,6 +141,29 @@ export function assertFiniteNonNegative(label: string, value: number): void {
   assertFinite(label, value);
   if (value < 0) {
     throw new RangeError(`${label} must be >= 0, got ${value}`);
+  }
+}
+
+/**
+ * Reject anything outside `[0, 1]` for a `number` input that is a FRACTION of a
+ * whole — a maintenance-margin rate above 1 means "maintenance exceeds the
+ * entire notional", which is not a rate the caller can have meant.
+ */
+export function assertUnitFraction(label: string, value: number): void {
+  assertFinite(label, value);
+  if (value < 0 || value > 1) {
+    throw new RangeError(`${label} must be within [0, 1], got ${value}`);
+  }
+}
+
+/**
+ * Reject a token-decimal outside `[0, 19]` — the domain of the contract's
+ * `10u64.pow(decimal)` (`10^19 < 2^64 <= 10^20`), and the same bound the raw
+ * `POW10` table in `utils/math.ts` is built over.
+ */
+export function assertTokenDecimal(label: string, value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > 19) {
+    throw new RangeError(`${label} must be an integer in [0, 19], got ${value}`);
   }
 }
 
