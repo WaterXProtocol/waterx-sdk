@@ -8,7 +8,15 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
-## [5.0.0] - 2026-07-30
+## [4.0.2] - 2026-07-30
+
+> **Released as a PATCH despite the BREAKING removal below** (deliberate, same
+> call as `4.0.1`). The three deleted constants had no in-repo consumers, and
+> both first-party consumers (`waterx-fe`, `bucket-backend-mono`) pin the SDK
+> **exact**, so neither picks this up implicitly — they bump to `4.0.2` in the
+> same change set that drops the imports. A consumer on a `^4.x` range WOULD
+> take it automatically and fail at build on the removed exports; there is no
+> such consumer today. Migration is in the `### Removed` entry.
 
 ### Added
 
