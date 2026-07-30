@@ -132,7 +132,7 @@ describe("u64 overflow strings are rejected pre-RPC (backend DTO does NOT catch 
       const tx = new Transaction();
       expect(() =>
         placeOrder(client, tx, { ...minimalPlaceOrderParams(client), [field]: U64_OVERFLOW }),
-      ).toThrow(/exceeds u64 max/);
+      ).toThrow(/out of u64 range/);
     },
   );
 

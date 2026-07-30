@@ -18,9 +18,9 @@ import {
   TokenPoolData,
   tokenPoolData as tokenPoolDataCall,
 } from "../../generated/waterx_perp_view/view.ts";
+import { toU64 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { simulateAndExtract, withLp } from "./simulate.ts";
-import { toU64 } from "./validate.ts";
 
 // ============================================================================
 // Account

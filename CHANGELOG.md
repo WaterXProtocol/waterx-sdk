@@ -53,8 +53,9 @@ reference the PR that introduced them.
   `Infinity` fee returned 0, indistinguishable from "already liquidatable".
 - **u64/u128 guards extended to the WRITE surface (tx builders)**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The
-  `toU64`/`toU128` validators moved to a shared `utils/validate.ts` (fetch
-  path re-exports) and now guard every numeric param on the tx-build surface:
+  `toU64`/`toU128` validators moved to a shared `utils/validate.ts` (every
+  consumer imports it directly — there is no `perp/fetch/validate.ts` shim) and
+  now guard every numeric param on the tx-build surface:
   `perp/user` trading (positionId / orderId / collateralAmount / size /
   acceptablePrice / triggerPrice / maxFills / pageSize / pageIndex), orders
   (all `PlaceOrderArgument` fields, order ids, trigger prices), WLP
@@ -165,6 +166,30 @@ reference the PR that introduced them.
   (repeatable and/or comma-separated, case-insensitive, e.g.
   `pnpm oracle:aggregates -- --ticker WTIUSD`). Omitted, it still runs every configured
   aggregator; an unconfigured ticker aborts non-zero with the list of valid tickers.
+
+### Changed
+
+- **One u64 domain rule for both product lines — prediction's u64 errors are now
+  `RangeError` with the shared wording**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `prediction/utils` carried a second `U64_MAX` and a third copy of the u64
+  guard (`assertU64` / `toBigInt`), so the `isInteger` → `isSafeInteger`
+  precision fix had to be authored twice, and it threw plain `Error` where the
+  perp side threw `RangeError` for the identical failure. `assertU64` is now a
+  thin alias over `utils/validate.toU64` (and accepts `number` too); `toBigInt`
+  keeps only the decimal-string shape check it uniquely owns. The same inputs
+  are still rejected, but the error TYPE and MESSAGE unify — code matching on
+  message text now sees `"<name> out of u64 range, got X"` /
+  `"<name> must be a non-negative safe integer (< 2^53) or a bigint, got X"`
+  instead of `"… exceeds u64 max (…)"` / `"Invalid integer: …"`. `RangeError`
+  extends `Error`, so `instanceof Error` / bare `catch` paths are unaffected.
+- **`parseWholeDollarU64` delegates its numeric domain to `toU64`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). It re-derived
+  the entire finite → integer → safe-integer → non-negative → `<= u64::MAX`
+  ladder by hand; it now owns only the plain-integer-STRING form and hands the
+  rest to `toU64`. Same accept/reject set; the two number-mode hints ("round
+  explicitly at the call site", "pass a string instead") collapse into `toU64`'s
+  single message, while the string-mode hint stays.
 
 ### Removed
 

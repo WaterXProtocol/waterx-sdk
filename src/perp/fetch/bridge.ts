@@ -24,9 +24,9 @@ import {
   personalBurnCapAmount as personalBurnCapAmountCall,
   personalBurned as personalBurnedCall,
 } from "../../generated/wormhole_bridge/wormhole_bridge.ts";
+import { toU64 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { extractAt, simulateRaw } from "./simulate.ts";
-import { toU64 } from "./validate.ts";
 
 // ============================================================================
 // Wormhole bridge (rate-limit / cap reads)

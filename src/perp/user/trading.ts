@@ -15,7 +15,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { makeSenderRequest } from "../../account/account-request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
-import { toU64, toU128 } from "../../utils/validate.ts";
+import { toU64, toU64OrNull, toU128 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -120,7 +120,7 @@ export function increasePositionRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      orderId: params.orderId != null ? toU64(params.orderId, "orderId") : null,
+      orderId: toU64OrNull(params.orderId, "orderId"),
       positionId: toU64(params.positionId, "positionId"),
       collateralAmount: toU64(params.collateralAmount, "collateralAmount"),
       size: toU128(params.size, "size"),

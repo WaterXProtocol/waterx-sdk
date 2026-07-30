@@ -1,6 +1,52 @@
+/**
+ * Perp / WLP number math: Move-mirroring formulas, the `Float` fixed-point
+ * mirrors the canonical raw estimates need, and the on-chain price encoding.
+ *
+ * ## Validation policy — two tiers, deliberate
+ *
+ * The per-function `@throws` blocks below are INSTANCES of this rule, not a
+ * dozen independent decisions. Guards come from `utils/validate.ts`
+ * (`assertFinite` / `assertFiniteNonNegative` / `assertUnsignedBigInt`) and
+ * every message names the offending parameter.
+ *
+ * 1. **MONEY PATH — throws `RangeError`.** The fee bundles
+ *    (`calcRealLiqNetCostUsd`, `calcViewEstLiqFeesUsd`), the liquidation
+ *    estimates (`calcEstLiqPrice`, `calcEstLiqPriceRaw`), collateral and
+ *    withdrawable (`calcEffectiveCollateralUsd`,
+ *    `calcMaxReducibleCollateralUsd`), and the WLP quote / APY surface
+ *    (`calcWlpMintOut`, `calcWlpRedeemOut`, `calcDynamicFeeBps`,
+ *    `annualizedApyFromRatio`, `calcWlpIncentiveApy`). These map garbage onto a
+ *    PLAUSIBLE number — an `Infinity` fee returns 0, indistinguishable from
+ *    "already liquidatable"; a negative fee ADDS to equity — so the input dies
+ *    at the boundary instead of becoming a wrong price on a screen.
+ * 2. **BARE ARITHMETIC — no guards.** The one-line helpers (`calcNotional`,
+ *    `calcFee`, `calcUnrealizedPnl`, `calcLeverage`, `calcTotalTradingFeeRate`,
+ *    `calcImpactFeeRate`, `calcFundingRate`, `calcFundingFeeUsd`,
+ *    `decodeFundingIndexDelta`, `calcBorrowRate`, `calcBorrowRateAccrual`,
+ *    `calcPositionBorrowFee`, `calcTokenUtilizationBps`,
+ *    `annualizeFundingRate`, `calcWlpPrice`). A NaN / Infinity input propagates
+ *    VISIBLY to the output — there is no plausible-looking value for it to hide
+ *    behind — so a guard would add noise and cost without buying safety.
+ *
+ * `rawPrice` sits in neither tier: it is a PARSE, and throws plain `Error` on
+ * malformed input.
+ *
+ * ### Documented domain zeros
+ * Distinct from garbage: an input that is legitimately zero and has exactly one
+ * honest answer returns it rather than throwing. `sizeInAsset === 0` /
+ * `entryNotional === 0` → `0` (nothing to liquidate); `totalSupply === 0` → `0`
+ * (no shares to price — `calcWlpMintOut` is the deliberate exception, where it
+ * means the bootstrap mint); `intervalMs === 0` / `days <= 0` → `0` (no window
+ * to annualize over); `liquidityAmount === 0` → `0` utilization;
+ * `collateralUsd === 0` → `Infinity` leverage. Each is noted at its function.
+ */
+
 import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../constants.ts";
+import { assertFinite, assertFiniteNonNegative, assertUnsignedBigInt } from "./validate.ts";
 
 // ======== On-chain encoding ========
+
+const DECIMAL_USD_RE = /^(\d+)(?:\.(\d+))?$/;
 
 /**
  * Convert a human-readable USD price to the raw 1e9-scaled `u128` value
@@ -24,7 +70,7 @@ import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../constants.
  */
 export function rawPrice(usd: number | string): bigint {
   if (typeof usd === "string") {
-    const match = /^(\d+)(?:\.(\d+))?$/.exec(usd.trim());
+    const match = DECIMAL_USD_RE.exec(usd.trim());
     if (!match) throw new Error(`Invalid USD price: ${usd}`);
     const [, whole, frac = ""] = match;
     if (frac.length > 9) {
@@ -64,27 +110,6 @@ export function calcUnrealizedPnl(
 export function calcLeverage(sizeUsd: number, collateralUsd: number): number {
   if (collateralUsd === 0) return Infinity;
   return sizeUsd / collateralUsd;
-}
-
-// ======== Numeric-domain validation (internal) ========
-
-function assertFinite(label: string, value: number): void {
-  if (!Number.isFinite(value)) {
-    throw new RangeError(`${label} must be a finite number, got ${value}`);
-  }
-}
-
-function assertFiniteNonNegative(label: string, value: number): void {
-  assertFinite(label, value);
-  if (value < 0) {
-    throw new RangeError(`${label} must be >= 0, got ${value}`);
-  }
-}
-
-function assertUnsignedBigInt(label: string, value: bigint): void {
-  if (value < 0n) {
-    throw new RangeError(`${label} must be >= 0, got ${value}`);
-  }
 }
 
 /**
@@ -155,6 +180,12 @@ export function calcRealLiqNetCostUsd(fees: LiqFeeBundle): number {
  * makes it structurally impossible to include one. For the REAL liquidation
  * check's semantics use `calcRealLiqNetCostUsd`; for chain-bit-identical
  * output use `calcEstLiqPriceRaw`.
+ *
+ * Exported on purpose even though `calcEstLiqPriceRaw` covers the chain-exact
+ * path: this is the VIEW-model counterpart of `calcRealLiqNetCostUsd`, for
+ * consumers that need the view's fee bundle as a Number (mirroring what the
+ * view displays) rather than the full raw price. The two-API split is what makes
+ * the REAL and VIEW models impossible to confuse — do not fold it away.
  *
  * @throws RangeError when borrow/open fees are not finite `>= 0` numbers, or
  *   `fundingFeeUsd` is not finite.
@@ -270,6 +301,9 @@ const floatMul = (a: bigint, b: bigint): bigint => (a * b) / FLOAT_SCALE;
 /** `float::div(a, b)` — `(a × 1e9) / b`, truncating. */
 const floatDiv = (a: bigint, b: bigint): bigint => (a * FLOAT_SCALE) / b;
 
+/** `float::saturating_sub(a, b)` — `a − b` floored at 0 (Float is unsigned). */
+const floatSaturatingSub = (a: bigint, b: bigint): bigint => (a < b ? 0n : a - b);
+
 /**
  * `waterx_perp::math::amount_to_usd(amount, decimal, price)` — the exact
  * two-step composition `from_fraction(amount, 10^decimal).mul(price)`, each
@@ -277,6 +311,15 @@ const floatDiv = (a: bigint, b: bigint): bigint => (a * FLOAT_SCALE) / b;
  */
 const amountToUsdRaw = (amountRaw: bigint, pow10: bigint, priceRaw: bigint): bigint =>
   floatMul(floatFromFraction(amountRaw, pow10), priceRaw);
+
+/**
+ * `10u64.pow(decimal)` for the whole u64 decimal domain — exhaustive, since the
+ * `collateralDecimal` guard pins it to `[0, 19]` (10^19 < 2^64 ≤ 10^20). Built
+ * once at module load instead of exponentiating per call.
+ */
+const POW10: readonly bigint[] = Object.freeze(
+  Array.from({ length: 20 }, (_, decimal) => 10n ** BigInt(decimal)),
+);
 
 /**
  * Estimated liquidation price — CANONICAL raw fixed-point implementation.
@@ -298,6 +341,14 @@ const amountToUsdRaw = (amountRaw: bigint, pow10: bigint, priceRaw: bigint): big
  * Inputs are the raw on-chain values exactly as the view takes them.
  * Returns the raw 1e9-scaled u128 price; `0n` = already liquidatable /
  * zero size (the view's N/A signal).
+ *
+ * INVARIANT the signature cannot enforce: `basePriceUsd` / `collateralPriceUsd`
+ * MUST be the same whole-dollar values passed to the `perp/fetch` read that
+ * produced the row whose fields you are feeding in. `PositionDataView` does not
+ * carry the probe prices, so nothing here can check it — feed different prices
+ * and the fee/notional-derived fields were computed against one price while the
+ * estimate is computed against another, and parity with
+ * `PositionData.est_liq_price` silently breaks.
  *
  * @throws RangeError when any bigint input is negative or
  *   `collateralDecimal` is not an integer in `[0, 19]` (u64 `10^decimal`).
@@ -341,15 +392,20 @@ export function calcEstLiqPriceRaw(params: {
     fundingFeeRaw,
     tradingFeeRaw,
   } = params;
-  assertUnsignedBigInt("sizeRaw", sizeRaw);
-  assertUnsignedBigInt("avgPriceRaw", avgPriceRaw);
-  assertUnsignedBigInt("collateralAmountRaw", collateralAmountRaw);
-  assertUnsignedBigInt("basePriceUsd", basePriceUsd);
-  assertUnsignedBigInt("collateralPriceUsd", collateralPriceUsd);
-  assertUnsignedBigInt("maintenanceMarginRaw", maintenanceMarginRaw);
-  assertUnsignedBigInt("borrowFeeRaw", borrowFeeRaw);
-  assertUnsignedBigInt("fundingFeeRaw", fundingFeeRaw);
-  assertUnsignedBigInt("tradingFeeRaw", tradingFeeRaw);
+  // One loop so the guard labels cannot drift from the field names.
+  for (const [label, value] of Object.entries({
+    sizeRaw,
+    avgPriceRaw,
+    collateralAmountRaw,
+    basePriceUsd,
+    collateralPriceUsd,
+    maintenanceMarginRaw,
+    borrowFeeRaw,
+    fundingFeeRaw,
+    tradingFeeRaw,
+  })) {
+    assertUnsignedBigInt(label, value);
+  }
   if (!Number.isInteger(collateralDecimal) || collateralDecimal < 0 || collateralDecimal > 19) {
     throw new RangeError(
       `collateralDecimal must be an integer in [0, 19], got ${collateralDecimal}`,
@@ -359,43 +415,37 @@ export function calcEstLiqPriceRaw(params: {
   // float::from(u64) — whole dollars onto the 1e9 grid (exact, no truncation).
   const basePrice = basePriceUsd * FLOAT_SCALE;
   const collPrice = collateralPriceUsd * FLOAT_SCALE;
-  const pow10 = 10n ** BigInt(collateralDecimal); // 10u64.pow(collateral_decimal)
+  const pow10 = POW10[collateralDecimal];
 
-  // let entry_notional = p.size().mul(p.average_price());
   const entryNotional = floatMul(sizeRaw, avgPriceRaw);
-  // let collateral_usd = math::amount_to_usd(p.collateral_amount(), dec, collateral_price);
+  // math::amount_to_usd — the exact two-step from_fraction(amount, 10^dec).mul(price),
+  // each step truncating independently (see amountToUsdRaw).
   const collateralUsd = amountToUsdRaw(collateralAmountRaw, pow10, collPrice);
-  // let current_notional = p.size().mul(base_price);
   const currentNotional = floatMul(sizeRaw, basePrice);
-  // let maintenance = maintenance_margin.mul(current_notional);
   const maintenance = floatMul(maintenanceMarginRaw, currentNotional);
 
-  // let accrued_fees_usd = math::amount_to_usd(borrow_fee + trading_fee, dec, collateral_price);
-  // (u64 addition BEFORE the conversion — one from_fraction over the sum)
+  // u64 addition BEFORE the conversion — ONE from_fraction over the summed fees,
+  // not two conversions added (the truncation points differ).
   const accruedFeesUsd = amountToUsdRaw(borrowFeeRaw + tradingFeeRaw, pow10, collPrice);
-  // let funding_fee_usd = math::amount_to_usd(funding_fee, dec, collateral_price);
   const fundingFeeUsd = amountToUsdRaw(fundingFeeRaw, pow10, collPrice);
-  // owed → add; income → Float.saturating_sub (unsigned: floors at 0)
+  // owed → add; income → Float.saturating_sub (unsigned: the bundle floors at 0,
+  // so the view DISCARDS income beyond the other fees).
   const totalFeesUsd = fundingSign
     ? accruedFeesUsd + fundingFeeUsd
-    : accruedFeesUsd < fundingFeeUsd
-      ? 0n
-      : accruedFeesUsd - fundingFeeUsd;
+    : floatSaturatingSub(accruedFeesUsd, fundingFeeUsd);
 
-  // let deductions = total_fees_usd.add(maintenance);
   const deductions = totalFeesUsd + maintenance;
-  // if (collateral_usd.lte(deductions) || entry_notional.eq(zero)) return 0
+  // The view's early return is `lte` / `eq` — INCLUSIVE: collateral exactly at
+  // deductions is already liquidatable, hence `<=` and `=== 0n` here.
   if (collateralUsd <= deductions || entryNotional === 0n) return 0n;
-  // let ratio = collateral_usd.sub(deductions).div(entry_notional);
   const marginRemaining = collateralUsd - deductions;
   const ratio = floatDiv(marginRemaining, entryNotional);
 
   if (isLong) {
-    // if (ratio.gte(one)) return 0; else avg.mul(one.sub(ratio))
     if (ratio >= FLOAT_SCALE) return 0n;
     return floatMul(avgPriceRaw, FLOAT_SCALE - ratio);
   }
-  // avg.mul(one.add(ratio))
+
   return floatMul(avgPriceRaw, FLOAT_SCALE + ratio);
 }
 

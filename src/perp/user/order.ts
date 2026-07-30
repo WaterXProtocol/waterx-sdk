@@ -14,7 +14,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import { makeSenderRequest } from "../../account/account-request.ts";
 import { newPlaceOrderArgument } from "../../generated/waterx_perp/request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
-import { toU64, toU128 } from "../../utils/validate.ts";
+import { toU64, toU64OrNull, toU128, toU128OrNull } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -49,11 +49,9 @@ export function buildPlaceOrderArgument(
       isStopOrder: p.isStopOrder,
       reduceOnly: p.reduceOnly,
       size: toU128(p.size, "size"),
-      triggerPrice: p.triggerPrice != null ? toU128(p.triggerPrice, "triggerPrice") : null,
-      linkedPositionId:
-        p.linkedPositionId != null ? toU64(p.linkedPositionId, "linkedPositionId") : null,
-      acceptablePrice:
-        p.acceptablePrice != null ? toU64(p.acceptablePrice, "acceptablePrice") : null,
+      triggerPrice: toU128OrNull(p.triggerPrice, "triggerPrice"),
+      linkedPositionId: toU64OrNull(p.linkedPositionId, "linkedPositionId"),
+      acceptablePrice: toU64OrNull(p.acceptablePrice, "acceptablePrice"),
       collateralAmount: toU64(p.collateralAmount, "collateralAmount"),
     },
   })(tx);

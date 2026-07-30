@@ -1,12 +1,23 @@
+/**
+ * `utils/validate.ts` — the shared numeric-domain guards used by BOTH the
+ * `perp/fetch` reads and the tx-build (write) surface, plus
+ * `parseWholeDollarU64`, the whole-dollar view-price parse layered on `toU64`
+ * (its string form is the only rule it owns; the numeric domain is `toU64`'s).
+ */
 import { Transaction } from "@mysten/sui/transactions";
 import { parseWholeDollarU64 } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
-import type { PerpClient } from "../../../src/perp/client.ts";
-import { toU64, toU128, U64_MAX } from "../../../src/perp/fetch/validate.ts";
-import { buildPlaceOrderArgument } from "../../../src/perp/user/order.ts";
+import {
+  toU64,
+  toU64Arg,
+  toU64OrNull,
+  toU128,
+  toU128OrNull,
+  U64_MAX,
+} from "../../../src/utils/validate.ts";
 
-describe("fetch boundary integer guards (toU64 / toU128)", () => {
+describe("boundary integer guards (toU64 / toU128)", () => {
   it("passes through valid bigints and safe-integer numbers", () => {
     expect(toU64(0n, "x")).toBe(0n);
     expect(toU64(80_000, "x")).toBe(80_000n);
@@ -35,6 +46,26 @@ describe("fetch boundary integer guards (toU64 / toU128)", () => {
     expect(() => toU64(U64_MAX + 1n, "basePriceUsd")).toThrow(/u64/);
     expect(() => toU128(2n ** 128n, "triggerPrice")).toThrow(/u128/);
     expect(toU128(2n ** 128n - 1n, "x")).toBe(2n ** 128n - 1n);
+  });
+});
+
+describe("optional / PTB-argument variants", () => {
+  it("toU64OrNull / toU128OrNull pass null and undefined through as null", () => {
+    expect(toU64OrNull(null, "orderId")).toBeNull();
+    expect(toU64OrNull(undefined, "orderId")).toBeNull();
+    expect(toU128OrNull(undefined, "triggerPrice")).toBeNull();
+    expect(toU64OrNull(7, "orderId")).toBe(7n);
+    expect(toU128OrNull(7n, "triggerPrice")).toBe(7n);
+    // 0 is a VALUE, not an absence — it must survive the passthrough.
+    expect(toU64OrNull(0, "orderId")).toBe(0n);
+    expect(() => toU64OrNull(1.5, "orderId")).toThrow(/orderId/);
+  });
+
+  it("toU64Arg passes a TransactionArgument through unvalidated", () => {
+    const chained = new Transaction().pure.u64(1n);
+    expect(toU64Arg(chained, "stakeAmount")).toBe(chained);
+    expect(toU64Arg(5, "stakeAmount")).toBe(5n);
+    expect(() => toU64Arg(2 ** 53, "stakeAmount")).toThrow(/stakeAmount/);
   });
 });
 
@@ -67,43 +98,10 @@ describe("parseWholeDollarU64", () => {
     expect(() => parseWholeDollarU64("18446744073709551616")).toThrow(RangeError);
     expect(() => parseWholeDollarU64(2 ** 53)).toThrow(RangeError);
   });
-});
 
-describe("write-surface guards (representative)", () => {
-  // Minimal stub — the guard throws while building the arguments object,
-  // before anything touches the chain or the client config beyond the package.
-  const stubClient = {
-    config: { packages: { waterx_perp: { published_at: "0x2" } } },
-  } as unknown as PerpClient;
-  const validOrder = {
-    isLong: true,
-    isStopOrder: false,
-    reduceOnly: false,
-    size: 1_000_000_000n,
-    collateralAmount: 1_000_000n,
-  };
-
-  it("buildPlaceOrderArgument throws named RangeErrors on garbage numerics", () => {
-    expect(() =>
-      buildPlaceOrderArgument(stubClient, new Transaction(), { ...validOrder, size: 2 ** 53 }),
-    ).toThrow(/size/);
-    expect(() =>
-      buildPlaceOrderArgument(stubClient, new Transaction(), {
-        ...validOrder,
-        collateralAmount: 1.5,
-      }),
-    ).toThrow(/collateralAmount/);
-    expect(() =>
-      buildPlaceOrderArgument(stubClient, new Transaction(), {
-        ...validOrder,
-        triggerPrice: NaN,
-      }),
-    ).toThrow(/triggerPrice/);
-    expect(() =>
-      buildPlaceOrderArgument(stubClient, new Transaction(), {
-        ...validOrder,
-        acceptablePrice: -1,
-      }),
-    ).toThrow(/acceptablePrice/);
+  it("names the parameter in the message on every path", () => {
+    expect(() => parseWholeDollarU64(-1)).toThrow(/whole-dollar USD price/);
+    expect(() => parseWholeDollarU64("80k")).toThrow(/whole-dollar USD price/);
+    expect(() => parseWholeDollarU64("18446744073709551616")).toThrow(/whole-dollar USD price/);
   });
 });

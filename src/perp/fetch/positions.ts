@@ -19,10 +19,10 @@ import {
   positionExists as positionExistsCall,
   RedeemRequestData,
 } from "../../generated/waterx_perp_view/view.ts";
+import { toU64, toU128 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { DRY_RUN_SENDER } from "../constants.ts";
 import { simulateAndExtract, toBytes, withLp, type SimulationResult } from "./simulate.ts";
-import { toU64, toU128, U64_MAX } from "./validate.ts";
 
 /**
  * WHOLE-DOLLAR integer USD price for the `waterx_perp_view` read params
@@ -37,45 +37,29 @@ import { toU64, toU128, U64_MAX } from "./validate.ts";
  */
 export type WholeDollarUsdPrice = bigint | number;
 
+const PLAIN_INT_RE = /^-?\d+$/;
+
 /**
  * Parse a user/env-supplied value into a whole-dollar u64 price
  * (`WholeDollarUsdPrice`) with NO silent rounding: throws `RangeError` on
  * fractional, negative, non-finite, non-numeric, or `> u64::MAX` input. If
  * rounding is ever wanted it must be explicit at the call site
  * (e.g. `parseWholeDollarU64(Math.round(x))`) — never baked in here.
+ *
+ * The numeric domain (finite → safe integer → non-negative → `<= u64::MAX`) is
+ * `toU64`'s and is NOT restated here; this function only adds the string form,
+ * whose digits parse exactly past the 2^53 f64 cliff.
  */
 export function parseWholeDollarU64(value: string | number): bigint {
-  let parsed: bigint;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new RangeError(`whole-dollar USD price must be finite, got ${value}`);
-    }
-    if (!Number.isInteger(value)) {
-      throw new RangeError(
-        `whole-dollar USD price must be an integer, got ${value} — round explicitly at the call site if intended`,
-      );
-    }
-    if (!Number.isSafeInteger(value)) {
-      throw new RangeError(
-        `whole-dollar USD price exceeds Number.MAX_SAFE_INTEGER, got ${value} — pass a string instead`,
-      );
-    }
-    parsed = BigInt(value);
-  } else {
-    const trimmed = value.trim();
-    if (!/^-?\d+$/.test(trimmed)) {
-      throw new RangeError(`whole-dollar USD price must be a plain integer string, got "${value}"`);
-    }
-    parsed = BigInt(trimmed);
-  }
-  if (parsed < 0n) {
-    throw new RangeError(`whole-dollar USD price must be >= 0, got ${parsed}`);
-  }
-  if (parsed > U64_MAX) {
-    throw new RangeError(`whole-dollar USD price exceeds u64::MAX, got ${parsed}`);
+  const label = "whole-dollar USD price";
+  if (typeof value !== "string") return toU64(value, label);
+
+  const trimmed = value.trim();
+  if (!PLAIN_INT_RE.test(trimmed)) {
+    throw new RangeError(`${label} must be a plain integer string, got "${value}"`);
   }
 
-  return parsed;
+  return toU64(BigInt(trimmed), label);
 }
 
 // ============================================================================
