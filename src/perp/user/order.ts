@@ -7,6 +7,19 @@
  *
  * Use `triggerPrice === undefined` (market form) to park an order at
  * tick 0 in the limit book; a keeper picks it up via `match_orders`.
+ *
+ * ## Trigger prices are exact order-book KEYS
+ *
+ * Every `triggerPrice` / `currentTriggerPrice` / `newTriggerPrice` below is the
+ * raw 1e9-scaled value the book is keyed by — off by a single 1e-9 unit and the
+ * lookup silently finds nothing. Build them with `rawPrice` in its EXACT mode
+ * (`rawPrice("95000.5")`, an `ExactDecimalUsd` string); the `number` mode
+ * round-trips through f64 and is exact only below ≈ $9,007,199.
+ *
+ * The params stay `bigint | number` (the RAW scaled value, not USD): both are
+ * legitimate raw inputs, `toU128` already rejects a non-safe-integer `number`
+ * before it can serialize wrong, and dropping `number` would break published
+ * call shapes. The mode choice belongs one level up, at `rawPrice`.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";

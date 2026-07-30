@@ -1,8 +1,9 @@
 /**
  * WL-2248 AC3 parity harness — for every live position on the network, compare
  * the deployed view's `est_liq_price` (chain-computed at a whole-dollar probe
- * price) against the SDK's canonical `calcEstLiqPriceRaw`, fed the raw bigints
- * straight off `PositionDataView` with NO Number conversion anywhere in the
+ * price) against the SDK's canonical `calcEstLiqPriceRaw` — reached through the
+ * `calcEstLiqPriceRawFromView` adapter, so the row→params MAPPING is under test
+ * too, not just the arithmetic — with NO Number conversion anywhere in the
  * comparison path. `calcEstLiqPriceRaw` mirrors the view op-for-op (Move Float
  * truncation at each step, borrow + open fee summed before conversion, funding
  * income via saturating-sub, NO close fee — the view deliberately omits it,
@@ -17,7 +18,7 @@
 import { buildClient } from "../_shared.ts";
 import { FLOAT_SCALE } from "../../src/constants.ts";
 import { getMarketData, getMarketPositions } from "../../src/perp/fetch.ts";
-import { calcEstLiqPriceRaw } from "../../src/utils/math.ts";
+import { calcEstLiqPriceRawFromView } from "../../src/perp/liq-view.ts";
 
 const PROBE_PRICE_USD = 1000n; // whole-dollar u64 — any positive value is valid for parity
 
@@ -73,19 +74,14 @@ for (const ticker of tickers) {
 
     for (const p of page.positions) {
       total += 1;
-      const sdkRaw = calcEstLiqPriceRaw({
-        isLong: p.is_long,
-        sizeRaw: BigInt(p.size),
-        avgPriceRaw: BigInt(p.average_price),
-        collateralAmountRaw: BigInt(p.collateral_amount),
-        collateralDecimal: p.collateral_decimal,
+      // Through the SDK's own view→raw adapter, so this run proves the MAPPING
+      // as well as the math: the same PROBE_PRICE_USD / 1n the page above was
+      // fetched at are threaded in, satisfying the adapter's read-at-these-
+      // prices invariant.
+      const sdkRaw = calcEstLiqPriceRawFromView(p, {
+        maintenanceMarginRaw,
         basePriceUsd: PROBE_PRICE_USD,
         collateralPriceUsd: 1n,
-        maintenanceMarginRaw,
-        borrowFeeRaw: BigInt(p.borrow_fee),
-        fundingSign: p.funding_fee_positive,
-        fundingFeeRaw: BigInt(p.funding_fee),
-        tradingFeeRaw: BigInt(p.unrealized_trading_fee),
       });
       const chainRaw = BigInt(p.est_liq_price);
       // Exact raw parity — bit-identical or FAIL. No tolerance: both sides are

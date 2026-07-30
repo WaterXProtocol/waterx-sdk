@@ -19,6 +19,7 @@ import {
   PERM_WITHDRAW_COLLATERAL,
   rawPrice,
 } from "@waterx/sdk";
+import type { ExactDecimalUsd, RawPriceInput } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 describe("permission bitmasks", () => {
@@ -69,5 +70,41 @@ describe("rawPrice", () => {
     expect(() => rawPrice(Number.NaN)).toThrow(/Invalid USD price/);
     expect(() => rawPrice("not-a-number")).toThrow(/Invalid USD price/);
     expect(() => rawPrice(Number.POSITIVE_INFINITY)).toThrow(/Invalid USD price/);
+  });
+
+  // The two modes named by `RawPriceInput`: `number` (lossy past the f64 cliff)
+  // vs `ExactDecimalUsd` (digit-exact). The types carry the distinction; these
+  // pin the runtime behaviour that makes it worth carrying.
+  describe("ExactDecimalUsd (string) mode — digit-exact", () => {
+    it("agrees with the number mode below the f64 cliff", () => {
+      const usd: ExactDecimalUsd = "95000.5";
+      expect(rawPrice(usd)).toBe(95_000_500_000_000n);
+      expect(rawPrice(95_000.5)).toBe(rawPrice(usd));
+    });
+
+    it("stays exact ABOVE the cliff, where the number mode drifts", () => {
+      // usd × 1e9 > 2^53 (≈ $9,007,199): f64 can no longer hold every integer,
+      // so Math.round(usd * 1e9) lands on a neighbouring representable double.
+      const exact = rawPrice("12345678.123456789");
+      expect(exact).toBe(12_345_678_123_456_789n);
+      expect(rawPrice(12_345_678.123456789)).not.toBe(exact);
+    });
+
+    it("keeps trailing-zero padding and the 9-decimal grid limit", () => {
+      expect(rawPrice("2.5")).toBe(2_500_000_000n);
+      expect(rawPrice("0.000000001")).toBe(1n);
+      expect(() => rawPrice("1.0000000001")).toThrow(/9 decimal places/);
+    });
+
+    it("rejects the string shapes `Number()` would have swallowed", () => {
+      expect(() => rawPrice("1e9")).toThrow(/Invalid USD price/);
+      expect(() => rawPrice("-5")).toThrow(/Invalid USD price/);
+      expect(() => rawPrice("")).toThrow(/Invalid USD price/);
+    });
+  });
+
+  it("number mode is exact for a typical trigger price below the cliff", () => {
+    const asNumber: RawPriceInput = 95_000;
+    expect(rawPrice(asNumber)).toBe(95_000_000_000_000n);
   });
 });

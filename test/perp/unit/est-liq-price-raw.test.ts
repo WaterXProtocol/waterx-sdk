@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { PositionData } from "../../../src/generated/waterx_perp_view/view.ts";
+import { calcEstLiqPriceRawFromView } from "../../../src/perp/liq-view.ts";
 import { calcEstLiqPriceRaw } from "../../../src/utils/math.ts";
 
 /**
@@ -187,5 +189,112 @@ describe("calcEstLiqPriceRaw — hand-derived VIEW-model fixtures", () => {
     expect(() => calcEstLiqPriceRaw({ ...valid, collateralDecimal: 1.5 })).toThrow(RangeError);
     expect(() => calcEstLiqPriceRaw({ ...valid, collateralDecimal: 20 })).toThrow(RangeError);
     expect(() => calcEstLiqPriceRaw({ ...valid, collateralDecimal: -1 })).toThrow(RangeError);
+  });
+});
+
+/**
+ * `calcEstLiqPriceRawFromView` — the view→raw adapter (`perp/liq-view.ts`).
+ *
+ * The arithmetic is already pinned above; what is under test HERE is the field
+ * MAPPING. The fixture is round-tripped through the real BCS struct
+ * (`serialize` → `parse`), so it carries exactly the shape a `perp/fetch` read
+ * decodes — string-typed u64/u128 fields and all — rather than a hand-typed
+ * object that only resembles one.
+ */
+
+/** Address-shaped filler; the adapter reads no address field. */
+const ADDR = `0x${"1".repeat(64)}`;
+
+/**
+ * F1's inputs as a decoded position row. Fields the adapter must NOT read carry
+ * deliberately WRONG decoy values: `unrealized_borrow_fee` /
+ * `unrealized_funding_fee` (the view pre-combines into `borrow_fee` /
+ * `funding_fee` — reading the `unrealized_*` pair would double-count),
+ * `unrealized_funding_sign` (inverted vs `funding_fee_positive`), and
+ * `oracle_price` / `collateral_price` (the probe prices come from `opts`, never
+ * off the row). Any of those mis-mapped moves the result off F1's hand-derived
+ * expectation.
+ */
+const F1_ROW = PositionData.parse(
+  PositionData.serialize({
+    position_id: "42",
+    account_object_address: ADDR,
+    market_id: ADDR,
+    is_long: true,
+    size: "2500000000",
+    collateral_type: { name: "0x2::usdc::USDC" },
+    collateral_amount: "50000000",
+    collateral_decimal: 6,
+    average_price: "97531246789",
+    oracle_price: "999999999999",
+    collateral_price: "999999999999",
+    est_liq_price: "80663345227",
+    leverage_bps: "50000",
+    entry_borrow_index: "0",
+    entry_funding_sign: true,
+    entry_funding_index: "0",
+    unrealized_trading_fee: "1234567",
+    unrealized_borrow_fee: "999999999",
+    unrealized_funding_fee: "999999999",
+    unrealized_funding_sign: false,
+    pnl_positive: true,
+    pnl: "0",
+    funding_fee_positive: true,
+    funding_fee: "500001",
+    borrow_fee: "2345678",
+    close_fee: "777777",
+    linked_order_ids: [],
+    linked_order_price_keys: [],
+    create_timestamp: "1700000000000",
+    update_timestamp: "1700000000000",
+  }).toBytes(),
+);
+
+const F1_OPTS = {
+  maintenanceMarginRaw: 15_000_000n, // 1.5%
+  basePriceUsd: 100n,
+  collateralPriceUsd: 1n,
+};
+
+describe("calcEstLiqPriceRawFromView — PositionDataView field mapping", () => {
+  it("reproduces F1's hand-derived expectation from a decoded row", () => {
+    expect(calcEstLiqPriceRawFromView(F1_ROW, F1_OPTS)).toBe(80_663_345_227n);
+  });
+
+  it("matches the row's own est_liq_price (what the parity harness asserts)", () => {
+    expect(calcEstLiqPriceRawFromView(F1_ROW, F1_OPTS)).toBe(BigInt(F1_ROW.est_liq_price));
+  });
+
+  it("is exactly the hand-map it replaces — no field silently dropped", () => {
+    expect(calcEstLiqPriceRawFromView(F1_ROW, F1_OPTS)).toBe(
+      calcEstLiqPriceRaw({
+        isLong: F1_ROW.is_long,
+        sizeRaw: BigInt(F1_ROW.size),
+        avgPriceRaw: BigInt(F1_ROW.average_price),
+        collateralAmountRaw: BigInt(F1_ROW.collateral_amount),
+        collateralDecimal: F1_ROW.collateral_decimal,
+        basePriceUsd: F1_OPTS.basePriceUsd,
+        collateralPriceUsd: F1_OPTS.collateralPriceUsd,
+        maintenanceMarginRaw: F1_OPTS.maintenanceMarginRaw,
+        borrowFeeRaw: BigInt(F1_ROW.borrow_fee),
+        fundingSign: F1_ROW.funding_fee_positive,
+        fundingFeeRaw: BigInt(F1_ROW.funding_fee),
+        tradingFeeRaw: BigInt(F1_ROW.unrealized_trading_fee),
+      }),
+    );
+  });
+
+  it("takes the probe prices from opts, not from the row's price fields", () => {
+    // The row's oracle_price / collateral_price are absurd decoys; changing the
+    // opts price (and only that) must move the estimate.
+    expect(calcEstLiqPriceRawFromView(F1_ROW, { ...F1_OPTS, basePriceUsd: 5_000n })).not.toBe(
+      80_663_345_227n,
+    );
+  });
+
+  it("propagates the underlying RangeError guards", () => {
+    expect(() =>
+      calcEstLiqPriceRawFromView(F1_ROW, { ...F1_OPTS, maintenanceMarginRaw: -1n }),
+    ).toThrow(RangeError);
   });
 });

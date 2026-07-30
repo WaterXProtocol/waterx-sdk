@@ -111,8 +111,10 @@ export {
   decodeFundingIndexDelta,
   rawPrice,
 } from "../utils/math.ts";
-export type { LiqFeeBundle } from "../utils/math.ts";
+export type { ExactDecimalUsd, LiqFeeBundle, RawPriceInput } from "../utils/math.ts";
 export { formatFundingInterval } from "../utils/format.ts";
+export { calcEstLiqPriceRawFromView } from "./liq-view.ts";
+export type { EstLiqPriceViewOpts } from "./liq-view.ts";
 
 // ======== Transaction builders (user-side) ========
 export * from "./user/index.ts";

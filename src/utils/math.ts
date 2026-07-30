@@ -49,6 +49,36 @@ import { assertFinite, assertFiniteNonNegative, assertUnsignedBigInt } from "./v
 const DECIMAL_USD_RE = /^(\d+)(?:\.(\d+))?$/;
 
 /**
+ * A USD price as a plain decimal STRING (`"95000"` / `"95000.5"`) — the EXACT
+ * mode of `rawPrice`.
+ *
+ * The digits are parsed straight onto the 1e9 grid with no f64 round-trip, so
+ * the conversion is digit-exact at any magnitude (up to 9 decimal places;
+ * `rawPrice` throws on malformed input, a leading `-`, scientific notation, or
+ * >9 decimals, which the grid cannot represent).
+ *
+ * Prefer this mode for any price that is an EXACT KEY rather than a bound —
+ * above all `triggerPrice`, where a raw value off by a single 1e-9 unit
+ * silently fails the order-book lookup.
+ */
+export type ExactDecimalUsd = string;
+
+/**
+ * Accepted input to `rawPrice`, in two DELIBERATELY different modes:
+ *
+ * - `number` — LOSSY above the f64 cliff. Exact only while `usd × 1e9` stays
+ *   within 2^53 (i.e. below ≈ $9,007,199), and even below that a non-binary
+ *   fraction rounds to the nearest representable double before scaling.
+ *   Fine for slippage bounds (`acceptablePrice`), where ±1 raw unit is noise.
+ * - {@link ExactDecimalUsd} (`string`) — digit-exact at any magnitude. Use for
+ *   exact order-book keys (`triggerPrice`).
+ *
+ * The union is NOT "either works": picking `number` for an exact key is the
+ * documented footgun this alias exists to surface at the call site.
+ */
+export type RawPriceInput = number | ExactDecimalUsd;
+
+/**
  * Convert a human-readable USD price to the raw 1e9-scaled `u128` value
  * that on-chain `Float`-typed parameters expect.
  *
@@ -59,16 +89,13 @@ const DECIMAL_USD_RE = /^(\d+)(?:\.(\d+))?$/;
  * `float::from` internally; a 1e9-scaled value inflates pnl/notional-derived
  * fields by 1e9).
  *
- * Precision: the `number` path rounds through f64, which is exact only while
- * `usd × 1e9` stays within 2^53 — i.e. below ≈ $9,007,199 — and even below
- * that, non-binary fractions round to the nearest representable double first.
- * This bites hardest on `triggerPrice`, which is an EXACT order-book key: a
- * raw value off by one unit silently fails the order lookup. Pass a decimal
- * STRING for exact conversion — the string path parses digits directly onto
- * the 1e9 grid without touching f64 (up to 9 decimal places; throws on
- * malformed input or on >9 decimals, which cannot be represented).
+ * Precision: see {@link RawPriceInput}. The `number` path rounds through f64
+ * and is exact only below ≈ $9,007,199; an {@link ExactDecimalUsd} string
+ * parses digits directly onto the 1e9 grid without touching f64. This bites
+ * hardest on `triggerPrice`, which is an EXACT order-book key: a raw value off
+ * by one unit silently fails the order lookup.
  */
-export function rawPrice(usd: number | string): bigint {
+export function rawPrice(usd: RawPriceInput): bigint {
   if (typeof usd === "string") {
     const match = DECIMAL_USD_RE.exec(usd.trim());
     if (!match) throw new Error(`Invalid USD price: ${usd}`);
@@ -341,6 +368,10 @@ const POW10: readonly bigint[] = Object.freeze(
  * Inputs are the raw on-chain values exactly as the view takes them.
  * Returns the raw 1e9-scaled u128 price; `0n` = already liquidatable /
  * zero size (the view's N/A signal).
+ *
+ * Holding a fetched `PositionDataView` row? Use `calcEstLiqPriceRawFromView`
+ * (`perp/liq-view.ts`) instead of hand-mapping its ten raw fields — the adapter
+ * owns that mapping and carries the invariant below on its own signature.
  *
  * INVARIANT the signature cannot enforce: `basePriceUsd` / `collateralPriceUsd`
  * MUST be the same whole-dollar values passed to the `perp/fetch` read that

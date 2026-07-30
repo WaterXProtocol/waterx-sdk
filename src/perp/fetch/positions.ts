@@ -19,48 +19,23 @@ import {
   positionExists as positionExistsCall,
   RedeemRequestData,
 } from "../../generated/waterx_perp_view/view.ts";
-import { toU64, toU128 } from "../../utils/validate.ts";
+import {
+  parseWholeDollarU64,
+  toU64,
+  toU128,
+  type WholeDollarUsdPrice,
+} from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { DRY_RUN_SENDER } from "../constants.ts";
 import { simulateAndExtract, toBytes, withLp, type SimulationResult } from "./simulate.ts";
 
-/**
- * WHOLE-DOLLAR integer USD price for the `waterx_perp_view` read params
- * (`80000n` for BTC at $80k). The Move view applies `float::from(...)`
- * internally — do NOT pass a 1e9-scaled `rawPrice()` value or every
- * pnl/notional-derived field inflates by 1e9 (`rawPrice()` is for tx-build
- * args only; the u128 order-book `triggerPrice` key on `getOrder` is the one
- * view param that still takes that scale). Sub-$1 prices cannot be
- * represented (u64 whole dollars). The price only bases the
- * pnl / close-fee / notional-derived fields — `0n` zero-bases them (still
- * computed with price 0, not skipped).
- */
-export type WholeDollarUsdPrice = bigint | number;
-
-const PLAIN_INT_RE = /^-?\d+$/;
-
-/**
- * Parse a user/env-supplied value into a whole-dollar u64 price
- * (`WholeDollarUsdPrice`) with NO silent rounding: throws `RangeError` on
- * fractional, negative, non-finite, non-numeric, or `> u64::MAX` input. If
- * rounding is ever wanted it must be explicit at the call site
- * (e.g. `parseWholeDollarU64(Math.round(x))`) — never baked in here.
- *
- * The numeric domain (finite → safe integer → non-negative → `<= u64::MAX`) is
- * `toU64`'s and is NOT restated here; this function only adds the string form,
- * whose digits parse exactly past the 2^53 f64 cliff.
- */
-export function parseWholeDollarU64(value: string | number): bigint {
-  const label = "whole-dollar USD price";
-  if (typeof value !== "string") return toU64(value, label);
-
-  const trimmed = value.trim();
-  if (!PLAIN_INT_RE.test(trimmed)) {
-    throw new RangeError(`${label} must be a plain integer string, got "${value}"`);
-  }
-
-  return toU64(BigInt(trimmed), label);
-}
+// The whole-dollar USD price domain is a pure numeric guard with no chain/fetch
+// dependency, so it lives with the rest of that vocabulary in
+// `utils/validate.ts`. It is re-exported HERE — unchanged — because this module
+// is its published home: `perp/fetch` → `@waterx/sdk`. Every read param below
+// is typed `WholeDollarUsdPrice`, so the type and its parser stay one hop from
+// the functions that consume them.
+export { parseWholeDollarU64, type WholeDollarUsdPrice };
 
 // ============================================================================
 // Position

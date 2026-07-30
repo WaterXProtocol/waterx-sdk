@@ -1,14 +1,21 @@
 /**
  * `utils/validate.ts` — the shared numeric-domain guards used by BOTH the
- * `perp/fetch` reads and the tx-build (write) surface, plus
- * `parseWholeDollarU64`, the whole-dollar view-price parse layered on `toU64`
- * (its string form is the only rule it owns; the numeric domain is `toU64`'s).
+ * `perp/fetch` reads and the tx-build (write) surface, plus the whole-dollar
+ * USD price domain (`parseWholeDollarU64`, layered on `toU64` — its string form
+ * is the only rule it owns; the numeric domain is `toU64`'s).
+ *
+ * The whole-dollar pair DEFINES here but PUBLISHES through
+ * `perp/fetch/positions.ts` → the `perp/fetch` barrel → `@waterx/sdk`. Both
+ * spellings are imported below and pinned to the same binding, so the
+ * re-export can never silently drift into a second implementation.
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { parseWholeDollarU64 } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
+import { parseWholeDollarU64 as parseWholeDollarU64FromFetch } from "../../../src/perp/fetch.ts";
 import {
+  parseWholeDollarU64 as parseWholeDollarU64FromValidate,
   toU64,
   toU64Arg,
   toU64OrNull,
@@ -103,5 +110,13 @@ describe("parseWholeDollarU64", () => {
     expect(() => parseWholeDollarU64(-1)).toThrow(/whole-dollar USD price/);
     expect(() => parseWholeDollarU64("80k")).toThrow(/whole-dollar USD price/);
     expect(() => parseWholeDollarU64("18446744073709551616")).toThrow(/whole-dollar USD price/);
+  });
+
+  it("is ONE binding across its definition site and both published paths", () => {
+    // Rehomed to utils/validate.ts and re-exported through perp/fetch — the
+    // published `@waterx/sdk` import must keep resolving to the SAME function,
+    // not a copy left behind at the old site.
+    expect(parseWholeDollarU64FromFetch).toBe(parseWholeDollarU64FromValidate);
+    expect(parseWholeDollarU64).toBe(parseWholeDollarU64FromValidate);
   });
 });

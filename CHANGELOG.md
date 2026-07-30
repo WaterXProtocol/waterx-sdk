@@ -42,6 +42,23 @@ reference the PR that introduced them.
   `PositionData.est_liq_price`. The Number `calcEstLiqPrice` is documented as
   a UI convenience approximation of this canonical form. The
   `liq-parity-check` harness now requires EXACT raw equality (no tolerance).
+- **`calcEstLiqPriceRawFromView(position, opts)` — view→raw adapter for
+  `calcEstLiqPriceRaw`** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `calcEstLiqPriceRaw` takes twelve raw fields, ten of which map 1:1 off a
+  fetched `PositionDataView` row — every consumer was hand-writing that map
+  (the parity harness included). The adapter owns it: pass the row plus
+  `{ maintenanceMarginRaw, basePriceUsd, collateralPriceUsd }` and get the same
+  bit-identical raw price. It also carries, on a signature a caller actually
+  hovers, the invariant that was previously prose only: the two prices MUST be
+  the ones passed to the read that produced the row — `PositionDataView` does
+  not carry its probe prices, so nothing can check it, and mismatched prices
+  yield a plausible number that silently disagrees with the row's own
+  `est_liq_price`. Lives at `perp/liq-view.ts` (exported from `@waterx/sdk` and
+  `@waterx/sdk/perp`) rather than `utils/math.ts`: `PositionDataView` is a perp
+  read type, and importing it into the shared `utils/` base would invert the
+  `perp/ → utils/` dependency direction. `examples/views/liq-parity-check.ts`
+  now goes through the adapter, so the live-network run verifies the mapping as
+  well as the arithmetic. Type: `EstLiqPriceViewOpts`.
 - **Numeric-domain validation in the liq math functions**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
   `calcRealLiqNetCostUsd` / `calcViewEstLiqFeesUsd` throw `RangeError` unless
@@ -85,6 +102,22 @@ reference the PR that introduced them.
   digits directly onto the 1e9 grid with no f64 round-trip (≤ 9 decimals;
   malformed / negative / scientific-notation strings now throw where
   `Number()` used to accept them). Number-path semantics unchanged.
+- **`RawPriceInput` / `ExactDecimalUsd` — `rawPrice`'s two modes are now named
+  in the type** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  The signature was a bare `number | string`, so hover and completion said
+  "either works" while only the JSDoc carried the footgun. `rawPrice` now takes
+  `RawPriceInput = number | ExactDecimalUsd`, where `ExactDecimalUsd` (a
+  documented `string` alias) is the digit-exact mode that parses onto the 1e9
+  grid without an f64 round-trip, and `number` is documented as lossy above the
+  cliff (`usd × 1e9 > 2^53`, ≈ $9,007,199) — fine for a slippage bound, wrong
+  for `triggerPrice`, which is an exact order-book key. Purely a type-level
+  rename of the same union: no runtime change, and every existing call still
+  compiles. The tx-build trigger-price params (`perp/user/order.ts`,
+  `perp/user/trading.ts`) deliberately keep `bigint | number` — they take the
+  RAW scaled value, not USD, both forms are legitimate there, `toU128` already
+  rejects a non-safe-integer `number` before it can serialize wrong, and
+  dropping `number` would break published call shapes. The mode choice belongs
+  one level up at `rawPrice`, and `order.ts` now documents that.
 - **`parseWholeDollarU64(value)` + u64/u128 guards at the fetch boundary**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
   `parseWholeDollarU64` (exported next to `WholeDollarUsdPrice`) parses a
@@ -183,6 +216,17 @@ reference the PR that introduced them.
   `"<name> must be a non-negative safe integer (< 2^53) or a bigint, got X"`
   instead of `"… exceeds u64 max (…)"` / `"Invalid integer: …"`. `RangeError`
   extends `Error`, so `instanceof Error` / bare `catch` paths are unaffected.
+- **The whole-dollar price domain moved to `utils/validate.ts` (additive
+  re-export — no consumer break)**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `parseWholeDollarU64` and `WholeDollarUsdPrice` are pure numeric-domain
+  guards with no chain or fetch dependency — the same category as `toU64` /
+  `toU128` / the `assert*` family, which this PR already centralized — but they
+  were still defined inside `perp/fetch/positions.ts`. They now live beside the
+  rest of that vocabulary and are **re-exported unchanged** from
+  `perp/fetch/positions.ts`, so the published paths (`@waterx/sdk`,
+  `@waterx/sdk/perp`, `perp/fetch`) resolve exactly as before — same binding,
+  not a copy (pinned by test). No consumer import needs to change.
 - **`parseWholeDollarU64` delegates its numeric domain to `toU64`**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). It re-derived
   the entire finite → integer → safe-integer → non-negative → `<= u64::MAX`
