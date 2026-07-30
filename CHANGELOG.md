@@ -51,6 +51,39 @@ reference the PR that introduced them.
   `totalFeesUsd` is finite; `calcEstLiqPriceRaw` rejects negative bigints and
   out-of-range decimals. Previously garbage flowed through — e.g. an
   `Infinity` fee returned 0, indistinguishable from "already liquidatable".
+- **u64/u128 guards extended to the WRITE surface (tx builders)**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The
+  `toU64`/`toU128` validators moved to a shared `utils/validate.ts` (fetch
+  path re-exports) and now guard every numeric param on the tx-build surface:
+  `perp/user` trading (positionId / orderId / collateralAmount / size /
+  acceptablePrice / triggerPrice / maxFills / pageSize / pageIndex), orders
+  (all `PlaceOrderArgument` fields, order ids, trigger prices), WLP
+  (depositAmount / minLpAmount / lpAmount / requestId), staking
+  (stakeAmount / withdrawalAmount when numeric), `account.requestWithdraw`
+  amount, credit funding (amount / key / `routeNative.minOutput`), plus the
+  fetch stragglers `getTokenPoolData.tokenIndex` and `getBridgeFee.amount`,
+  and `prediction/utils.toBigInt` (now `Number.isSafeInteger`). Rationale:
+  `bcs.u64().serialize(2**53 + 2)` silently encodes the wrong value — a
+  non-safe / fractional / negative number now throws a named `RangeError`
+  before a transaction is built.
+- **Numeric-domain validation extended to the remaining Number helpers**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `calcEffectiveCollateralUsd` / `calcMaxReducibleCollateralUsd` throw on
+  negative or non-finite fee inputs (a negative fee silently ADDED to
+  effective collateral before); `calcWlpIncentiveApy`,
+  `annualizedApyFromRatio`, `calcWlpMintOut`, `calcWlpRedeemOut`, and
+  `calcDynamicFeeBps` throw `RangeError` on NaN / ±Infinity / negative
+  operation values instead of mapping garbage to a plausible zero
+  (documented domain zeros — e.g. `annualizedApyFromRatio` with
+  `ratio <= 0` / `days <= 0` — are kept).
+- **`rawPrice` exact decimal-string path**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The `number`
+  path is exact only below ≈ $9,007,199 (2^53 / 1e9) — sharpest for
+  `triggerPrice`, an exact order-book key where a lossy raw silently fails
+  the order lookup; this is now documented, and a decimal STRING parses
+  digits directly onto the 1e9 grid with no f64 round-trip (≤ 9 decimals;
+  malformed / negative / scientific-notation strings now throw where
+  `Number()` used to accept them). Number-path semantics unchanged.
 - **`parseWholeDollarU64(value)` + u64/u128 guards at the fetch boundary**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
   `parseWholeDollarU64` (exported next to `WholeDollarUsdPrice`) parses a
@@ -157,6 +190,28 @@ reference the PR that introduced them.
 
 ### Fixed
 
+- **`calcDynamicFeeBps` mirrors the on-chain F-039 100% clamp**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The SDK copy
+  was missing `lp_pool.move::calculate_dynamic_fee`'s final
+  `(base_fee_bps + additional.min(bp_scale)).min(bp_scale)` — under extreme
+  weight imbalance it quoted fees above 100% (e.g. 12,030 bps) that the chain
+  would cap at 10,000. Both clamps are now mirrored.
+- **`calcWlpMintOut` no longer par-quotes when supply is outstanding but
+  priced TVL is 0** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  The chain reserves the $1/share bootstrap for the genuine first mint
+  (`total_supply == 0`) and aborts `EInvalidBootstrap` otherwise (re-audit
+  F-023 — par-minting there dilutes existing LPs); the helper now throws
+  `RangeError` on that state instead of quoting par. `calcWlpRedeemOut`'s
+  divergences are documented (chain aborts `EZeroPrice` where it returns 0;
+  the on-chain burn fee applies `.ceil()`, so f64 composition can drift ±1
+  raw unit).
+- **`probeAddressCreditBalance` propagates RPC errors instead of swallowing
+  them to zero** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  Behavior change: a failed `getBalance`/`listCoins` used to be reported as
+  an authoritative zero balance — `getSpendableCreditBalance` under-reported
+  spendable funds and `appendConsolidateAddressCredit` built txs that aborted
+  on-chain with a confusing insufficient-balance error. Both now surface the
+  real error; callers that can tolerate a missing probe must catch explicitly.
 - **Docs: view-read price params are whole-dollar integers, not `rawPrice()`**
   (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The `basePriceUsd` / `collateralPriceUsd` params on
   `getPosition` / `getOrder` / `getMarketOrders` / `getMarketPositions` /

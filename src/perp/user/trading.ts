@@ -15,6 +15,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { makeSenderRequest } from "../../account/account-request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
+import { toU64, toU128 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -80,8 +81,8 @@ export function closePositionRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      positionId: params.positionId,
-      acceptablePrice: params.acceptablePrice,
+      positionId: toU64(params.positionId, "positionId"),
+      acceptablePrice: toU64(params.acceptablePrice, "acceptablePrice"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -119,11 +120,11 @@ export function increasePositionRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      orderId: params.orderId ?? null,
-      positionId: params.positionId,
-      collateralAmount: params.collateralAmount,
-      size: params.size,
-      acceptablePrice: params.acceptablePrice,
+      orderId: params.orderId != null ? toU64(params.orderId, "orderId") : null,
+      positionId: toU64(params.positionId, "positionId"),
+      collateralAmount: toU64(params.collateralAmount, "collateralAmount"),
+      size: toU128(params.size, "size"),
+      acceptablePrice: toU64(params.acceptablePrice, "acceptablePrice"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -153,9 +154,9 @@ export function decreasePositionRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      positionId: params.positionId,
-      size: params.size,
-      acceptablePrice: params.acceptablePrice,
+      positionId: toU64(params.positionId, "positionId"),
+      size: toU128(params.size, "size"),
+      acceptablePrice: toU64(params.acceptablePrice, "acceptablePrice"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -187,8 +188,8 @@ export function depositCollateralRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      positionId: params.positionId,
-      collateralAmount: params.collateralAmount,
+      positionId: toU64(params.positionId, "positionId"),
+      collateralAmount: toU64(params.collateralAmount, "collateralAmount"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -216,8 +217,8 @@ export function withdrawCollateralRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      positionId: params.positionId,
-      amount: params.amount,
+      positionId: toU64(params.positionId, "positionId"),
+      amount: toU64(params.amount, "amount"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -277,7 +278,7 @@ export function liquidate(client: PerpClient, tx: Transaction, params: Liquidate
       ticker: params.ticker,
       pool: tx.object(obj.wlpPool),
       senderRequest: req as unknown as TransactionArgument,
-      positionId: params.positionId,
+      positionId: toU64(params.positionId, "positionId"),
       oracle: tx.object(obj.oracle),
     },
     typeArguments: typeArgs(client, params),
@@ -308,8 +309,8 @@ export function batchLiquidate(
       pool: tx.object(obj.wlpPool),
       senderRequest: req as unknown as TransactionArgument,
       oracle: tx.object(obj.oracle),
-      pageSize: params.pageSize,
-      pageIndex: params.pageIndex,
+      pageSize: toU64(params.pageSize, "pageSize"),
+      pageIndex: toU64(params.pageIndex, "pageIndex"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -339,8 +340,8 @@ export function matchOrders(client: PerpClient, tx: Transaction, params: MatchOr
       senderRequest: req as unknown as TransactionArgument,
       oracle: tx.object(obj.oracle),
       orderTypeTag: params.orderTypeTag,
-      triggerPrice: params.triggerPrice,
-      maxFills: params.maxFills,
+      triggerPrice: toU128(params.triggerPrice, "triggerPrice"),
+      maxFills: toU64(params.maxFills, "maxFills"),
     },
     typeArguments: typeArgs(client, params),
   })(tx);
@@ -406,8 +407,8 @@ export function openPositionByKeeper(
       accountObjectAddress: params.accountObjectAddress,
       collateralCoin: params.collateralCoin as unknown as TransactionArgument,
       isLong: params.isLong,
-      size: params.size,
-      acceptablePrice: params.acceptablePrice,
+      size: toU128(params.size, "size"),
+      acceptablePrice: toU64(params.acceptablePrice, "acceptablePrice"),
       oracle: tx.object(obj.oracle),
     },
     typeArguments: typeArgs(client, params),
@@ -437,8 +438,8 @@ export function closePositionByKeeper(
       ticker: params.ticker,
       pool: tx.object(obj.wlpPool),
       keeperRequest: req as unknown as TransactionArgument,
-      positionId: params.positionId,
-      acceptablePrice: params.acceptablePrice,
+      positionId: toU64(params.positionId, "positionId"),
+      acceptablePrice: toU64(params.acceptablePrice, "acceptablePrice"),
       oracle: tx.object(obj.oracle),
     },
     typeArguments: typeArgs(client, params),

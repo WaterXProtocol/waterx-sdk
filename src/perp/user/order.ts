@@ -14,6 +14,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import { makeSenderRequest } from "../../account/account-request.ts";
 import { newPlaceOrderArgument } from "../../generated/waterx_perp/request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
+import { toU64, toU128 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -47,11 +48,13 @@ export function buildPlaceOrderArgument(
       isLong: p.isLong,
       isStopOrder: p.isStopOrder,
       reduceOnly: p.reduceOnly,
-      size: p.size,
-      triggerPrice: p.triggerPrice ?? null,
-      linkedPositionId: p.linkedPositionId ?? null,
-      acceptablePrice: p.acceptablePrice ?? null,
-      collateralAmount: p.collateralAmount,
+      size: toU128(p.size, "size"),
+      triggerPrice: p.triggerPrice != null ? toU128(p.triggerPrice, "triggerPrice") : null,
+      linkedPositionId:
+        p.linkedPositionId != null ? toU64(p.linkedPositionId, "linkedPositionId") : null,
+      acceptablePrice:
+        p.acceptablePrice != null ? toU64(p.acceptablePrice, "acceptablePrice") : null,
+      collateralAmount: toU64(p.collateralAmount, "collateralAmount"),
     },
   })(tx);
   return arg as unknown as TransactionArgument;
@@ -138,8 +141,8 @@ export function cancelOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      orderId: params.orderId,
-      triggerPrice: params.triggerPrice ?? 0n,
+      orderId: toU64(params.orderId, "orderId"),
+      triggerPrice: toU128(params.triggerPrice ?? 0n, "triggerPrice"),
       orderTypeTag: params.orderTypeTag ?? ORDER_TAG_WILDCARD,
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
@@ -182,11 +185,11 @@ export function updateOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      orderId: params.orderId,
-      currentTriggerPrice: params.currentTriggerPrice,
+      orderId: toU64(params.orderId, "orderId"),
+      currentTriggerPrice: toU128(params.currentTriggerPrice, "currentTriggerPrice"),
       orderTypeTag: params.orderTypeTag,
-      newSize: params.newSize,
-      newTriggerPrice: params.newTriggerPrice,
+      newSize: toU128(params.newSize, "newSize"),
+      newTriggerPrice: toU128(params.newTriggerPrice, "newTriggerPrice"),
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
   })(tx);
@@ -222,8 +225,8 @@ export function cancelPreOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      mainOrderId: params.mainOrderId,
-      preOrderId: params.preOrderId,
+      mainOrderId: toU64(params.mainOrderId, "mainOrderId"),
+      preOrderId: toU64(params.preOrderId, "preOrderId"),
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
   })(tx);
@@ -256,7 +259,7 @@ export function addPreOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      mainOrderId: params.mainOrderId,
+      mainOrderId: toU64(params.mainOrderId, "mainOrderId"),
       preOrder: preArg as unknown as TransactionArgument,
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],

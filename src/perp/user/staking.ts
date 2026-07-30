@@ -20,6 +20,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { makeSenderRequest } from "../../account/account-request.ts";
 import * as staking from "../../generated/waterx_staking/waterx_staking.ts";
+import { toU64 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 
 function pool(client: PerpClient, stakeAlias: string): string {
@@ -70,7 +71,10 @@ export function stake(client: PerpClient, tx: Transaction, params: StakeParams):
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       accReq: req as unknown as TransactionArgument,
-      stakeAmount: params.stakeAmount,
+      stakeAmount:
+        typeof params.stakeAmount === "bigint" || typeof params.stakeAmount === "number"
+          ? toU64(params.stakeAmount, "stakeAmount")
+          : params.stakeAmount,
     },
     typeArguments: [params.stakeType],
   })(tx);
@@ -117,7 +121,10 @@ export function unstake(client: PerpClient, tx: Transaction, params: UnstakePara
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       accountId: params.accountId,
       accReq: req as unknown as TransactionArgument,
-      withdrawalAmount: params.withdrawalAmount,
+      withdrawalAmount:
+        typeof params.withdrawalAmount === "bigint" || typeof params.withdrawalAmount === "number"
+          ? toU64(params.withdrawalAmount, "withdrawalAmount")
+          : params.withdrawalAmount,
     },
     typeArguments: [params.stakeType],
   })(tx);

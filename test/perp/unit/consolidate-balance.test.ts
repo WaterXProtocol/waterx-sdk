@@ -115,17 +115,18 @@ describe("consolidate-balance utils", () => {
     });
   });
 
-  it("probeAddressCreditBalance tolerates getBalance failure", async () => {
+  it("probeAddressCreditBalance propagates getBalance failure (no swallow-to-zero)", async () => {
     const client = createUnitTestClient();
     vi.spyOn(client, "getBalance").mockRejectedValue(new Error("rpc down"));
     vi.spyOn(client, "listCoins").mockResolvedValue({
       objects: [{ objectId: "0x1", balance: "5000" }],
     } as never);
 
-    await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
-      fundsRaw: 0n,
-      coinsRaw: 5_000n,
-    });
+    // Swallowing the failure used to report fundsRaw: 0n as if authoritative,
+    // letting consolidate builders construct txs that abort on-chain later.
+    await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).rejects.toThrow(
+      "rpc down",
+    );
   });
 
   it("probeParkedBackingAssets returns [] when native_custody is missing", async () => {

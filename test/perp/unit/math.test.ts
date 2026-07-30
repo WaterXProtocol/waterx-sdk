@@ -36,6 +36,24 @@ describe("rawPrice", () => {
     expect(rawPrice("1.5")).toBe(1_500_000_000n);
   });
 
+  it("string path parses exactly onto the 1e9 grid — no f64 round-trip", () => {
+    // 2^53 + 1 raw units: not representable as a double, so only the string
+    // path can produce it exactly (the number path would round it).
+    expect(rawPrice("9007199.254740993")).toBe(9_007_199_254_740_993n);
+    // Well beyond the ~$9,007,199 f64 cliff, still exact.
+    expect(rawPrice("123456789012.123456789")).toBe(123_456_789_012_123_456_789n);
+    expect(rawPrice(" 42 ")).toBe(42_000_000_000n);
+    expect(rawPrice("0.000000001")).toBe(1n);
+  });
+
+  it("string path rejects malformed input and >9 decimals", () => {
+    expect(() => rawPrice("1.2.3")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("1e9")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("-5")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("1.1234567891")).toThrow(/more than 9 decimal places/);
+  });
+
   it("throws on non-finite USD input", () => {
     expect(() => rawPrice(Number.NaN)).toThrow(/Invalid USD price/);
     expect(() => rawPrice("not-a-number")).toThrow(/Invalid USD price/);
@@ -389,6 +407,25 @@ describe("calcEffectiveCollateralUsd", () => {
       }),
     ).toBe(0);
   });
+
+  it("throws RangeError on negative or non-finite fee inputs (a negative fee would ADD collateral)", () => {
+    const valid = {
+      grossCollateralUsd: 100,
+      borrowFeeUsd: 2,
+      fundingSign: true,
+      fundingFeeUsd: 3,
+      tradingFeeUsd: 1,
+    };
+    expect(() => calcEffectiveCollateralUsd({ ...valid, borrowFeeUsd: -2 })).toThrow(RangeError);
+    expect(() => calcEffectiveCollateralUsd({ ...valid, fundingFeeUsd: -3 })).toThrow(RangeError);
+    expect(() => calcEffectiveCollateralUsd({ ...valid, tradingFeeUsd: NaN })).toThrow(RangeError);
+    expect(() => calcEffectiveCollateralUsd({ ...valid, grossCollateralUsd: Infinity })).toThrow(
+      RangeError,
+    );
+    expect(() => calcEffectiveCollateralUsd({ ...valid, projectedTradingFeeUsd: -1 })).toThrow(
+      RangeError,
+    );
+  });
 });
 
 describe("calcMaxReducibleCollateralUsd", () => {
@@ -737,7 +774,19 @@ describe("WLP APY helpers", () => {
 
   it("calcWlpIncentiveApy converts continuous APR to APY", () => {
     expect(calcWlpIncentiveApy(0.12)).toBeCloseTo(Math.expm1(0.12), 10);
-    expect(calcWlpIncentiveApy(Number.POSITIVE_INFINITY)).toBe(0);
+    // Overflowing compound result is the documented 0 case…
+    expect(calcWlpIncentiveApy(1e6)).toBe(0);
+    // …but non-finite INPUT is garbage and throws instead of mapping to 0.
+    expect(() => calcWlpIncentiveApy(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+    expect(() => calcWlpIncentiveApy(NaN)).toThrow(RangeError);
+  });
+
+  it("annualizedApyFromRatio keeps domain zeros but throws on non-finite input", () => {
+    expect(annualizedApyFromRatio(1.05, 0)).toBe(0);
+    expect(annualizedApyFromRatio(1.05, -1)).toBe(0);
+    expect(annualizedApyFromRatio(-2, 30)).toBe(0);
+    expect(() => annualizedApyFromRatio(NaN, 30)).toThrow(RangeError);
+    expect(() => annualizedApyFromRatio(1.05, Infinity)).toThrow(RangeError);
   });
 });
 
@@ -783,8 +832,16 @@ describe("WLP math", () => {
     expect(calcWlpMintOut(100, 1_000_000, 500_000, 6)).toBe(50);
   });
 
-  it("calcWlpMintOut bootstraps when TVL is zero but supply exists", () => {
-    expect(calcWlpMintOut(50, 0, 1_000_000, 6)).toBe(50 * 1_000_000);
+  it("calcWlpMintOut par-mints ONLY on the genuine first mint (supply === 0)", () => {
+    // Bootstrap path: no supply outstanding.
+    expect(calcWlpMintOut(50, 0, 0, 6)).toBe(50 * 1_000_000);
+    // supply > 0 with zero priced TVL: the chain aborts EInvalidBootstrap
+    // (re-audit F-023) — par-quoting here would dilute existing LPs.
+    expect(() => calcWlpMintOut(50, 0, 1_000_000, 6)).toThrow(RangeError);
+    expect(() => calcWlpMintOut(50, 0, 1_000_000, 6)).toThrow(/EInvalidBootstrap/);
+    // Garbage inputs throw instead of flowing through.
+    expect(() => calcWlpMintOut(NaN, 1, 1, 6)).toThrow(RangeError);
+    expect(() => calcWlpMintOut(-50, 1, 1, 6)).toThrow(RangeError);
   });
 
   it("calcWlpRedeemOut", () => {
@@ -792,6 +849,8 @@ describe("WLP math", () => {
     expect(calcWlpRedeemOut(100, 1_000_000, 0, 1, 6)).toBe(0);
     expect(calcWlpRedeemOut(100, 1_000_000, 1_000_000, 0, 6)).toBe(0);
     expect(calcWlpRedeemOut(100, 1_000_000, 1_000_000, 1, 6)).toBe(100 * 1_000_000);
+    expect(() => calcWlpRedeemOut(NaN, 1, 1, 1, 6)).toThrow(RangeError);
+    expect(() => calcWlpRedeemOut(100, -1, 1, 1, 6)).toThrow(RangeError);
   });
 
   it("calcDynamicFeeBps returns base when weight improves", () => {
@@ -814,6 +873,20 @@ describe("WLP math", () => {
 
   it("calcDynamicFeeBps returns base when redeem drains pool TVL", () => {
     expect(calcDynamicFeeBps(900_000, 1_000_000, 1_000_000, 5000, 30, false)).toBe(30);
+  });
+
+  it("calcDynamicFeeBps clamps at bp_scale under extreme imbalance (F-039)", () => {
+    // tokenValue 0 / tvl 100 at 10 bps target, then a 1M deposit: the
+    // additional term alone would be ~29,964 bps — the on-chain F-039 clamp
+    // caps `additional` at bp_scale AND the total at bp_scale, so the result
+    // is exactly 10_000, never 10_030 or 29_994.
+    expect(calcDynamicFeeBps(0, 100, 1_000_000, 10, 30, true)).toBe(10_000);
+  });
+
+  it("calcDynamicFeeBps throws RangeError on garbage inputs", () => {
+    expect(() => calcDynamicFeeBps(NaN, 1_000_000, 100, 5000, 30, true)).toThrow(RangeError);
+    expect(() => calcDynamicFeeBps(100, Infinity, 100, 5000, 30, true)).toThrow(RangeError);
+    expect(() => calcDynamicFeeBps(100, 1_000_000, -1, 5000, 30, true)).toThrow(RangeError);
   });
 
   it("calcDynamicFeeBps redeem path clamps token value at zero", () => {

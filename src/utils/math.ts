@@ -12,11 +12,30 @@ import { BPS_SCALE, DOUBLE_SCALE, FLOAT_SCALE, MS_PER_YEAR } from "../constants.
  * `getOrder`, …) — those take WHOLE-DOLLAR integer USD (the Move view applies
  * `float::from` internally; a 1e9-scaled value inflates pnl/notional-derived
  * fields by 1e9).
+ *
+ * Precision: the `number` path rounds through f64, which is exact only while
+ * `usd × 1e9` stays within 2^53 — i.e. below ≈ $9,007,199 — and even below
+ * that, non-binary fractions round to the nearest representable double first.
+ * This bites hardest on `triggerPrice`, which is an EXACT order-book key: a
+ * raw value off by one unit silently fails the order lookup. Pass a decimal
+ * STRING for exact conversion — the string path parses digits directly onto
+ * the 1e9 grid without touching f64 (up to 9 decimal places; throws on
+ * malformed input or on >9 decimals, which cannot be represented).
  */
 export function rawPrice(usd: number | string): bigint {
-  const n = typeof usd === "string" ? Number(usd) : usd;
-  if (!Number.isFinite(n)) throw new Error(`Invalid USD price: ${usd}`);
-  return BigInt(Math.round(n * Number(FLOAT_SCALE)));
+  if (typeof usd === "string") {
+    const match = /^(\d+)(?:\.(\d+))?$/.exec(usd.trim());
+    if (!match) throw new Error(`Invalid USD price: ${usd}`);
+    const [, whole, frac = ""] = match;
+    if (frac.length > 9) {
+      throw new Error(
+        `Invalid USD price: ${usd} — more than 9 decimal places cannot be represented on the 1e9 grid`,
+      );
+    }
+    return BigInt(whole) * FLOAT_SCALE + BigInt(frac.padEnd(9, "0") || "0");
+  }
+  if (!Number.isFinite(usd)) throw new Error(`Invalid USD price: ${usd}`);
+  return BigInt(Math.round(usd * Number(FLOAT_SCALE)));
 }
 
 // ======== Basic position math ========
@@ -400,9 +419,11 @@ export function calcEstLiqPriceRaw(params: {
  * @param grossCollateralUsd      Position collateral in USD (`collateral_amount` → USD).
  * @param borrowFeeUsd            `unrealized_borrow_fee` in USD.
  * @param fundingSign             `unrealized_funding_sign` — true when the position owes funding.
- * @param fundingFeeUsd           `unrealized_funding_fee` magnitude in USD.
+ * @param fundingFeeUsd           `unrealized_funding_fee` magnitude in USD (unsigned; sign travels separately).
  * @param tradingFeeUsd           `unrealized_trading_fee` in USD.
  * @param projectedTradingFeeUsd  Closing fee to reserve (0 for a bare collateral withdrawal).
+ * @throws RangeError when any USD input is not a finite `>= 0` number — a
+ *   negative fee would silently ADD to effective collateral.
  */
 export function calcEffectiveCollateralUsd(params: {
   grossCollateralUsd: number;
@@ -420,6 +441,11 @@ export function calcEffectiveCollateralUsd(params: {
     tradingFeeUsd,
     projectedTradingFeeUsd = 0,
   } = params;
+  assertFiniteNonNegative("grossCollateralUsd", grossCollateralUsd);
+  assertFiniteNonNegative("borrowFeeUsd", borrowFeeUsd);
+  assertFiniteNonNegative("fundingFeeUsd", fundingFeeUsd);
+  assertFiniteNonNegative("tradingFeeUsd", tradingFeeUsd);
+  assertFiniteNonNegative("projectedTradingFeeUsd", projectedTradingFeeUsd);
   const eff =
     grossCollateralUsd -
     borrowFeeUsd -
@@ -500,6 +526,11 @@ export function calcMaxReducibleCollateralUsd(params: {
     collateralPriceUsd,
     collateralDecimal,
   } = params;
+  // Fee params must be finite and unsigned (funding sign travels separately) —
+  // a negative fee would silently INFLATE the withdrawable amount. The
+  // borrow/trading legs are re-checked inside calcEffectiveCollateralUsd.
+  assertFiniteNonNegative("closingFeeUsd", closingFeeUsd);
+  assertFiniteNonNegative("fundingFeeUsd", fundingFeeUsd);
 
   const notional = sizeInAsset * spotPrice;
 
@@ -790,14 +821,19 @@ export function annualizeFundingRate(rate: number, intervalMs: number): number {
  * Annualized APY from a NAV ratio over a given number of days.
  *
  * Compounds `ratio` (WLP price now / WLP price past) to a 365-day return.
- * Returns 0 when the result is not finite (e.g. ratio ≤ 0 or days = 0).
+ * Documented domain cases returning 0: `ratio <= 0` or `days <= 0` (no valid
+ * sample window), and an overflowing compound result.
  *
  * @param ratio  Current NAV divided by past NAV (e.g. 1.05 for 5% growth).
  * @param days   Number of days elapsed between the two NAV samples.
+ * @throws RangeError when `ratio` or `days` is NaN / ±Infinity.
  */
 export function annualizedApyFromRatio(ratio: number, days: number): number {
-  if (days === 0 || ratio <= 0) return 0;
+  assertFinite("ratio", ratio);
+  assertFinite("days", days);
+  if (days <= 0 || ratio <= 0) return 0;
   const apy = Math.pow(ratio, 365 / days) - 1;
+
   return Number.isFinite(apy) ? apy : 0;
 }
 
@@ -805,12 +841,15 @@ export function annualizedApyFromRatio(ratio: number, days: number): number {
  * Convert a continuously-compounded incentive APR to APY.
  *
  * Rewards stream via `flow_rate` (continuous compounding), so APY = e^APR − 1.
- * Returns 0 when the result is not finite.
+ * Returns 0 when the compound result overflows to Infinity.
  *
  * @param apr  Time-weighted incentive APR as a decimal fraction (e.g. 0.12 for 12%).
+ * @throws RangeError when `apr` is NaN / ±Infinity.
  */
 export function calcWlpIncentiveApy(apr: number): number {
+  assertFinite("apr", apr);
   const apy = Math.expm1(apr);
+
   return Number.isFinite(apy) ? apy : 0;
 }
 
@@ -833,12 +872,21 @@ export function calcWlpPrice(tvlUsd: number, totalSupply: number, lpDecimals: nu
  *
  * Matches the LP-amount formula in `mint_wlp_with_pricing_tvl` in `lp_pool.move`.
  * Pass `netDepositUsd` (after the dynamic mint fee is deducted).
- * Bootstrap path (totalSupply === 0): lpAmount = netDepositUsd × 10^lpDecimals.
+ *
+ * Bootstrap ($1/share par, `lpAmount = netDepositUsd × 10^lpDecimals`) applies
+ * ONLY to the genuine first mint (`totalSupply === 0`) — exactly like the
+ * chain. When supply is outstanding but the priced TVL has floored to 0 (e.g.
+ * trader unrealized profit ≥ TVL drove the equity `saturating_sub` to 0) the
+ * chain ABORTS `EInvalidBootstrap` rather than par-minting cheap shares that
+ * dilute existing LPs (re-audit F-023); this helper throws `RangeError` in
+ * that state instead of silently par-quoting.
  *
  * @param netDepositUsd  Deposit value in USD after dynamic mint fee.
  * @param tvlUsd         Pool TVL in USD at pricing time.
  * @param totalSupply    Current total WLP supply in raw units.
  * @param lpDecimals     WLP token decimals (6).
+ * @throws RangeError when inputs are not finite `>= 0` numbers, or on the
+ *   `totalSupply > 0 && tvlUsd === 0` state (chain aborts `EInvalidBootstrap`).
  */
 export function calcWlpMintOut(
   netDepositUsd: number,
@@ -846,8 +894,17 @@ export function calcWlpMintOut(
   totalSupply: number,
   lpDecimals: number,
 ): number {
+  assertFiniteNonNegative("netDepositUsd", netDepositUsd);
+  assertFiniteNonNegative("tvlUsd", tvlUsd);
+  assertFiniteNonNegative("totalSupply", totalSupply);
   const scale = Math.pow(10, lpDecimals);
-  if (totalSupply === 0 || tvlUsd === 0) return Math.floor(netDepositUsd * scale);
+  if (totalSupply === 0) return Math.floor(netDepositUsd * scale);
+  if (tvlUsd === 0) {
+    throw new RangeError(
+      "calcWlpMintOut: totalSupply > 0 with tvlUsd === 0 — the chain aborts EInvalidBootstrap here (par-minting against zero priced TVL dilutes existing LPs; F-023). Retry once the equity snapshot recovers.",
+    );
+  }
+
   return Math.floor((netDepositUsd * totalSupply) / tvlUsd);
 }
 
@@ -857,11 +914,21 @@ export function calcWlpMintOut(
  * Matches the settlement formula in `settle_redeem_with_pricing_tvl` in `lp_pool.move`.
  * Apply `calcDynamicFeeBps` separately to get the net output.
  *
+ * Chain-divergence notes (display-convenience helper, not settlement-exact):
+ * - `tokenPriceUsd === 0` returns 0 here, but the chain ABORTS (`EZeroPrice`,
+ *   lp_pool.move) — a zero from this helper on that input is a display
+ *   placeholder, not a real quote.
+ * - The burn fee is applied on-chain as
+ *   `float::from_bps(fee_bps).mul_u64(raw_amount).ceil()` — composing this
+ *   helper with `calcDynamicFeeBps` in f64 (which cannot `.ceil()` on the raw
+ *   grid) can drift ±1 raw unit from the settled output.
+ *
  * @param lpAmount       LP tokens being redeemed (raw units).
  * @param tvlUsd         Pool TVL in USD at pricing time.
  * @param totalSupply    Current total WLP supply in raw units.
  * @param tokenPriceUsd  Oracle price of the output token.
  * @param tokenDecimals  Output token decimals.
+ * @throws RangeError when any numeric input is not a finite `>= 0` number.
  */
 export function calcWlpRedeemOut(
   lpAmount: number,
@@ -870,8 +937,13 @@ export function calcWlpRedeemOut(
   tokenPriceUsd: number,
   tokenDecimals: number,
 ): number {
+  assertFiniteNonNegative("lpAmount", lpAmount);
+  assertFiniteNonNegative("tvlUsd", tvlUsd);
+  assertFiniteNonNegative("totalSupply", totalSupply);
+  assertFiniteNonNegative("tokenPriceUsd", tokenPriceUsd);
   if (totalSupply === 0 || tokenPriceUsd === 0) return 0;
   const burnValueUsd = (tvlUsd * lpAmount) / totalSupply;
+
   return Math.floor((burnValueUsd / tokenPriceUsd) * Math.pow(10, tokenDecimals));
 }
 
@@ -881,7 +953,8 @@ export function calcWlpRedeemOut(
  * Matches `calculate_dynamic_fee` in `lp_pool.move`. Returns `baseFeeBps` when
  * the operation moves the token closer to (or does not worsen) its target weight.
  * Adds an additional fee proportional to the average deviation when it moves
- * further away.
+ * further away. Clamped to 100% (`bp_scale`) on both the additional term and
+ * the total, mirroring the on-chain F-039 clamp.
  *
  * @param tokenValueUsd      Current USD value of this token in the pool.
  * @param tvlUsd             Total pool TVL in USD.
@@ -898,6 +971,11 @@ export function calcDynamicFeeBps(
   baseFeeBps: number,
   isDeposit: boolean,
 ): number {
+  assertFiniteNonNegative("tokenValueUsd", tokenValueUsd);
+  assertFiniteNonNegative("tvlUsd", tvlUsd);
+  assertFiniteNonNegative("operationValueUsd", operationValueUsd);
+  assertFiniteNonNegative("targetWeightBps", targetWeightBps);
+  assertFiniteNonNegative("baseFeeBps", baseFeeBps);
   if (tvlUsd === 0 || operationValueUsd === 0 || targetWeightBps === 0) return baseFeeBps;
 
   const targetValue = (tvlUsd * targetWeightBps) / Number(BPS_SCALE);
@@ -920,5 +998,11 @@ export function calcDynamicFeeBps(
   if (avgTargetValue === 0) return baseFeeBps;
 
   const additional = Math.floor((avgDiff / avgTargetValue) * baseFeeBps);
-  return baseFeeBps + additional;
+
+  // F-039 (lp_pool.move::calculate_dynamic_fee): clamp the dynamic fee to 100%.
+  // Both the additional term and the total are capped at bp_scale, mirroring
+  // `(base_fee_bps + additional.min(bp_scale)).min(bp_scale)` — without it the
+  // fee could exceed the operation amount and the on-chain `amount - fee`
+  // subtraction would abort.
+  return Math.min(baseFeeBps + Math.min(additional, Number(BPS_SCALE)), Number(BPS_SCALE));
 }

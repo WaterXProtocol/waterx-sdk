@@ -49,9 +49,16 @@ type Outcome =
   | { kind: "ok" }
   | { kind: "expected"; abortCode?: string; details: string }
   | { kind: "sdk-error"; error: unknown }
-  | { kind: "build-error"; error: unknown };
+  | { kind: "build-error"; error: unknown }
+  | { kind: "unknown"; details: string };
+
+/** Error outcomes fail the run — a smoke script must not exit 0 on them. */
+let errorOutcomes = 0;
 
 function describeOutcome(name: string, o: Outcome): void {
+  if (o.kind === "sdk-error" || o.kind === "build-error" || o.kind === "unknown") {
+    errorOutcomes += 1;
+  }
   const tag =
     o.kind === "ok"
       ? "\x1b[32mOK\x1b[0m       "
@@ -65,7 +72,9 @@ function describeOutcome(name: string, o: Outcome): void {
         ? `${o.details}${o.abortCode ? ` (abort ${o.abortCode})` : ""}`
         : o.kind === "sdk-error"
           ? `SDK simulate error: ${String(o.error)}`
-          : `builder crashed: ${String(o.error)}`;
+          : o.kind === "unknown"
+            ? `unrecognized simulate response: ${o.details}`
+            : `builder crashed: ${String(o.error)}`;
   console.log(`${tag} ${name.padEnd(40)} ${detail}`);
 }
 
@@ -104,8 +113,16 @@ function classifySim(result: SimResult): Outcome {
     }
     return { kind: "expected", abortCode: code, details: msg };
   }
-  // No FailedTransaction wrapper — treat as success.
-  return { kind: "ok" };
+  // Success requires a recognized executed-transaction shape. An unrecognized
+  // response (e.g. an API change or an error variant this classifier does not
+  // know) must NOT silently count as green.
+  if (result.commandResults !== undefined) {
+    return { kind: "ok" };
+  }
+  return {
+    kind: "unknown",
+    details: `$kind=${String(result.$kind)} without commandResults`,
+  };
 }
 
 async function runCase(
@@ -369,12 +386,18 @@ async function main(): Promise<void> {
     const refer = await getRefererFor(client, FAKE_SENDER);
     console.log(`  getRefererFor(FAKE_SENDER)         ${refer ?? "(none)"}`);
   } catch (e) {
+    errorOutcomes += 1;
     console.log(`  read FAIL: ${String(e).slice(0, 200)}`);
   }
 
   // Perm constant sanity (no on-chain bit, just makes sure the enum survived).
   console.log(`\n  PERM_ALL_TRADING = 0x${PERM_ALL_TRADING.toString(16)}`);
-  console.log("Smoke run complete.");
+  if (errorOutcomes > 0) {
+    console.log(`Smoke run FAILED: ${errorOutcomes} error outcome(s).`);
+    process.exitCode = 1;
+  } else {
+    console.log("Smoke run complete.");
+  }
 }
 
 main().catch((e) => {

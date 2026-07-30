@@ -89,6 +89,13 @@ export async function probeParkedBackingAssets(
 /**
  * Probe non-zero CREDIT parked at `accountId`'s Sui address. Matches the
  * address-CREDIT legs inside {@link appendConsolidateAddressCredit}.
+ *
+ * RPC failures PROPAGATE (no swallow-to-zero): a gRPC error here used to be
+ * silently reported as an authoritative zero balance, which made
+ * `getSpendableCreditBalance` under-report spendable funds and let
+ * `appendConsolidateAddressCredit` build a tx that later aborted on-chain
+ * with a confusing insufficient-balance error. Callers that can tolerate a
+ * missing probe must catch explicitly.
  */
 export async function probeAddressCreditBalance(
   client: AccountClientLike,
@@ -99,29 +106,20 @@ export async function probeAddressCreditBalance(
   }
 
   const creditType = client.creditType();
-  let fundsRaw = 0n;
+
+  const bal = (await client.getBalance({
+    owner: accountId,
+    coinType: creditType,
+  })) as { balance?: { addressBalance?: string } };
+  const fundsRaw = BigInt(bal.balance?.addressBalance ?? "0");
+
+  const coins = (await client.listCoins({
+    owner: accountId,
+    coinType: creditType,
+  })) as { objects?: { balance?: string }[] };
   let coinsRaw = 0n;
-
-  try {
-    const bal = (await client.getBalance({
-      owner: accountId,
-      coinType: creditType,
-    })) as { balance?: { addressBalance?: string } };
-    fundsRaw = BigInt(bal.balance?.addressBalance ?? "0");
-  } catch {
-    // ignore — treat as zero parked funds
-  }
-
-  try {
-    const coins = (await client.listCoins({
-      owner: accountId,
-      coinType: creditType,
-    })) as { objects?: { balance?: string }[] };
-    for (const coin of coins.objects ?? []) {
-      coinsRaw += BigInt(coin.balance ?? "0");
-    }
-  } catch {
-    // ignore — treat as zero owned coins
+  for (const coin of coins.objects ?? []) {
+    coinsRaw += BigInt(coin.balance ?? "0");
   }
 
   return { fundsRaw, coinsRaw };

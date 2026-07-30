@@ -1,7 +1,10 @@
+import { Transaction } from "@mysten/sui/transactions";
 import { parseWholeDollarU64 } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
+import type { PerpClient } from "../../../src/perp/client.ts";
 import { toU64, toU128, U64_MAX } from "../../../src/perp/fetch/validate.ts";
+import { buildPlaceOrderArgument } from "../../../src/perp/user/order.ts";
 
 describe("fetch boundary integer guards (toU64 / toU128)", () => {
   it("passes through valid bigints and safe-integer numbers", () => {
@@ -63,5 +66,44 @@ describe("parseWholeDollarU64", () => {
   it("throws above u64::MAX and on unsafe-integer numbers", () => {
     expect(() => parseWholeDollarU64("18446744073709551616")).toThrow(RangeError);
     expect(() => parseWholeDollarU64(2 ** 53)).toThrow(RangeError);
+  });
+});
+
+describe("write-surface guards (representative)", () => {
+  // Minimal stub — the guard throws while building the arguments object,
+  // before anything touches the chain or the client config beyond the package.
+  const stubClient = {
+    config: { packages: { waterx_perp: { published_at: "0x2" } } },
+  } as unknown as PerpClient;
+  const validOrder = {
+    isLong: true,
+    isStopOrder: false,
+    reduceOnly: false,
+    size: 1_000_000_000n,
+    collateralAmount: 1_000_000n,
+  };
+
+  it("buildPlaceOrderArgument throws named RangeErrors on garbage numerics", () => {
+    expect(() =>
+      buildPlaceOrderArgument(stubClient, new Transaction(), { ...validOrder, size: 2 ** 53 }),
+    ).toThrow(/size/);
+    expect(() =>
+      buildPlaceOrderArgument(stubClient, new Transaction(), {
+        ...validOrder,
+        collateralAmount: 1.5,
+      }),
+    ).toThrow(/collateralAmount/);
+    expect(() =>
+      buildPlaceOrderArgument(stubClient, new Transaction(), {
+        ...validOrder,
+        triggerPrice: NaN,
+      }),
+    ).toThrow(/triggerPrice/);
+    expect(() =>
+      buildPlaceOrderArgument(stubClient, new Transaction(), {
+        ...validOrder,
+        acceptablePrice: -1,
+      }),
+    ).toThrow(/acceptablePrice/);
   });
 });

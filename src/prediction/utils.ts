@@ -88,7 +88,9 @@ export function toBigInt(value: bigint | number | string): bigint {
   }
 
   if (typeof value === "number") {
-    if (!Number.isInteger(value)) {
+    // isSafeInteger, not isInteger: 2^53 + 2 passes isInteger but has already
+    // lost precision in f64, so BigInt() would encode a silently-wrong value.
+    if (!Number.isSafeInteger(value)) {
       throw new Error(`Invalid integer: ${value}`);
     }
     return assertU64(BigInt(value));

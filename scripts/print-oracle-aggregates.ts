@@ -416,7 +416,7 @@ async function runOne(
   cache: PythCache,
   feed: TickerFeed,
   format: OutputFormat,
-) {
+): Promise<boolean> {
   const tx = new Transaction();
   tx.setSender(DRY_RUN_SENDER);
   tx.setGasBudget(GAS_ORACLE_SCRIPT);
@@ -531,7 +531,11 @@ async function runOne(
       console.log(`  aggregator=${feed.aggregatorId ?? "-"}`);
       console.log(`  error=${msg}`);
     }
+
+    return false;
   }
+
+  return true;
 }
 
 async function main() {
@@ -570,8 +574,13 @@ async function main() {
   );
 
   const cache = new PythCache();
+  let failed = 0;
   for (const feed of feeds) {
-    await runOne(client, cache, feed, format);
+    if (!(await runOne(client, cache, feed, format))) failed += 1;
+  }
+  if (failed > 0) {
+    console.error(`\n${failed} feed(s) FAILED`);
+    process.exitCode = 1;
   }
 }
 
