@@ -22,6 +22,7 @@ import {
 import type { PerpClient } from "../client.ts";
 import { DRY_RUN_SENDER } from "../constants.ts";
 import { simulateAndExtract, toBytes, withLp, type SimulationResult } from "./simulate.ts";
+import { toU64, toU128, U64_MAX } from "./validate.ts";
 
 /**
  * WHOLE-DOLLAR integer USD price for the `waterx_perp_view` read params
@@ -35,6 +36,47 @@ import { simulateAndExtract, toBytes, withLp, type SimulationResult } from "./si
  * computed with price 0, not skipped).
  */
 export type WholeDollarUsdPrice = bigint | number;
+
+/**
+ * Parse a user/env-supplied value into a whole-dollar u64 price
+ * (`WholeDollarUsdPrice`) with NO silent rounding: throws `RangeError` on
+ * fractional, negative, non-finite, non-numeric, or `> u64::MAX` input. If
+ * rounding is ever wanted it must be explicit at the call site
+ * (e.g. `parseWholeDollarU64(Math.round(x))`) — never baked in here.
+ */
+export function parseWholeDollarU64(value: string | number): bigint {
+  let parsed: bigint;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new RangeError(`whole-dollar USD price must be finite, got ${value}`);
+    }
+    if (!Number.isInteger(value)) {
+      throw new RangeError(
+        `whole-dollar USD price must be an integer, got ${value} — round explicitly at the call site if intended`,
+      );
+    }
+    if (!Number.isSafeInteger(value)) {
+      throw new RangeError(
+        `whole-dollar USD price exceeds Number.MAX_SAFE_INTEGER, got ${value} — pass a string instead`,
+      );
+    }
+    parsed = BigInt(value);
+  } else {
+    const trimmed = value.trim();
+    if (!/^-?\d+$/.test(trimmed)) {
+      throw new RangeError(`whole-dollar USD price must be a plain integer string, got "${value}"`);
+    }
+    parsed = BigInt(trimmed);
+  }
+  if (parsed < 0n) {
+    throw new RangeError(`whole-dollar USD price must be >= 0, got ${parsed}`);
+  }
+  if (parsed > U64_MAX) {
+    throw new RangeError(`whole-dollar USD price exceeds u64::MAX, got ${parsed}`);
+  }
+
+  return parsed;
+}
 
 // ============================================================================
 // Position
@@ -52,7 +94,7 @@ export async function positionExists(
     arguments: {
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
-      positionId: args.positionId,
+      positionId: toU64(args.positionId, "positionId"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
@@ -77,9 +119,9 @@ export async function getPosition(
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
       pool: tx.object(client.config.packages.wlp.wlp_pool),
-      basePriceUsd: args.basePriceUsd,
-      collateralPriceUsd: args.collateralPriceUsd,
-      positionId: args.positionId,
+      basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
+      collateralPriceUsd: toU64(args.collateralPriceUsd, "collateralPriceUsd"),
+      positionId: toU64(args.positionId, "positionId"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
@@ -110,10 +152,10 @@ export async function getOrder(
     arguments: {
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
-      basePriceUsd: args.basePriceUsd,
+      basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
       orderTypeTag: args.orderTypeTag,
-      triggerPrice: args.triggerPrice,
-      orderId: args.orderId,
+      triggerPrice: toU128(args.triggerPrice, "triggerPrice"),
+      orderId: toU64(args.orderId, "orderId"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
@@ -144,9 +186,9 @@ export async function getMarketOrders(
     arguments: {
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
-      basePriceUsd: args.basePriceUsd ?? 0n,
-      cursor: args.cursor ?? 0n,
-      pageSize: args.pageSize ?? 100n,
+      basePriceUsd: toU64(args.basePriceUsd ?? 0n, "basePriceUsd"),
+      cursor: toU64(args.cursor ?? 0n, "cursor"),
+      pageSize: toU64(args.pageSize ?? 100n, "pageSize"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
@@ -186,10 +228,10 @@ export async function getMarketPositions(
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
       pool: tx.object(client.config.packages.wlp.wlp_pool),
-      basePriceUsd: args.basePriceUsd,
-      collateralPriceUsd: args.collateralPriceUsd ?? 0n,
-      cursor: args.cursor ?? 0n,
-      pageSize: args.pageSize ?? 100n,
+      basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
+      collateralPriceUsd: toU64(args.collateralPriceUsd ?? 0n, "collateralPriceUsd"),
+      cursor: toU64(args.cursor ?? 0n, "cursor"),
+      pageSize: toU64(args.pageSize ?? 100n, "pageSize"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
@@ -231,8 +273,8 @@ export async function getAccountPositions(
       ticker: args.ticker,
       pool: tx.object(client.config.packages.wlp.wlp_pool),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      basePriceUsd: args.basePriceUsd,
-      collateralPriceUsd: args.collateralPriceUsd ?? 0n,
+      basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
+      collateralPriceUsd: toU64(args.collateralPriceUsd ?? 0n, "collateralPriceUsd"),
       accountObjectAddress: args.accountObjectAddress,
     },
     typeArguments: [withLp(client, args.lpType)],
@@ -256,7 +298,7 @@ export async function getAccountOrders(
     arguments: {
       marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
       ticker: args.ticker,
-      basePriceUsd: args.basePriceUsd ?? 0n,
+      basePriceUsd: toU64(args.basePriceUsd ?? 0n, "basePriceUsd"),
       accountObjectAddress: args.accountObjectAddress,
     },
     typeArguments: [withLp(client, args.lpType)],
@@ -275,8 +317,8 @@ export async function getRedeemRequests(
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
       pool: tx.object(client.config.packages.wlp.wlp_pool),
-      cursor: args.cursor ?? 0n,
-      pageSize: args.pageSize ?? 100n,
+      cursor: toU64(args.cursor ?? 0n, "cursor"),
+      pageSize: toU64(args.pageSize ?? 100n, "pageSize"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);

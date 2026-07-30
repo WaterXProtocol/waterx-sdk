@@ -14,13 +14,14 @@ import {
   calcFundingRate,
   calcImpactFeeRate,
   calcLeverage,
-  calcLiqFeeBundleUsd,
   calcMaxReducibleCollateralUsd,
   calcNotional,
   calcPositionBorrowFee,
+  calcRealLiqNetCostUsd,
   calcTokenUtilizationBps,
   calcTotalTradingFeeRate,
   calcUnrealizedPnl,
+  calcViewEstLiqFeesUsd,
   calcWlpIncentiveApy,
   calcWlpMintOut,
   calcWlpPrice,
@@ -174,19 +175,45 @@ describe("calcEstLiqPrice", () => {
     spotPrice: 100,
   };
 
-  it("fees path equals the equivalent explicit totalFeesUsd", () => {
+  it("fees path equals the equivalent explicit totalFeesUsd (signed, unfloored)", () => {
     const fees = { borrowFeeUsd: 3, openFeeUsd: 2, closingFeeUsd: 1, fundingFeeUsd: -4 };
-    expect(calcLiqFeeBundleUsd(fees)).toBe(2);
+    expect(calcRealLiqNetCostUsd(fees)).toBe(2);
     expect(calcEstLiqPrice({ ...FEES_PATH_BASE, fees })).toBe(
-      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: calcLiqFeeBundleUsd(fees) }),
+      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: calcRealLiqNetCostUsd(fees) }),
     );
   });
 
-  it("fees path floors at 0 when funding income exceeds the other fees", () => {
-    const fees = { borrowFeeUsd: 1, openFeeUsd: 1, closingFeeUsd: 1, fundingFeeUsd: -40 };
-    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, fees })).toBe(
-      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 0 }),
-    );
+  it("income beyond all fees goes NEGATIVE and pushes the long liq price FARTHER from spot", () => {
+    // REAL model: is_liquidatable credits income in full, so net cost -7 ADDS
+    // $7 of equity vs the fee-free case — the long liq price must be STRICTLY
+    // LOWER (farther below spot) than the fee-free estimate, never floored
+    // back to equality with it.
+    const fees = { borrowFeeUsd: 1, openFeeUsd: 1, closingFeeUsd: 1, fundingFeeUsd: -10 };
+    expect(calcRealLiqNetCostUsd(fees)).toBe(-7);
+    const feeFree = calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 0 });
+    const withIncome = calcEstLiqPrice({ ...FEES_PATH_BASE, fees });
+    expect(feeFree).toBeCloseTo(51.5, 8);
+    expect(withIncome).toBeCloseTo(44.5, 8);
+    expect(withIncome).toBeLessThan(feeFree);
+  });
+
+  it("income beyond all fees pushes the SHORT liq price HIGHER (farther above spot)", () => {
+    const shortBase = { ...FEES_PATH_BASE, isLong: false };
+    const fees = { borrowFeeUsd: 1, openFeeUsd: 1, closingFeeUsd: 1, fundingFeeUsd: -10 };
+    const feeFree = calcEstLiqPrice({ ...shortBase, totalFeesUsd: 0 });
+    const withIncome = calcEstLiqPrice({ ...shortBase, fees });
+    expect(feeFree).toBeCloseTo(148.5, 8);
+    expect(withIncome).toBeCloseTo(155.5, 8);
+    expect(withIncome).toBeGreaterThan(feeFree);
+  });
+
+  it("extreme income (long) drives ratio >= 1 and returns 0 (cannot be liquidated by price)", () => {
+    expect(
+      calcEstLiqPrice({
+        ...FEES_PATH_BASE,
+        fees: { borrowFeeUsd: 0, openFeeUsd: 0, closingFeeUsd: 0, fundingFeeUsd: -1e6 },
+      }),
+    ).toBe(0);
   });
 
   it("fees takes precedence over totalFeesUsd when both are given", () => {
@@ -195,30 +222,123 @@ describe("calcEstLiqPrice", () => {
       calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 40 }),
     );
   });
+
+  it("throws RangeError on non-finite or out-of-domain inputs", () => {
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, sizeInAsset: NaN, totalFeesUsd: 0 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, collateralUsd: Infinity, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, avgPrice: -1, totalFeesUsd: 0 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, spotPrice: -Infinity, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, maintenanceMarginRate: 1.5, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, maintenanceMarginRate: NaN, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: NaN })).toThrow(RangeError);
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: -Infinity })).toThrow(
+      RangeError,
+    );
+    // Documented domain case, not an error: zero size returns 0.
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, sizeInAsset: 0, totalFeesUsd: 0 })).toBe(0);
+  });
 });
 
-describe("calcLiqFeeBundleUsd", () => {
+describe("calcRealLiqNetCostUsd (REAL model — position.move::is_liquidatable)", () => {
   it("sums borrow + open + closing + owed funding", () => {
     expect(
-      calcLiqFeeBundleUsd({ borrowFeeUsd: 10, openFeeUsd: 5, closingFeeUsd: 5, fundingFeeUsd: 8 }),
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 10,
+        openFeeUsd: 5,
+        closingFeeUsd: 5,
+        fundingFeeUsd: 8,
+      }),
     ).toBe(28);
   });
 
-  it("credits funding income (negative fundingFeeUsd) against the bundle", () => {
+  it("credits funding income in full — signed sum, no floor", () => {
     expect(
-      calcLiqFeeBundleUsd({ borrowFeeUsd: 10, openFeeUsd: 5, closingFeeUsd: 5, fundingFeeUsd: -8 }),
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 10,
+        openFeeUsd: 5,
+        closingFeeUsd: 5,
+        fundingFeeUsd: -8,
+      }),
     ).toBe(12);
-  });
-
-  it("floors at 0 when income exceeds the other fees (saturating)", () => {
+    // Income beyond the other fees is a genuine equity credit: NEGATIVE result.
     expect(
-      calcLiqFeeBundleUsd({
+      calcRealLiqNetCostUsd({
         borrowFeeUsd: 10,
         openFeeUsd: 5,
         closingFeeUsd: 5,
         fundingFeeUsd: -30,
       }),
-    ).toBe(0);
+    ).toBe(-10);
+  });
+
+  it("throws RangeError on NaN / Infinity / negative unsigned fees", () => {
+    expect(() =>
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: NaN,
+        openFeeUsd: 0,
+        closingFeeUsd: 0,
+        fundingFeeUsd: 0,
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 0,
+        openFeeUsd: Infinity,
+        closingFeeUsd: 0,
+        fundingFeeUsd: 0,
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 0,
+        openFeeUsd: 0,
+        closingFeeUsd: -1,
+        fundingFeeUsd: 0,
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 0,
+        openFeeUsd: 0,
+        closingFeeUsd: 0,
+        fundingFeeUsd: -Infinity,
+      }),
+    ).toThrow(RangeError);
+  });
+});
+
+describe("calcViewEstLiqFeesUsd (VIEW model — view.move::calculate_est_liq_price)", () => {
+  it("sums borrow + open + owed funding (no closing-fee term exists)", () => {
+    expect(calcViewEstLiqFeesUsd({ borrowFeeUsd: 10, openFeeUsd: 5, fundingFeeUsd: 8 })).toBe(23);
+  });
+
+  it("floors at 0 when income exceeds the other fees (Float saturating_sub)", () => {
+    expect(calcViewEstLiqFeesUsd({ borrowFeeUsd: 10, openFeeUsd: 5, fundingFeeUsd: -8 })).toBe(7);
+    expect(calcViewEstLiqFeesUsd({ borrowFeeUsd: 10, openFeeUsd: 5, fundingFeeUsd: -30 })).toBe(0);
+  });
+
+  it("throws RangeError on NaN / Infinity / negative unsigned fees", () => {
+    expect(() =>
+      calcViewEstLiqFeesUsd({ borrowFeeUsd: -1, openFeeUsd: 0, fundingFeeUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcViewEstLiqFeesUsd({ borrowFeeUsd: 0, openFeeUsd: NaN, fundingFeeUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcViewEstLiqFeesUsd({ borrowFeeUsd: 0, openFeeUsd: 0, fundingFeeUsd: Infinity }),
+    ).toThrow(RangeError);
   });
 });
 

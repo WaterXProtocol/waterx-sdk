@@ -10,20 +10,58 @@ reference the PR that introduced them.
 
 ### Added
 
-- **`calcLiqFeeBundleUsd(fees)` + structured `fees` input on `calcEstLiqPrice`**
-  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The
-  liq-estimate fee-bundle rule —
-  `totalFeesUsd = max(0, borrowFee + openFee + closingFee + SIGNED funding)`,
-  funding cost-positive with income crediting the bundle, floored at 0 per the
-  contract's saturating-subtract — now lives in the SDK once (next to
-  `calcEstLiqPrice`, with the three-way `position.move::is_liquidatable` /
-  `view.move::calculate_est_liq_price` / WL-2248 equity(P) semantics note)
-  instead of being hand-copied in FE and BE, where the copies had already
-  drifted. `calcEstLiqPrice` now takes EITHER the existing `totalFeesUsd`
-  (unchanged — back-compat for published consumers) or
-  `fees: { borrowFeeUsd, openFeeUsd, closingFeeUsd, fundingFeeUsd }`, which
-  derives the total via the saturating rule and takes precedence, so a caller
-  structurally cannot forget the floor or omit a term.
+- **Split liq-estimate fee models: `calcRealLiqNetCostUsd` (signed) +
+  `calcViewEstLiqFeesUsd` (saturating) + structured `fees` input on
+  `calcEstLiqPrice`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The FE/BE
+  hand-copied (and drifted) fee rule now lives in the SDK once, split into two
+  explicitly-named functions so callers cannot mix models:
+  - `calcRealLiqNetCostUsd({ borrowFeeUsd, openFeeUsd, closingFeeUsd, fundingFeeUsd })`
+    — the REAL check (`position.move::is_liquidatable`): a plain SIGNED sum
+    including the closing fee. Funding income is credited IN FULL (income pays
+    deficit first, remainder adds back to equity), so a result below zero is a
+    genuine equity credit — deliberately NOT floored.
+  - `calcViewEstLiqFeesUsd({ borrowFeeUsd, openFeeUsd, fundingFeeUsd })` — the
+    VIEW estimate (`view.move::calculate_est_liq_price`): `max(0, …)` per the
+    view's unsigned `Float.saturating_sub`, with structurally NO closing-fee
+    field because the view omits that term.
+  `calcEstLiqPrice` takes EITHER the existing `totalFeesUsd` (unchanged —
+  back-compat for published consumers) or `fees: LiqFeeBundle`, which derives
+  the total via `calcRealLiqNetCostUsd` (REAL model, signed) and takes
+  precedence. (An interim unreleased `calcLiqFeeBundleUsd` that floored the
+  real model at 0 was removed before ever shipping.)
+- **`calcEstLiqPriceRaw` — canonical BigInt fixed-point liq price, bit-identical
+  to the chain** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  Op-for-op mirror of `view.move::calculate_est_liq_price` under
+  `bucket_v2_framework::float` semantics — truncating u128 division at every
+  mul/div step, `math::amount_to_usd`'s exact two-step composition, borrow +
+  open fee summed as u64 BEFORE conversion, `saturating_sub` funding credit.
+  Takes the raw on-chain values exactly as the view does (1e9-scaled size /
+  avg price / maintenance margin, raw collateral units + decimal, whole-dollar
+  u64 prices) and returns the raw 1e9-scaled u128 price equal to
+  `PositionData.est_liq_price`. The Number `calcEstLiqPrice` is documented as
+  a UI convenience approximation of this canonical form. The
+  `liq-parity-check` harness now requires EXACT raw equality (no tolerance).
+- **Numeric-domain validation in the liq math functions**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `calcRealLiqNetCostUsd` / `calcViewEstLiqFeesUsd` throw `RangeError` unless
+  borrow/open/closing fees are finite `>= 0` and funding is finite (signed
+  ok); `calcEstLiqPrice` throws unless size/avgPrice/spotPrice/collateral are
+  finite `>= 0`, `maintenanceMarginRate` is finite in `[0, 1]`, and
+  `totalFeesUsd` is finite; `calcEstLiqPriceRaw` rejects negative bigints and
+  out-of-range decimals. Previously garbage flowed through — e.g. an
+  `Infinity` fee returned 0, indistinguishable from "already liquidatable".
+- **`parseWholeDollarU64(value)` + u64/u128 guards at the fetch boundary**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `parseWholeDollarU64` (exported next to `WholeDollarUsdPrice`) parses a
+  string/number into a whole-dollar u64 with NO silent rounding — throws
+  `RangeError` on fractional, negative, non-finite, or `> u64::MAX` input; the
+  `examples/views/*` scripts use it instead of `BigInt(Math.round(...))`.
+  Internally, every u64/u128 param on the `perp/fetch` surface
+  (`basePriceUsd` / `collateralPriceUsd` / `positionId` / `orderId` /
+  `cursor` / `pageSize` / `triggerPrice`) is validated (bigint range-checked;
+  numbers must be non-negative safe integers) and throws with the parameter
+  name instead of serializing a silently-wrong integer into the PTB.
 - **`formatFundingInterval(intervalMs)`**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
   funding-interval wire label (`"1H"` / `"8H"` / `"1.5H"` / `"30M"`,

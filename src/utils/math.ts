@@ -47,53 +47,121 @@ export function calcLeverage(sizeUsd: number, collateralUsd: number): number {
   return sizeUsd / collateralUsd;
 }
 
+// ======== Numeric-domain validation (internal) ========
+
+function assertFinite(label: string, value: number): void {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`${label} must be a finite number, got ${value}`);
+  }
+}
+
+function assertFiniteNonNegative(label: string, value: number): void {
+  assertFinite(label, value);
+  if (value < 0) {
+    throw new RangeError(`${label} must be >= 0, got ${value}`);
+  }
+}
+
+function assertUnsignedBigInt(label: string, value: bigint): void {
+  if (value < 0n) {
+    throw new RangeError(`${label} must be >= 0, got ${value}`);
+  }
+}
+
 /**
- * Accrued-fee inputs for the liquidation-price estimate — see
- * `calcLiqFeeBundleUsd` for the derivation rule and Move semantics.
+ * Accrued-fee inputs for the REAL-model liquidation estimate — see
+ * `calcRealLiqNetCostUsd` for the rule and the Move-semantics note.
  *
  * `fundingFeeUsd` is SIGNED, cost-positive: > 0 the position owes funding,
- * < 0 is funding income (credits the bundle).
+ * < 0 is funding income (a genuine equity credit, applied in full).
  */
 export type LiqFeeBundle = {
   borrowFeeUsd: number;
   openFeeUsd: number;
   closingFeeUsd: number;
-  /** SIGNED, cost-positive: > 0 owed, < 0 income (credits the bundle). */
+  /** SIGNED, cost-positive: > 0 owed, < 0 income (credits equity in full). */
   fundingFeeUsd: number;
 };
 
 /**
- * Total accrued-fee bundle (USD) for the liquidation-price estimate:
+ * Net fee cost (USD) of the REAL liquidation check — a plain SIGNED sum:
  *
- *   totalFeesUsd = max(0, borrowFeeUsd + openFeeUsd + closingFeeUsd + fundingFeeUsd)
+ *   netCostUsd = borrowFeeUsd + openFeeUsd + closingFeeUsd + fundingFeeUsd
  *
- * `fundingFeeUsd` is SIGNED cost-positive — negative funding (income) CREDITS
- * the bundle, paying the other fees down first — and the total floors at 0,
- * matching the contract's saturating-subtract: the bundle never goes negative.
+ * `fundingFeeUsd` is SIGNED cost-positive, and the result MAY BE NEGATIVE
+ * when funding income exceeds the other fees. That is deliberate:
+ * `position.move::is_liquidatable` credits funding income IN FULL — income
+ * first pays down any accumulated deficit, and the remainder is added back to
+ * remaining equity — so the linearized equity model is a plain signed sum
+ * with no floor. Flooring at 0 here would understate an income-rich
+ * position's equity and show a liq price closer to spot than the real check.
  *
  * Three-way Move-semantics relationship (verified against the Move sources
- * 2026-07-29):
+ * 2026-07-30):
  * - the REAL liquidation check, `position.move::is_liquidatable`
  *   (waterx_perp): deducts borrow + open + CLOSING fee and credits funding
- *   income against them (saturating);
+ *   income in full (deficit first, remainder back to equity) — exactly this
+ *   function's signed sum;
  * - the view estimate, `view.move::calculate_est_liq_price`
- *   (waterx_perp_view): same signed funding credit, but OMITS the closing fee;
- * - this bundle matches the REAL check — WL-2248's normative equity(P) model
- *   (closing fee included) — deliberately deviating from the view by exactly
- *   the close-fee term.
- * Contrast with `calcEffectiveCollateralUsd`, which does NOT credit funding
- * income: it mirrors the withdrawable-collateral checks
- * (`calculate_effective_collateral_amount` in `trading.move`), not the
- * liquidation inequality — do not "fix" either one to match the other.
+ *   (waterx_perp_view): OMITS the closing fee AND floors its fee bundle at 0
+ *   (`Float.saturating_sub` — Float is unsigned) — see `calcViewEstLiqFeesUsd`
+ *   and the op-exact `calcEstLiqPriceRaw`;
+ * - SDK `calcEffectiveCollateralUsd` does NOT credit funding income at all:
+ *   it mirrors the withdrawable-collateral checks
+ *   (`calculate_effective_collateral_amount` in `trading.move`), not the
+ *   liquidation inequality.
+ * Do not "fix" any of the three to match another.
+ *
+ * @throws RangeError when borrow/open/closing fees are not finite `>= 0`
+ *   numbers, or `fundingFeeUsd` is not finite.
  */
-export function calcLiqFeeBundleUsd(fees: LiqFeeBundle): number {
-  return Math.max(0, fees.borrowFeeUsd + fees.openFeeUsd + fees.closingFeeUsd + fees.fundingFeeUsd);
+export function calcRealLiqNetCostUsd(fees: LiqFeeBundle): number {
+  assertFiniteNonNegative("fees.borrowFeeUsd", fees.borrowFeeUsd);
+  assertFiniteNonNegative("fees.openFeeUsd", fees.openFeeUsd);
+  assertFiniteNonNegative("fees.closingFeeUsd", fees.closingFeeUsd);
+  assertFinite("fees.fundingFeeUsd", fees.fundingFeeUsd);
+
+  return fees.borrowFeeUsd + fees.openFeeUsd + fees.closingFeeUsd + fees.fundingFeeUsd;
 }
 
 /**
- * Estimated liquidation price.
+ * Fee bundle (USD) of the VIEW estimate `view.move::calculate_est_liq_price`:
  *
- * Matches `calculate_est_liq_price` in `waterx_perp_view/sources/view.move`:
+ *   viewFeesUsd = max(0, borrowFeeUsd + openFeeUsd + fundingFeeUsd)
+ *
+ * Mirrors the view's unsigned Float arithmetic: funding income is credited
+ * via `Float.saturating_sub`, so the bundle FLOORS AT 0 — income beyond the
+ * other fees is discarded by the view. There is deliberately NO
+ * `closingFeeUsd` field: the view omits the close-fee term, and this shape
+ * makes it structurally impossible to include one. For the REAL liquidation
+ * check's semantics use `calcRealLiqNetCostUsd`; for chain-bit-identical
+ * output use `calcEstLiqPriceRaw`.
+ *
+ * @throws RangeError when borrow/open fees are not finite `>= 0` numbers, or
+ *   `fundingFeeUsd` is not finite.
+ */
+export function calcViewEstLiqFeesUsd(fees: {
+  borrowFeeUsd: number;
+  openFeeUsd: number;
+  /** SIGNED, cost-positive: > 0 owed, < 0 income (bundle floors at 0). */
+  fundingFeeUsd: number;
+}): number {
+  assertFiniteNonNegative("fees.borrowFeeUsd", fees.borrowFeeUsd);
+  assertFiniteNonNegative("fees.openFeeUsd", fees.openFeeUsd);
+  assertFinite("fees.fundingFeeUsd", fees.fundingFeeUsd);
+
+  return Math.max(0, fees.borrowFeeUsd + fees.openFeeUsd + fees.fundingFeeUsd);
+}
+
+/**
+ * Estimated liquidation price — Number (f64) UI convenience.
+ *
+ * An approximation for display. The CANONICAL implementation is
+ * `calcEstLiqPriceRaw` (BigInt fixed-point, op-for-op mirror of
+ * `calculate_est_liq_price` in `waterx_perp_view/sources/view.move`); use that
+ * wherever exact parity with the on-chain `est_liq_price` matters.
+ *
+ * Same linear model as the view:
  *   maintenance = maintenanceMarginRate × (size × spotPrice)   ← uses current notional
  *   ratio       = (collateralUsd − totalFeesUsd − maintenance) / (size × avgPrice)
  *   long:  liq  = avgPrice × (1 − ratio)
@@ -102,14 +170,23 @@ export function calcLiqFeeBundleUsd(fees: LiqFeeBundle): number {
  * Returns 0 when the position is already liquidatable or has no size.
  *
  * Fees — pass EITHER:
- * - `fees`: the structured bundle. `totalFeesUsd` is derived via
- *   `calcLiqFeeBundleUsd` (the saturating rule — funding income credited,
- *   floored at 0; see its doc for the Move semantics), so a caller
- *   structurally cannot forget the floor or omit a term. `fees.fundingFeeUsd`
- *   is SIGNED cost-positive (< 0 = income). Takes precedence when both are
- *   given; or
- * - `totalFeesUsd`: a pre-computed sum of accrued fees in USD (back-compat
- *   path) — the caller is responsible for the saturating rule.
+ * - `fees`: the structured bundle, matching the REAL liquidation check
+ *   (`position.move::is_liquidatable`). `totalFeesUsd` is derived via
+ *   `calcRealLiqNetCostUsd` — a SIGNED sum including the closing fee, with
+ *   funding income credited IN FULL, so a caller structurally cannot omit a
+ *   term or mis-handle income. A negative net cost ADDS to the remaining
+ *   margin, pushing the estimate FARTHER from spot. Takes precedence when
+ *   both are given; or
+ * - `totalFeesUsd`: a pre-computed number (back-compat path) — the caller
+ *   owns the fee model.
+ * NOTE the deliberate model difference vs the on-chain VIEW: the view both
+ * floors its fee bundle at 0 and omits the close fee (`calcViewEstLiqFeesUsd`
+ * / `calcEstLiqPriceRaw`); the `fees` path here matches the REAL check.
+ *
+ * @throws RangeError when sizeInAsset / avgPrice / spotPrice / collateralUsd
+ *   are not finite `>= 0` numbers, when `maintenanceMarginRate` is not finite
+ *   inside `[0, 1]`, or when `totalFeesUsd` is not finite.
+ *   (`sizeInAsset === 0` stays a documented domain case returning 0.)
  */
 export function calcEstLiqPrice(
   params: {
@@ -125,8 +202,23 @@ export function calcEstLiqPrice(
   ),
 ): number {
   const { isLong, avgPrice, sizeInAsset, collateralUsd, maintenanceMarginRate, spotPrice } = params;
-  const totalFeesUsd =
-    params.fees !== undefined ? calcLiqFeeBundleUsd(params.fees) : (params.totalFeesUsd ?? 0);
+  assertFiniteNonNegative("sizeInAsset", sizeInAsset);
+  assertFiniteNonNegative("avgPrice", avgPrice);
+  assertFiniteNonNegative("spotPrice", spotPrice);
+  assertFiniteNonNegative("collateralUsd", collateralUsd);
+  assertFinite("maintenanceMarginRate", maintenanceMarginRate);
+  if (maintenanceMarginRate < 0 || maintenanceMarginRate > 1) {
+    throw new RangeError(
+      `maintenanceMarginRate must be within [0, 1], got ${maintenanceMarginRate}`,
+    );
+  }
+  let totalFeesUsd: number;
+  if (params.fees !== undefined) {
+    totalFeesUsd = calcRealLiqNetCostUsd(params.fees);
+  } else {
+    totalFeesUsd = params.totalFeesUsd ?? 0;
+    assertFinite("totalFeesUsd", totalFeesUsd);
+  }
   if (sizeInAsset === 0) return 0;
 
   const entryNotional = sizeInAsset * avgPrice;
@@ -141,6 +233,151 @@ export function calcEstLiqPrice(
     return avgPrice * (1 - ratio);
   }
   return avgPrice * (1 + ratio);
+}
+
+// ======== Move Float mirrors (internal) ========
+// `bucket_v2_framework::float` — UNSIGNED u128 fixed-point at 1e9 where every
+// operation truncates via integer division. These mirror exactly the ops
+// `calcEstLiqPriceRaw` needs. Move's overflow aborts are not mirrored: JS
+// BigInt cannot overflow, and an input that would abort on chain has no
+// chain-produced value to be compared against.
+
+/** `float::from_fraction(n, m)` — `(n × 1e9) / m`, truncating. */
+const floatFromFraction = (n: bigint, m: bigint): bigint => (n * FLOAT_SCALE) / m;
+
+/** `float::mul(a, b)` — `(a × b) / 1e9`, truncating. */
+const floatMul = (a: bigint, b: bigint): bigint => (a * b) / FLOAT_SCALE;
+
+/** `float::div(a, b)` — `(a × 1e9) / b`, truncating. */
+const floatDiv = (a: bigint, b: bigint): bigint => (a * FLOAT_SCALE) / b;
+
+/**
+ * `waterx_perp::math::amount_to_usd(amount, decimal, price)` — the exact
+ * two-step composition `from_fraction(amount, 10^decimal).mul(price)`, each
+ * step truncating independently (NOT algebraically merged).
+ */
+const amountToUsdRaw = (amountRaw: bigint, pow10: bigint, priceRaw: bigint): bigint =>
+  floatMul(floatFromFraction(amountRaw, pow10), priceRaw);
+
+/**
+ * Estimated liquidation price — CANONICAL raw fixed-point implementation.
+ *
+ * Op-for-op mirror of `calculate_est_liq_price` in
+ * `waterx_perp_view/sources/view.move` under `bucket_v2_framework::float`
+ * semantics: unsigned 1e9 fixed-point, every `mul` is `(a×b)/1e9` and every
+ * `div` is `(a×1e9)/b` with truncating BigInt division at EACH step,
+ * including `math::amount_to_usd`'s exact composition, the u64 addition of
+ * borrow + open fee BEFORE the USD conversion, and the `saturating_sub`
+ * funding credit (the VIEW model: fee bundle floors at 0, close fee omitted).
+ * Given the same raw inputs the view receives, the result is bit-identical to
+ * the chain's `PositionData.est_liq_price`.
+ *
+ * The Number `calcEstLiqPrice` is a UI convenience approximation of this
+ * canonical form (and its `fees` path models the REAL liquidation check
+ * instead of the view — see `calcRealLiqNetCostUsd`).
+ *
+ * Inputs are the raw on-chain values exactly as the view takes them.
+ * Returns the raw 1e9-scaled u128 price; `0n` = already liquidatable /
+ * zero size (the view's N/A signal).
+ *
+ * @throws RangeError when any bigint input is negative or
+ *   `collateralDecimal` is not an integer in `[0, 19]` (u64 `10^decimal`).
+ */
+export function calcEstLiqPriceRaw(params: {
+  isLong: boolean;
+  /** `PositionData.size` — raw 1e9-scaled Float value. */
+  sizeRaw: bigint;
+  /** `PositionData.average_price` — raw 1e9-scaled Float value. */
+  avgPriceRaw: bigint;
+  /** `PositionData.collateral_amount` — raw collateral token units. */
+  collateralAmountRaw: bigint;
+  /** `PositionData.collateral_decimal`. */
+  collateralDecimal: number;
+  /** Whole-dollar u64 base price — the exact value passed to the view (pre `float::from`). */
+  basePriceUsd: bigint;
+  /** Whole-dollar u64 collateral price — the exact value passed to the view (pre `float::from`). */
+  collateralPriceUsd: bigint;
+  /** `MarketData.maintenance_margin` — raw 1e9-scaled Float value. */
+  maintenanceMarginRaw: bigint;
+  /** `PositionData.borrow_fee` (accrued + unrealized, pre-combined by the view) — raw collateral units. */
+  borrowFeeRaw: bigint;
+  /** `PositionData.funding_fee_positive` — true when the position owes funding. */
+  fundingSign: boolean;
+  /** `PositionData.funding_fee` magnitude — raw collateral units. */
+  fundingFeeRaw: bigint;
+  /** `PositionData.unrealized_trading_fee` (open fee) — raw collateral units. */
+  tradingFeeRaw: bigint;
+}): bigint {
+  const {
+    isLong,
+    sizeRaw,
+    avgPriceRaw,
+    collateralAmountRaw,
+    collateralDecimal,
+    basePriceUsd,
+    collateralPriceUsd,
+    maintenanceMarginRaw,
+    borrowFeeRaw,
+    fundingSign,
+    fundingFeeRaw,
+    tradingFeeRaw,
+  } = params;
+  assertUnsignedBigInt("sizeRaw", sizeRaw);
+  assertUnsignedBigInt("avgPriceRaw", avgPriceRaw);
+  assertUnsignedBigInt("collateralAmountRaw", collateralAmountRaw);
+  assertUnsignedBigInt("basePriceUsd", basePriceUsd);
+  assertUnsignedBigInt("collateralPriceUsd", collateralPriceUsd);
+  assertUnsignedBigInt("maintenanceMarginRaw", maintenanceMarginRaw);
+  assertUnsignedBigInt("borrowFeeRaw", borrowFeeRaw);
+  assertUnsignedBigInt("fundingFeeRaw", fundingFeeRaw);
+  assertUnsignedBigInt("tradingFeeRaw", tradingFeeRaw);
+  if (!Number.isInteger(collateralDecimal) || collateralDecimal < 0 || collateralDecimal > 19) {
+    throw new RangeError(
+      `collateralDecimal must be an integer in [0, 19], got ${collateralDecimal}`,
+    );
+  }
+
+  // float::from(u64) — whole dollars onto the 1e9 grid (exact, no truncation).
+  const basePrice = basePriceUsd * FLOAT_SCALE;
+  const collPrice = collateralPriceUsd * FLOAT_SCALE;
+  const pow10 = 10n ** BigInt(collateralDecimal); // 10u64.pow(collateral_decimal)
+
+  // let entry_notional = p.size().mul(p.average_price());
+  const entryNotional = floatMul(sizeRaw, avgPriceRaw);
+  // let collateral_usd = math::amount_to_usd(p.collateral_amount(), dec, collateral_price);
+  const collateralUsd = amountToUsdRaw(collateralAmountRaw, pow10, collPrice);
+  // let current_notional = p.size().mul(base_price);
+  const currentNotional = floatMul(sizeRaw, basePrice);
+  // let maintenance = maintenance_margin.mul(current_notional);
+  const maintenance = floatMul(maintenanceMarginRaw, currentNotional);
+
+  // let accrued_fees_usd = math::amount_to_usd(borrow_fee + trading_fee, dec, collateral_price);
+  // (u64 addition BEFORE the conversion — one from_fraction over the sum)
+  const accruedFeesUsd = amountToUsdRaw(borrowFeeRaw + tradingFeeRaw, pow10, collPrice);
+  // let funding_fee_usd = math::amount_to_usd(funding_fee, dec, collateral_price);
+  const fundingFeeUsd = amountToUsdRaw(fundingFeeRaw, pow10, collPrice);
+  // owed → add; income → Float.saturating_sub (unsigned: floors at 0)
+  const totalFeesUsd = fundingSign
+    ? accruedFeesUsd + fundingFeeUsd
+    : accruedFeesUsd < fundingFeeUsd
+      ? 0n
+      : accruedFeesUsd - fundingFeeUsd;
+
+  // let deductions = total_fees_usd.add(maintenance);
+  const deductions = totalFeesUsd + maintenance;
+  // if (collateral_usd.lte(deductions) || entry_notional.eq(zero)) return 0
+  if (collateralUsd <= deductions || entryNotional === 0n) return 0n;
+  // let ratio = collateral_usd.sub(deductions).div(entry_notional);
+  const marginRemaining = collateralUsd - deductions;
+  const ratio = floatDiv(marginRemaining, entryNotional);
+
+  if (isLong) {
+    // if (ratio.gte(one)) return 0; else avg.mul(one.sub(ratio))
+    if (ratio >= FLOAT_SCALE) return 0n;
+    return floatMul(avgPriceRaw, FLOAT_SCALE - ratio);
+  }
+  // avg.mul(one.add(ratio))
+  return floatMul(avgPriceRaw, FLOAT_SCALE + ratio);
 }
 
 /**
