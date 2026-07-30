@@ -8,6 +8,8 @@ reference the PR that introduced them.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-07-30
+
 ### Added
 
 - **Split liq-estimate fee models: `calcRealLiqNetCostUsd` (signed) +
@@ -25,11 +27,11 @@ reference the PR that introduced them.
     VIEW estimate (`view.move::calculate_est_liq_price`): `max(0, …)` per the
     view's unsigned `Float.saturating_sub`, with structurally NO closing-fee
     field because the view omits that term.
-  `calcEstLiqPrice` takes EITHER the existing `totalFeesUsd` (unchanged —
-  back-compat for published consumers) or `fees: LiqFeeBundle`, which derives
-  the total via `calcRealLiqNetCostUsd` (REAL model, signed) and takes
-  precedence. (An interim unreleased `calcLiqFeeBundleUsd` that floored the
-  real model at 0 was removed before ever shipping.)
+    `calcEstLiqPrice` takes EITHER the existing `totalFeesUsd` (unchanged —
+    back-compat for published consumers) or `fees: LiqFeeBundle`, which derives
+    the total via `calcRealLiqNetCostUsd` (REAL model, signed) and takes
+    precedence. (An interim unreleased `calcLiqFeeBundleUsd` that floored the
+    real model at 0 was removed before ever shipping.)
 - **`calcEstLiqPriceRaw` — canonical BigInt fixed-point liq price, bit-identical
   to the chain** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
   Op-for-op mirror of `view.move::calculate_est_liq_price` under
@@ -151,12 +153,12 @@ reference the PR that introduced them.
   verify is a single shared PTB step — verifies AND feeds in ONE
   `waterx_rule::collect_batch_latest` call per collector (the Move API bundles
   the two): it rebuilds the signed `BatchPricePayload` in-PTB (`new_batch_payload`
-  + `new_batch_item`/`push_batch_item` per item, byte-identical to what the
-  enclave signed), re-verifies the ed25519 signature, and feeds the item matching
-  `collector.symbol()`. Being the dual-rule collect path, a waterx-routed ticker
-  composes onto the same collector as Pyth/Supra; on-chain a freshness miss /
-  replayed timestamp ABSTAINS so the other weighted rules cover, while a
-  config/integrity mismatch or bad signature aborts.
+  - `new_batch_item`/`push_batch_item` per item, byte-identical to what the
+    enclave signed), re-verifies the ed25519 signature, and feeds the item matching
+    `collector.symbol()`. Being the dual-rule collect path, a waterx-routed ticker
+    composes onto the same collector as Pyth/Supra; on-chain a freshness miss /
+    replayed timestamp ABSTAINS so the other weighted rules cover, while a
+    config/integrity mismatch or bad signature aborts.
 
   Wiring mirrors `PythLazerRule`: `WaterxRule` is registered in `rule-registry.ts`
   and routed by the client's `oracleSource` option alone (never a config
