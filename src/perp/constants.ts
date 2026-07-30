@@ -1,30 +1,18 @@
 // Perp-line domain constants (trading permissions / order tags / action codes /
-// fee rates / well-known addresses). Re-exports the shared primitives from
+// well-known addresses). Re-exports the shared primitives from
 // `../constants.ts` so perp code and the `./perp` barrel get the full set from
 // a single import.
+//
+// NOTE: there are deliberately NO fee-rate / maintenance-margin constants here.
+// `CRYPTO_FEE_RATE` / `STOCK_FEE_RATE` / `MAINTENANCE_MARGIN_RATE` were removed
+// — they were defaults masquerading as truth; per-market `MarketConfig` on
+// chain is the only source for fee and margin parameters (real MMRs span
+// 0.5%–5%; the flat 1.5% understated AAPLX-class risk >3x — mainnet incident
+// 2026-07-28: shorts displayed liq ~$364 but were liquidated at ~$343). When
+// the market rate is unavailable, treat the value as NOT estimable and fail
+// safe — never substitute a flat default.
 
 export * from "../constants.ts";
-
-// ======== Fee rates & risk parameters ========
-/** Default crypto market trading fee rate (3 bps). Per-market value lives in MarketConfig. */
-export const CRYPTO_FEE_RATE = 0.0003;
-/** Default stock / commodity market trading fee rate (5 bps). Per-market value lives in MarketConfig. */
-export const STOCK_FEE_RATE = 0.0005;
-/**
- * @deprecated Do NOT use for liquidation-price or margin-safety math — there is
- * no safe flat fallback.
- *
- * The real maintenance margin rate is PER MARKET (`MarketConfig.maintenance_margin`
- * on chain — e.g. 1% for SUIUSD but 5% for AAPLXUSD) and is admin-adjustable.
- * Computing est. liq price with this flat 1.5% understates risk on stock markets
- * by >3x (mainnet incident 2026-07-28: AAPLX shorts displayed liq ~$364 but were
- * liquidated at $343). Always pass the market's actual rate into `calcEstLiqPrice`.
- * When the market rate is unavailable, treat the liq price as NOT estimable
- * (surface "cannot estimate" / fail safe) — never substitute this constant.
- * Kept only for source-compatibility until all consumers drop their imports;
- * scheduled for removal.
- */
-export const MAINTENANCE_MARGIN_RATE = 0.015;
 
 // ======== Permission Bitmasks (matches account_data.move) ========
 export const PERM_OPEN_POSITION = 1;

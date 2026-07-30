@@ -49,24 +49,50 @@ type Outcome =
   | { kind: "ok" }
   | { kind: "expected"; abortCode?: string; details: string }
   | { kind: "sdk-error"; error: unknown }
-  | { kind: "build-error"; error: unknown };
+  | { kind: "build-error"; error: unknown }
+  | { kind: "unknown"; details: string };
 
+const OK = "\x1b[32mOK\x1b[0m       ";
+const EXPECTED = "\x1b[33mEXPECTED\x1b[0m ";
+const FAIL = "\x1b[31mFAIL\x1b[0m     ";
+
+/**
+ * One table per outcome kind — how it prints, and whether it fails the run. Both
+ * in one place so a new kind cannot print FAIL while quietly exiting 0.
+ */
+const KINDS: Record<Outcome["kind"], { tag: string; isError: boolean }> = {
+  ok: { tag: OK, isError: false },
+  expected: { tag: EXPECTED, isError: false },
+  "sdk-error": { tag: FAIL, isError: true },
+  "build-error": { tag: FAIL, isError: true },
+  unknown: { tag: FAIL, isError: true },
+};
+
+/**
+ * Every outcome the run produced, in order. The exit code is derived from this
+ * ONCE at the end — never counted inside the printer, which must stay pure so
+ * printing the same outcome twice cannot double-count it.
+ */
+const outcomes: Outcome[] = [];
+
+function detailOf(o: Outcome): string {
+  switch (o.kind) {
+    case "ok":
+      return "simulate succeeded";
+    case "expected":
+      return `${o.details}${o.abortCode ? ` (abort ${o.abortCode})` : ""}`;
+    case "sdk-error":
+      return `SDK simulate error: ${String(o.error)}`;
+    case "build-error":
+      return `builder crashed: ${String(o.error)}`;
+    case "unknown":
+      return `unrecognized simulate response: ${o.details}`;
+  }
+}
+
+/** Pure printer — records nothing, so printing twice cannot skew the tally. */
 function describeOutcome(name: string, o: Outcome): void {
-  const tag =
-    o.kind === "ok"
-      ? "\x1b[32mOK\x1b[0m       "
-      : o.kind === "expected"
-        ? "\x1b[33mEXPECTED\x1b[0m "
-        : "\x1b[31mFAIL\x1b[0m     ";
-  const detail =
-    o.kind === "ok"
-      ? "simulate succeeded"
-      : o.kind === "expected"
-        ? `${o.details}${o.abortCode ? ` (abort ${o.abortCode})` : ""}`
-        : o.kind === "sdk-error"
-          ? `SDK simulate error: ${String(o.error)}`
-          : `builder crashed: ${String(o.error)}`;
-  console.log(`${tag} ${name.padEnd(40)} ${detail}`);
+  console.log(`${KINDS[o.kind].tag} ${name.padEnd(40)} ${detailOf(o)}`);
 }
 
 interface SimMoveAbort {
@@ -104,28 +130,41 @@ function classifySim(result: SimResult): Outcome {
     }
     return { kind: "expected", abortCode: code, details: msg };
   }
-  // No FailedTransaction wrapper — treat as success.
-  return { kind: "ok" };
+  // Success requires a recognized executed-transaction shape. An unrecognized
+  // response (e.g. an API change or an error variant this classifier does not
+  // know) must NOT silently count as green.
+  if (result.commandResults !== undefined) {
+    return { kind: "ok" };
+  }
+  return {
+    kind: "unknown",
+    details: `$kind=${String(result.$kind)} without commandResults`,
+  };
 }
 
+/** Runs one case and records exactly one outcome for it. */
 async function runCase(
   client: PerpClient,
   name: string,
   build: () => Promise<Transaction> | Transaction,
 ): Promise<void> {
+  const record = (o: Outcome): void => {
+    outcomes.push(o);
+    describeOutcome(name, o);
+  };
   let tx: Transaction;
   try {
     tx = await build();
   } catch (e) {
-    describeOutcome(name, { kind: "build-error", error: e });
+    record({ kind: "build-error", error: e });
     return;
   }
   try {
     tx.setSender(FAKE_SENDER);
     const sim = (await client.simulate(tx)) as unknown as SimResult;
-    describeOutcome(name, classifySim(sim));
+    record(classifySim(sim));
   } catch (e) {
-    describeOutcome(name, { kind: "sdk-error", error: e });
+    record({ kind: "sdk-error", error: e });
   }
 }
 
@@ -369,12 +408,20 @@ async function main(): Promise<void> {
     const refer = await getRefererFor(client, FAKE_SENDER);
     console.log(`  getRefererFor(FAKE_SENDER)         ${refer ?? "(none)"}`);
   } catch (e) {
+    outcomes.push({ kind: "sdk-error", error: e });
     console.log(`  read FAIL: ${String(e).slice(0, 200)}`);
   }
 
   // Perm constant sanity (no on-chain bit, just makes sure the enum survived).
   console.log(`\n  PERM_ALL_TRADING = 0x${PERM_ALL_TRADING.toString(16)}`);
-  console.log("Smoke run complete.");
+  // Error outcomes fail the run — a smoke script must not exit 0 on them.
+  const errorOutcomes = outcomes.filter((o) => KINDS[o.kind].isError).length;
+  if (errorOutcomes > 0) {
+    console.log(`Smoke run FAILED: ${errorOutcomes} error outcome(s).`);
+    process.exitCode = 1;
+  } else {
+    console.log("Smoke run complete.");
+  }
 }
 
 main().catch((e) => {

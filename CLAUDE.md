@@ -114,8 +114,10 @@ const perp = await PerpClient.create("TESTNET", { waterxConfigUrl: process.env.W
 
 `src/constants.ts` holds only shared, line-agnostic primitives (`Network`,
 `FLOAT_SCALE` / `BPS_SCALE` / `DOUBLE_SCALE`, decimals, `MS_PER_YEAR`). Perp-domain
-enums (`PERM_*`, `ORDER_*`, `ACTION_*`, fee rates) live in `src/perp/constants.ts`,
-which re-exports the shared ones. Both stay **chain-agnostic**.
+enums (`PERM_*`, `ORDER_*`, `ACTION_*`) live in `src/perp/constants.ts`,
+which re-exports the shared ones. Both stay **chain-agnostic**. There are
+deliberately **no fee-rate / maintenance-margin constants** — per-market
+`MarketConfig` on chain is the only source for those values.
 
 ## Development Commands
 
@@ -248,7 +250,7 @@ src/
     funding/         credit.ts custody.ts wormhole.ts balance.ts consolidate.ts
   utils/  generated/   shared helpers (math/config/pyth-less) / codegen
   perp/              ← perp product line (was the src/ root)
-    client.ts  config.ts  config-view.ts  constants.ts
+    client.ts  config.ts  config-view.ts  constants.ts  liq-view.ts
     fetch.ts  tx-builders.ts  index.ts  user/
   prediction/        ← prediction product line (client.ts, config.ts, constants.ts, …)
 ```
@@ -261,7 +263,8 @@ src/
 - **`perp/config.ts`** — `WaterXConfig` schema (perp/wlp/staking packages; `WaterXPackages extends AccountPackages, OraclePackages`), `loadConfig()` (URL from the `waterxConfigUrl` opt only — no env fallback, no default; throws when unset), `clearConfigCache()`. The account/funding/referral package types live in `account/config.ts`; the oracle-rule package types + `PythInfraConfig`/`PYTH_DEFAULTS` live in `oracle/config.ts` (shared infra — `OracleHost` depends on its `OracleConfig`, not on `perp/`). Both are re-exported here for back-compat.
 - **`perp/client.ts`** — `PerpClient` (the perp sub-client; formerly `WaterXClient`) with async `static create(network, opts)`. Extends `BaseLineClient`; delegates config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) to `perp/config-view.ts`. Reached as `client.perp` on the umbrella.
 - **`perp/config-view.ts`** — `PerpConfigView`: the canonical-schema lookups split off the transport client; pure, no gRPC.
-- **`perp/constants.ts`** — perp-domain enums (permission bitmasks / order tags / action codes / fee rates); re-exports the shared primitives from `../constants.ts` (incl. `DRY_RUN_SENDER`, the line-agnostic zero-address simulate sender) and `ACCUMULATOR_ROOT` from `account/constants.ts`.
+- **`perp/liq-view.ts`** — `calcEstLiqPriceRawFromView(position, opts)`: maps a fetched `PositionDataView` row onto `utils/math.ts::calcEstLiqPriceRaw`'s twelve raw fields (nine off the row, three off `opts`), and carries the invariant that `opts.basePriceUsd` / `opts.collateralPriceUsd` MUST be the prices the row was read at (the row does not carry them, so nothing can check it). Lives perp-side, not in `utils/math.ts`: `PositionDataView` is a perp read type and importing it into the shared `utils/` base would invert the `perp/ → utils/` direction. Pure mapping, no client — hence separate from `perp/fetch/`, which is transport.
+- **`perp/constants.ts`** — perp-domain enums (permission bitmasks / order tags / action codes). Deliberately **no fee-rate / maintenance-margin constants** — per-market on-chain `MarketConfig` is the only source for those (see the note above); re-exports the shared primitives from `../constants.ts` (incl. `DRY_RUN_SENDER`, the line-agnostic zero-address simulate sender) and `ACCUMULATOR_ROOT` from `account/constants.ts`.
 - **`perp/user/`** — low-level builders (one moveCall per file):
   - `account.ts` — wxa account: `createAccount`, `setAlias`, delegate management, `requestDeposit`, `requestWithdraw`, `transferToAccount`.
   - `trading.ts` — `closePositionRequest`, `increasePositionRequest`, `decreasePositionRequest`, `depositCollateralRequest`, `withdrawCollateralRequest`, `executeTrading`, keepers (`liquidate`, `batchLiquidate`, `matchOrders`, `updateFundingRate`, `openPositionByKeeper`, `closePositionByKeeper`).

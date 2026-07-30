@@ -522,7 +522,7 @@ describe("tx-builders (v3)", () => {
           evmToken: "0x2222222222222222222222222222222222222222",
         },
       }),
-    ).toThrow(/u16 \(0\.\.65535\)/);
+    ).toThrow(/evmDestinationChain must be an integer in \[0, 65535\] \(u16\)/);
   });
 
   it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", () => {

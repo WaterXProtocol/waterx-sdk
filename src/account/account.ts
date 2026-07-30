@@ -18,6 +18,7 @@ import type {
 } from "@mysten/sui/transactions";
 
 import * as wxa from "../generated/waterx_account/account.ts";
+import { toU64 } from "../utils/validate.ts";
 import { makeSenderRequest } from "./account-request.ts";
 import type { WxaClientLike } from "./client.ts";
 import { ACCUMULATOR_ROOT } from "./constants.ts";
@@ -317,7 +318,7 @@ export function requestWithdraw(
       registry: tx.object(client.config.packages.waterx_account.account_registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      amount: params.amount,
+      amount: toU64(params.amount, "amount"),
       recipient: params.recipient,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
     },

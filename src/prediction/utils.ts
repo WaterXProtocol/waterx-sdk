@@ -4,6 +4,7 @@ import {
   type TransactionObjectArgument,
 } from "@mysten/sui/transactions";
 
+import { toU64 } from "../utils/validate.ts";
 import type { PredictClient } from "./client.ts";
 import { CLOCK_OBJECT_ID } from "./constants.ts";
 import type {
@@ -17,7 +18,7 @@ import type {
 
 const SELECTIONS: readonly Selection[] = ["YES", "NO"];
 const OUTCOMES: readonly Outcome[] = ["YES", "NO", "INVALID"];
-const U64_MAX = (1n << 64n) - 1n;
+const DECIMAL_INT_RE = /^\d+$/;
 
 export function assertSelection(value: string): Selection {
   if (SELECTIONS.includes(value as Selection)) return value as Selection;
@@ -71,36 +72,34 @@ export function resolveGlobalConfig(client: PredictClient, globalConfig?: string
   return globalConfig === undefined || globalConfig === "" ? client.globalConfigId() : globalConfig;
 }
 
-/** Ensures `value` is a valid unsigned 64-bit integer. */
-export function assertU64(value: bigint, name = "value"): bigint {
-  if (value < 0n) {
-    throw new Error(`${name} must be non-negative, got ${value}`);
-  }
-  if (value > U64_MAX) {
-    throw new Error(`${name} exceeds u64 max (${U64_MAX}), got ${value}`);
-  }
-  return value;
+/**
+ * Ensures `value` is a valid unsigned 64-bit integer.
+ *
+ * Thin alias for the shared `utils/validate.toU64` — the u64 domain rule
+ * (bigint range check; a `number` must be a NON-NEGATIVE SAFE integer, since
+ * `2^53 + 2` passes `isInteger` yet has already lost f64 precision and would
+ * BCS-encode a silently-wrong value) is authored ONCE there for both product
+ * lines. Throws `RangeError` (a subclass of `Error`) naming the parameter.
+ */
+export function assertU64(value: bigint | number, name = "value"): bigint {
+  return toU64(value, name);
 }
 
+/** Normalize a u64-ish input (bigint / number / decimal string) to a checked `bigint`. */
 export function toBigInt(value: bigint | number | string): bigint {
-  if (typeof value === "bigint") {
-    return assertU64(value);
-  }
+  if (typeof value !== "string") return assertU64(value);
 
-  if (typeof value === "number") {
-    if (!Number.isInteger(value)) {
-      throw new Error(`Invalid integer: ${value}`);
-    }
-    return assertU64(BigInt(value));
-  }
-
+  // String is the one form the shared guard does not cover: digits parse exactly
+  // past the 2^53 f64 cliff, so the shape check lives here and the numeric
+  // domain still funnels through assertU64.
   const trimmed = value.trim();
   if (trimmed === "") {
-    throw new Error("Invalid integer: empty string");
+    throw new RangeError("Invalid integer: empty string");
   }
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error(`Invalid integer: ${JSON.stringify(value)}`);
+  if (!DECIMAL_INT_RE.test(trimmed)) {
+    throw new RangeError(`Invalid integer: ${JSON.stringify(value)}`);
   }
+
   return assertU64(BigInt(trimmed));
 }
 
@@ -210,8 +209,8 @@ export function optionU64(value: bigint | number | string | null | undefined): T
 function formatObjectVersion(version: string | bigint | number): string {
   if (typeof version === "string") {
     const trimmed = version.trim();
-    if (trimmed === "" || !/^\d+$/.test(trimmed)) {
-      throw new Error(`Invalid object version: ${JSON.stringify(version)}`);
+    if (trimmed === "" || !DECIMAL_INT_RE.test(trimmed)) {
+      throw new RangeError(`Invalid object version: ${JSON.stringify(version)}`);
     }
     return trimmed;
   }

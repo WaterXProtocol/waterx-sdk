@@ -7,13 +7,14 @@
  *   WATERX_CURSOR=10 WATERX_PAGE_SIZE=50 ... examples/...
  */
 import { buildClient, dump, run } from "../_shared.ts";
-import { getMarketPositions } from "../../src/perp/fetch.ts";
-import { rawPrice } from "../../src/utils/math.ts";
+import { getMarketPositions, parseWholeDollarU64 } from "../../src/perp/fetch.ts";
 
 run(async () => {
   const client = await buildClient();
   const ticker = process.env.WATERX_TICKER ?? "BTCUSD";
-  const basePriceUsd = rawPrice(Number(process.env.WATERX_BASE_PRICE_USD ?? "0"));
+  // whole-dollar u64 — the view applies float::from; do NOT pass 1e9-scaled rawPrice().
+  // parseWholeDollarU64 throws on fractional input instead of silently rounding.
+  const basePriceUsd = parseWholeDollarU64(process.env.WATERX_BASE_PRICE_USD ?? "0");
   const cursor = BigInt(process.env.WATERX_CURSOR ?? "0");
   const pageSize = BigInt(process.env.WATERX_PAGE_SIZE ?? "100");
 

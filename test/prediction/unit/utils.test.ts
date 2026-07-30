@@ -70,6 +70,20 @@ describe("toBigInt", () => {
     expect(() => toBigInt("not-a-number")).toThrow();
   });
 
+  it("rejects unsafe integers (>= 2^53) — f64 has already lost precision", () => {
+    // 2^53 + 2 passes Number.isInteger but is NOT exactly representable; it
+    // previously slipped through and BigInt() encoded a silently-wrong value.
+    // The safe-integer rule is the shared `utils/validate.toU64` one, so the
+    // number path throws that RangeError text.
+    expect(() => toBigInt(2 ** 53 + 2)).toThrow(/safe integer/);
+    expect(() => toBigInt(2 ** 53)).toThrow(/safe integer/);
+    // The largest safe integer still passes.
+    expect(toBigInt(Number.MAX_SAFE_INTEGER)).toBe(9_007_199_254_740_991n);
+    // bigint / string paths are unaffected by the f64 cliff.
+    expect(toBigInt(9_007_199_254_740_993n)).toBe(9_007_199_254_740_993n);
+    expect(toBigInt("9007199254740993")).toBe(9_007_199_254_740_993n);
+  });
+
   it("rejects empty and whitespace strings", () => {
     expect(() => toBigInt("")).toThrow(/empty string/);
     expect(() => toBigInt("  ")).toThrow(/empty string/);

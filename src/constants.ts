@@ -1,6 +1,6 @@
 // Shared, line-agnostic primitives (network id, scaling, decimals, time).
-// Perp-domain enums (permissions / order tags / action codes / fee rates) live
-// in `perp/constants.ts`; prediction has its own `prediction/constants.ts`.
+// Perp-domain enums (permissions / order tags / action codes) live in
+// `perp/constants.ts`; prediction has its own `prediction/constants.ts`.
 
 // ======== Network ========
 export type Network = "MAINNET" | "TESTNET";
@@ -20,7 +20,19 @@ export const DOUBLE_SCALE = 1_000_000_000_000_000_000n;
 export const SUI_DECIMALS = 9;
 /** WLP LP-token decimals. */
 export const WLP_DECIMALS = 6;
-/** Shared decimals for trading collateral / WLP backing assets (USDC, USDSUI). */
+/**
+ * Decimals for **collateral-typed** values only: the CREDIT/wxUSD internal
+ * balance and the USD-pegged trading collateral (USDC, USDSUI). All current
+ * collateral and the CREDIT coin are 6-dec, and the config JSON carries no
+ * credit decimal, so this constant is the single source for the CREDIT scale.
+ *
+ * Do NOT use it for custody **backing assets** — those carry a per-asset
+ * `decimal` in config (`NativeCustodyAsset.decimal`), threaded through
+ * `probeParkedBackingAssets` → `sumParkedBackingAsCreditRaw`. If a 9-dec
+ * backing asset ever lists, a path that assumed flat 6 for it would mis-scale
+ * its parked balance by 1000×; only a change to the CREDIT coin itself (or a
+ * non-6-dec collateral listing) would require touching this constant.
+ */
 export const COLLATERAL_DECIMALS = 6;
 
 /**
@@ -37,6 +49,8 @@ export const TOKEN_DECIMALS = {
 } as const satisfies Record<string, number>;
 
 // ======== Time ========
+export const MS_PER_MINUTE = 60 * 1000;
+export const MS_PER_HOUR = 60 * 60 * 1000;
 export const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
 
 // ======== Well-known addresses ========

@@ -4,7 +4,7 @@
 import { getAccountData, getAccountOrders, getAccountPositions } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
+import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import type { FundedProbe } from "../helpers/e2e/e2e-funded-probe.ts";
 import { loadFundedProbe } from "../helpers/e2e/e2e-funded-probe.ts";
 
@@ -31,7 +31,8 @@ describe(`read account (${e2eNetwork})`, () => {
     const positions = await getAccountPositions(client, {
       ticker: "BTCUSD",
       accountObjectAddress: p.accountId,
-      basePriceUsd: rawPrice(50_000),
+      // whole-dollar u64 — the view applies float::from; do NOT pass 1e9-scaled rawPrice()
+      basePriceUsd: 50_000n,
       collateralPriceUsd: 1n,
     });
     expect(Array.isArray(positions)).toBe(true);
@@ -46,7 +47,8 @@ describe(`read account (${e2eNetwork})`, () => {
     const orders = await getAccountOrders(client, {
       ticker: "BTCUSD",
       accountObjectAddress: p.accountId,
-      basePriceUsd: rawPrice(50_000),
+      // whole-dollar u64 — the view applies float::from; do NOT pass 1e9-scaled rawPrice()
+      basePriceUsd: 50_000n,
     });
     expect(Array.isArray(orders)).toBe(true);
   }, 120_000);

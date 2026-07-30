@@ -96,6 +96,9 @@ export async function getSpendableCreditBalance(
     probeParkedBackingAssets(client, accountId),
     probeAddressCreditBalance(client, accountId),
   ]);
+  // COLLATERAL_DECIMALS here is the CREDIT/wxUSD *target* scale (collateral-typed;
+  // 6 on all current deployments — config carries no credit decimal). The
+  // per-asset backing decimals come from config via each row's `decimals`.
   const pendingBackingRaw = sumParkedBackingAsCreditRaw(parkedBacking, COLLATERAL_DECIMALS);
   const pendingCreditAtAddressRaw = addressCredit.fundsRaw + addressCredit.coinsRaw;
   const totalRaw = internalRaw + pendingBackingRaw + pendingCreditAtAddressRaw;

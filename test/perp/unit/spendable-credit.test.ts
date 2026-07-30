@@ -121,7 +121,7 @@ describe("getSpendableCreditBalance", () => {
     );
   });
 
-  it("treats failed CREDIT getBalance as zero address CREDIT", async () => {
+  it("propagates a failed CREDIT getBalance instead of reporting an authoritative zero", async () => {
     mockInternalBalance(client, 0n);
     mockConsolidateBalances(client, { backingFunds: "1000" });
     vi.spyOn(client, "getBalance").mockImplementation(async ({ coinType }) => {
@@ -134,9 +134,11 @@ describe("getSpendableCreditBalance", () => {
       return { balance: { addressBalance: "0", coinBalance: "0", balance: "0" } } as never;
     });
 
-    const result = await fetchMod.getSpendableCreditBalance(client, PTB_DUMMY_ACCOUNT_ID);
-    expect(result.pendingCreditAtAddressRaw).toBe(0n);
-    expect(result.pendingBackingRaw).toBe(1_000n);
+    // A swallowed RPC failure used to surface as pendingCreditAtAddressRaw: 0n
+    // — an under-report indistinguishable from a real zero. It must now reject.
+    await expect(fetchMod.getSpendableCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).rejects.toThrow(
+      "rpc down",
+    );
   });
 });
 

@@ -46,11 +46,9 @@ export {
   ACTION_UPDATE_ORDER,
   ACTION_WITHDRAW_COLLATERAL,
   BPS_SCALE,
-  CRYPTO_FEE_RATE,
   DOUBLE_SCALE,
   DRY_RUN_SENDER,
   FLOAT_SCALE,
-  MAINTENANCE_MARGIN_RATE,
   ORDER_LIMIT_BUY,
   ORDER_LIMIT_SELL,
   ORDER_STOP_BUY,
@@ -72,7 +70,8 @@ export {
   STAKING_PERM_REDEEM_STAKE,
   STAKING_PERM_CLAIM_REWARD,
   STAKING_PERM_ALL,
-  STOCK_FEE_RATE,
+  MS_PER_MINUTE,
+  MS_PER_HOUR,
   MS_PER_YEAR,
   SUI_DECIMALS,
   WLP_DECIMALS,
@@ -91,6 +90,7 @@ export {
   calcDynamicFeeBps,
   calcEffectiveCollateralUsd,
   calcEstLiqPrice,
+  calcEstLiqPriceRaw,
   calcFee,
   calcFundingFeeUsd,
   calcFundingRate,
@@ -99,9 +99,11 @@ export {
   calcMaxReducibleCollateralUsd,
   calcNotional,
   calcPositionBorrowFee,
+  calcRealLiqNetCostUsd,
   calcTokenUtilizationBps,
   calcTotalTradingFeeRate,
   calcUnrealizedPnl,
+  calcViewEstLiqFeesUsd,
   calcWlpIncentiveApy,
   calcWlpMintOut,
   calcWlpPrice,
@@ -109,6 +111,10 @@ export {
   decodeFundingIndexDelta,
   rawPrice,
 } from "../utils/math.ts";
+export type { ExactDecimalUsd, LiqFeeBundle, RawPriceInput } from "../utils/math.ts";
+export { formatFundingInterval } from "../utils/format.ts";
+export { calcEstLiqPriceRawFromView } from "./liq-view.ts";
+export type { EstLiqPriceViewOpts } from "./liq-view.ts";
 
 // ======== Transaction builders (user-side) ========
 export * from "./user/index.ts";

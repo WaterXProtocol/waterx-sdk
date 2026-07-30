@@ -17,9 +17,11 @@ import {
   calcMaxReducibleCollateralUsd,
   calcNotional,
   calcPositionBorrowFee,
+  calcRealLiqNetCostUsd,
   calcTokenUtilizationBps,
   calcTotalTradingFeeRate,
   calcUnrealizedPnl,
+  calcViewEstLiqFeesUsd,
   calcWlpIncentiveApy,
   calcWlpMintOut,
   calcWlpPrice,
@@ -28,10 +30,36 @@ import {
   rawPrice,
 } from "../../../src/utils/math.ts";
 
+/** Full `LiqFeeBundle` at zero — spread it and set only the field under test. */
+const ZERO_FEES = {
+  borrowFeeUsd: 0,
+  openFeeUsd: 0,
+  closingFeeUsd: 0,
+  fundingFeeUsd: 0,
+} as const;
+
 describe("rawPrice", () => {
   it("scales USD to 1e9 fixed-point", () => {
     expect(rawPrice(50_000)).toBe(50_000_000_000_000n);
     expect(rawPrice("1.5")).toBe(1_500_000_000n);
+  });
+
+  it("string path parses exactly onto the 1e9 grid — no f64 round-trip", () => {
+    // 2^53 + 1 raw units: not representable as a double, so only the string
+    // path can produce it exactly (the number path would round it).
+    expect(rawPrice("9007199.254740993")).toBe(9_007_199_254_740_993n);
+    // Well beyond the ~$9,007,199 f64 cliff, still exact.
+    expect(rawPrice("123456789012.123456789")).toBe(123_456_789_012_123_456_789n);
+    expect(rawPrice(" 42 ")).toBe(42_000_000_000n);
+    expect(rawPrice("0.000000001")).toBe(1n);
+  });
+
+  it("string path rejects malformed input and >9 decimals", () => {
+    expect(() => rawPrice("1.2.3")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("1e9")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("-5")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("")).toThrow(/Invalid USD price/);
+    expect(() => rawPrice("1.1234567891")).toThrow(/more than 9 decimal places/);
   });
 
   it("throws on non-finite USD input", () => {
@@ -163,6 +191,155 @@ describe("calcEstLiqPrice", () => {
     });
     expect(withFees).toBeGreaterThan(withoutFees);
   });
+
+  const FEES_PATH_BASE = {
+    isLong: true,
+    avgPrice: 100,
+    sizeInAsset: 1,
+    collateralUsd: 50,
+    maintenanceMarginRate: 0.015,
+    spotPrice: 100,
+  };
+
+  it("fees path equals the equivalent explicit totalFeesUsd (signed, unfloored)", () => {
+    const fees = { borrowFeeUsd: 3, openFeeUsd: 2, closingFeeUsd: 1, fundingFeeUsd: -4 };
+    expect(calcRealLiqNetCostUsd(fees)).toBe(2);
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, fees })).toBe(
+      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: calcRealLiqNetCostUsd(fees) }),
+    );
+  });
+
+  it("income beyond all fees goes NEGATIVE and pushes the long liq price FARTHER from spot", () => {
+    // REAL model: is_liquidatable credits income in full, so net cost -7 ADDS
+    // $7 of equity vs the fee-free case — the long liq price must be STRICTLY
+    // LOWER (farther below spot) than the fee-free estimate, never floored
+    // back to equality with it.
+    const fees = { borrowFeeUsd: 1, openFeeUsd: 1, closingFeeUsd: 1, fundingFeeUsd: -10 };
+    expect(calcRealLiqNetCostUsd(fees)).toBe(-7);
+    const feeFree = calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 0 });
+    const withIncome = calcEstLiqPrice({ ...FEES_PATH_BASE, fees });
+    expect(feeFree).toBeCloseTo(51.5, 8);
+    expect(withIncome).toBeCloseTo(44.5, 8);
+    expect(withIncome).toBeLessThan(feeFree);
+  });
+
+  it("income beyond all fees pushes the SHORT liq price HIGHER (farther above spot)", () => {
+    const shortBase = { ...FEES_PATH_BASE, isLong: false };
+    const fees = { borrowFeeUsd: 1, openFeeUsd: 1, closingFeeUsd: 1, fundingFeeUsd: -10 };
+    const feeFree = calcEstLiqPrice({ ...shortBase, totalFeesUsd: 0 });
+    const withIncome = calcEstLiqPrice({ ...shortBase, fees });
+    expect(feeFree).toBeCloseTo(148.5, 8);
+    expect(withIncome).toBeCloseTo(155.5, 8);
+    expect(withIncome).toBeGreaterThan(feeFree);
+  });
+
+  it("extreme income (long) drives ratio >= 1 and returns 0 (cannot be liquidated by price)", () => {
+    expect(
+      calcEstLiqPrice({
+        ...FEES_PATH_BASE,
+        fees: { ...ZERO_FEES, fundingFeeUsd: -1e6 },
+      }),
+    ).toBe(0);
+  });
+
+  it("fees takes precedence over totalFeesUsd when both are given", () => {
+    const fees = { borrowFeeUsd: 10, openFeeUsd: 10, closingFeeUsd: 10, fundingFeeUsd: 10 };
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 0, fees })).toBe(
+      calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: 40 }),
+    );
+  });
+
+  it("throws RangeError on non-finite or out-of-domain inputs", () => {
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, sizeInAsset: NaN, totalFeesUsd: 0 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, collateralUsd: Infinity, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, avgPrice: -1, totalFeesUsd: 0 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, spotPrice: -Infinity, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, maintenanceMarginRate: 1.5, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcEstLiqPrice({ ...FEES_PATH_BASE, maintenanceMarginRate: NaN, totalFeesUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: NaN })).toThrow(RangeError);
+    expect(() => calcEstLiqPrice({ ...FEES_PATH_BASE, totalFeesUsd: -Infinity })).toThrow(
+      RangeError,
+    );
+    // Documented domain case, not an error: zero size returns 0.
+    expect(calcEstLiqPrice({ ...FEES_PATH_BASE, sizeInAsset: 0, totalFeesUsd: 0 })).toBe(0);
+  });
+});
+
+describe("calcRealLiqNetCostUsd (REAL model — position.move::is_liquidatable)", () => {
+  it("sums borrow + open + closing + owed funding", () => {
+    expect(
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 10,
+        openFeeUsd: 5,
+        closingFeeUsd: 5,
+        fundingFeeUsd: 8,
+      }),
+    ).toBe(28);
+  });
+
+  it("credits funding income in full — signed sum, no floor", () => {
+    expect(
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 10,
+        openFeeUsd: 5,
+        closingFeeUsd: 5,
+        fundingFeeUsd: -8,
+      }),
+    ).toBe(12);
+    // Income beyond the other fees is a genuine equity credit: NEGATIVE result.
+    expect(
+      calcRealLiqNetCostUsd({
+        borrowFeeUsd: 10,
+        openFeeUsd: 5,
+        closingFeeUsd: 5,
+        fundingFeeUsd: -30,
+      }),
+    ).toBe(-10);
+  });
+
+  it("throws RangeError on NaN / Infinity / negative unsigned fees", () => {
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, borrowFeeUsd: NaN })).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, openFeeUsd: Infinity })).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, closingFeeUsd: -1 })).toThrow(RangeError);
+    expect(() => calcRealLiqNetCostUsd({ ...ZERO_FEES, fundingFeeUsd: -Infinity })).toThrow(
+      RangeError,
+    );
+  });
+});
+
+describe("calcViewEstLiqFeesUsd (VIEW model — view.move::calculate_est_liq_price)", () => {
+  it("sums borrow + open + owed funding (no closing-fee term exists)", () => {
+    expect(calcViewEstLiqFeesUsd({ borrowFeeUsd: 10, openFeeUsd: 5, fundingFeeUsd: 8 })).toBe(23);
+  });
+
+  it("floors at 0 when income exceeds the other fees (Float saturating_sub)", () => {
+    expect(calcViewEstLiqFeesUsd({ borrowFeeUsd: 10, openFeeUsd: 5, fundingFeeUsd: -8 })).toBe(7);
+    expect(calcViewEstLiqFeesUsd({ borrowFeeUsd: 10, openFeeUsd: 5, fundingFeeUsd: -30 })).toBe(0);
+  });
+
+  it("throws RangeError on NaN / Infinity / negative unsigned fees", () => {
+    expect(() =>
+      calcViewEstLiqFeesUsd({ borrowFeeUsd: -1, openFeeUsd: 0, fundingFeeUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcViewEstLiqFeesUsd({ borrowFeeUsd: 0, openFeeUsd: NaN, fundingFeeUsd: 0 }),
+    ).toThrow(RangeError);
+    expect(() =>
+      calcViewEstLiqFeesUsd({ borrowFeeUsd: 0, openFeeUsd: 0, fundingFeeUsd: Infinity }),
+    ).toThrow(RangeError);
+  });
 });
 
 describe("calcEffectiveCollateralUsd", () => {
@@ -211,6 +388,25 @@ describe("calcEffectiveCollateralUsd", () => {
         tradingFeeUsd: 0,
       }),
     ).toBe(0);
+  });
+
+  it("throws RangeError on negative or non-finite fee inputs (a negative fee would ADD collateral)", () => {
+    const valid = {
+      grossCollateralUsd: 100,
+      borrowFeeUsd: 2,
+      fundingSign: true,
+      fundingFeeUsd: 3,
+      tradingFeeUsd: 1,
+    };
+    expect(() => calcEffectiveCollateralUsd({ ...valid, borrowFeeUsd: -2 })).toThrow(RangeError);
+    expect(() => calcEffectiveCollateralUsd({ ...valid, fundingFeeUsd: -3 })).toThrow(RangeError);
+    expect(() => calcEffectiveCollateralUsd({ ...valid, tradingFeeUsd: NaN })).toThrow(RangeError);
+    expect(() => calcEffectiveCollateralUsd({ ...valid, grossCollateralUsd: Infinity })).toThrow(
+      RangeError,
+    );
+    expect(() => calcEffectiveCollateralUsd({ ...valid, projectedTradingFeeUsd: -1 })).toThrow(
+      RangeError,
+    );
   });
 });
 
@@ -329,6 +525,95 @@ describe("calcMaxReducibleCollateralUsd", () => {
       collateralDecimal: 6,
     });
     expect(max).toBeCloseTo(5, 5);
+  });
+
+  // Tier-1 (money path) domain guards — the same domains calcEstLiqPrice pins.
+  // Every param is checked, not just the two fee legs that were guarded first.
+  const VALID = {
+    grossCollateralUsd: 100,
+    sizeInAsset: 1,
+    spotPrice: 100,
+    isLong: true,
+    entryPrice: 100,
+    maxLeverage: 25,
+    maintenanceMarginRate: 0.01,
+    minCollValueUsd: 0,
+    borrowFeeUsd: 0,
+    tradingFeeUsd: 0,
+    closingFeeUsd: 0,
+    fundingSign: false,
+    fundingFeeUsd: 0,
+    collateralPriceUsd: 1,
+    collateralDecimal: 6,
+  };
+
+  it("rejects a negative or non-finite value for every numeric param", () => {
+    const bad: [string, Partial<typeof VALID>][] = [
+      ["grossCollateralUsd", { grossCollateralUsd: -1 }],
+      ["sizeInAsset", { sizeInAsset: -1 }],
+      ["spotPrice", { spotPrice: -1 }],
+      ["entryPrice", { entryPrice: -1 }],
+      ["maxLeverage", { maxLeverage: -1 }],
+      ["minCollValueUsd", { minCollValueUsd: -1 }],
+      ["borrowFeeUsd", { borrowFeeUsd: -1 }],
+      ["tradingFeeUsd", { tradingFeeUsd: -1 }],
+      ["closingFeeUsd", { closingFeeUsd: -1 }],
+      ["fundingFeeUsd", { fundingFeeUsd: -1 }],
+      ["collateralPriceUsd", { collateralPriceUsd: -1 }],
+      ["sizeInAsset NaN", { sizeInAsset: NaN }],
+      ["spotPrice Infinity", { spotPrice: Infinity }],
+      ["collateralPriceUsd NaN", { collateralPriceUsd: NaN }],
+    ];
+    for (const [label, patch] of bad) {
+      expect(() => calcMaxReducibleCollateralUsd({ ...VALID, ...patch }), label).toThrow(
+        RangeError,
+      );
+    }
+  });
+
+  it("rejects a maintenanceMarginRate outside [0, 1]", () => {
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: -0.01 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: 1.5 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: NaN })).toThrow(
+      RangeError,
+    );
+    // The boundaries themselves are legal.
+    expect(() =>
+      calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: 0 }),
+    ).not.toThrow();
+    expect(() =>
+      calcMaxReducibleCollateralUsd({ ...VALID, maintenanceMarginRate: 1 }),
+    ).not.toThrow();
+  });
+
+  it("rejects a collateralDecimal outside the u64 10^decimal domain [0, 19]", () => {
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: -1 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 1.5 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 20 })).toThrow(
+      RangeError,
+    );
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 0 })).not.toThrow();
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralDecimal: 19 })).not.toThrow();
+  });
+
+  it("a negative collateralPriceUsd can no longer silently drop the one-raw-unit back-off", () => {
+    // The regression this guard exists for: the back-off is
+    // `collateralPriceUsd > 0 ? price / 10 ** decimal : 0`, so a NEGATIVE price
+    // used to fall into the `: 0` branch — removing the abort-safety margin
+    // while still returning a plausible-looking dollar figure.
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralPriceUsd: -1 })).toThrow(
+      /collateralPriceUsd must be >= 0/,
+    );
+    // Zero stays a documented domain case (no back-off), not garbage.
+    expect(() => calcMaxReducibleCollateralUsd({ ...VALID, collateralPriceUsd: 0 })).not.toThrow();
   });
 });
 
@@ -560,7 +845,19 @@ describe("WLP APY helpers", () => {
 
   it("calcWlpIncentiveApy converts continuous APR to APY", () => {
     expect(calcWlpIncentiveApy(0.12)).toBeCloseTo(Math.expm1(0.12), 10);
-    expect(calcWlpIncentiveApy(Number.POSITIVE_INFINITY)).toBe(0);
+    // Overflowing compound result is the documented 0 case…
+    expect(calcWlpIncentiveApy(1e6)).toBe(0);
+    // …but non-finite INPUT is garbage and throws instead of mapping to 0.
+    expect(() => calcWlpIncentiveApy(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+    expect(() => calcWlpIncentiveApy(NaN)).toThrow(RangeError);
+  });
+
+  it("annualizedApyFromRatio keeps domain zeros but throws on non-finite input", () => {
+    expect(annualizedApyFromRatio(1.05, 0)).toBe(0);
+    expect(annualizedApyFromRatio(1.05, -1)).toBe(0);
+    expect(annualizedApyFromRatio(-2, 30)).toBe(0);
+    expect(() => annualizedApyFromRatio(NaN, 30)).toThrow(RangeError);
+    expect(() => annualizedApyFromRatio(1.05, Infinity)).toThrow(RangeError);
   });
 });
 
@@ -606,8 +903,16 @@ describe("WLP math", () => {
     expect(calcWlpMintOut(100, 1_000_000, 500_000, 6)).toBe(50);
   });
 
-  it("calcWlpMintOut bootstraps when TVL is zero but supply exists", () => {
-    expect(calcWlpMintOut(50, 0, 1_000_000, 6)).toBe(50 * 1_000_000);
+  it("calcWlpMintOut par-mints ONLY on the genuine first mint (supply === 0)", () => {
+    // Bootstrap path: no supply outstanding.
+    expect(calcWlpMintOut(50, 0, 0, 6)).toBe(50 * 1_000_000);
+    // supply > 0 with zero priced TVL: the chain aborts EInvalidBootstrap
+    // (re-audit F-023) — par-quoting here would dilute existing LPs.
+    expect(() => calcWlpMintOut(50, 0, 1_000_000, 6)).toThrow(RangeError);
+    expect(() => calcWlpMintOut(50, 0, 1_000_000, 6)).toThrow(/EInvalidBootstrap/);
+    // Garbage inputs throw instead of flowing through.
+    expect(() => calcWlpMintOut(NaN, 1, 1, 6)).toThrow(RangeError);
+    expect(() => calcWlpMintOut(-50, 1, 1, 6)).toThrow(RangeError);
   });
 
   it("calcWlpRedeemOut", () => {
@@ -615,6 +920,8 @@ describe("WLP math", () => {
     expect(calcWlpRedeemOut(100, 1_000_000, 0, 1, 6)).toBe(0);
     expect(calcWlpRedeemOut(100, 1_000_000, 1_000_000, 0, 6)).toBe(0);
     expect(calcWlpRedeemOut(100, 1_000_000, 1_000_000, 1, 6)).toBe(100 * 1_000_000);
+    expect(() => calcWlpRedeemOut(NaN, 1, 1, 1, 6)).toThrow(RangeError);
+    expect(() => calcWlpRedeemOut(100, -1, 1, 1, 6)).toThrow(RangeError);
   });
 
   it("calcDynamicFeeBps returns base when weight improves", () => {
@@ -637,6 +944,20 @@ describe("WLP math", () => {
 
   it("calcDynamicFeeBps returns base when redeem drains pool TVL", () => {
     expect(calcDynamicFeeBps(900_000, 1_000_000, 1_000_000, 5000, 30, false)).toBe(30);
+  });
+
+  it("calcDynamicFeeBps clamps at bp_scale under extreme imbalance (F-039)", () => {
+    // tokenValue 0 / tvl 100 at 10 bps target, then a 1M deposit: the
+    // additional term alone would be ~29,964 bps — the on-chain F-039 clamp
+    // caps `additional` at bp_scale AND the total at bp_scale, so the result
+    // is exactly 10_000, never 10_030 or 29_994.
+    expect(calcDynamicFeeBps(0, 100, 1_000_000, 10, 30, true)).toBe(10_000);
+  });
+
+  it("calcDynamicFeeBps throws RangeError on garbage inputs", () => {
+    expect(() => calcDynamicFeeBps(NaN, 1_000_000, 100, 5000, 30, true)).toThrow(RangeError);
+    expect(() => calcDynamicFeeBps(100, Infinity, 100, 5000, 30, true)).toThrow(RangeError);
+    expect(() => calcDynamicFeeBps(100, 1_000_000, -1, 5000, 30, true)).toThrow(RangeError);
   });
 
   it("calcDynamicFeeBps redeem path clamps token value at zero", () => {

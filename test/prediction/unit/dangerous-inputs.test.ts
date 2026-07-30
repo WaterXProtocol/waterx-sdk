@@ -32,7 +32,8 @@ const U64_MAX = (1n << 64n) - 1n;
 
 describe("toBigInt edge cases", () => {
   it.each([NaN, Infinity, -Infinity] as const)("rejects non-finite number %s", (value) => {
-    expect(() => toBigInt(value)).toThrow(/Invalid integer/);
+    // Number path funnels through the shared `utils/validate.toU64` guard.
+    expect(() => toBigInt(value)).toThrow(/safe integer/);
   });
 
   it("rejects hex-looking numeric strings (not decimal)", () => {
@@ -63,7 +64,7 @@ describe("receivingCoinArg version validation", () => {
 
   it("rejects version above u64 max", () => {
     expect(() => receivingCoinArg(tx, { ...COIN, version: U64_MAX + 1n })).toThrow(
-      /exceeds u64 max/,
+      /out of u64 range/,
     );
   });
 });
@@ -158,7 +159,7 @@ describe("PTB builders fail before emitting invalid Move args", () => {
         amount: -1n,
         recipient: PTB_DUMMY.recipient,
       }),
-    ).toThrow(/non-negative/);
+    ).toThrow(/out of u64 range/);
   });
 });
 

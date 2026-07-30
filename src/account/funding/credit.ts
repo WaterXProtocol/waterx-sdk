@@ -33,6 +33,7 @@ import {
   routeWormhole as routeWormholeCall,
 } from "../../generated/withdrawal_queue/withdrawal_queue.ts";
 import { redeemVaa as redeemVaaCall } from "../../generated/wormhole_bridge/wormhole_bridge.ts";
+import { toU16, toU64 } from "../../utils/validate.ts";
 import { makeSenderRequest } from "../account-request.ts";
 import type { AccountClientLike } from "../client.ts";
 
@@ -182,19 +183,10 @@ export function routeWormhole(
   tx: Transaction,
   params: RouteWormholeParams,
 ): TransactionArgument {
-  if (
-    !Number.isInteger(params.evmDestinationChain) ||
-    params.evmDestinationChain < 0 ||
-    params.evmDestinationChain > 0xffff
-  ) {
-    throw new Error(
-      `evmDestinationChain must be a u16 (0..65535), got ${params.evmDestinationChain}`,
-    );
-  }
   const out = routeWormholeCall({
     package: queuePkg(client),
     arguments: {
-      evmDestinationChain: params.evmDestinationChain,
+      evmDestinationChain: toU16(params.evmDestinationChain, "evmDestinationChain"),
       evmRecipient: toEvmAddressBytes(params.evmRecipient, "evmRecipient"),
       evmToken: toEvmAddressBytes(params.evmToken, "evmToken"),
     },
@@ -221,7 +213,7 @@ export function routeNative(
 ): TransactionArgument {
   const out = routeNativeCall({
     package: queuePkg(client),
-    arguments: { minOutput: BigInt(params.minOutput ?? 0n) },
+    arguments: { minOutput: toU64(params.minOutput ?? 0n, "minOutput") },
     typeArguments: [normalizeStructTag(params.assetType)],
   })(tx);
   return out as unknown as TransactionArgument;
@@ -259,7 +251,7 @@ export function requestCreditWithdraw(
       registry: tx.object(client.config.packages.waterx_account.account_registry),
       senderRequest: senderRequest as unknown as TransactionArgument,
       accountId: params.accountId,
-      amount: params.amount,
+      amount: toU64(params.amount, "amount"),
       recipient: params.recipient,
       extraData: params.route as unknown as number[],
     },
@@ -320,7 +312,7 @@ export function executeWithdrawalWormhole(
     package: queuePkg(client),
     arguments: {
       queue: tx.object(queueId(client)),
-      key: params.key,
+      key: toU64(params.key, "key"),
       request: request as unknown as TransactionArgument,
       bridge: tx.object(bridgeId(client)),
       creditRegistry: tx.object(creditRegistryId(client)),
@@ -350,7 +342,7 @@ export function executeWithdrawalNative(
     package: queuePkg(client),
     arguments: {
       queue: tx.object(queueId(client)),
-      key: params.key,
+      key: toU64(params.key, "key"),
       request: request as unknown as TransactionArgument,
       vault: tx.object(custodyVaultId(client)),
       creditRegistry: tx.object(creditRegistryId(client)),

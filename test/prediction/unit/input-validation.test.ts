@@ -37,8 +37,11 @@ describe("toBigInt / assertU64", () => {
   });
 
   it("rejects values above u64 max", () => {
-    expect(() => toBigInt(U64_MAX + 1n)).toThrow(/exceeds u64 max/);
-    expect(() => assertU64(U64_MAX + 1n)).toThrow(/exceeds u64 max/);
+    // Message comes from the shared `utils/validate.toU64` — prediction's u64
+    // guard is a thin alias over it, so both lines throw one RangeError text.
+    expect(() => toBigInt(U64_MAX + 1n)).toThrow(/out of u64 range/);
+    expect(() => assertU64(U64_MAX + 1n)).toThrow(RangeError);
+    expect(() => assertU64(U64_MAX + 1n)).toThrow(/out of u64 range/);
   });
 });
 
@@ -102,7 +105,7 @@ describe("receivingCoinArg", () => {
         version: 1.5,
         digest: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       }),
-    ).toThrow(/Invalid integer/);
+    ).toThrow(/safe integer/);
   });
 
   it("accepts integer version", () => {

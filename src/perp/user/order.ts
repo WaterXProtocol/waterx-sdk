@@ -7,6 +7,19 @@
  *
  * Use `triggerPrice === undefined` (market form) to park an order at
  * tick 0 in the limit book; a keeper picks it up via `match_orders`.
+ *
+ * ## Trigger prices are exact order-book KEYS
+ *
+ * Every `triggerPrice` / `currentTriggerPrice` / `newTriggerPrice` below is the
+ * raw 1e9-scaled value the book is keyed by — off by a single 1e-9 unit and the
+ * lookup silently finds nothing. Build them with `rawPrice` in its EXACT mode
+ * (`rawPrice("95000.5")`, an `ExactDecimalUsd` string); the `number` mode
+ * round-trips through f64 and is exact only below ≈ $9,007,199.
+ *
+ * The params stay `bigint | number` (the RAW scaled value, not USD): both are
+ * legitimate raw inputs, `toU128` already rejects a non-safe-integer `number`
+ * before it can serialize wrong, and dropping `number` would break published
+ * call shapes. The mode choice belongs one level up, at `rawPrice`.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
@@ -14,6 +27,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import { makeSenderRequest } from "../../account/account-request.ts";
 import { newPlaceOrderArgument } from "../../generated/waterx_perp/request.ts";
 import * as trading from "../../generated/waterx_perp/trading.ts";
+import { toU8, toU64, toU64OrNull, toU128, toU128OrNull } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { ORDER_TAG_WILDCARD } from "../constants.ts";
 
@@ -47,11 +61,11 @@ export function buildPlaceOrderArgument(
       isLong: p.isLong,
       isStopOrder: p.isStopOrder,
       reduceOnly: p.reduceOnly,
-      size: p.size,
-      triggerPrice: p.triggerPrice ?? null,
-      linkedPositionId: p.linkedPositionId ?? null,
-      acceptablePrice: p.acceptablePrice ?? null,
-      collateralAmount: p.collateralAmount,
+      size: toU128(p.size, "size"),
+      triggerPrice: toU128OrNull(p.triggerPrice, "triggerPrice"),
+      linkedPositionId: toU64OrNull(p.linkedPositionId, "linkedPositionId"),
+      acceptablePrice: toU64OrNull(p.acceptablePrice, "acceptablePrice"),
+      collateralAmount: toU64(p.collateralAmount, "collateralAmount"),
     },
   })(tx);
   return arg as unknown as TransactionArgument;
@@ -138,9 +152,9 @@ export function cancelOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      orderId: params.orderId,
-      triggerPrice: params.triggerPrice ?? 0n,
-      orderTypeTag: params.orderTypeTag ?? ORDER_TAG_WILDCARD,
+      orderId: toU64(params.orderId, "orderId"),
+      triggerPrice: toU128(params.triggerPrice ?? 0n, "triggerPrice"),
+      orderTypeTag: toU8(params.orderTypeTag ?? ORDER_TAG_WILDCARD, "orderTypeTag"),
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
   })(tx);
@@ -182,11 +196,11 @@ export function updateOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      orderId: params.orderId,
-      currentTriggerPrice: params.currentTriggerPrice,
-      orderTypeTag: params.orderTypeTag,
-      newSize: params.newSize,
-      newTriggerPrice: params.newTriggerPrice,
+      orderId: toU64(params.orderId, "orderId"),
+      currentTriggerPrice: toU128(params.currentTriggerPrice, "currentTriggerPrice"),
+      orderTypeTag: toU8(params.orderTypeTag, "orderTypeTag"),
+      newSize: toU128(params.newSize, "newSize"),
+      newTriggerPrice: toU128(params.newTriggerPrice, "newTriggerPrice"),
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
   })(tx);
@@ -222,8 +236,8 @@ export function cancelPreOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      mainOrderId: params.mainOrderId,
-      preOrderId: params.preOrderId,
+      mainOrderId: toU64(params.mainOrderId, "mainOrderId"),
+      preOrderId: toU64(params.preOrderId, "preOrderId"),
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
   })(tx);
@@ -256,7 +270,7 @@ export function addPreOrderRequest(
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      mainOrderId: params.mainOrderId,
+      mainOrderId: toU64(params.mainOrderId, "mainOrderId"),
       preOrder: preArg as unknown as TransactionArgument,
     },
     typeArguments: [params.collateralType, params.lpType ?? client.wlpType()],
