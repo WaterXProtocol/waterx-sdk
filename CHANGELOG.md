@@ -9,13 +9,13 @@ reference the PR that introduced them.
 numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
 package MAY ship a breaking change in a PATCH release. Every consumer is first-party and
 pins the SDK **exact**, so no consumer takes a break implicitly; a `^`-range consumer
-would, and none exists. `4.0.1` and `4.0.2` were both released this way. Each such release
+would, and none exists. `4.0.1` and `4.1.0` were both released this way. Each such release
 NAMES its breaking changes at the top of its section — read that note before upgrading,
 and do not infer compatibility from the version number alone.
 
 ## [Unreleased]
 
-## [4.0.2] - 2026-07-30
+## [4.1.0] - 2026-07-31
 
 > **Released as a PATCH carrying THREE breaking changes** (deliberate — see the
 > versioning policy at the top of this file). Do NOT stop at the removed
@@ -38,9 +38,9 @@ and do not infer compatibility from the version number alone.
 >    `Error`, so only code matching on error TYPE or MESSAGE TEXT breaks. See
 >    `### Changed`.
 >
-> Why `4.0.2` and not `5.0.0`: none of the three has an in-repo consumer, and
+> Why `4.1.0` and not `5.0.0`: none of the three has an in-repo consumer, and
 > both first-party consumers (`waterx-fe`, `bucket-backend-mono`) pin the SDK
-> **exact** — neither picks this up implicitly; they bump to `4.0.2` in the same
+> **exact** — neither picks this up implicitly; they bump to `4.1.0` in the same
 > change set that adapts (waterx-fe#1036, bucket-backend-mono#1060). The one
 > exposure is a consumer on a `^4.x` range, which WOULD take it automatically and
 > fail; there is no such consumer today. (`4.0.1` also shipped
