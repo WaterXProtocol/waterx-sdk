@@ -7,17 +7,17 @@ reference the PR that introduced them.
 
 **Versioning policy — SemVer syntax, but NOT the SemVer compatibility promise.** Version
 numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
-package MAY ship a breaking change in a PATCH release. Every consumer is first-party and
-pins the SDK **exact**, so no consumer takes a break implicitly; a `^`-range consumer
-would, and none exists. `4.0.1` and `4.1.0` were both released this way. Each such release
-NAMES its breaking changes at the top of its section — read that note before upgrading,
-and do not infer compatibility from the version number alone.
+package MAY ship a breaking change in a PATCH or MINOR release. Every consumer is
+first-party and pins the SDK **exact**, so no consumer takes a break implicitly; a
+`^`-range consumer would, and none exists. `4.0.1` shipped breaking as a patch and `4.1.0`
+as a minor. Each such release NAMES its breaking changes at the top of its section — read
+that note before upgrading, and do not infer compatibility from the version number alone.
 
 ## [Unreleased]
 
 ## [4.1.0] - 2026-07-31
 
-> **Released as a PATCH carrying THREE breaking changes** (deliberate — see the
+> **Released as a MINOR carrying THREE breaking changes** (deliberate — see the
 > versioning policy at the top of this file). Do NOT stop at the removed
 > constants; the other two are behavior changes with no compile error to warn
 > you:
@@ -38,13 +38,13 @@ and do not infer compatibility from the version number alone.
 >    `Error`, so only code matching on error TYPE or MESSAGE TEXT breaks. See
 >    `### Changed`.
 >
-> Why `4.1.0` and not `5.0.0`: none of the three has an in-repo consumer, and
+> Why a MINOR and not `5.0.0`: none of the three has an in-repo consumer, and
 > both first-party consumers (`waterx-fe`, `bucket-backend-mono`) pin the SDK
 > **exact** — neither picks this up implicitly; they bump to `4.1.0` in the same
 > change set that adapts (waterx-fe#1036, bucket-backend-mono#1060). The one
 > exposure is a consumer on a `^4.x` range, which WOULD take it automatically and
-> fail; there is no such consumer today. (`4.0.1` also shipped
-> breaking-as-patch, but on a different rationale: `4.0.0` was days old and its
+> fail; there is no such consumer today. (`4.0.1` also shipped breaking under a
+> non-major version, but on a different rationale: `4.0.0` was days old and its
 > oracle surface was declared unstable-until-settled, not "no consumers + exact
 > pins".)
 
@@ -131,6 +131,7 @@ and do not infer compatibility from the version number alone.
   faithfully encodes an integer the caller never wrote. (`2**53 + 2` IS exactly
   representable and encodes correctly.) Hence the `Number.isSafeInteger` floor,
   and the named `RangeError` that fires before a transaction is built.
+
 - **`toU8` / `toU16` — the small-width integer guards**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). u8/u16 is the
   width where the BCS writer's own checks are WEAKEST: it throws on an
