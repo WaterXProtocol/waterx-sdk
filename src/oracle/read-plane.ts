@@ -20,10 +20,13 @@ import type { OracleSource } from "./price-update-rule.ts";
  * - `plane: "hermes"` (pyth sources) — price via a Hermes-compatible REST
  *   endpoint, one entry per servable ticker mapped to its HEX feed id.
  * - `plane: "quote_center"` (waterx) — price via the quote-center symbols
- *   api, keyed by ticker. When the config carries NO `waterx_rule.feeds`
- *   block the plan claims every requested ticker: the deployment is
- *   misconfigured either way, and an over-asking batch fails loudly
- *   downstream instead of the gap being silently masked as "not served".
+ *   api, keyed by ticker; served set = the `waterx_rule.feeds` block. An
+ *   ABSENT block (source listed, package missing from the loaded config)
+ *   serves NOTHING: claiming tickers would silently reroute reads to the
+ *   quote-center — it happily serves symbols regardless of on-chain config —
+ *   and swallow tickers a later-listed source could price. The
+ *   misconfiguration is caught loudly by the consumer's feeds assert at
+ *   client creation instead.
  * - `unreadable` — requested tickers this source WRITES on-chain (its update
  *   leg serves them) but its read plane cannot price: the silent-invisibility
  *   trap (e.g. a lazer-fed ticker with no `pyth_rule.feeds` hex entry).
@@ -67,10 +70,12 @@ export function resolveOracleReadPlan(
       return { plane: "hermes", feedIdByTicker, unreadable };
     }
     case "waterx_rule": {
+      // Absent feeds block ⇒ serves nothing (see the OracleReadPlan doc) —
+      // never claim tickers the config doesn't name.
       const feeds = host.config.packages.waterx_rule?.feeds;
       return {
         plane: "quote_center",
-        tickers: feeds ? tickers.filter((ticker) => ticker in feeds) : [...tickers],
+        tickers: feeds ? tickers.filter((ticker) => ticker in feeds) : [],
         unreadable: [],
       };
     }

@@ -43,6 +43,17 @@ the same change set. Read the migration lines before bumping._
   network. `LAZER_DEFAULTS` is renamed `LAZER_INFRA` and moved into
   `oracle/rules/pyth-lazer-rule.ts` — co-located with the only rule that
   reads it (it was internal; the rename is visible only to deep importers).
+- **BREAKING: `WATERX_DEFAULTS` / `WaterxInfraConfig` are removed** the same
+  way: the quote-center infra is the rule-owned `WATERX_INFRA` table in
+  `oracle/rules/waterx-rule.ts` (exported from `@waterx/sdk/oracle`), and
+  `client.waterx` slims to `WaterxAccessConfig` — only the caller-supplied
+  `waterxEndpoint` / `waterxFetch` overrides. Visible to deep importers of
+  `oracle/config`.
+- **BREAKING: the waterx fetch policy no longer falls back to `pythFetch`.**
+  `resolveWaterxInfra` reads `host.waterx?.fetch` only (was
+  `… ?? host.pyth.fetch`) — a consumer that tuned only `pythFetch`
+  timeouts/retries now gets the default policy on quote-center fetches; set
+  `waterxFetch` explicitly. No compile error: this is a behavior change.
 
 ### Changed
 
@@ -63,8 +74,18 @@ the same change set. Read the migration lines before bumping._
   list). `refreshOraclePrices` groups per source; a ticker is unservable
   only when NO listed source has its feed; the fee pre-check fires iff a
   fee-charging source (Pyth Core) is listed with tickers to serve. The
+  per-source off-chain fetches run in PARALLEL (all settle before the first
+  PTB mutation); the PTB build stays sequential in list order. The
   `UpdateDataProvider` seam is consulted once per listed source per build
-  (`get(source, tickers)` — already source-keyed).
+  (`get(source, tickers)` — already source-keyed). Construction rejects an
+  empty list AND nullish/empty entries (an untyped caller omitting the
+  option fails at create, not at the first tx-build).
+- **BREAKING: `PriceUpdateRule.kind` narrows `PriceUpdateRuleKind` →
+  `OracleSource`.** Only selectable sources implement the port
+  (`supra_rule` / `constant_rule` are plain collector-feed helpers); the
+  narrower type makes `refreshOraclePrices`'s per-source carry step an
+  exhaustive switch. External rule implementations / typed test doubles
+  whose `kind` was a non-source value no longer compile.
 
 ### Added
 
@@ -73,6 +94,22 @@ the same change set. Read the migration lines before bumping._
   Exported from `@waterx/sdk`, `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
   The full `PYTH_CORE_INFRA` table stays rule-internal (deep import
   `@waterx/sdk/oracle/pyth` if you genuinely need the object ids).
+- `waterxQuoteCenterEndpoint(network)` — the waterx source's quote-center
+  base (mirrors `pythCoreHermesEndpoint`), plus the `WATERX_INFRA` table.
+  Exported root / `perp` / `oracle`.
+- `resolveOracleRule(source, overrides?)` — THE `OracleSource` →
+  `PriceUpdateRule` registry, now exported from `@waterx/sdk/oracle` so
+  consumers (e.g. a BE per-source prefetch cache) resolve through it instead
+  of hand-mirroring the map.
+- `resolveOracleReadPlan(host, source, tickers)` + `OracleReadPlan` — per-
+  source READ-plane resolution: which tickers a source can price off-chain
+  and with which ids (pyth sources read through the `pyth_rule.feeds` HEX
+  namespace; waterx reads its feeds-listed symbols, an absent block serving
+  NOTHING). Plans carry `unreadable` — tickers a source writes on-chain but
+  cannot read-price (e.g. a lazer-fed ticker with no hex entry) — so
+  consumers surface the config gap loudly.
+- `BATCH_PRICE_INTENT` — the quote-center's signing intent, exported so
+  read-plane consumers mirror the rule's own envelope intent check.
 
 ## [4.1.0] - 2026-07-31
 

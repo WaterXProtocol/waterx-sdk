@@ -72,13 +72,13 @@ describe("resolveOracleReadPlan", () => {
     expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"], unreadable: [] });
   });
 
-  it("waterx_rule: an absent feeds block claims EVERY requested ticker (loud downstream failure)", () => {
+  it("waterx_rule: an absent feeds block serves NOTHING — never a silent quote-center takeover", () => {
+    // Claiming unlisted tickers would reroute every read to the quote-center
+    // (it serves symbols regardless of on-chain config) and swallow tickers a
+    // later-listed source could price; the misconfig is caught loudly by the
+    // consumer's feeds assert at client creation instead.
     const plan = resolveOracleReadPlan(hostWith({}), "waterx_rule", ["BTCUSD", "ETHUSD"]);
 
-    expect(plan).toEqual({
-      plane: "quote_center",
-      tickers: ["BTCUSD", "ETHUSD"],
-      unreadable: [],
-    });
+    expect(plan).toEqual({ plane: "quote_center", tickers: [], unreadable: [] });
   });
 });

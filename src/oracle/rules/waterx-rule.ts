@@ -42,8 +42,10 @@ import {
   type FetchPolicy,
 } from "../update-fetch.ts";
 
-/** The single signing intent (`BATCH_PRICE_INTENT`) the quote-center emits. */
-const BATCH_PRICE_INTENT = 1;
+/** The single signing intent the quote-center emits — exported so read-plane
+ *  consumers can mirror the rule's own envelope intent check (a mispointed
+ *  endpoint must be rejected by reads exactly as tx-builds reject it). */
+export const BATCH_PRICE_INTENT = 1;
 
 /**
  * WaterX quote-center external infra — owned by THIS source, by network.

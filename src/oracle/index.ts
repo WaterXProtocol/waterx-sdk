@@ -91,6 +91,7 @@ export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 export {
   WaterxRule,
   parseSignedEnvelope,
+  BATCH_PRICE_INTENT,
   WATERX_INFRA,
   waterxQuoteCenterEndpoint,
 } from "./rules/waterx-rule.ts";

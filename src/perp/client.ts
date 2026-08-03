@@ -141,11 +141,19 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
     };
     // Normalize single-or-list to a deduped, order-preserving list. An empty
-    // array is a caller bug, not "no oracle" — fail construction loudly.
+    // list — or a nullish/empty entry, the shape an untyped caller produces
+    // by omitting the REQUIRED option — is a caller bug, not "no oracle":
+    // fail construction loudly instead of booting green and surfacing as
+    // `OracleSourceNotImplemented: undefined` at the first tx-build.
     const sources = Array.isArray(opts.oracleSource) ? opts.oracleSource : [opts.oracleSource];
     this.oracleSources = [...new Set(sources)];
-    if (this.oracleSources.length === 0) {
-      throw new Error("oracleSource must name at least one source (got an empty list)");
+    if (
+      this.oracleSources.length === 0 ||
+      this.oracleSources.some((source) => typeof source !== "string" || source.length === 0)
+    ) {
+      throw new Error(
+        `oracleSource is REQUIRED and must name at least one source (got ${JSON.stringify(sources)})`,
+      );
     }
     this.view = new PerpConfigView(
       () => this.config,

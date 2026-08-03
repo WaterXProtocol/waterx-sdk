@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PYTH_CORE_INFRA } from "../../../src/oracle/pyth.ts";
-import { PerpClient } from "../../../src/perp/client.ts";
+import { PerpClient, type CreateClientOptions } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
 import type { WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
 import {
@@ -204,6 +204,20 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     });
 
     expect(client.pyth).toEqual({ api_key: "caller-supplied" });
+  });
+
+  it("construction throws when oracleSource is omitted, empty, or lists a nullish entry", () => {
+    // An untyped (JS / `as any`) caller omitting the REQUIRED option
+    // normalizes to `[undefined]` — that must fail HERE, not boot green and
+    // surface as `OracleSourceNotImplemented: undefined` at the first
+    // tx-build (the exact green-boot/500 shape this refactor eliminates).
+    const config = structuredClone(MOCK_TESTNET_CONFIG);
+    expect(() => new PerpClient("TESTNET", config, {} as CreateClientOptions)).toThrow(
+      /oracleSource is REQUIRED/,
+    );
+    expect(() => new PerpClient("TESTNET", config, { oracleSource: [] })).toThrow(
+      /oracleSource is REQUIRED/,
+    );
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {
