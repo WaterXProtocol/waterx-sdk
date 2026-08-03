@@ -67,6 +67,13 @@ export type {
   UpdateDataProvider,
 } from "./price-update-rule.ts";
 
+// Per-source READ-plane resolution — which tickers a source can price
+// off-chain and with which ids. The one place the "lazer reads through
+// `pyth_rule.feeds` hex ids" invariant lives; consumers resolve through this
+// instead of hardcoding namespace sharing.
+export { resolveOracleReadPlan } from "./read-plane.ts";
+export type { OracleReadPlan } from "./read-plane.ts";
+
 // Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)
 export { PythCoreRule } from "./rules/pyth-core-rule.ts";
 export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
