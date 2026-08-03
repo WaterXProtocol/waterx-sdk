@@ -148,7 +148,13 @@ export function aggregateTicker(
     // waterx_rule::collect_batch_latest verifies the batch signature and feeds
     // this collector's symbol from the batch. If the ticker's aggregator does
     // not (yet) weight `WaterxRule`, the contribution is silently dropped
-    // on-chain — feeding ahead of the weight migration is harmless.
+    // on-chain — feeding ahead of the weight migration is safe for THIS tx.
+    // CAVEAT (unlike lazer): the feed call records a per-symbol signed-
+    // timestamp high-water mark REGARDLESS of weights, and a replayed
+    // timestamp ABORTS (`EReplayedSignature`, audit F-014) — so two PTBs
+    // carrying the same envelope for the same symbol cannot both land; the
+    // second aborts even where waterx is unweighted. See WaterxRule's module
+    // header.
     feedWaterxRule(tx, host, collector, args.waterxEnvelope);
     fed = true;
   }
@@ -306,10 +312,12 @@ export async function refreshOraclePrices(
   // The fed set is a LIST (`host.oracleSources`, normalized + deduped at
   // client creation): ONE build carries every listed source's data, and the
   // chain's per-ticker weight tables decide which contributions count —
-  // feeding an unweighted rule is dropped on-chain (harmless by design),
-  // while starving a weighted one aborts. That asymmetry is what makes weight
-  // migrations safe: flip weights per ticker at any time while the fed set
-  // stays a superset of every ticker's weighted set. Still NO fallback
+  // feeding an unweighted rule's PRICE is dropped on-chain, while starving a
+  // weighted one aborts. That asymmetry is what makes weight migrations
+  // safe: flip weights per ticker at any time while the fed set stays a
+  // superset of every ticker's weighted set. (One caveat: waterx's feed call
+  // burns a per-symbol signed-timestamp high-water mark regardless of
+  // weights — see aggregateTicker's waterx branch.) Still NO fallback
   // BETWEEN sources: each group serves only the tickers its own feeds list.
   // Zero-ticker groups are dropped here so everything downstream (fee check,
   // fetch fan-out, update-leg build) can assume every group has work.

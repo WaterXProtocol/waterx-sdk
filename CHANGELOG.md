@@ -80,6 +80,15 @@ the same change set. Read the migration lines before bumping._
   (`get(source, tickers)` — already source-keyed). Construction rejects an
   empty list AND nullish/empty entries (an untyped caller omitting the
   option fails at create, not at the first tx-build).
+  **Known concurrency caveat when `waterx_rule` is listed:** the on-chain
+  feed call enforces a per-symbol signed-timestamp high-water mark and
+  ABORTS `EReplayedSignature` on replay (audit F-014) — regardless of the
+  ticker's weights. Two PTBs carrying the same quote-center envelope for the
+  same symbol cannot both land; providers/caches must never hand one fetched
+  envelope to two concurrent builds for the same symbol (the reference BE
+  prefetch cache serves each (symbol, timestamp) at most once), and the
+  residual same-enclave-tick collision is only fixable in the contract
+  (abstain-on-equal) or the quote-center (per-request monotonic signing).
 - **BREAKING: `PriceUpdateRule.kind` narrows `PriceUpdateRuleKind` →
   `OracleSource`.** Only selectable sources implement the port
   (`supra_rule` / `constant_rule` are plain collector-feed helpers); the

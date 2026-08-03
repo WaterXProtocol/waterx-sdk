@@ -13,8 +13,14 @@
  * `collect_batch_latest` is the dual-rule path: it feeds the item matching
  * `collector.symbol()` WITHOUT aggregating, so a waterx-routed ticker composes
  * onto the same collector as Pyth/Supra (compose-then-aggregate). On-chain a
- * freshness miss / replayed timestamp ABSTAINS (the other weighted rules
- * cover); a config/integrity mismatch or bad signature aborts.
+ * FRESHNESS miss ABSTAINS (the other weighted rules cover); a config/
+ * integrity mismatch, bad signature, future timestamp — or a REPLAYED signed
+ * timestamp — ABORTS (`EReplayedSignature`, audit F-014: a signed tuple is
+ * single-use per symbol, enforced by a per-symbol high-water mark BEFORE any
+ * weight arbitration). Consequence for concurrent builds: two PTBs carrying
+ * the same envelope for the same symbol cannot both land — the second aborts
+ * even if the rule is unweighted for that ticker. Never share one fetched
+ * envelope across builds that may execute concurrently for the same symbol.
  */
 
 import { fromHex } from "@mysten/bcs";
@@ -277,8 +283,10 @@ function decodeSig(hex: string): Uint8Array {
  * per item, the exact shape the enclave signed) and contribute the price for
  * `collector.symbol()` to the collector. One collect call re-verifies the batch
  * signature and picks this collector's symbol out of the batch; on-chain it
- * abstains (records `none`) instead of aborting when the symbol is stale,
- * absent from the batch, or its timestamp was already accepted (replay).
+ * abstains (records `none`) when the symbol is stale or absent from the batch,
+ * but ABORTS `EReplayedSignature` when the symbol's signed timestamp was
+ * already accepted (per-symbol high-water mark, audit F-014) — see the module
+ * header for the concurrent-build consequence.
  */
 export function feedWaterxRule(
   tx: Transaction,
