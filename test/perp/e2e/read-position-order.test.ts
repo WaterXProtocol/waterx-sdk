@@ -31,8 +31,9 @@ describe(`read position + order (${e2eNetwork})`, () => {
         ticker,
         orderId: 999_999_999n,
         orderTypeTag: ORDER_LIMIT_BUY,
-        triggerPrice: rawPrice(50_000),
-        basePriceUsd: rawPrice(50_000),
+        triggerPrice: rawPrice(50_000), // raw 1e9-scaled u128 order key — rawPrice() is correct here
+        // whole-dollar u64 — the view applies float::from; do NOT pass 1e9-scaled rawPrice()
+        basePriceUsd: 50_000n,
       }),
     ).rejects.toThrow();
   }, 60_000);

@@ -24,6 +24,7 @@ import {
   personalBurnCapAmount as personalBurnCapAmountCall,
   personalBurned as personalBurnedCall,
 } from "../../generated/wormhole_bridge/wormhole_bridge.ts";
+import { toU64 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { extractAt, simulateRaw } from "./simulate.ts";
 
@@ -194,7 +195,7 @@ export async function getBridgeFee(
   args: { evmDestinationChain: number; amount: bigint | number; creditType?: string },
 ): Promise<BridgeFeeView> {
   const { pkg, queue } = requireWithdrawalQueue(client);
-  const amount = BigInt(args.amount);
+  const amount = toU64(args.amount, "amount");
   const common = {
     package: pkg,
     typeArguments: [args.creditType ?? client.creditType()] as [string],

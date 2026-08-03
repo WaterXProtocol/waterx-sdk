@@ -254,6 +254,35 @@ describe("umbrella WaterXClient", () => {
     );
   });
 
+  it("WaterXClient.create forwards every oracle option to the perp line", async () => {
+    // The umbrella is the standard entry point: an option reachable only via
+    // the nested `perp: {…}` escape hatch is effectively undiscoverable, so
+    // every oracle knob must be settable at the top level too.
+    const perpSpy = vi.spyOn(PerpClient, "create").mockResolvedValue(perpClient);
+    vi.spyOn(PredictClient, "create").mockResolvedValue(predictClient as unknown as PredictClient);
+    const fetchImpl = vi.fn() as unknown as typeof fetch;
+
+    await WaterXClient.create({
+      network: "TESTNET",
+      oracleSource: "waterx_rule",
+      pythApiKey: "k",
+      pythFetch: { timeoutMs: 1_000 },
+      waterxEndpoint: "https://app.example/api/quote-center",
+      waterxFetch: { fetchImpl, retries: 1 },
+    });
+
+    expect(perpSpy).toHaveBeenCalledWith(
+      "TESTNET",
+      expect.objectContaining({
+        oracleSource: "waterx_rule",
+        pythApiKey: "k",
+        pythFetch: { timeoutMs: 1_000 },
+        waterxEndpoint: "https://app.example/api/quote-center",
+        waterxFetch: { fetchImpl, retries: 1 },
+      }),
+    );
+  });
+
   it("WaterXClient.create defaults both lines to TESTNET when only oracleSource is passed", async () => {
     const perpSpy = vi.spyOn(PerpClient, "create").mockResolvedValue(perpClient);
     const predictSpy = vi

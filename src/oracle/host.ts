@@ -11,7 +11,7 @@
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import type { Network } from "../constants.ts";
-import type { OracleConfig, PythAccessConfig } from "./config.ts";
+import type { OracleConfig, PythAccessConfig, WaterxAccessConfig } from "./config.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 
 export interface OracleHost {
@@ -21,6 +21,17 @@ export interface OracleHost {
   readonly config: OracleConfig;
   /** Caller-supplied Pyth credential + fetch policy (create options) — NO endpoints, NO object ids. */
   readonly pyth: PythAccessConfig;
+  /**
+   * Caller-supplied WaterX quote-center overrides for `WaterxRule`
+   * (`waterxEndpoint` / `waterxFetch` create options) — access-only, mirroring
+   * `pyth` above. OPTIONAL so an existing host stays a valid `OracleHost`;
+   * unset fields resolve against the rule's own `WATERX_INFRA[network]` table.
+   * This is the hook a browser consumer uses to route the quote-center fetch
+   * through a same-origin proxy (`endpoint`) or its own transport
+   * (`fetch.fetchImpl`) — that request is made from the page, so it is bound
+   * by the quote-center's CORS allowlist.
+   */
+  readonly waterx?: WaterxAccessConfig;
   /** gRPC client for the on-chain reads the Pyth update path needs. */
   readonly grpcClient: SuiGrpcClient;
   /**

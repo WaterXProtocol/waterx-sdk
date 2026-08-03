@@ -3,6 +3,8 @@ import {
   buildPlaceOrderTx,
   buildRedeemVaaTx,
   buildRequestCreditWithdrawTx,
+  calcEstLiqPriceRaw,
+  calcEstLiqPriceRawFromView,
   claimReward,
   closePositionRequest,
   custodyMint,
@@ -15,6 +17,7 @@ import {
   mintCreditToAccount,
   mintWlp,
   nativeCustodyCalls,
+  parseWholeDollarU64,
   PerpClient,
   placeOrderRequest,
   stake,
@@ -58,6 +61,14 @@ describe("SDK package wiring (v3)", () => {
     expect(typeof buildRequestCreditWithdrawTx).toBe("function");
     expect(typeof custodyMint).toBe("function");
     expect(typeof fetchDepositVaa).toBe("function");
+  });
+
+  it("exports the liq-price math and its view→raw adapter", () => {
+    expect(typeof calcEstLiqPriceRaw).toBe("function");
+    expect(typeof calcEstLiqPriceRawFromView).toBe("function");
+    // The whole-dollar price domain rehomed to utils/validate.ts but must keep
+    // publishing through the perp/fetch barrel.
+    expect(typeof parseWholeDollarU64).toBe("function");
   });
 
   it("exports the umbrella WaterXClient (with deprecated Client alias) from @waterx/sdk", () => {

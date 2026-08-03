@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ORDER_LIMIT_BUY, ORDER_TAG_WILDCARD } from "../../../src/perp/constants.ts";
 import {
   addPreOrderRequest,
+  buildPlaceOrderArgument,
   cancelOrderRequest,
   cancelPreOrderRequest,
   placeOrderRequest,
@@ -130,5 +131,74 @@ describe("user/order PTB builders (v3)", () => {
       newTriggerPrice: rawPrice(96_000),
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("write-surface integer guards (representative)", () => {
+  // The guard throws while building the arguments object — nothing reaches the
+  // chain, so the offline unit client is enough.
+  const validOrder = {
+    isLong: true,
+    isStopOrder: false,
+    reduceOnly: false,
+    size: 1_000_000_000n,
+    collateralAmount: 1_000_000n,
+  };
+
+  it("buildPlaceOrderArgument throws named RangeErrors on garbage numerics", () => {
+    expect(() =>
+      buildPlaceOrderArgument(client, new Transaction(), { ...validOrder, size: 2 ** 53 }),
+    ).toThrow(/size/);
+    expect(() =>
+      buildPlaceOrderArgument(client, new Transaction(), {
+        ...validOrder,
+        collateralAmount: 1.5,
+      }),
+    ).toThrow(/collateralAmount/);
+    expect(() =>
+      buildPlaceOrderArgument(client, new Transaction(), {
+        ...validOrder,
+        triggerPrice: NaN,
+      }),
+    ).toThrow(/triggerPrice/);
+    expect(() =>
+      buildPlaceOrderArgument(client, new Transaction(), {
+        ...validOrder,
+        acceptablePrice: -1,
+      }),
+    ).toThrow(/acceptablePrice/);
+  });
+
+  it("guards the u8 orderTypeTag — the width where BCS truncates instead of throwing", () => {
+    // `bcs.u8().serialize(2.7)` encodes `2`, so a fractional tag would have
+    // silently selected the WRONG order book. 255 (ORDER_TAG_WILDCARD) is the
+    // top of the domain and must still pass.
+    expect(() =>
+      cancelOrderRequest(client, new Transaction(), {
+        ticker,
+        accountId,
+        collateralType,
+        orderId: 1n,
+        orderTypeTag: 2.7,
+      }),
+    ).toThrow(/orderTypeTag/);
+    expect(() =>
+      cancelOrderRequest(client, new Transaction(), {
+        ticker,
+        accountId,
+        collateralType,
+        orderId: 1n,
+        orderTypeTag: 256,
+      }),
+    ).toThrow(/orderTypeTag must be an integer in \[0, 255\]/);
+    expect(() =>
+      cancelOrderRequest(client, new Transaction(), {
+        ticker,
+        accountId,
+        collateralType,
+        orderId: 1n,
+        orderTypeTag: ORDER_TAG_WILDCARD,
+      }),
+    ).not.toThrow();
   });
 });

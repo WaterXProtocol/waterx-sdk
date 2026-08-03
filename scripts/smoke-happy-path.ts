@@ -282,7 +282,9 @@ async function main(): Promise<void> {
   });
 
   if (!(await sim(client, keypair, cancelTx, "cancelOrder (sim)"))) {
+    // A failed cancel sim is a failed run — do not exit 0 here.
     console.warn("cancelOrder sim failed; not executing");
+    process.exitCode = 2;
     return;
   }
   await execute(client, keypair, cancelTx, "cancelOrder (execute)");

@@ -1,7 +1,7 @@
 {
   "name": "@waterx/sdk",
-  "version": "4.0.3",
-  "description": "WaterX SDK \u2014 perpetuals and prediction markets on Sui",
+  "version": "4.2.0",
+  "description": "WaterX SDK — perpetuals and prediction markets on Sui",
   "license": "MIT",
   "author": "WaterX",
   "repository": {
@@ -170,6 +170,9 @@
     "lint:fix": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" \"vitest.config.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" \"vitest.config.ts\" \"eslint.config.mjs\" \"sui-codegen.config.mjs\" \"packages/predict-stress/**/*.{ts,mjs,json,md}\"",
     "env:init": "tsx scripts/init-local-env.ts",
+    "oracle:aggregates": "tsx scripts/print-oracle-aggregates.ts",
+    "oracle:aggregates:testnet": "tsx scripts/print-oracle-aggregates.ts --testnet",
+    "oracle:aggregates:mainnet": "tsx scripts/print-oracle-aggregates.ts --mainnet",
     "typecheck": "tsc --noEmit",
     "check": "pnpm lint && pnpm typecheck && pnpm test:unit",
     "test": "vitest run --project unit --project predict-unit",

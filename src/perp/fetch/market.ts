@@ -18,6 +18,7 @@ import {
   TokenPoolData,
   tokenPoolData as tokenPoolDataCall,
 } from "../../generated/waterx_perp_view/view.ts";
+import { toU64 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 import { simulateAndExtract, withLp } from "./simulate.ts";
 
@@ -97,7 +98,7 @@ export async function getTokenPoolData(
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
       pool: tx.object(client.config.packages.wlp.wlp_pool),
-      tokenIndex: args.tokenIndex,
+      tokenIndex: toU64(args.tokenIndex, "tokenIndex"),
     },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);

@@ -12,6 +12,7 @@
 
 import type { BasePackageEntry } from "../account/config.ts";
 import type { BaseLineConfig } from "../base-client.ts";
+import type { FetchPolicy } from "./update-fetch.ts";
 
 // ============================================================================
 // Per-package entries (canonical shape, snake_case to match the JSON)
@@ -91,6 +92,41 @@ export interface SupraRulePackage extends BasePackageEntry {
   enabled?: boolean;
 }
 
+/**
+ * Per-ticker `waterx_rule` feed entry. Keyed in `feeds` by the oracle **ticker**
+ * (e.g. `"SUIUSD"`, the same key `pyth_rule.feeds` uses), so
+ * `Object.keys(feeds)` is the SDK's supported-ticker set. The fields are
+ * informational off-chain — the SDK keys routing/support off the entry's
+ * presence and pushes the enclave-signed price verbatim, never re-deriving it.
+ */
+export interface WaterxRuleFeedEntry {
+  /** Exchange ticker the quote-center aggregates from (e.g. `"SUIUSDT"`). */
+  ticker?: string;
+}
+
+/**
+ * `waterx_rule` deployment entry — the first-party Nautilus-TEE oracle rule.
+ * Read by `WaterxRule` (`rules/waterx-rule.ts`): `feeds` for ticker support,
+ * `config`/`enclave_config`/`enclave` for the `collect_batch_latest` call,
+ * `published_at` for the package address. The off-chain signed price is pulled
+ * from the quote-center (endpoint from {@link WATERX_DEFAULTS}), not this JSON.
+ *
+ * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
+ * which rule prices a ticker is decided solely by the client's `oracleSource`
+ * create option (see `OracleHost.oracleSource`), mirroring `pyth_lazer_rule`.
+ */
+export interface WaterxRulePackage extends BasePackageEntry {
+  /** Shared `waterx_rule::Config` (per-symbol on-chain feed_config). */
+  config: string;
+  /** Shared `EnclaveConfig<WATERX_RULE>` the on-chain signature verify runs against. */
+  enclave_config: string;
+  /** Shared `Enclave<WATERX_RULE>` holding the registered TEE signing pubkey. */
+  enclave: string;
+  enabled?: boolean;
+  /** Oracle ticker → feed entry; presence marks the ticker as waterx-served. */
+  feeds: Record<string, WaterxRuleFeedEntry>;
+}
+
 export interface WaterxOraclePackage extends BasePackageEntry {
   listing_cap: string;
   oracle: string;
@@ -109,6 +145,8 @@ export interface OraclePackages {
   pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;
   supra_rule?: SupraRulePackage;
+  /** See {@link WaterxRulePackage} — read by `WaterxRule` when `oracleSource` selects it. */
+  waterx_rule?: WaterxRulePackage;
   waterx_oracle: WaterxOraclePackage;
 }
 
@@ -158,6 +196,42 @@ export interface PythAccessConfig {
    * timeout, 2 retries) when unset.
    */
   fetch?: PythFetchPolicy;
+}
+
+// ============================================================================
+// WaterX quote-center access — caller-supplied overrides (NO infra here)
+// ============================================================================
+
+/**
+ * `client.waterx` — ONLY the caller-supplied quote-center overrides for
+ * `WaterxRule`, mirroring {@link PythAccessConfig}: no resolved infra lives on
+ * the client. When a field is unset the rule resolves it against its OWN
+ * per-network table (`WATERX_INFRA` in `rules/waterx-rule.ts`) — no other
+ * source's endpoint or policy is ever consulted.
+ *
+ * The endpoint override exists because this is the one oracle source a BROWSER
+ * fetches itself: the rule pulls the signed envelope from the page, so it is
+ * subject to the quote-center deployment's CORS allowlist. A front end whose
+ * origin is not on that list — or one that must route egress through its own
+ * backend — points `endpoint` at a same-origin proxy (or supplies
+ * `fetch.fetchImpl`) instead of being locked to the default host.
+ */
+export interface WaterxAccessConfig {
+  /**
+   * Quote-center base URL override (`waterxEndpoint` create option). A base
+   * PATH is preserved — the rule appends via `joinEndpointPath`, so
+   * `https://app.example/api/quote-center` resolves to
+   * `…/api/quote-center/v1/quotes/update` and a proxy route is not rewritten
+   * away. A trailing slash is trimmed.
+   */
+  endpoint?: string;
+  /**
+   * Retry/timeout policy (and `fetchImpl`) for the quote-center fetch — see
+   * `fetchWithPolicy` (`./update-fetch.ts`). Supplied via the `waterxFetch`
+   * create option. Falls back to `fetchWithPolicy`'s built-in defaults (15s
+   * timeout, 2 retries) when unset — never to another source's policy.
+   */
+  fetch?: FetchPolicy;
 }
 
 // ============================================================================

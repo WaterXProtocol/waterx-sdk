@@ -2,23 +2,30 @@
 
 All notable changes to `@waterx/sdk` are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
-package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Entries
 reference the PR that introduced them.
+
+**Versioning policy — SemVer syntax, but NOT the SemVer compatibility promise.** Version
+numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
+package MAY ship a breaking change in a PATCH or MINOR release. Every consumer is
+first-party and pins the SDK **exact**, so no consumer takes a break implicitly; a
+`^`-range consumer would, and none exists. `4.0.1` shipped breaking as a patch and `4.1.0`
+as a minor. Each such release NAMES its breaking changes at the top of its section — read
+that note before upgrading, and do not infer compatibility from the version number alone.
 
 ## [Unreleased]
 
-## [4.0.3] - 2026-07-31
+## [4.2.0] - 2026-08-03
 
-_Oracle-source decoupling: every oracle source is fully self-contained — its
-endpoints and on-chain object ids live with its rule, nothing source-shaped
-rides on the shared client, and there is no default source and no
-cross-source fallback anywhere._
+_Oracle-source decoupling, completed for ALL THREE sources: every oracle
+source is fully self-contained — its endpoints and on-chain object ids live
+with its rule, nothing source-shaped rides on the shared client, and there is
+no default source and no cross-source fallback anywhere. Includes `4.1.0`'s
+`waterx_rule` (merged), now held to the same per-source contract._
 
-_Ships as a patch despite the **BREAKING** entries below, for the same reason
-`4.0.1` did: the `4.0.x` oracle surface is explicitly unstable-until-settled
-(see the `4.0.1` note), and this release is what settles it. Consumers on
-`4.0.x` must read the migration lines below before bumping._
+_Ships as a MINOR carrying the **BREAKING** entries below, on `4.1.0`'s
+rationale (see its note): both first-party consumers pin exact and adapt in
+the same change set. Read the migration lines before bumping._
 
 ### Removed
 
@@ -52,6 +59,379 @@ _Ships as a patch despite the **BREAKING** entries below, for the same reason
   Exported from `@waterx/sdk`, `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
   The full `PYTH_CORE_INFRA` table stays rule-internal (deep import
   `@waterx/sdk/oracle/pyth` if you genuinely need the object ids).
+## [4.1.0] - 2026-07-31
+
+> **Released as a MINOR carrying THREE breaking changes** (deliberate — see the
+> versioning policy at the top of this file). Do NOT stop at the removed
+> constants; the other two are behavior changes with no compile error to warn
+> you:
+>
+> 1. **Removed exports.** `CRYPTO_FEE_RATE`, `STOCK_FEE_RATE` and
+>    `MAINTENANCE_MARGIN_RATE` are gone from `@waterx/sdk/perp`. Migration in
+>    `### Removed`.
+> 2. **`getSpendableCreditBalance` can now REJECT.** `probeAddressCreditBalance`
+>    stopped swallowing RPC errors, so a call that ALWAYS resolved (reporting a
+>    failed probe as an authoritative zero balance) now propagates the failure.
+>    Callers that relied on always-resolving must catch explicitly. Same for
+>    `appendConsolidateAddressCredit`. See `### Fixed`.
+> 3. **Error TYPE and MESSAGE changed on the integer guards.**
+>    `prediction/utils`' `assertU64` / `toBigInt` throw `RangeError` with the
+>    shared wording instead of plain `Error`, and tighten `isInteger` →
+>    `isSafeInteger` (so `>= 2^53` is newly rejected); `routeWormhole`'s
+>    `evmDestinationChain` check joins the same vocabulary. `RangeError` extends
+>    `Error`, so only code matching on error TYPE or MESSAGE TEXT breaks. See
+>    `### Changed`.
+>
+> Why a MINOR and not `5.0.0`: none of the three has an in-repo consumer, and
+> both first-party consumers (`waterx-fe`, `bucket-backend-mono`) pin the SDK
+> **exact** — neither picks this up implicitly; they bump to `4.1.0` in the same
+> change set that adapts (waterx-fe#1036, bucket-backend-mono#1060). The one
+> exposure is a consumer on a `^4.x` range, which WOULD take it automatically and
+> fail; there is no such consumer today. (`4.0.1` also shipped breaking under a
+> non-major version, but on a different rationale: `4.0.0` was days old and its
+> oracle surface was declared unstable-until-settled, not "no consumers + exact
+> pins".)
+
+### Added
+
+- **Split liq-estimate fee models: `calcRealLiqNetCostUsd` (signed) +
+  `calcViewEstLiqFeesUsd` (saturating) + structured `fees` input on
+  `calcEstLiqPrice`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The FE/BE
+  hand-copied (and drifted) fee rule now lives in the SDK once, split into two
+  explicitly-named functions so callers cannot mix models:
+  - `calcRealLiqNetCostUsd({ borrowFeeUsd, openFeeUsd, closingFeeUsd, fundingFeeUsd })`
+    — the REAL check (`position.move::is_liquidatable`): a plain SIGNED sum
+    including the closing fee. Funding income is credited IN FULL (income pays
+    deficit first, remainder adds back to equity), so a result below zero is a
+    genuine equity credit — deliberately NOT floored.
+  - `calcViewEstLiqFeesUsd({ borrowFeeUsd, openFeeUsd, fundingFeeUsd })` — the
+    VIEW estimate (`view.move::calculate_est_liq_price`): `max(0, …)` per the
+    view's unsigned `Float.saturating_sub`, with structurally NO closing-fee
+    field because the view omits that term.
+    `calcEstLiqPrice` takes EITHER the existing `totalFeesUsd` (unchanged —
+    back-compat for published consumers) or `fees: LiqFeeBundle`, which derives
+    the total via `calcRealLiqNetCostUsd` (REAL model, signed) and takes
+    precedence. (An interim unreleased `calcLiqFeeBundleUsd` that floored the
+    real model at 0 was removed before ever shipping.)
+- **`calcEstLiqPriceRaw` — canonical BigInt fixed-point liq price, bit-identical
+  to the chain** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  Op-for-op mirror of `view.move::calculate_est_liq_price` under
+  `bucket_v2_framework::float` semantics — truncating u128 division at every
+  mul/div step, `math::amount_to_usd`'s exact two-step composition, borrow +
+  open fee summed as u64 BEFORE conversion, `saturating_sub` funding credit.
+  Takes the raw on-chain values exactly as the view does (1e9-scaled size /
+  avg price / maintenance margin, raw collateral units + decimal, whole-dollar
+  u64 prices) and returns the raw 1e9-scaled u128 price equal to
+  `PositionData.est_liq_price`. The Number `calcEstLiqPrice` is documented as
+  a UI convenience approximation of this canonical form. The
+  `liq-parity-check` harness now requires EXACT raw equality (no tolerance).
+- **`calcEstLiqPriceRawFromView(position, opts)` — view→raw adapter for
+  `calcEstLiqPriceRaw`** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `calcEstLiqPriceRaw` takes twelve raw fields, nine of which map 1:1 off a
+  fetched `PositionDataView` row (the other three — the two probe prices and the
+  market's maintenance margin — are not on the row) — every consumer was
+  hand-writing that map
+  (the parity harness included). The adapter owns it: pass the row plus
+  `{ maintenanceMarginRaw, basePriceUsd, collateralPriceUsd }` and get the same
+  bit-identical raw price. It also carries, on a signature a caller actually
+  hovers, the invariant that was previously prose only: the two prices MUST be
+  the ones passed to the read that produced the row — `PositionDataView` does
+  not carry its probe prices, so nothing can check it, and mismatched prices
+  yield a plausible number that silently disagrees with the row's own
+  `est_liq_price`. Lives at `perp/liq-view.ts` (exported from `@waterx/sdk` and
+  `@waterx/sdk/perp`) rather than `utils/math.ts`: `PositionDataView` is a perp
+  read type, and importing it into the shared `utils/` base would invert the
+  `perp/ → utils/` dependency direction. `examples/views/liq-parity-check.ts`
+  now goes through the adapter, so the live-network run verifies the mapping as
+  well as the arithmetic. Type: `EstLiqPriceViewOpts`.
+- **Numeric-domain validation in the liq math functions**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `calcRealLiqNetCostUsd` / `calcViewEstLiqFeesUsd` throw `RangeError` unless
+  borrow/open/closing fees are finite `>= 0` and funding is finite (signed
+  ok); `calcEstLiqPrice` throws unless size/avgPrice/spotPrice/collateral are
+  finite `>= 0`, `maintenanceMarginRate` is finite in `[0, 1]`, and
+  `totalFeesUsd` is finite; `calcEstLiqPriceRaw` rejects negative bigints and
+  out-of-range decimals. Previously garbage flowed through — e.g. an
+  `Infinity` fee returned 0, indistinguishable from "already liquidatable".
+- **Integer guards extended to the WRITE surface (tx builders)**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The
+  `toU64`/`toU128` validators moved to a shared `utils/validate.ts` (every
+  consumer imports it directly — there is no `perp/fetch/validate.ts` shim) and
+  now guard every numeric param on the tx-build surface:
+  `perp/user` trading (positionId / orderId / collateralAmount / size /
+  acceptablePrice / triggerPrice / maxFills / pageSize / pageIndex), orders
+  (all `PlaceOrderArgument` fields, order ids, trigger prices), WLP
+  (depositAmount / minLpAmount / lpAmount / requestId), staking
+  (stakeAmount / withdrawalAmount when numeric), `account.requestWithdraw`
+  amount, credit funding (amount / key / `routeNative.minOutput`), plus the
+  fetch stragglers `getTokenPoolData.tokenIndex` and `getBridgeFee.amount`,
+  and `prediction/utils.toBigInt` (now `Number.isSafeInteger`).
+
+  Rationale, stated precisely (the earlier draft of this entry got it wrong):
+  the BCS writer is not the thing that loses the value at u64 — it rejects a
+  negative and a fractional `number` on its own. What it cannot see is precision
+  already lost in JS: `2**53 + 1` collapses to `2**53` at parse time, so BCS
+  faithfully encodes an integer the caller never wrote. (`2**53 + 2` IS exactly
+  representable and encodes correctly.) Hence the `Number.isSafeInteger` floor,
+  and the named `RangeError` that fires before a transaction is built.
+
+- **`toU8` / `toU16` — the small-width integer guards**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). u8/u16 is the
+  width where the BCS writer's own checks are WEAKEST: it throws on an
+  out-of-range value but SILENTLY TRUNCATES a fractional one
+  (`bcs.u8().serialize(2.7)` encodes `2`). The four unguarded `orderTypeTag`
+  params — `getOrder` on `perp/fetch`, plus `cancelOrderRequest` /
+  `updateOrderRequest` / `matchOrders` on the write side — now go through
+  `toU8`, so a fractional tag throws by name instead of quietly selecting the
+  wrong order book. `routeWormhole`'s hand-rolled `evmDestinationChain` check
+  becomes `toU16` (same accept/reject set, now a `RangeError` with the shared
+  wording — see the release header).
+- **Numeric-domain validation extended to the remaining Number helpers**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `calcEffectiveCollateralUsd` throws on negative or non-finite fee inputs (a
+  negative fee silently ADDED to effective collateral before);
+  `calcMaxReducibleCollateralUsd` guards its FULL param list against the same
+  domains `calcEstLiqPrice` uses — sizes, prices, entry price, max leverage,
+  min collateral and every fee leg finite `>= 0`, `maintenanceMarginRate` finite
+  in `[0, 1]`, `collateralDecimal` an integer in `[0, 19]` — not just the two
+  fee legs it started with. The sharp one: its liquidation leg backs off one raw
+  collateral unit via
+  `collateralPriceUsd > 0 ? collateralPriceUsd / 10 ** collateralDecimal : 0`,
+  so a NEGATIVE collateral price used to fall into the `: 0` branch and silently
+  delete that abort-safety margin while still returning a plausible dollar
+  figure. `maxLeverage === 0` (no cap) and `collateralPriceUsd === 0` (no
+  back-off) remain documented domain zeros. `calcWlpIncentiveApy`,
+  `annualizedApyFromRatio`, `calcWlpMintOut`, `calcWlpRedeemOut`, and
+  `calcDynamicFeeBps` throw `RangeError` on NaN / ±Infinity / negative
+  operation values instead of mapping garbage to a plausible zero
+  (documented domain zeros — e.g. `annualizedApyFromRatio` with
+  `ratio <= 0` / `days <= 0` — are kept).
+- **`rawPrice` exact decimal-string path**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The `number`
+  path is exact only below ≈ $9,007,199 (2^53 / 1e9) — sharpest for
+  `triggerPrice`, an exact order-book key where a lossy raw silently fails
+  the order lookup; this is now documented, and a decimal STRING parses
+  digits directly onto the 1e9 grid with no f64 round-trip (≤ 9 decimals;
+  malformed / negative / scientific-notation strings now throw where
+  `Number()` used to accept them). Number-path semantics unchanged.
+- **`RawPriceInput` / `ExactDecimalUsd` — `rawPrice`'s two modes are now named
+  in the type** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  The signature was a bare `number | string`, so hover and completion said
+  "either works" while only the JSDoc carried the footgun. `rawPrice` now takes
+  `RawPriceInput = number | ExactDecimalUsd`, where `ExactDecimalUsd` (a
+  documented `string` alias) is the digit-exact mode that parses onto the 1e9
+  grid without an f64 round-trip, and `number` is documented as lossy above the
+  cliff (`usd × 1e9 > 2^53`, ≈ $9,007,199) — fine for a slippage bound, wrong
+  for `triggerPrice`, which is an exact order-book key. Purely a type-level
+  rename of the same union: no runtime change, and every existing call still
+  compiles. The tx-build trigger-price params (`perp/user/order.ts`,
+  `perp/user/trading.ts`) deliberately keep `bigint | number` — they take the
+  RAW scaled value, not USD, both forms are legitimate there, `toU128` already
+  rejects a non-safe-integer `number` before it can serialize wrong, and
+  dropping `number` would break published call shapes. The mode choice belongs
+  one level up at `rawPrice`, and `order.ts` now documents that.
+- **`parseWholeDollarU64(value)` + u64/u128 guards at the fetch boundary**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `parseWholeDollarU64` (exported next to `WholeDollarUsdPrice`) parses a
+  string/number into a whole-dollar u64 with NO silent rounding — throws
+  `RangeError` on fractional, negative, non-finite, or `> u64::MAX` input; the
+  `examples/views/*` scripts use it instead of `BigInt(Math.round(...))`.
+  Internally, every u64/u128 param on the `perp/fetch` surface
+  (`basePriceUsd` / `collateralPriceUsd` / `positionId` / `orderId` /
+  `cursor` / `pageSize` / `triggerPrice`) is validated (bigint range-checked;
+  numbers must be non-negative safe integers) and throws with the parameter
+  name instead of serializing a silently-wrong integer into the PTB. The one
+  read param that is neither u64 nor u128 — `getOrder`'s u8 `orderTypeTag` — is
+  covered by `toU8` (above), so no unguarded integer is left on the read
+  surface either.
+- **`formatFundingInterval(intervalMs)`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
+  funding-interval wire label (`"1H"` / `"8H"` / `"1.5H"` / `"30M"`,
+  non-integer hours preserved), an output-identical port of the BE
+  implementation so FE and BE emit byte-identical strings from one source.
+  `MS_PER_HOUR` / `MS_PER_MINUTE` join `MS_PER_YEAR` in the shared constants.
+- **`WholeDollarUsdPrice` type alias**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)) — the
+  whole-dollar view-price warning on the six `perp/fetch` read functions is now
+  carried once by a documented `bigint | number` alias used at every
+  `basePriceUsd` / `collateralPriceUsd` site, instead of six drifting JSDoc
+  copies; only the per-function required-vs-defaults-to-`0n` note stays inline.
+- **`WaterxRule` — the first-party WaterX quote-center as a selectable oracle
+  source (`oracleSource: "waterx_rule"`)**
+  ([#78](https://github.com/WaterXProtocol/waterx-sdk/pull/78)). Users can now price their perp
+  operations from the Nautilus-TEE quote-center instead of Pyth. The rule pulls
+  one enclave-signed batch envelope covering the requested tickers from the
+  quote-center (`GET /v1/quotes/update?symbols=…`; endpoint per network from the
+  new `WATERX_DEFAULTS`, public read — no auth), then — unlike Pyth Lazer, whose
+  verify is a single shared PTB step — verifies AND feeds in ONE
+  `waterx_rule::collect_batch_latest` call per collector (the Move API bundles
+  the two): it rebuilds the signed `BatchPricePayload` in-PTB (`new_batch_payload`
+  - `new_batch_item`/`push_batch_item` per item, byte-identical to what the
+    enclave signed), re-verifies the ed25519 signature, and feeds the item matching
+    `collector.symbol()`. Being the dual-rule collect path, a waterx-routed ticker
+    composes onto the same collector as Pyth/Supra; on-chain a freshness miss /
+    replayed timestamp ABSTAINS so the other weighted rules cover, while a
+    config/integrity mismatch or bad signature aborts.
+
+  Wiring mirrors `PythLazerRule`: `WaterxRule` is registered in `rule-registry.ts`
+  and routed by the client's `oracleSource` option alone (never a config
+  `enabled` flag); `refreshOraclePrices`/`aggregateTicker` thread the signed
+  envelope to the per-ticker feed leg. New config surface: `WaterxRulePackage`
+  (`config`/`enclave_config`/`enclave`/`feeds`, `feeds` keyed by oracle ticker =
+  the supported-ticker set) on `OraclePackages.waterx_rule`, and `WATERX_DEFAULTS`
+  (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`).
+  Generated `waterx_rule` Move bindings added (`@waterx/rule`).
+
+- **`waterxEndpoint` / `waterxFetch` create options — the quote-center host and
+  transport are overridable** ([#78](https://github.com/WaterXProtocol/waterx-sdk/pull/78)).
+  `waterx_rule` is the one source a BROWSER fetches itself (the signed envelope
+  is pulled from the page), so it is bound by the quote-center deployment's CORS
+  allowlist. A front end whose origin is not allowed — or one that must route
+  egress through its own backend — now sets `waterxEndpoint` to a same-origin
+  proxy that forwards `GET /v1/quotes/update`, and/or `waterxFetch.fetchImpl` to
+  its own transport, instead of being locked to the hardcoded host and global
+  `fetch`. The endpoint's base PATH is preserved (the fetch builds its URL via
+  the shared `joinEndpointPath`, not `new URL(path, endpoint)` — which would
+  have rewritten `https://app.example/api/quote-center` to the origin root and
+  bypassed the proxy, the same footgun that once dropped Pyth Pro's `/hermes`
+  prefix). Both resolve onto `client.waterx` (`WaterxInfraConfig`), default to
+  `WATERX_DEFAULTS[network]` (fetch policy falling back to `pythFetch`), and are
+  inert under the Pyth sources. `OracleHost` gains an optional `waterx` field, so
+  an existing host object stays a valid `OracleHost`. Both are top-level options
+  on the umbrella `WaterXClient.create` too (forwarded to the perp line beside
+  `oracleSource` / `pythApiKey` / `pythFetch`) — not reachable only through the
+  nested `perp: {…}` override.
+- Restore `pnpm oracle:aggregates` (`scripts/print-oracle-aggregates.ts`) for v3
+  (#79): Hermes/Lazer refresh + `refreshOraclePrices` simulate per configured
+  oracle ticker (legacy `--format pretty|raw`, `--testnet` / `--mainnet`;
+  **default network mainnet**; `pnpm oracle:aggregates:testnet`, no private
+  key). Network flags rewrite a `WATERX_CONFIG_URL` ending in `testnet.json` ↔
+  `mainnet.json` when needed. Harness wires `ORACLE_SOURCE` / `PYTH_API_KEY`
+  into `oracleSource` / `pythApiKey`; under `pyth_rule`, a failed Hermes refresh
+  prints `WARN` / `OK (STALE)` (no silent fresh OK); under `pyth_lazer_rule`
+  there is no Core fallback — missing Lazer feed fails the ticker.
+- `oracle:aggregates`: `--ticker T[,T...]` flag to aggregate only the given ticker(s)
+  (repeatable and/or comma-separated, case-insensitive, e.g.
+  `pnpm oracle:aggregates -- --ticker WTIUSD`). Omitted, it still runs every configured
+  aggregator; an unconfigured ticker aborts non-zero with the list of valid tickers.
+
+### Changed
+
+- **One u64 domain rule for both product lines — prediction's u64 errors are now
+  `RangeError` with the shared wording**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `prediction/utils` carried a second `U64_MAX` and a third copy of the u64
+  guard (`assertU64` / `toBigInt`), so the `isInteger` → `isSafeInteger`
+  precision fix had to be authored twice, and it threw plain `Error` where the
+  perp side threw `RangeError` for the identical failure. `assertU64` is now a
+  thin alias over `utils/validate.toU64` (and accepts `number` too); `toBigInt`
+  keeps only the decimal-string shape check it uniquely owns. The same inputs
+  are still rejected, but the error TYPE and MESSAGE unify — code matching on
+  message text now sees `"<name> out of u64 range, got X"` /
+  `"<name> must be a non-negative safe integer (< 2^53) or a bigint, got X"`
+  instead of `"… exceeds u64 max (…)"` / `"Invalid integer: …"`. `RangeError`
+  extends `Error`, so `instanceof Error` / bare `catch` paths are unaffected.
+  The same unification absorbs the last hand-rolled integer check in the SDK:
+  `routeWormhole`'s `evmDestinationChain` guard becomes `toU16`, so its message
+  changes from `"evmDestinationChain must be a u16 (0..65535), got X"` to
+  `"evmDestinationChain must be an integer in [0, 65535] (u16), got X"` and its
+  type from `Error` to `RangeError`. Same accept/reject set.
+- **The whole-dollar price domain moved to `utils/validate.ts` (additive
+  re-export — no consumer break)**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  `parseWholeDollarU64` and `WholeDollarUsdPrice` are pure numeric-domain
+  guards with no chain or fetch dependency — the same category as `toU64` /
+  `toU128` / the `assert*` family, which this PR already centralized — but they
+  were still defined inside `perp/fetch/positions.ts`. They now live beside the
+  rest of that vocabulary and are **re-exported unchanged** from
+  `perp/fetch/positions.ts`, so the published paths (`@waterx/sdk`,
+  `@waterx/sdk/perp`, `perp/fetch`) resolve exactly as before — same binding,
+  not a copy (pinned by test). No consumer import needs to change.
+- **`parseWholeDollarU64` delegates its numeric domain to `toU64`**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). It re-derived
+  the entire finite → integer → safe-integer → non-negative → `<= u64::MAX`
+  ladder by hand; it now owns only the plain-integer-STRING form and hands the
+  rest to `toU64`. Same accept/reject set; the two number-mode hints ("round
+  explicitly at the call site", "pass a string instead") collapse into `toU64`'s
+  single message, while the string-mode hint stays.
+
+### Removed
+
+- **BREAKING: `CRYPTO_FEE_RATE`, `STOCK_FEE_RATE`, and `MAINTENANCE_MARGIN_RATE`
+  are removed** from `src/perp/constants.ts` and the `@waterx/sdk/perp` export
+  surface (calc-audit remediation,
+  [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). They were
+  defaults masquerading as truth: per-market `MarketConfig` is the only source
+  for fee and maintenance-margin parameters, and a consumer falling back to the
+  flat `MAINTENANCE_MARGIN_RATE` caused a real est-liq-price incident on
+  2026-07-28. Removed so they cannot be imported **from the SDK** — which is
+  narrower than "the trap is gone". It RELOCATED: `bucket-backend-mono` now
+  defines `FALLBACK_CRYPTO_FEE_RATE = 0.0003` /
+  `FALLBACK_STOCK_FEE_RATE = 0.0005` /
+  `FALLBACK_MAINTENANCE_MARGIN_RATIO = 0.015` locally, deliberately fenced
+  (display-only, every response built from them flagged `isLive: false`, the MMR
+  excluded from all risk gates via the `MMR_UNKNOWN` sentinel, incident
+  rationale in the file header). What this removal buys is that a flat default
+  can no longer be mistaken for an SDK-blessed constant or be pulled into a new
+  consumer by autocomplete — not that no fallback exists anywhere.
+  Migration: read the
+  `trading_fee` / `maintenance_margin` fields (and siblings) from the market's
+  on-chain `MarketConfig` — via `getMarketData` (the supported read path) or
+  the raw `MarketConfigBcs` BCS binding (exported from `@waterx/sdk/perp`
+  since 4.x). Both fields are
+  1e9-scaled `Float` values, NOT plain decimals like the deleted constants —
+  descale before use:
+  `const mmr = Number(md.maintenance_margin) / Number(FLOAT_SCALE); // e.g. 50_000_000 → 0.05`.
+  There is no flat-rate replacement on purpose.
+  (PR [#80](https://github.com/WaterXProtocol/waterx-sdk/pull/80) had marked
+  `MAINTENANCE_MARGIN_RATE` `@deprecated` in this same unreleased window; the
+  removal supersedes that deprecation entry.)
+
+### Fixed
+
+- **`calcDynamicFeeBps` mirrors the on-chain F-039 100% clamp**
+  ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The SDK copy
+  was missing `lp_pool.move::calculate_dynamic_fee`'s final
+  `(base_fee_bps + additional.min(bp_scale)).min(bp_scale)` — under extreme
+  weight imbalance it quoted fees above 100% (e.g. 12,030 bps) that the chain
+  would cap at 10,000. Both clamps are now mirrored.
+- **`calcWlpMintOut` no longer par-quotes when supply is outstanding but
+  priced TVL is 0** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  The chain reserves the $1/share bootstrap for the genuine first mint
+  (`total_supply == 0`) and aborts `EInvalidBootstrap` otherwise (re-audit
+  F-023 — par-minting there dilutes existing LPs); the helper now throws
+  `RangeError` on that state instead of quoting par. `calcWlpRedeemOut`'s
+  divergences are documented (chain aborts `EZeroPrice` where it returns 0;
+  the on-chain burn fee applies `.ceil()`, so f64 composition can drift ±1
+  raw unit).
+- **`probeAddressCreditBalance` propagates RPC errors instead of swallowing
+  them to zero** ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)).
+  Behavior change: a failed `getBalance`/`listCoins` used to be reported as
+  an authoritative zero balance — `getSpendableCreditBalance` under-reported
+  spendable funds and `appendConsolidateAddressCredit` built txs that aborted
+  on-chain with a confusing insufficient-balance error. Both now surface the
+  real error; callers that can tolerate a missing probe must catch explicitly.
+- **Docs: view-read price params are whole-dollar integers, not `rawPrice()`**
+  (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The `basePriceUsd` / `collateralPriceUsd` params on
+  `getPosition` / `getOrder` / `getMarketOrders` / `getMarketPositions` /
+  `getAccountPositions` / `getAccountOrders` are documented as whole-dollar
+  integer USD (`80000n` for $80k) — the Move view applies `float::from`
+  internally, so passing a 1e9-scaled `rawPrice()` value inflates
+  pnl/notional-derived fields by 1e9. The `examples/views/*` scripts and the
+  perp e2e read tests that made exactly that mistake are corrected. Tx-build
+  price args (`acceptablePrice` / `triggerPrice`, including u128 order-book
+  keys) still take 1e9-scaled `rawPrice()` — unchanged.
+- **Docs: `calcBorrowRateAccrual` docstring claimed flooring to completed
+  intervals** (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). The implementation (and
+  `lp_pool.move::calculate_borrow_rate_accrual`) prorate continuously —
+  `rate × elapsedMs / intervalMs` — with no flooring; the docstring now says so.
+- **Docs/tests: per-asset custody decimals vs flat `COLLATERAL_DECIMALS`**
+  (calc-audit remediation, [#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). `rescaleRawAmount` / `sumParkedBackingAsCreditRaw`
+  already thread the per-asset `decimal` from `NativeCustodyAsset` config on
+  the source side; the `COLLATERAL_DECIMALS = 6` target is documented as the
+  CREDIT/wxUSD (collateral-typed) decimal only — never a per-backing-asset
+  assumption — with unit tests covering a hypothetical 9-dec backing asset.
 
 ## [4.0.1] - 2026-07-27
 

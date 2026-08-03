@@ -1,5 +1,8 @@
 /**
- * Test-only mirror of `tx-builders` leverage sizing when `size` is omitted.
+ * Test-local leverage → explicit-size convention for e2e/integration flows.
+ * NOT a mirror of any SDK path: the SDK's implicit auto-sizing was removed in
+ * WL-1932 (order placement takes an explicit `size`); this helper only derives
+ * the explicit size tests pass, as collateral × leverage / approxPrice.
  * Pair with `fetchSimulatedUsdPricesForBases` / `getLifecycleOracleUsdPrices` for `approxPrice`
  * (see `oracle-simulate-multi-asset.ts`, `e2e-open-sizing-expect.ts`).
  */
@@ -7,9 +10,9 @@ export interface ComputeLeverageSizeOptions {
   collateralAmount: bigint | number;
   leverage: number;
   approxPrice: number;
-  /** Ignored — SDK rounds to 1000 internally. Kept for backward compat. */
+  /** Ignored — kept only so older test call sites compile. */
   lotSize?: number;
-  /** Ignored — contract validates min_size on-chain. Kept for backward compat. */
+  /** Ignored — the contract validates min_size on-chain. Kept so older test call sites compile. */
   minSize?: number;
 }
 

@@ -14,6 +14,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { makeSenderRequest } from "../../account/account-request.ts";
 import * as lp from "../../generated/waterx_perp/lp_pool.ts";
+import { toU64 } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 
 // ============================================================================
@@ -50,8 +51,8 @@ export function mintWlp(
       aum: tx.object(requireWlpAum(client)),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      depositAmount: params.depositAmount,
-      minLpAmount: params.minLpAmount,
+      depositAmount: toU64(params.depositAmount, "depositAmount"),
+      minLpAmount: toU64(params.minLpAmount, "minLpAmount"),
       oracle: tx.object(client.config.packages.waterx_oracle.oracle),
     },
     typeArguments: [params.lpType ?? client.wlpType(), params.depositTokenType],
@@ -96,7 +97,7 @@ export function requestRedeemWlp(
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
-      lpAmount: params.lpAmount,
+      lpAmount: toU64(params.lpAmount, "lpAmount"),
     },
     typeArguments: [params.lpType ?? client.wlpType(), params.redeemTokenType],
   })(tx);
@@ -125,7 +126,7 @@ export function cancelRedeemWlp(
       globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       senderRequest: req as unknown as TransactionArgument,
-      requestId: params.requestId,
+      requestId: toU64(params.requestId, "requestId"),
     },
     typeArguments: [params.lpType ?? client.wlpType()],
   })(tx);
@@ -157,7 +158,7 @@ export function settleRedeemWlp(
       wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
       operatorRequest: req as unknown as TransactionArgument,
       aum: tx.object(requireWlpAum(client)),
-      requestId: params.requestId,
+      requestId: toU64(params.requestId, "requestId"),
       oracle: tx.object(client.config.packages.waterx_oracle.oracle),
     },
     typeArguments: [params.lpType ?? client.wlpType(), params.redeemTokenType],

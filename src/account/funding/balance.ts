@@ -24,7 +24,15 @@ export interface ParkedBackingAssetBalance {
   coinsRaw: bigint;
 }
 
-/** Rescale a u64 raw amount between token decimal precisions (truncates on downscale). */
+/**
+ * Rescale a u64 raw amount between token decimal precisions (truncates on
+ * downscale). `toDecimals` defaults to {@link COLLATERAL_DECIMALS} — the
+ * CREDIT/wxUSD (collateral-typed) scale, 6 on every current deployment — for
+ * the common backing-asset → CREDIT direction. When rescaling a custody
+ * backing asset, always pass its per-asset config `decimal`
+ * (`NativeCustodyAsset.decimal`) as `fromDecimals`; never assume flat 6 — a
+ * 9-dec backing asset would otherwise mis-scale by 1000×.
+ */
 export function rescaleRawAmount(
   raw: bigint,
   fromDecimals: number,
@@ -81,6 +89,13 @@ export async function probeParkedBackingAssets(
 /**
  * Probe non-zero CREDIT parked at `accountId`'s Sui address. Matches the
  * address-CREDIT legs inside {@link appendConsolidateAddressCredit}.
+ *
+ * RPC failures PROPAGATE (no swallow-to-zero): a gRPC error here used to be
+ * silently reported as an authoritative zero balance, which made
+ * `getSpendableCreditBalance` under-report spendable funds and let
+ * `appendConsolidateAddressCredit` build a tx that later aborted on-chain
+ * with a confusing insufficient-balance error. Callers that can tolerate a
+ * missing probe must catch explicitly.
  */
 export async function probeAddressCreditBalance(
   client: AccountClientLike,
@@ -91,35 +106,34 @@ export async function probeAddressCreditBalance(
   }
 
   const creditType = client.creditType();
-  let fundsRaw = 0n;
+
+  const bal = (await client.getBalance({
+    owner: accountId,
+    coinType: creditType,
+  })) as { balance?: { addressBalance?: string } };
+  const fundsRaw = BigInt(bal.balance?.addressBalance ?? "0");
+
+  const coins = (await client.listCoins({
+    owner: accountId,
+    coinType: creditType,
+  })) as { objects?: { balance?: string }[] };
   let coinsRaw = 0n;
-
-  try {
-    const bal = (await client.getBalance({
-      owner: accountId,
-      coinType: creditType,
-    })) as { balance?: { addressBalance?: string } };
-    fundsRaw = BigInt(bal.balance?.addressBalance ?? "0");
-  } catch {
-    // ignore — treat as zero parked funds
-  }
-
-  try {
-    const coins = (await client.listCoins({
-      owner: accountId,
-      coinType: creditType,
-    })) as { objects?: { balance?: string }[] };
-    for (const coin of coins.objects ?? []) {
-      coinsRaw += BigInt(coin.balance ?? "0");
-    }
-  } catch {
-    // ignore — treat as zero owned coins
+  for (const coin of coins.objects ?? []) {
+    coinsRaw += BigInt(coin.balance ?? "0");
   }
 
   return { fundsRaw, coinsRaw };
 }
 
-/** Sum parked backing assets into CREDIT base units at the 1:1 PSM peg. */
+/**
+ * Sum parked backing assets into CREDIT base units at the 1:1 PSM peg.
+ * Each row rescales from its own per-asset `decimals` (sourced from config
+ * `NativeCustodyAsset.decimal` by {@link probeParkedBackingAssets}), so
+ * mixed-decimal backing sets (e.g. a 9-dec asset next to 6-dec USDC) sum
+ * correctly. `creditDecimals` is the CREDIT/wxUSD **target** scale —
+ * collateral-typed, 6 on all current deployments (the config JSON carries no
+ * credit decimal).
+ */
 export function sumParkedBackingAsCreditRaw(
   parked: readonly ParkedBackingAssetBalance[],
   creditDecimals: number = COLLATERAL_DECIMALS,

@@ -2,6 +2,7 @@
  * Offline `PerpClient` for unit tests — no network, deterministic config.
  */
 import type { OracleSource } from "../../../src/oracle/price-update-rule.ts";
+import type { FetchPolicy } from "../../../src/oracle/update-fetch.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import { MOCK_TESTNET_CONFIG } from "./fixtures/mock-testnet-config.ts";
 
@@ -10,6 +11,8 @@ export function createUnitTestClient(
     oracleSource?: OracleSource;
     pythApiKey?: string;
     pythFetch?: { timeoutMs?: number; retries?: number };
+    waterxEndpoint?: string;
+    waterxFetch?: FetchPolicy;
   } = {},
 ): PerpClient {
   // Clone so tests that mutate `client.config` (e.g. delete wlp) do not poison the shared fixture.
@@ -18,5 +21,7 @@ export function createUnitTestClient(
     oracleSource: opts.oracleSource ?? "pyth_rule",
     pythApiKey: opts.pythApiKey,
     pythFetch: opts.pythFetch,
+    waterxEndpoint: opts.waterxEndpoint,
+    waterxFetch: opts.waterxFetch,
   });
 }

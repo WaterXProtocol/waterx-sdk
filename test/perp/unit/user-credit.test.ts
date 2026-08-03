@@ -62,7 +62,7 @@ describe("user/credit — byte / address validation", () => {
         evmRecipient: EVM_ADDR,
         evmToken: EVM_ADDR_2,
       }),
-    ).toThrow(/u16 \(0\.\.65535\)/);
+    ).toThrow(/evmDestinationChain must be an integer in \[0, 65535\] \(u16\)/);
   });
 
   it("routeWormhole rejects negative and out-of-range chain ids", () => {
@@ -72,7 +72,7 @@ describe("user/credit — byte / address validation", () => {
         evmRecipient: EVM_ADDR,
         evmToken: EVM_ADDR_2,
       }),
-    ).toThrow(/u16 \(0\.\.65535\)/);
+    ).toThrow(/evmDestinationChain must be an integer in \[0, 65535\] \(u16\)/);
 
     expect(() =>
       routeWormhole(client, new Transaction(), {
@@ -80,7 +80,7 @@ describe("user/credit — byte / address validation", () => {
         evmRecipient: EVM_ADDR,
         evmToken: EVM_ADDR_2,
       }),
-    ).toThrow(/u16 \(0\.\.65535\)/);
+    ).toThrow(/evmDestinationChain must be an integer in \[0, 65535\] \(u16\)/);
   });
 
   it("routeWormhole rejects EVM addresses that are not 20 bytes", () => {
