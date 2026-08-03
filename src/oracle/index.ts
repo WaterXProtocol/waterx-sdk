@@ -77,9 +77,16 @@ export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
 export { PythLazerRule, LazerApiKeyMissingError } from "./rules/pyth-lazer-rule.ts";
 export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
+// `WATERX_INFRA` / `waterxQuoteCenterEndpoint` are the source's own infra table +
+// read-plane accessor (mirrors `pythCoreHermesEndpoint`).
 // WaterX quote-center rule (first-party ed25519 signed batches; `feedWaterxRule`
 // stays internal to `aggregate.ts`).
-export { WaterxRule, parseSignedEnvelope } from "./rules/waterx-rule.ts";
+export {
+  WaterxRule,
+  parseSignedEnvelope,
+  WATERX_INFRA,
+  waterxQuoteCenterEndpoint,
+} from "./rules/waterx-rule.ts";
 export type {
   WaterxUpdatePayload,
   WaterxSignedEnvelope,

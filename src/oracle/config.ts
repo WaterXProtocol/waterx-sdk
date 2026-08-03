@@ -109,7 +109,8 @@ export interface WaterxRuleFeedEntry {
  * Read by `WaterxRule` (`rules/waterx-rule.ts`): `feeds` for ticker support,
  * `config`/`enclave_config`/`enclave` for the `collect_batch_latest` call,
  * `published_at` for the package address. The off-chain signed price is pulled
- * from the quote-center (endpoint from {@link WATERX_DEFAULTS}), not this JSON.
+ * from the quote-center (endpoint from the rule-owned `WATERX_INFRA` table in
+ * `rules/waterx-rule.ts`), not this JSON.
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
  * which rule prices a ticker is decided solely by the client's `oracleSource`

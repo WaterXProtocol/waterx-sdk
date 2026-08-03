@@ -21,8 +21,8 @@ import {
   type LoadConfigOptions,
   type PythAccessConfig,
   type PythFetchPolicy,
-  type WaterXConfig,
   type WaterxAccessConfig,
+  type WaterXConfig,
   type WormholeInfraConfig,
 } from "./config.ts";
 import type { Network } from "./constants.ts";
@@ -74,7 +74,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   pythFetch?: PythFetchPolicy;
   /**
    * Quote-center base URL for `oracleSource: 'waterx_rule'` — overrides the
-   * per-network {@link WATERX_DEFAULTS} host.
+   * source's own per-network `WATERX_INFRA` default.
    *
    * This is the one source a BROWSER fetches itself (the signed envelope is
    * pulled from the page), so it is bound by the quote-center deployment's CORS
@@ -90,8 +90,8 @@ export interface CreateClientOptions extends LoadConfigOptions {
   waterxEndpoint?: string;
   /**
    * Retry/timeout policy — and `fetchImpl` — for the quote-center fetch (see
-   * `fetchWithPolicy`). Optional: falls back to `pythFetch`, then to the
-   * built-in defaults. Supply `fetchImpl` to route the request through your own
+   * `fetchWithPolicy`). Optional: falls back to the built-in defaults — never
+   * to `pythFetch` (sources stay independent). Supply `fetchImpl` to route the request through your own
    * transport (a proxying `fetch` wrapper, a non-global `fetch`, a test double).
    */
   waterxFetch?: FetchPolicy;

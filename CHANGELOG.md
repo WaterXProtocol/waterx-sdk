@@ -59,6 +59,7 @@ the same change set. Read the migration lines before bumping._
   Exported from `@waterx/sdk`, `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
   The full `PYTH_CORE_INFRA` table stays rule-internal (deep import
   `@waterx/sdk/oracle/pyth` if you genuinely need the object ids).
+
 ## [4.1.0] - 2026-07-31
 
 > **Released as a MINOR carrying THREE breaking changes** (deliberate — see the

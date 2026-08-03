@@ -546,7 +546,9 @@ async function main() {
   const client = await PerpClient.create(network, {
     cache: true,
     waterxConfigUrl,
-    ...(oracleSource !== undefined ? { oracleSource } : {}),
+    // The SDK's oracleSource is required (no default) — this diagnostic script
+    // defaults its own flag to pyth_rule so bare invocations keep working.
+    oracleSource: oracleSource ?? "pyth_rule",
     ...(pythApiKey !== undefined ? { pythApiKey } : {}),
   });
 

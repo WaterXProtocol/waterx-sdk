@@ -191,7 +191,7 @@ export interface ClientCreateOptions {
   pythFetch?: PythFetchPolicy;
   /**
    * Quote-center base URL for `oracleSource: 'waterx_rule'`, forwarded to the
-   * perp line — overrides the per-network `WATERX_DEFAULTS` host.
+   * perp line — overrides the source's own per-network `WATERX_INFRA` default.
    *
    * `waterx_rule` is the one source a BROWSER fetches itself, so it is bound by
    * the quote-center deployment's CORS allowlist: a front end whose origin is
@@ -202,7 +202,7 @@ export interface ClientCreateOptions {
   waterxEndpoint?: string;
   /**
    * Retry/timeout policy — and `fetchImpl` — for the perp line's quote-center
-   * fetch. Falls back to `pythFetch`, then to the built-in defaults.
+   * fetch. Falls back to the built-in defaults — never to `pythFetch`.
    */
   waterxFetch?: FetchPolicy;
   /** Perp-line overrides (network, grpcUrl, waterxConfigUrl, cache, …). */
