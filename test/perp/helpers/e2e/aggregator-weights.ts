@@ -98,8 +98,8 @@ function fedWitnesses(client: PerpClient, ticker: string): Set<string> {
   if (client.config.packages.pyth_rule?.feeds?.[ticker] !== undefined) add("pyth_rule");
   if (client.isConstantTicker(ticker)) add("constant_rule");
   if (client.getSupraRule()) add("supra_rule");
-  if (client.oracleSource === "pyth_lazer_rule") add("pyth_lazer_rule");
-  if (client.oracleSource === "waterx_rule") add("waterx_rule");
+  if (client.oracleSources.includes("pyth_lazer_rule")) add("pyth_lazer_rule");
+  if (client.oracleSources.includes("waterx_rule")) add("waterx_rule");
   return fed;
 }
 

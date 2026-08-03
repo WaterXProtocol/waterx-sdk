@@ -35,15 +35,18 @@ export interface OracleHost {
   /** gRPC client for the on-chain reads the Pyth update path needs. */
   readonly grpcClient: SuiGrpcClient;
   /**
-   * Client-selected oracle rule source for `refreshOraclePrices`'s on-chain
-   * update leg — the REQUIRED `oracleSource` create option, no default:
-   * every deployment names its source explicitly. Routing is driven by this
-   * value ALONE: never by a config JSON `enabled` flag (e.g. a future
-   * `pyth_lazer_rule.enabled`) and never by `process.env` — the SDK never
-   * reads it; consumers (BE/FE) wire this option from their own env var
-   * (`ORACLE_SOURCE`).
+   * The FED SET for `refreshOraclePrices`'s update legs — the REQUIRED
+   * `oracleSource` create option normalized to a non-empty, deduped list.
+   * Every listed source's data is fetched and fed in one build; the chain's
+   * per-ticker weight tables decide which contributions count (feeding an
+   * unweighted rule is dropped on-chain; starving a weighted one aborts), so
+   * during weight migrations the list stays a SUPERSET of every ticker's
+   * weighted set. Routing is driven by this value ALONE: never by a config
+   * JSON `enabled` flag and never by `process.env` — the SDK never reads it;
+   * consumers (BE/FE) wire this option from their own env var
+   * (`ORACLE_SOURCE`, comma-separated).
    */
-  readonly oracleSource: OracleSource;
+  readonly oracleSources: readonly OracleSource[];
 
   /** True when `ticker` is priced by `constant_rule`. */
   isConstantTicker(ticker: string): boolean;

@@ -570,7 +570,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     const tx = new Transaction();
     await expect(
       refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { feeSource: { kind: "gas" } }),
-    ).rejects.toThrow(/oracleSource 'pyth_lazer_rule' has no feed configured.*ETHUSD/);
+    ).rejects.toThrow(/oracleSource \[pyth_lazer_rule\] has no feed configured.*ETHUSD/);
 
     expect(tx.getData().commands?.length ?? 0).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled(); // thrown before any off-chain fetch

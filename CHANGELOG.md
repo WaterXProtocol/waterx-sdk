@@ -51,6 +51,20 @@ the same change set. Read the migration lines before bumping._
   deployment names its source explicitly, wired from the consumer's own env
   var (convention: `ORACLE_SOURCE`, carrying the SDK rule value verbatim).
   Migration: add `oracleSource: <your env>` to every `create(...)` call.
+- **BREAKING: multi-source fed sets — `oracleSource` accepts a LIST and
+  `client.oracleSource` is renamed `client.oracleSources`** (a normalized,
+  deduped, non-empty array; `OracleHost` likewise). One build fetches and
+  feeds EVERY listed source's data; the chain's per-ticker aggregator weight
+  tables decide which contributions count — feeding an unweighted rule is
+  dropped on-chain (harmless), starving a weighted one aborts. This is what
+  makes Core→Pro and Pro+Waterx coexistence windows safe: keep the list a
+  superset of every ticker's weighted set while weights migrate per ticker.
+  A single-value `oracleSource` behaves exactly as before (one-element
+  list). `refreshOraclePrices` groups per source; a ticker is unservable
+  only when NO listed source has its feed; the fee pre-check fires iff a
+  fee-charging source (Pyth Core) is listed with tickers to serve. The
+  `UpdateDataProvider` seam is consulted once per listed source per build
+  (`get(source, tickers)` — already source-keyed).
 
 ### Added
 

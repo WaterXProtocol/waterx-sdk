@@ -235,7 +235,7 @@ describe("PerpClient.create", () => {
       oracleSource: "pyth_lazer_rule",
       pythApiKey: "k",
     });
-    expect(client.oracleSource).toBe("pyth_lazer_rule");
+    expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
     expect(client.pyth).toEqual({ api_key: "k" });
   });
 
@@ -247,7 +247,7 @@ describe("PerpClient.create", () => {
     noLazerFeeds.packages.pyth_lazer_rule!.feeds = {};
     vi.spyOn(configModule, "loadConfig").mockResolvedValue(noLazerFeeds);
     const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
-    expect(client.oracleSource).toBe("pyth_lazer_rule");
+    expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
   });
 
   it("mainnet() and testnet() delegate to create()", async () => {

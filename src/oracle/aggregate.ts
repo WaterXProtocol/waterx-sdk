@@ -303,61 +303,72 @@ export async function refreshOraclePrices(
   const priceInfoByTicker = new Map<string, string>();
   pythTickers.forEach((t) => priceInfoByTicker.set(t, host.getPythFeed(t).price_info_object));
 
-  // ONE source, no fallback. The selected source serves the tickers in its
-  // `supportedTickers(host)`; `source` is tracked alongside the group (rather
-  // than read back off `rule.kind`, typed as the broader PriceUpdateRuleKind)
-  // so the provider lookup below has an OracleSource to key on without a cast.
-  const selectedRule = resolveOracleRule(host.oracleSource, opts.ruleOverrides);
-  const selectedSupported = new Set(selectedRule.supportedTickers(host));
+  // The fed set is a LIST (`host.oracleSources`, normalized + deduped at
+  // client creation): ONE build carries every listed source's data, and the
+  // chain's per-ticker weight tables decide which contributions count —
+  // feeding an unweighted rule is dropped on-chain (harmless by design),
+  // while starving a weighted one aborts. That asymmetry is what makes weight
+  // migrations safe: flip weights per ticker at any time while the fed set
+  // stays a superset of every ticker's weighted set. Still NO fallback
+  // BETWEEN sources: each group serves only the tickers its own feeds list.
+  const groups = host.oracleSources.map((source) => {
+    const rule = resolveOracleRule(source, opts.ruleOverrides);
+    const supported = new Set(rule.supportedTickers(host));
+    return { source, rule, tickers: tickers.filter((t) => supported.has(t)) };
+  });
 
-  // Fail the tx-build (NOT client init, NOT a silent reroute) when the selected
-  // source has no feed for a requested ticker that actually needs a price
+  // Fail the tx-build (NOT client init, NOT a silent reroute) when NO listed
+  // source has a feed for a requested ticker that actually needs a price
   // update. Only a CONSTANT-ONLY ticker is exempt — priced entirely by
   // `constant_rule`, it needs no update leg from any source. A DUAL-FEED ticker
   // (constant AND pyth) still needs its Pyth leg refreshed, so `isConstantTicker`
-  // alone must NOT exempt it: under a source that can't serve it, with no
-  // fallback, feeding an unrefreshed Pyth leg would price it stale (or abort on a
-  // missing weighted source). `priceInfoByTicker.has(t)` ⇔ the ticker has a
-  // `pyth_rule.feeds` entry, so `constant && !hasPyth` is exactly constant-only.
-  // This catches a MISSING feed; a present-but-WRONG feed id is deliberately not
-  // validated here (it aborts on-chain at dry-run).
+  // alone must NOT exempt it: with no source able to serve it, feeding an
+  // unrefreshed Pyth leg would price it stale (or abort on a missing weighted
+  // source). `priceInfoByTicker.has(t)` ⇔ the ticker has a `pyth_rule.feeds`
+  // entry, so `constant && !hasPyth` is exactly constant-only. This catches a
+  // MISSING feed; a present-but-WRONG feed id is deliberately not validated
+  // here (it aborts on-chain at dry-run).
+  const covered = new Set(groups.flatMap((group) => group.tickers));
   const isConstantOnly = (t: string) => host.isConstantTicker(t) && !priceInfoByTicker.has(t);
-  const unservable = tickers.filter((t) => !selectedSupported.has(t) && !isConstantOnly(t));
+  const unservable = tickers.filter((t) => !covered.has(t) && !isConstantOnly(t));
   if (unservable.length > 0) {
+    const sources = host.oracleSources.join(", ");
     throw new Error(
-      `oracleSource '${host.oracleSource}' has no feed configured for ticker(s): ` +
+      `oracleSource [${sources}] has no feed configured for ticker(s): ` +
         `${unservable.join(", ")}. Sources are self-contained with no fallback — add ` +
-        `${host.oracleSource} feeds for them, or select a source that serves them.`,
+        `feeds for them under a listed source, or list a source that serves them.`,
     );
   }
 
-  const selectedGroup = tickers.filter((t) => selectedSupported.has(t));
-
-  // Fee-source pre-check, hoisted ABOVE the off-chain fetch and PTB build below.
-  // It consults only `rule.requiresFeeSource` — known before any fetch or PTB
-  // mutation — so a fee-charging source with no `feeSource` throws with ZERO
-  // wasted network calls and zero PTB commands, rather than waiting for
-  // `buildPythPriceUpdateCalls`'s own per-call guard to fire after the off-chain
-  // fetch already ran.
-  if (selectedGroup.length > 0 && !opts.feeSource && selectedRule.requiresFeeSource) {
+  // Fee-source pre-check, hoisted ABOVE the off-chain fetches and PTB build
+  // below. It consults only `rule.requiresFeeSource` — known before any fetch
+  // or PTB mutation — so a fee-charging source (Pyth Core) in the fed set with
+  // no `feeSource` throws with ZERO wasted network calls and zero PTB
+  // commands, rather than waiting for `buildPythPriceUpdateCalls`'s own
+  // per-call guard to fire after the off-chain fetches already ran.
+  if (
+    !opts.feeSource &&
+    groups.some((group) => group.tickers.length > 0 && group.rule.requiresFeeSource)
+  ) {
     throw new OracleFeeSourceUnavailableError();
   }
 
-  // Resolve + build the selected source's update leg. The off-chain fetch
-  // settles before the first PTB mutation, so a fetch failure never strands
-  // moveCalls in a caller-owned tx. Map each lazer-served ticker to the one
-  // verified `Update` PTB value for the collector-feed leg below.
+  // Resolve + build every listed source's update leg. All off-chain fetches
+  // settle before the first PTB mutation of their group, so a fetch failure
+  // never strands moveCalls in a caller-owned tx — and a failure in ANY group
+  // fails the whole build (a listed source is load-bearing; silently building
+  // without it would starve its weighted tickers on-chain).
   const lazerUpdateByTicker = new Map<string, TransactionArgument>();
   // Signed batch envelope per waterx-served ticker. Unlike Lazer's shared PTB
   // handle, waterx's verify+feed is bundled into `collect_batch_latest` in the
   // per-ticker feed leg, so its `buildUpdateCalls` emits nothing and the
   // envelope is carried straight from the group's fetched data.
   const waterxEnvelopeByTicker = new Map<string, WaterxSignedEnvelope>();
-  if (selectedGroup.length > 0) {
-    const group = { source: host.oracleSource, rule: selectedRule, tickers: selectedGroup };
+  for (const group of groups) {
+    if (group.tickers.length === 0) continue;
     const data = await resolveGroupUpdateData(host, group, opts.updateDataProvider);
     const handle: RuleUpdateHandle | undefined =
-      (await selectedRule.buildUpdateCalls(tx, host, data, {
+      (await group.rule.buildUpdateCalls(tx, host, data, {
         cache: opts.cache,
         feeSource: opts.feeSource,
       })) ?? undefined;
@@ -365,15 +376,15 @@ export async function refreshOraclePrices(
     // protect: a future non-lazer handle must never be silently fed into
     // pyth_lazer_rule::feed.
     if (handle?.kind === "pyth_lazer_rule") {
-      for (const ticker of selectedGroup) lazerUpdateByTicker.set(ticker, handle.update);
+      for (const ticker of group.tickers) lazerUpdateByTicker.set(ticker, handle.update);
     }
     // waterx_rule emits no shared handle (verify+feed is bundled into the
     // per-ticker `collect_batch_latest`), so the envelope is carried straight
     // from this group's fetched data to the feed leg below.
-    if (selectedRule.kind === "waterx_rule") {
+    if (group.rule.kind === "waterx_rule") {
       const envelope = waterxEnvelopeOf(data);
       if (envelope) {
-        for (const ticker of selectedGroup) waterxEnvelopeByTicker.set(ticker, envelope);
+        for (const ticker of group.tickers) waterxEnvelopeByTicker.set(ticker, envelope);
       }
     }
   }

@@ -17,7 +17,12 @@ import type {
   RuleUpdateData,
   UpdateDataProvider,
 } from "../../../src/oracle/price-update-rule.ts";
-import { PythCache, updatePythPrices, type OracleFeeSource } from "../../../src/oracle/pyth.ts";
+import {
+  OracleFeeSourceUnavailableError,
+  PythCache,
+  updatePythPrices,
+  type OracleFeeSource,
+} from "../../../src/oracle/pyth.ts";
 import {
   OracleSourceNotImplementedError,
   resolveOracleRule,
@@ -170,7 +175,7 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
       refreshOraclePrices(new Transaction(), client, ["BTCUSD", "ETHUSD"], {
         ruleOverrides: { pyth_lazer_rule: fakeLazer },
       }),
-    ).rejects.toThrow(/oracleSource 'pyth_lazer_rule' has no feed configured.*BTCUSD/);
+    ).rejects.toThrow(/oracleSource \[pyth_lazer_rule\] has no feed configured.*BTCUSD/);
 
     // No fallback rule ran, and the selected rule never fetched either (throw
     // is hoisted above every off-chain call).
@@ -333,12 +338,12 @@ describe("refreshOraclePrices — per-environment acceptance (staging Lazer vs p
 describe("PerpClient.oracleSource — default resolution", () => {
   it("defaults to 'pyth_rule' when the create option is omitted", () => {
     const client = createUnitTestClient();
-    expect(client.oracleSource).toBe("pyth_rule");
+    expect(client.oracleSources).toEqual(["pyth_rule"]);
   });
 
   it("resolves to the passed oracleSource option", () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    expect(client.oracleSource).toBe("pyth_lazer_rule");
+    expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
   });
 });
 
@@ -352,7 +357,7 @@ describe("PerpClient.create — oracleSource threads through the async factory",
   it("resolves the passed oracleSource option", async () => {
     vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
     const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
-    expect(client.oracleSource).toBe("pyth_lazer_rule");
+    expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
   });
 });
 
@@ -591,5 +596,121 @@ describe("resolveOracleRule", () => {
   it("overrides take precedence over the production registry for a registered source", () => {
     const fake = createFakeRule("pyth_rule", []);
     expect(resolveOracleRule("pyth_rule", { pyth_rule: fake })).toBe(fake);
+  });
+});
+
+describe("refreshOraclePrices — multi-source fed set", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * A fake waterx rule must honor the port's payload contract — the routing
+   * in refreshOraclePrices hands a waterx group's data to `waterxEnvelopeOf`,
+   * which (correctly) THROWS on a non-envelope payload rather than missing.
+   */
+  function createFakeWaterxRule(supported: string[]): PriceUpdateRule {
+    const fake = createFakeRule("waterx_rule", supported);
+    const envelope = { intent: 1, timestamp_ms: 0n, signature: "", payload: { items: [] } };
+    vi.mocked(fake.fetchUpdateData).mockResolvedValue({
+      kind: "waterx_rule",
+      payload: { envelope },
+    });
+    return fake;
+  }
+
+  it("feeds EVERY listed source's group in one build (per-source fetch + per-source tickers)", async () => {
+    const client = createUnitTestClient({
+      oracleSource: ["pyth_lazer_rule", "waterx_rule"],
+    });
+    attachPythGrpcMocks(client);
+    mockHermesFetch();
+
+    // Lazer serves BTC+ETH, waterx serves ETH only — ETH is deliberately in
+    // BOTH groups (double-feeding one ticker is valid; the chain's weight
+    // table arbitrates).
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD", "ETHUSD"]);
+    const fakeWaterx = createFakeWaterxRule(["ETHUSD"]);
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer, waterx_rule: fakeWaterx },
+    });
+
+    expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD", "ETHUSD"]);
+    expect(fakeWaterx.fetchUpdateData).toHaveBeenCalledWith(client, ["ETHUSD"]);
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledTimes(1);
+    expect(fakeWaterx.buildUpdateCalls).toHaveBeenCalledTimes(1);
+
+    const targets = moveTargets(tx);
+    expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(2);
+    expect(targets).toContain("oracle::aggregate");
+  });
+
+  it("a ticker is servable when ANY listed source has its feed — and unservable only when none does", async () => {
+    const client = createUnitTestClient({
+      oracleSource: ["pyth_lazer_rule", "waterx_rule"],
+    });
+    attachPythGrpcMocks(client);
+    mockHermesFetch();
+
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+    const fakeWaterx = createFakeWaterxRule(["ETHUSD"]);
+
+    // Union covers both tickers — succeeds even though EACH source alone
+    // would have thrown for the other's ticker.
+    const okTx = new Transaction();
+    await refreshOraclePrices(okTx, client, ["BTCUSD", "ETHUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer, waterx_rule: fakeWaterx },
+    });
+    expect(moveTargets(okTx)).toContain("oracle::aggregate");
+
+    // SUIUSD is outside both groups → the whole build fails, naming the list.
+    await expect(
+      refreshOraclePrices(new Transaction(), client, ["BTCUSD", "SUIUSD"], {
+        ruleOverrides: { pyth_lazer_rule: fakeLazer, waterx_rule: fakeWaterx },
+      }),
+    ).rejects.toThrow(
+      /oracleSource \[pyth_lazer_rule, waterx_rule\] has no feed configured.*SUIUSD/,
+    );
+  });
+
+  it("the fee pre-check fires iff a fee-charging source is in the fed set with tickers to serve", async () => {
+    // Core in the list + no feeSource → throws before ANY fetch.
+    const client = createUnitTestClient({ oracleSource: ["pyth_rule", "pyth_lazer_rule"] });
+    attachPythGrpcMocks(client);
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD", "ETHUSD"]);
+    await expect(
+      refreshOraclePrices(new Transaction(), client, ["BTCUSD"], {
+        ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      }),
+    ).rejects.toThrow(OracleFeeSourceUnavailableError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // Fee-free-only list → no feeSource needed.
+    const feeFree = createUnitTestClient({ oracleSource: ["pyth_lazer_rule"] });
+    attachPythGrpcMocks(feeFree);
+    mockHermesFetch();
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, feeFree, ["BTCUSD"], {
+      ruleOverrides: { pyth_lazer_rule: createFakeRule("pyth_lazer_rule", ["BTCUSD"]) },
+    });
+    expect(moveTargets(tx)).toContain("oracle::aggregate");
+  });
+
+  it("client normalizes a single source to a one-element list and dedupes a repeated one", () => {
+    expect(createUnitTestClient({ oracleSource: "waterx_rule" }).oracleSources).toEqual([
+      "waterx_rule",
+    ]);
+    expect(
+      createUnitTestClient({
+        oracleSource: ["pyth_rule", "waterx_rule", "pyth_rule"],
+      }).oracleSources,
+    ).toEqual(["pyth_rule", "waterx_rule"]);
   });
 });

@@ -438,7 +438,7 @@ async function runOne(
       // aggregate against on-chain Core PIO). Never cross-source fall back to
       // Core when oracleSource is pyth_lazer_rule — that would violate the SDK
       // no-cross-source-fallback contract (missing Lazer feed must fail).
-      if (client.oracleSource !== "pyth_rule") {
+      if (!client.oracleSources.includes("pyth_rule")) {
         throw e instanceof Error ? e : new Error(refreshError);
       }
       console.warn(`[${feed.label}] WARN refresh skipped: ${refreshError}`);
@@ -552,7 +552,7 @@ async function main() {
     ...(pythApiKey !== undefined ? { pythApiKey } : {}),
   });
 
-  if (client.oracleSource === "pyth_lazer_rule" && !pythApiKey) {
+  if (client.oracleSources.includes("pyth_lazer_rule") && !pythApiKey) {
     throw new Error(
       "oracleSource is pyth_lazer_rule but PYTH_API_KEY is unset — set it in the env (or .env.local)",
     );
@@ -572,7 +572,7 @@ async function main() {
   }
   const modeLabel = format === "pretty" ? "pretty" : "raw";
   console.log(
-    `printing oracle aggregates for ${feeds.length} feeds (${modeLabel}, ${client.network}, oracleSource=${client.oracleSource})...`,
+    `printing oracle aggregates for ${feeds.length} feeds (${modeLabel}, ${client.network}, oracleSource=${client.oracleSources.join(",")})...`,
   );
 
   const cache = new PythCache();

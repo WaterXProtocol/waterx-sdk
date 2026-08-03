@@ -57,8 +57,16 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * `'waterx_rule'` shows). Selecting a source whose feed for a requested
    * ticker is absent is NOT an error at client creation: it fails at tx-build
    * time for exactly those tickers (see `refreshOraclePrices`).
+   *
+   * Accepts a SINGLE source or a LIST. A list means every listed source's
+   * data is fetched and fed in one build — required whenever the on-chain
+   * weight tables have more than one rule weighted (e.g. a Core→Pro or
+   * Pro+Waterx coexistence window): the chain drops unweighted contributions
+   * (harmless) but aborts on a starved weighted rule, so the list must stay a
+   * SUPERSET of every ticker's weighted set. Order is meaningful to consumers
+   * (read-plane priority), not to the on-chain build.
    */
-  oracleSource: OracleSource;
+  oracleSource: OracleSource | OracleSource[];
   /**
    * Pyth Lazer access token (`Authorization: Bearer …`). Required under
    * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
@@ -108,8 +116,8 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   waterx: WaterxAccessConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
-  /** Selected oracle price-update source (REQUIRED `oracleSource` create option — no default). */
-  readonly oracleSource: OracleSource;
+  /** The fed set: `oracleSource` create option normalized to a non-empty, deduped list. */
+  readonly oracleSources: readonly OracleSource[];
 
   /** Canonical-schema lookups (delegated to below); no transport. */
   private readonly view: PerpConfigView;
@@ -132,7 +140,13 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.waterxEndpoint !== undefined ? { endpoint: opts.waterxEndpoint } : {}),
       ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
     };
-    this.oracleSource = opts.oracleSource;
+    // Normalize single-or-list to a deduped, order-preserving list. An empty
+    // array is a caller bug, not "no oracle" — fail construction loudly.
+    const sources = Array.isArray(opts.oracleSource) ? opts.oracleSource : [opts.oracleSource];
+    this.oracleSources = [...new Set(sources)];
+    if (this.oracleSources.length === 0) {
+      throw new Error("oracleSource must name at least one source (got an empty list)");
+    }
     this.view = new PerpConfigView(
       () => this.config,
       () => this.wormhole,

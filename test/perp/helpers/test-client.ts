@@ -8,7 +8,7 @@ import { MOCK_TESTNET_CONFIG } from "./fixtures/mock-testnet-config.ts";
 
 export function createUnitTestClient(
   opts: {
-    oracleSource?: OracleSource;
+    oracleSource?: OracleSource | OracleSource[];
     pythApiKey?: string;
     pythFetch?: { timeoutMs?: number; retries?: number };
     waterxEndpoint?: string;

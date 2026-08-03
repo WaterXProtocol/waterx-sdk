@@ -179,7 +179,7 @@ export interface ClientCreateOptions {
    * source whose feed for a ticker is absent fails at tx-build (not at init).
    * See perp `CreateClientOptions.oracleSource` for the full note.
    */
-  oracleSource: OracleSource;
+  oracleSource: OracleSource | OracleSource[];
   /**
    * Pyth Lazer access token, forwarded to the perp line. Required under
    * `oracleSource: 'pyth_lazer_rule'`, unused by `'pyth_rule'`. A SECRET —
