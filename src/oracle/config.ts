@@ -35,7 +35,7 @@ export interface PythSponsorRulePackage extends BasePackageEntry {
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
  * which rule prices a ticker is decided solely by the client's `oracleSource`
- * create option (see `OracleHost.oracleSource`), never by this flag or any
+ * create option (see `OracleHost.oracleSources`), never by this flag or any
  * other config value.
  */
 export interface PythLazerRulePackage extends BasePackageEntry {
@@ -114,7 +114,7 @@ export interface WaterxRuleFeedEntry {
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
  * which rule prices a ticker is decided solely by the client's `oracleSource`
- * create option (see `OracleHost.oracleSource`), mirroring `pyth_lazer_rule`.
+ * create option (see `OracleHost.oracleSources`), mirroring `pyth_lazer_rule`.
  */
 export interface WaterxRulePackage extends BasePackageEntry {
   /** Shared `waterx_rule::Config` (per-symbol on-chain feed_config). */

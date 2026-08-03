@@ -11,9 +11,9 @@
  * remain plain collector-feed helpers wired directly into `aggregate.ts`.
  *
  * This file defines the port only — routing IS wired: `aggregate.ts`'s
- * `refreshOraclePrices` selects the concrete rule per `host.oracleSource` via
- * `rule-registry.ts`, then drives fetch + `buildUpdateCalls` through this
- * port; `aggregate.ts` stays the sole orchestrator.
+ * `refreshOraclePrices` resolves a concrete rule per `host.oracleSources`
+ * entry via `rule-registry.ts`, then drives fetch + `buildUpdateCalls`
+ * through this port; `aggregate.ts` stays the sole orchestrator.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
@@ -29,8 +29,8 @@ export type PriceUpdateRuleKind =
   | "waterx_rule";
 
 /**
- * The subset of `PriceUpdateRuleKind`s selectable via a client's `oracleSource`
- * create option (see `OracleHost.oracleSource`) — i.e. rules that can serve as
+ * The subset of `PriceUpdateRuleKind`s listable in a client's `oracleSource`
+ * create option (see `OracleHost.oracleSources`) — i.e. rules that can serve as
  * the on-chain price *update* leg `refreshOraclePrices` runs before aggregating.
  * `supra_rule` and `constant_rule` are auxiliary rules fed alongside whichever
  * source is selected (see `aggregateTicker`), not sources themselves. The SDK
@@ -147,7 +147,14 @@ export interface UpdateDataProvider {
 }
 
 export interface PriceUpdateRule {
-  readonly kind: PriceUpdateRuleKind;
+  /**
+   * `OracleSource`, not the wider `PriceUpdateRuleKind`: only selectable
+   * sources implement this port (`supra_rule`/`constant_rule` are plain
+   * collector-feed helpers), and the narrower type is what lets
+   * `refreshOraclePrices`'s per-source carry step switch exhaustively —
+   * adding a source without deciding its carry becomes a compile error.
+   */
+  readonly kind: OracleSource;
 
   /**
    * `true` when this rule's on-chain update leg charges a per-update fee

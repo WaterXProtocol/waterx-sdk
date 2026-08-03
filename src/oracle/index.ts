@@ -93,14 +93,13 @@ export type {
   WaterxBatchItem,
 } from "./rules/waterx-rule.ts";
 
-// `resolveOracleRule` (rule-registry.ts) is NOT re-exported here — it has one
-// production consumer (`refreshOraclePrices` below) and no external caller;
-// per repo convention ("no unused exports") it stays module-internal. Tests
-// import it directly from `./rule-registry.ts`. `OracleSourceNotImplementedError`
-// IS re-exported (the same `instanceof` reason as `OracleFeeSourceUnavailableError`
-// above) — a consumer of `refreshOraclePrices` can catch it without importing
-// `resolveOracleRule` itself.
-export { OracleSourceNotImplementedError } from "./rule-registry.ts";
+// `resolveOracleRule` is the ONE source→rule registry — exported so external
+// consumers (e.g. a BE prefetch cache that keys per source and needs each
+// source's `supportedTickers`/`fetchUpdateData`) resolve through it instead of
+// hand-mirroring the map and drifting. `OracleSourceNotImplementedError` is
+// its `instanceof`-able failure (same reason as `OracleFeeSourceUnavailableError`
+// above).
+export { OracleSourceNotImplementedError, resolveOracleRule } from "./rule-registry.ts";
 
 // Aggregation orchestrator
 export {
