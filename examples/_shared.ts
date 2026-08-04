@@ -34,7 +34,7 @@ export async function buildClient(network: Network = "TESTNET"): Promise<PerpCli
         "(e.g. https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json)",
     );
   }
-  return PerpClient.create(network, { cache: true, waterxConfigUrl });
+  return PerpClient.create(network, { cache: true, waterxConfigUrl, oracleSource: "pyth_rule" });
 }
 
 export function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {

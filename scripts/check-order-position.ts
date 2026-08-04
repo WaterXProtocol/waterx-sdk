@@ -13,6 +13,7 @@ function j(v: unknown): string {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await PerpClient.create("TESTNET", {
+    oracleSource: "pyth_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

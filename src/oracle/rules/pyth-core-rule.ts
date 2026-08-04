@@ -20,6 +20,7 @@ import {
   buildPythPriceUpdateCalls,
   endpointSupportedFeedIds,
   fetchPriceFeedsUpdateData,
+  pythCoreHermesEndpoint,
 } from "../pyth.ts";
 
 /** `pyth_rule`'s narrowed `RuleUpdateData.payload` shape. */
@@ -58,10 +59,10 @@ export const PythCoreRule: PriceUpdateRule = {
   /** Resolves feed ids for `tickers`, then fetches their Hermes accumulator update. */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
-    // `host.pyth` is this source's own infra — the fixed per-network Core
-    // Pyth block plus the caller's api_key/fetch. Endpoint, credential and
-    // retry/timeout policy all come from it.
-    const endpoint = host.pyth.hermes_endpoint;
+    // Endpoint is this source's own per-network infra (`PYTH_CORE_INFRA`);
+    // credential + retry/timeout policy are the caller-supplied `client.pyth`
+    // access slice.
+    const endpoint = pythCoreHermesEndpoint(host.network);
     const feedIds = tickers.map((ticker) => host.getPythFeed(ticker).feed_id);
     const updates = await fetchPriceFeedsUpdateData(endpoint, feedIds, {
       apiKey: host.pyth.api_key,

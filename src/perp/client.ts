@@ -17,14 +17,12 @@ import type { FetchPolicy } from "../oracle/update-fetch.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
-  PYTH_DEFAULTS,
-  WATERX_DEFAULTS,
   WORMHOLE_DEFAULTS,
   type LoadConfigOptions,
+  type PythAccessConfig,
   type PythFetchPolicy,
-  type PythInfraConfig,
+  type WaterxAccessConfig,
   type WaterXConfig,
-  type WaterxInfraConfig,
   type WormholeInfraConfig,
 } from "./config.ts";
 import type { Network } from "./constants.ts";
@@ -32,30 +30,43 @@ import type { Network } from "./constants.ts";
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
   /**
-   * Which oracle price-update source drives `refreshOraclePrices`. Each source
-   * is self-contained (own infra + config) with NO cross-source fallback:
+   * Which oracle price-update source drives `refreshOraclePrices`. REQUIRED —
+   * there is NO default source: every deployment names its source explicitly
+   * (wire it from your own env var, e.g. `ORACLE_SOURCE`). Each source is
+   * self-contained (own infra, own endpoints, own config) with NO cross-source
+   * fallback:
    *
-   * - `'pyth_rule'` (default) — Pyth Core `pyth_rule` updates (Hermes VAA +
-   *   per-feed update fees), Core state + keyless Core Hermes.
+   * - `'pyth_rule'` — Pyth Core `pyth_rule` updates (Hermes VAA + per-feed
+   *   update fees); Core state + Hermes endpoint live in the source's own
+   *   `PYTH_CORE_INFRA` table.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
    *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
-   *   and a `pythApiKey` (Lazer is auth-first).
+   *   and a `pythApiKey` (Lazer is auth-first); Lazer infra lives in the
+   *   source's own `LAZER_INFRA` table.
    * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
    *   ed25519-signed batches): ONE envelope covering the build's tickers,
    *   verified AND fed by a single `collect_batch_latest` per collector. No
    *   credential and no per-update fee; needs `packages.waterx_rule` with
-   *   feeds. Endpoint/transport via {@link CreateClientOptions.waterxEndpoint}
-   *   / {@link CreateClientOptions.waterxFetch} — the browser-CORS proxy hook,
+   *   feeds. Quote-center infra lives in the source's own `WATERX_INFRA`
+   *   table; endpoint/transport overridable via
+   *   {@link CreateClientOptions.waterxEndpoint} /
+   *   {@link CreateClientOptions.waterxFetch} — the browser-CORS proxy hook,
    *   since this is the one source fetched from the page.
    *
    * The name is source-neutral on purpose — a source need not be Pyth (as
    * `'waterx_rule'` shows). Selecting a source whose feed for a requested
    * ticker is absent is NOT an error at client creation: it fails at tx-build
-   * time for exactly those tickers (see `refreshOraclePrices`). The Pyth Core
-   * infra is fixed per network by `PYTH_DEFAULTS` and is not
-   * deployment-overridable.
+   * time for exactly those tickers (see `refreshOraclePrices`).
+   *
+   * Accepts a SINGLE source or a LIST. A list means every listed source's
+   * data is fetched and fed in one build — required whenever the on-chain
+   * weight tables have more than one rule weighted (e.g. a Core→Pro or
+   * Pro+Waterx coexistence window): the chain drops unweighted contributions
+   * (harmless) but aborts on a starved weighted rule, so the list must stay a
+   * SUPERSET of every ticker's weighted set. Order is meaningful to consumers
+   * (read-plane priority), not to the on-chain build.
    */
-  oracleSource?: OracleSource;
+  oracleSource: OracleSource | OracleSource[];
   /**
    * Pyth Lazer access token (`Authorization: Bearer …`). Required under
    * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
@@ -71,7 +82,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   pythFetch?: PythFetchPolicy;
   /**
    * Quote-center base URL for `oracleSource: 'waterx_rule'` — overrides the
-   * per-network {@link WATERX_DEFAULTS} host.
+   * source's own per-network `WATERX_INFRA` default.
    *
    * This is the one source a BROWSER fetches itself (the signed envelope is
    * pulled from the page), so it is bound by the quote-center deployment's CORS
@@ -87,51 +98,63 @@ export interface CreateClientOptions extends LoadConfigOptions {
   waterxEndpoint?: string;
   /**
    * Retry/timeout policy — and `fetchImpl` — for the quote-center fetch (see
-   * `fetchWithPolicy`). Optional: falls back to `pythFetch`, then to the
-   * built-in defaults. Supply `fetchImpl` to route the request through your own
+   * `fetchWithPolicy`). Optional: falls back to the built-in defaults — never
+   * to `pythFetch` (sources stay independent). Supply `fetchImpl` to route the request through your own
    * transport (a proxying `fetch` wrapper, a non-global `fetch`, a test double).
    */
   waterxFetch?: FetchPolicy;
 }
 
 export class PerpClient extends BaseLineClient<WaterXConfig> {
-  /** Pyth Core infra (fixed per network) plus the caller-supplied credential/policy. */
-  pyth: PythInfraConfig;
+  /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
+  pyth: PythAccessConfig;
   /**
-   * WaterX quote-center infra for `oracleSource: 'waterx_rule'` — the network
-   * default, overridden by the `waterxEndpoint` / `waterxFetch` create options
-   * (a same-origin proxy or a custom `fetchImpl` for browser consumers).
+   * Caller-supplied quote-center overrides for `oracleSource: 'waterx_rule'`
+   * (`waterxEndpoint` / `waterxFetch` create options) — access-only, mirroring
+   * `pyth` above; unset fields resolve against the rule's own `WATERX_INFRA`.
    */
-  waterx: WaterxInfraConfig;
+  waterx: WaterxAccessConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
-  /** Selected oracle price-update source (`oracleSource` create option; default `'pyth_rule'`). */
-  readonly oracleSource: OracleSource;
+  /** The fed set: `oracleSource` create option normalized to a non-empty, deduped list. */
+  readonly oracleSources: readonly OracleSource[];
 
   /** Canonical-schema lookups (delegated to below); no transport. */
   private readonly view: PerpConfigView;
 
-  constructor(network: Network, config: WaterXConfig, opts: CreateClientOptions = {}) {
+  constructor(network: Network, config: WaterXConfig, opts: CreateClientOptions) {
     super(network, config, opts);
-    // Pyth Core infra is fixed per network — NOT deployment-overridable and
-    // NOT source-dependent (the pyth_lazer_rule source reads only api_key/fetch
-    // from here). The api_key + fetch policy are caller-supplied at init: a
-    // secret has no place in the canonical waterx-config JSON.
+    // Access-only slice: the api_key + fetch policy are caller-supplied at
+    // init (a secret has no place in the canonical waterx-config JSON). All
+    // endpoint/object-id infra is per-source, owned by the rule modules —
+    // nothing infra-shaped lives on the client.
     this.pyth = {
-      ...PYTH_DEFAULTS[network],
       ...(opts.pythApiKey !== undefined ? { api_key: opts.pythApiKey } : {}),
       ...(opts.pythFetch !== undefined ? { fetch: opts.pythFetch } : {}),
     };
     this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
-    // Quote-center infra: network default, each field independently overridable
-    // — a browser blocked by the quote-center's CORS allowlist swaps `endpoint`
-    // for a same-origin proxy without touching anything else.
+    // Quote-center access slice: overrides only — a browser blocked by the
+    // quote-center's CORS allowlist swaps `endpoint` for a same-origin proxy;
+    // unset fields resolve inside the rule against WATERX_INFRA[network].
     this.waterx = {
-      ...WATERX_DEFAULTS[network],
       ...(opts.waterxEndpoint !== undefined ? { endpoint: opts.waterxEndpoint } : {}),
       ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
     };
-    this.oracleSource = opts.oracleSource ?? "pyth_rule";
+    // Normalize single-or-list to a deduped, order-preserving list. An empty
+    // list — or a nullish/empty entry, the shape an untyped caller produces
+    // by omitting the REQUIRED option — is a caller bug, not "no oracle":
+    // fail construction loudly instead of booting green and surfacing as
+    // `OracleSourceNotImplemented: undefined` at the first tx-build.
+    const sources = Array.isArray(opts.oracleSource) ? opts.oracleSource : [opts.oracleSource];
+    this.oracleSources = [...new Set(sources)];
+    if (
+      this.oracleSources.length === 0 ||
+      this.oracleSources.some((source) => typeof source !== "string" || source.length === 0)
+    ) {
+      throw new Error(
+        `oracleSource is REQUIRED and must name at least one source (got ${JSON.stringify(sources)})`,
+      );
+    }
     this.view = new PerpConfigView(
       () => this.config,
       () => this.wormhole,
@@ -146,16 +169,16 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    * not an error at init — it surfaces at tx-build time for the specific
    * tickers that source can't serve (see `refreshOraclePrices`).
    */
-  static async create(network: Network, opts: CreateClientOptions = {}): Promise<PerpClient> {
+  static async create(network: Network, opts: CreateClientOptions): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
     return new PerpClient(network, config, opts);
   }
 
-  static mainnet(opts: CreateClientOptions = {}): Promise<PerpClient> {
+  static mainnet(opts: CreateClientOptions): Promise<PerpClient> {
     return PerpClient.create("MAINNET", opts);
   }
 
-  static testnet(opts: CreateClientOptions = {}): Promise<PerpClient> {
+  static testnet(opts: CreateClientOptions): Promise<PerpClient> {
     return PerpClient.create("TESTNET", opts);
   }
 

@@ -1,7 +1,7 @@
 // ======== Core ========
 export { PerpClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { PYTH_DEFAULTS, WORMHOLE_DEFAULTS, clearConfigCache, loadConfig } from "./config.ts";
+export { WORMHOLE_DEFAULTS, clearConfigCache, loadConfig } from "./config.ts";
 export type {
   BasePackageEntry,
   ConstantFeedEntry,
@@ -9,8 +9,8 @@ export type {
   LoadConfigOptions,
   NativeCustodyAsset,
   NativeCustodyPackage,
+  PythAccessConfig,
   PythFetchPolicy,
-  PythInfraConfig,
   PythLazerRulePackage,
   PythRulePackage,
   PythSponsorRulePackage,
@@ -137,6 +137,10 @@ export {
   aggregateTickerWithPyth,
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
+  pythCoreHermesEndpoint,
+  pythProHermesEndpoint,
+  resolveHermesReadEndpoint,
+  waterxQuoteCenterEndpoint,
   refreshOraclePrices,
   updatePythPrices,
 } from "../oracle/index.ts";

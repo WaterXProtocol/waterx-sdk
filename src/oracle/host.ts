@@ -11,38 +11,42 @@
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import type { Network } from "../constants.ts";
-import type { OracleConfig, PythInfraConfig, WaterxInfraConfig } from "./config.ts";
+import type { OracleConfig, PythAccessConfig, WaterxAccessConfig } from "./config.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 
 export interface OracleHost {
-  /** Sui network this client targets — selects per-network external-infra defaults (e.g. `LAZER_DEFAULTS`). */
+  /** Sui network this client targets — each rule keys its OWN infra table by it (`PYTH_CORE_INFRA`, `LAZER_INFRA`). */
   readonly network: Network;
   /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
   readonly config: OracleConfig;
-  /** External Pyth/Wormhole/Hermes infra — fixed per `(network, generation)`; api_key/fetch layered from create options. */
-  readonly pyth: PythInfraConfig;
+  /** Caller-supplied Pyth credential + fetch policy (create options) — NO endpoints, NO object ids. */
+  readonly pyth: PythAccessConfig;
   /**
-   * WaterX quote-center infra for `WaterxRule` — endpoint + fetch policy,
-   * resolved from the `waterxEndpoint` / `waterxFetch` create options.
-   *
-   * OPTIONAL so an existing host stays a valid `OracleHost`: when absent the
-   * rule falls back to `WATERX_DEFAULTS[network]`. This is the hook a browser
-   * consumer uses to route the quote-center fetch through a same-origin proxy
-   * (`endpoint`) or its own transport (`fetch.fetchImpl`) — that request is
-   * made from the page, so it is bound by the quote-center's CORS allowlist.
+   * Caller-supplied WaterX quote-center overrides for `WaterxRule`
+   * (`waterxEndpoint` / `waterxFetch` create options) — access-only, mirroring
+   * `pyth` above. OPTIONAL so an existing host stays a valid `OracleHost`;
+   * unset fields resolve against the rule's own `WATERX_INFRA[network]` table.
+   * This is the hook a browser consumer uses to route the quote-center fetch
+   * through a same-origin proxy (`endpoint`) or its own transport
+   * (`fetch.fetchImpl`) — that request is made from the page, so it is bound
+   * by the quote-center's CORS allowlist.
    */
-  readonly waterx?: WaterxInfraConfig;
+  readonly waterx?: WaterxAccessConfig;
   /** gRPC client for the on-chain reads the Pyth update path needs. */
   readonly grpcClient: SuiGrpcClient;
   /**
-   * Client-selected oracle rule source for `refreshOraclePrices`'s on-chain
-   * update leg — resolved at client creation from the `oracleSource` create
-   * option (default `'pyth_rule'`). Routing is driven by this value ALONE:
-   * never by a config JSON `enabled` flag (e.g. a future `pyth_lazer_rule.enabled`)
-   * and never by `process.env` — the SDK never reads it; consumers (BE/FE) wire
-   * this option from their own env var.
+   * The FED SET for `refreshOraclePrices`'s update legs — the REQUIRED
+   * `oracleSource` create option normalized to a non-empty, deduped list.
+   * Every listed source's data is fetched and fed in one build; the chain's
+   * per-ticker weight tables decide which contributions count (feeding an
+   * unweighted rule is dropped on-chain; starving a weighted one aborts), so
+   * during weight migrations the list stays a SUPERSET of every ticker's
+   * weighted set. Routing is driven by this value ALONE: never by a config
+   * JSON `enabled` flag and never by `process.env` — the SDK never reads it;
+   * consumers (BE/FE) wire this option from their own env var
+   * (`ORACLE_SOURCE`, comma-separated).
    */
-  readonly oracleSource: OracleSource;
+  readonly oracleSources: readonly OracleSource[];
 
   /** True when `ticker` is priced by `constant_rule`. */
   isConstantTicker(ticker: string): boolean;

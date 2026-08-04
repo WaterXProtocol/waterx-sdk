@@ -44,6 +44,14 @@ export {
   endpointSupportedFeedIds,
   probeMissingFeeds,
   buildPythPriceUpdateCalls,
+  // The pyth read-plane endpoint accessors — Core (keyless, per network) and
+  // Pro (the documented fixed base; auth via the caller's Bearer key). There
+  // is no client-level endpoint field: consumers pick via
+  // `resolveHermesReadEndpoint` (pyth_rule listed → Core, else override ??
+  // Pro) — never a hand-rolled branch, never a cross-source fallback.
+  pythCoreHermesEndpoint,
+  pythProHermesEndpoint,
+  PYTH_PRO_HERMES_ENDPOINT,
   updatePythPrices,
   HermesEndpointRejectedAllFeedsError,
   MISSING_FEED_MEMO_TTL_MS,
@@ -62,6 +70,16 @@ export type {
   UpdateDataProvider,
 } from "./price-update-rule.ts";
 
+// Per-source READ-plane resolution — which tickers a source can price
+// off-chain and with which ids (`resolveOracleReadPlan`), and which
+// Hermes-compatible base the hermes plans execute against
+// (`resolveHermesReadEndpoint`: pyth_rule listed → Core, else override ??
+// the documented Pyth Pro base). The one place the "lazer reads through
+// `pyth_rule.feeds` hex ids" invariant lives; consumers resolve through
+// this instead of hardcoding namespace sharing or endpoint branching.
+export { resolveOracleReadPlan, resolveHermesReadEndpoint } from "./read-plane.ts";
+export type { OracleReadPlan } from "./read-plane.ts";
+
 // Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)
 export { PythCoreRule } from "./rules/pyth-core-rule.ts";
 export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
@@ -72,23 +90,30 @@ export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
 export { PythLazerRule, LazerApiKeyMissingError } from "./rules/pyth-lazer-rule.ts";
 export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
+// `WATERX_INFRA` / `waterxQuoteCenterEndpoint` are the source's own infra table +
+// read-plane accessor (mirrors `pythCoreHermesEndpoint`).
 // WaterX quote-center rule (first-party ed25519 signed batches; `feedWaterxRule`
 // stays internal to `aggregate.ts`).
-export { WaterxRule, parseSignedEnvelope } from "./rules/waterx-rule.ts";
+export {
+  WaterxRule,
+  parseSignedEnvelope,
+  BATCH_PRICE_INTENT,
+  WATERX_INFRA,
+  waterxQuoteCenterEndpoint,
+} from "./rules/waterx-rule.ts";
 export type {
   WaterxUpdatePayload,
   WaterxSignedEnvelope,
   WaterxBatchItem,
 } from "./rules/waterx-rule.ts";
 
-// `resolveOracleRule` (rule-registry.ts) is NOT re-exported here — it has one
-// production consumer (`refreshOraclePrices` below) and no external caller;
-// per repo convention ("no unused exports") it stays module-internal. Tests
-// import it directly from `./rule-registry.ts`. `OracleSourceNotImplementedError`
-// IS re-exported (the same `instanceof` reason as `OracleFeeSourceUnavailableError`
-// above) — a consumer of `refreshOraclePrices` can catch it without importing
-// `resolveOracleRule` itself.
-export { OracleSourceNotImplementedError } from "./rule-registry.ts";
+// `resolveOracleRule` is the ONE source→rule registry — exported so external
+// consumers (e.g. a BE prefetch cache that keys per source and needs each
+// source's `supportedTickers`/`fetchUpdateData`) resolve through it instead of
+// hand-mirroring the map and drifting. `OracleSourceNotImplementedError` is
+// its `instanceof`-able failure (same reason as `OracleFeeSourceUnavailableError`
+// above).
+export { OracleSourceNotImplementedError, resolveOracleRule } from "./rule-registry.ts";
 
 // Aggregation orchestrator
 export {

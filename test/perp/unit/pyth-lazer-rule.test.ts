@@ -43,7 +43,7 @@
  * 4. PAYLOAD ENCODING: Lazer `leEcdsa` framing — u32 magic, 65-byte secp256k1
  *    signature, u16 payload length, payload (u32 magic + u64 LE TimestampUs +
  *    per-feed data). Fetched off-chain from the Lazer HTTP API
- *    (`POST {LAZER_DEFAULTS.endpoint}/v1/latest_price`, `Authorization:
+ *    (`POST {LAZER_INFRA.endpoint}/v1/latest_price`, `Authorization:
  *    Bearer <pyth.api_key>`; path + required `channel` field + Bearer auth
  *    verified live against the endpoint). The v1 on-chain `channel::from_u8`
  *    aborts on the 1000ms fixed-rate channel; the request pins
@@ -68,11 +68,11 @@ import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LAZER_DEFAULTS } from "../../../src/oracle/config.ts";
 import { aggregateTicker, refreshOraclePrices } from "../../../src/oracle/index.ts";
 import type { RuleUpdateHandle } from "../../../src/oracle/price-update-rule.ts";
 import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
 import {
+  LAZER_INFRA,
   LazerApiKeyMissingError,
   PythLazerRule,
 } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
@@ -193,7 +193,7 @@ describe("PythLazerRule.fetchUpdateData", () => {
 
     await PythLazerRule.fetchUpdateData(client, ["BTCUSD"]);
 
-    expect(captured?.url).toBe(`${LAZER_DEFAULTS.TESTNET.endpoint}/v1/latest_price`);
+    expect(captured?.url).toBe(`${LAZER_INFRA.TESTNET.endpoint}/v1/latest_price`);
     expect(captured?.init?.method).toBe("POST");
     expect(captured?.init?.headers).toEqual({
       "Content-Type": "application/json",
@@ -294,7 +294,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     expect(calls).toHaveLength(1);
     // Target: the per-network external Lazer verifier package (NOT the waterx
     // rule package, and NOT any id from the waterx-config JSON).
-    expect(calls[0].package).toBe(LAZER_DEFAULTS.TESTNET.verifier_package);
+    expect(calls[0].package).toBe(LAZER_INFRA.TESTNET.verifier_package);
     expect(calls[0].module).toBe("pyth_lazer");
     expect(calls[0].function).toBe("parse_and_verify_le_ecdsa_update");
     // Argument order per the contract: state, clock, update bytes.
@@ -570,7 +570,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     const tx = new Transaction();
     await expect(
       refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { feeSource: { kind: "gas" } }),
-    ).rejects.toThrow(/oracleSource 'pyth_lazer_rule' has no feed configured.*ETHUSD/);
+    ).rejects.toThrow(/oracleSource \[pyth_lazer_rule\] has no feed configured.*ETHUSD/);
 
     expect(tx.getData().commands?.length ?? 0).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled(); // thrown before any off-chain fetch

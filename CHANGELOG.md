@@ -7,17 +7,141 @@ reference the PR that introduced them.
 
 **Versioning policy — SemVer syntax, but NOT the SemVer compatibility promise.** Version
 numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
-package MAY ship a breaking change in a PATCH release. Every consumer is first-party and
-pins the SDK **exact**, so no consumer takes a break implicitly; a `^`-range consumer
-would, and none exists. `4.0.1` and `4.1.0` were both released this way. Each such release
-NAMES its breaking changes at the top of its section — read that note before upgrading,
-and do not infer compatibility from the version number alone.
+package MAY ship a breaking change in a PATCH or MINOR release. Every consumer is
+first-party and pins the SDK **exact**, so no consumer takes a break implicitly; a
+`^`-range consumer would, and none exists. `4.0.1` shipped breaking as a patch and `4.1.0`
+as a minor. Each such release NAMES its breaking changes at the top of its section — read
+that note before upgrading, and do not infer compatibility from the version number alone.
 
 ## [Unreleased]
 
+_Ships as **4.2.0** (the version `package.json` already pins); this section
+moves under a dated `[4.2.0]` header at release tagging, per the repo's
+changelog workflow._
+
+_Oracle-source decoupling, completed for ALL THREE sources: every oracle
+source is fully self-contained — its endpoints and on-chain object ids live
+with its rule, nothing source-shaped rides on the shared client, and there is
+no default source and no cross-source fallback anywhere. Includes `4.1.0`'s
+`waterx_rule` (merged), now held to the same per-source contract._
+
+_Ships as a MINOR carrying the **BREAKING** entries below, on `4.1.0`'s
+rationale (see its note): both first-party consumers pin exact and adapt in
+the same change set. Read the migration lines before bumping._
+
+### Removed
+
+- **BREAKING: `client.pyth` carries NO infra anymore.** `PythInfraConfig`
+  (`state_id` / `wormhole_state_id` / `hermes_endpoint` on the client) is
+  replaced by `PythAccessConfig` — only the caller-supplied `api_key` /
+  `fetch` policy. Consumers that read `client.pyth.hermes_endpoint` for their
+  own Hermes REST reads must resolve the endpoint per their `ORACLE_SOURCE`
+  instead: `pythCoreHermesEndpoint(network)` (new export) when the source is
+  `'pyth_rule'`; the source's own configured endpoint otherwise — never a
+  Core fallback.
+- **BREAKING: `PYTH_DEFAULTS` is removed** from `oracle/config.ts` and the
+  `@waterx/sdk/perp` export surface. The Core source's infra now lives in its
+  own rule-owned table `PYTH_CORE_INFRA` (`oracle/pyth.ts`), keyed by
+  network. `LAZER_DEFAULTS` is renamed `LAZER_INFRA` and moved into
+  `oracle/rules/pyth-lazer-rule.ts` — co-located with the only rule that
+  reads it (it was internal; the rename is visible only to deep importers).
+- **BREAKING: `WATERX_DEFAULTS` / `WaterxInfraConfig` are removed** the same
+  way: the quote-center infra is the rule-owned `WATERX_INFRA` table in
+  `oracle/rules/waterx-rule.ts` (exported from `@waterx/sdk/oracle`), and
+  `client.waterx` slims to `WaterxAccessConfig` — only the caller-supplied
+  `waterxEndpoint` / `waterxFetch` overrides. Visible to deep importers of
+  `oracle/config`.
+- **BREAKING: the waterx fetch policy no longer falls back to `pythFetch`.**
+  `resolveWaterxInfra` reads `host.waterx?.fetch` only (was
+  `… ?? host.pyth.fetch`) — a consumer that tuned only `pythFetch`
+  timeouts/retries now gets the default policy on quote-center fetches; set
+  `waterxFetch` explicitly. No compile error: this is a behavior change.
+
+### Changed
+
+- **BREAKING: `oracleSource` is REQUIRED at client creation** (`PerpClient`
+  and `WaterXClient` create options). There is no `'pyth_rule'` default: every
+  deployment names its source explicitly, wired from the consumer's own env
+  var (convention: `ORACLE_SOURCE`, carrying the SDK rule value verbatim).
+  Migration: add `oracleSource: <your env>` to every `create(...)` call.
+- **BREAKING: multi-source fed sets — `oracleSource` accepts a LIST and
+  `client.oracleSource` is renamed `client.oracleSources`** (a normalized,
+  deduped, non-empty array; `OracleHost` likewise). One build fetches and
+  feeds EVERY listed source's data; the chain's per-ticker aggregator weight
+  tables decide which contributions count — feeding an unweighted rule is
+  dropped on-chain (harmless), starving a weighted one aborts. This is what
+  makes Core→Pro and Pro+Waterx coexistence windows safe: keep the list a
+  superset of every ticker's weighted set while weights migrate per ticker.
+  A single-value `oracleSource` behaves exactly as before (one-element
+  list). `refreshOraclePrices` groups per source; a ticker is unservable
+  only when NO listed source has its feed; the fee pre-check fires iff a
+  fee-charging source (Pyth Core) is listed with tickers to serve. The
+  per-source off-chain fetches run in PARALLEL (all settle before the first
+  PTB mutation); the PTB build stays sequential in list order. The
+  `UpdateDataProvider` seam is consulted once per listed source per build
+  (`get(source, tickers)` — already source-keyed). Construction rejects an
+  empty list AND nullish/empty entries (an untyped caller omitting the
+  option fails at create, not at the first tx-build).
+  **Known concurrency caveat when `waterx_rule` is listed:** the on-chain
+  feed call enforces a per-symbol signed-timestamp high-water mark and
+  ABORTS `EReplayedSignature` on replay (audit F-014) — regardless of the
+  ticker's weights. Two PTBs carrying the same quote-center envelope for the
+  same symbol cannot both land; providers/caches must never hand one fetched
+  envelope to two concurrent builds for the same symbol (the reference BE
+  prefetch cache serves each (symbol, timestamp) at most once), and the
+  residual same-enclave-tick collision is only fixable in the contract
+  (abstain-on-equal) or the quote-center (per-request monotonic signing).
+- **BREAKING: `PriceUpdateRule.kind` narrows `PriceUpdateRuleKind` →
+  `OracleSource`.** Only selectable sources implement the port
+  (`supra_rule` / `constant_rule` are plain collector-feed helpers); the
+  narrower type makes `refreshOraclePrices`'s per-source carry step an
+  exhaustive switch. External rule implementations / typed test doubles
+  whose `kind` was a non-source value no longer compile.
+
+### Added
+
+- `pythCoreHermesEndpoint(network)` — the Core source's Hermes REST base, for
+  consumers (BE/FE read planes) whose `ORACLE_SOURCE` is `'pyth_rule'`.
+  Exported from `@waterx/sdk`, `@waterx/sdk/perp`, and `@waterx/sdk/oracle`.
+  The full `PYTH_CORE_INFRA` table stays rule-internal (deep import
+  `@waterx/sdk/oracle/pyth` if you genuinely need the object ids).
+- `waterxQuoteCenterEndpoint(network)` — the waterx source's quote-center
+  base (mirrors `pythCoreHermesEndpoint`), plus the `WATERX_INFRA` table.
+  Exported root / `perp` / `oracle`.
+- `resolveOracleRule(source, overrides?)` — THE `OracleSource` →
+  `PriceUpdateRule` registry, now exported from `@waterx/sdk/oracle` so
+  consumers (e.g. a BE per-source prefetch cache) resolve through it instead
+  of hand-mirroring the map.
+- `resolveOracleReadPlan(host, source, tickers)` + `OracleReadPlan` — per-
+  source READ-plane resolution: which tickers a source can price off-chain
+  and with which ids (pyth sources read through the `pyth_rule.feeds` HEX
+  namespace; waterx reads its feeds-listed symbols, an absent block serving
+  NOTHING). Plans carry `unreadable` — tickers a source writes on-chain but
+  cannot read-price (e.g. a lazer-fed ticker with no hex entry) — so
+  consumers surface the config gap loudly.
+- `resolveHermesReadEndpoint(network, sources, override?)` +
+  `pythProHermesEndpoint()` / `PYTH_PRO_HERMES_ENDPOINT` — the endpoint half
+  of the hermes read contract: `pyth_rule` in the fed set → the Core
+  source's keyless endpoint; otherwise the deployment `override` (proxy /
+  mirror) or the documented Pyth Pro base
+  (`https://pyth.dourolabs.app/hermes` — identical for every subscriber,
+  auth via the caller's Bearer key). Total, never a throw, never a
+  Core-ward fallback.
+
+### Fixed
+
+- `refreshOraclePrices` dedupes its `tickers` input (order-preserving) — a
+  repeated ticker previously aggregated TWICE in one PTB: wasted gas under
+  every rule, and a hard on-chain ABORT under `waterx_rule` (the second
+  `collect_batch_latest` replays the same envelope timestamp —
+  `EReplayedSignature`, F-014). Pre-existing on `main`; surfaced by the
+  multi-source review.
+- `BATCH_PRICE_INTENT` — the quote-center's signing intent, exported so
+  read-plane consumers mirror the rule's own envelope intent check.
+
 ## [4.1.0] - 2026-07-31
 
-> **Released as a PATCH carrying THREE breaking changes** (deliberate — see the
+> **Released as a MINOR carrying THREE breaking changes** (deliberate — see the
 > versioning policy at the top of this file). Do NOT stop at the removed
 > constants; the other two are behavior changes with no compile error to warn
 > you:
@@ -38,13 +162,13 @@ and do not infer compatibility from the version number alone.
 >    `Error`, so only code matching on error TYPE or MESSAGE TEXT breaks. See
 >    `### Changed`.
 >
-> Why `4.1.0` and not `5.0.0`: none of the three has an in-repo consumer, and
+> Why a MINOR and not `5.0.0`: none of the three has an in-repo consumer, and
 > both first-party consumers (`waterx-fe`, `bucket-backend-mono`) pin the SDK
 > **exact** — neither picks this up implicitly; they bump to `4.1.0` in the same
 > change set that adapts (waterx-fe#1036, bucket-backend-mono#1060). The one
 > exposure is a consumer on a `^4.x` range, which WOULD take it automatically and
-> fail; there is no such consumer today. (`4.0.1` also shipped
-> breaking-as-patch, but on a different rationale: `4.0.0` was days old and its
+> fail; there is no such consumer today. (`4.0.1` also shipped breaking under a
+> non-major version, but on a different rationale: `4.0.0` was days old and its
 > oracle surface was declared unstable-until-settled, not "no consumers + exact
 > pins".)
 
@@ -131,6 +255,7 @@ and do not infer compatibility from the version number alone.
   faithfully encodes an integer the caller never wrote. (`2**53 + 2` IS exactly
   representable and encodes correctly.) Hence the `Number.isSafeInteger` floor,
   and the named `RangeError` that fires before a transaction is built.
+
 - **`toU8` / `toU16` — the small-width integer guards**
   ([#81](https://github.com/WaterXProtocol/waterx-sdk/pull/81)). u8/u16 is the
   width where the BCS writer's own checks are WEAKEST: it throws on an

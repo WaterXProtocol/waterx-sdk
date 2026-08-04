@@ -1,9 +1,11 @@
 /**
  * `rule-registry.ts` — maps a client-selected `OracleSource` to its concrete
- * `PriceUpdateRule` implementation. `refreshOraclePrices` (`aggregate.ts`) is
- * the only production caller; this is the one place `OracleSource` values are
- * wired to a rule instance. Selection is driven purely by the value passed in
- * (ultimately `OracleHost.oracleSource`, the `oracleSource` client create
+ * `PriceUpdateRule` implementation; the ONE place `OracleSource` values are
+ * wired to a rule instance. `refreshOraclePrices` (`aggregate.ts`) resolves
+ * every `host.oracleSources` entry through it, and consumers (e.g. a BE
+ * prefetch cache keying per source) import `resolveOracleRule` rather than
+ * hand-mirroring this map. Selection is driven purely by the value passed in
+ * (ultimately `OracleHost.oracleSources`, the `oracleSource` client create
  * option) — never by a config JSON `enabled` flag and never by `process.env`.
  *
  * Each source is self-contained: it owns its own infra + config and does NOT

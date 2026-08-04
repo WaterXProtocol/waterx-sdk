@@ -11,7 +11,8 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import { LAZER_DEFAULTS, type PythFetchPolicy, type PythLazerRulePackage } from "../config.ts";
+import type { Network } from "../../constants.ts";
+import type { PythFetchPolicy, PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -21,6 +22,33 @@ import {
   type RuleUpdateHandle,
 } from "../price-update-rule.ts";
 import { fetchWithPolicy, joinEndpointPath, rethrowExhaustedFetch } from "../update-fetch.ts";
+
+/**
+ * Pyth Lazer (Pyth Pro) external infra — owned by THIS source, by network.
+ * Per-network constants for infrastructure Pyth operates (not part of the
+ * `waterx-config` JSON), co-located with the only rule that reads them —
+ * no other oracle source ever touches a Lazer endpoint or verifier.
+ *
+ * - `endpoint` — Lazer HTTP API base; signed updates come from
+ *   `POST /v1/latest_price` (Bearer-authenticated). The service is
+ *   network-agnostic (one signed payload verifies on any chain that trusts the
+ *   Lazer signers), so both networks share the production host.
+ * - `verifier_package` — the Sui package carrying
+ *   `pyth_lazer::parse_and_verify_le_ecdsa_update`. Per-network: testnet is
+ *   still the original v1 publish; mainnet is the v2-upgraded package (which
+ *   still exposes the v1 entry `pyth_lazer_rule` binds). Values mirror the
+ *   contract repo's `pyth_lazer_rule/Move.toml` published-at pins.
+ */
+export const LAZER_INFRA: Record<Network, { endpoint: string; verifier_package: string }> = {
+  MAINNET: {
+    endpoint: "https://pyth-lazer.dourolabs.app",
+    verifier_package: "0xefbfd064480777699fd9c557a5804d72ace7bc82661fdc8d1f1a44ea6d92ee10",
+  },
+  TESTNET: {
+    endpoint: "https://pyth-lazer.dourolabs.app",
+    verifier_package: "0xf5bd2141967507050a91b58de3d95e77c432cd90d1799ee46effc27430a68c21",
+  },
+};
 
 /** `pyth_lazer_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythLazerUpdatePayload {
@@ -194,7 +222,7 @@ export const PythLazerRule: PriceUpdateRule = {
       throw new LazerApiKeyMissingError();
     }
     const update = await fetchLazerSignedUpdate(
-      LAZER_DEFAULTS[host.network].endpoint,
+      LAZER_INFRA[host.network].endpoint,
       apiKey,
       feedIds,
       host.pyth.fetch,
@@ -249,7 +277,7 @@ export const PythLazerRule: PriceUpdateRule = {
     if (!payload) return undefined;
     const lazer = requireLazerPackage(host);
     const [update] = tx.moveCall({
-      target: `${LAZER_DEFAULTS[host.network].verifier_package}::pyth_lazer::parse_and_verify_le_ecdsa_update`,
+      target: `${LAZER_INFRA[host.network].verifier_package}::pyth_lazer::parse_and_verify_le_ecdsa_update`,
       arguments: [tx.object(lazer.state), tx.object.clock(), tx.pure.vector("u8", payload.update)],
     });
     return { kind: "pyth_lazer_rule", update };

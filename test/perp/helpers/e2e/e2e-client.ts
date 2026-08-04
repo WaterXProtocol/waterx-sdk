@@ -93,6 +93,7 @@ export function clientInit(): Promise<PerpClient> {
     clientInitPromise = (async () => {
       const grpcUrl = resolveE2eGrpcUrlOverride();
       const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
+        oracleSource: "pyth_rule",
         cache: true,
         waterxConfigUrl: resolveE2eWaterxConfigUrl(),
         ...(grpcUrl ? { grpcUrl } : {}),

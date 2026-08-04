@@ -203,6 +203,7 @@ describe("user/credit — missing config guards", () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     Object.assign(cfg.packages, partial);
     return new PerpClient("TESTNET", cfg, {
+      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
   }

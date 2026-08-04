@@ -4,7 +4,7 @@
  * `aggregateTicker` appends per waterx-routed ticker. Pulls one enclave-signed
  * batch envelope covering every requested ticker from the quote-center
  * (`GET /v1/quotes/update?symbols=…`, endpoint from `host.waterx` — the
- * `waterxEndpoint`/`waterxFetch` create options — else `WATERX_DEFAULTS`), then —
+ * `waterxEndpoint`/`waterxFetch` create options — else its own `WATERX_INFRA`), then —
  * unlike Pyth Lazer, whose verify is a single shared PTB step — verifies AND
  * feeds in ONE `waterx_rule::collect_batch_latest` call per collector (the Move
  * API bundles the two). So `buildUpdateCalls` emits nothing and the signed
@@ -13,20 +13,27 @@
  * `collect_batch_latest` is the dual-rule path: it feeds the item matching
  * `collector.symbol()` WITHOUT aggregating, so a waterx-routed ticker composes
  * onto the same collector as Pyth/Supra (compose-then-aggregate). On-chain a
- * freshness miss / replayed timestamp ABSTAINS (the other weighted rules
- * cover); a config/integrity mismatch or bad signature aborts.
+ * FRESHNESS miss ABSTAINS (the other weighted rules cover); a config/
+ * integrity mismatch, bad signature, future timestamp — or a REPLAYED signed
+ * timestamp — ABORTS (`EReplayedSignature`, audit F-014: a signed tuple is
+ * single-use per symbol, enforced by a per-symbol high-water mark BEFORE any
+ * weight arbitration). Consequence for concurrent builds: two PTBs carrying
+ * the same envelope for the same symbol cannot both land — the second aborts
+ * even if the rule is unweighted for that ticker. Never share one fetched
+ * envelope across builds that may execute concurrently for the same symbol.
  */
 
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import type { Network } from "../../constants.ts";
 import {
   collectBatchLatest,
   newBatchItem,
   newBatchPayload,
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
-import { WATERX_DEFAULTS, type WaterxRulePackage } from "../config.ts";
+import type { WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -41,8 +48,39 @@ import {
   type FetchPolicy,
 } from "../update-fetch.ts";
 
-/** The single signing intent (`BATCH_PRICE_INTENT`) the quote-center emits. */
-const BATCH_PRICE_INTENT = 1;
+/** The single signing intent the quote-center emits — exported so read-plane
+ *  consumers can mirror the rule's own envelope intent check (a mispointed
+ *  endpoint must be rejected by reads exactly as tx-builds reject it). */
+export const BATCH_PRICE_INTENT = 1;
+
+/**
+ * WaterX quote-center external infra — owned by THIS source, by network.
+ * Mirrors `PYTH_CORE_INFRA` (oracle/pyth.ts) and `LAZER_INFRA`
+ * (rules/pyth-lazer-rule.ts): per-network constants for infrastructure the
+ * source's operator runs, co-located with the only rule that reads them — no
+ * other oracle source ever touches a quote-center endpoint. Public read (no
+ * auth), so there is no api_key. `endpoint` has no trailing slash — the rule
+ * appends the path.
+ *
+ * These are the DEFAULTS behind the caller's `client.waterx` access slice
+ * (`waterxEndpoint` / `waterxFetch` create options) — the browser-CORS proxy
+ * hook, since this is the one source fetched from the page.
+ */
+export const WATERX_INFRA: Record<Network, { endpoint: string }> = {
+  MAINNET: { endpoint: "https://quote-center.waterx.app" },
+  TESTNET: { endpoint: "https://quote-center-staging.waterx.app" },
+};
+
+/**
+ * The waterx source's quote-center base for `network` — the ONE accessor
+ * consumers (BE/FE read planes) use when, and only when, their own
+ * `ORACLE_SOURCE` resolves to `'waterx_rule'`. Mirrors
+ * `pythCoreHermesEndpoint`. Under any other source the read endpoint is that
+ * source's own configuration — never this one.
+ */
+export function waterxQuoteCenterEndpoint(network: Network): string {
+  return WATERX_INFRA[network].endpoint;
+}
 
 /**
  * One item inside a signed batch payload, mirroring the quote-center
@@ -158,18 +196,21 @@ function requireWaterxPackage(host: OracleHost): WaterxRulePackage {
 }
 
 /**
- * Resolve the quote-center infra for this host: the `waterxEndpoint` /
- * `waterxFetch` create options when the client carries them, else the network
- * default. The fetch policy falls back to the shared `pyth.fetch` policy so a
- * consumer that already tuned timeouts/retries once keeps them here.
+ * Resolve the quote-center infra for this host: each field independently from
+ * the caller's `client.waterx` access slice (`waterxEndpoint` / `waterxFetch`
+ * create options) when set, else this source's own `WATERX_INFRA` default /
+ * `fetchWithPolicy`'s built-ins. Deliberately NO fallback onto `pyth.fetch`
+ * or any other source's policy — sources stay fully independent.
  *
  * This is the seam a browser consumer needs: the envelope is fetched FROM THE
  * PAGE, so a front end whose origin the quote-center does not allow (CORS)
  * points `endpoint` at a same-origin proxy, or supplies its own `fetchImpl`.
  */
 function resolveWaterxInfra(host: OracleHost): { endpoint: string; fetch?: FetchPolicy } {
-  const infra = host.waterx ?? WATERX_DEFAULTS[host.network];
-  return { endpoint: infra.endpoint, fetch: infra.fetch ?? host.pyth.fetch };
+  return {
+    endpoint: host.waterx?.endpoint ?? WATERX_INFRA[host.network].endpoint,
+    fetch: host.waterx?.fetch,
+  };
 }
 
 /**
@@ -242,8 +283,10 @@ function decodeSig(hex: string): Uint8Array {
  * per item, the exact shape the enclave signed) and contribute the price for
  * `collector.symbol()` to the collector. One collect call re-verifies the batch
  * signature and picks this collector's symbol out of the batch; on-chain it
- * abstains (records `none`) instead of aborting when the symbol is stale,
- * absent from the batch, or its timestamp was already accepted (replay).
+ * abstains (records `none`) when the symbol is stale or absent from the batch,
+ * but ABORTS `EReplayedSignature` when the symbol's signed timestamp was
+ * already accepted (per-symbol high-water mark, audit F-014) — see the module
+ * header for the concurrent-build consequence.
  */
 export function feedWaterxRule(
   tx: Transaction,

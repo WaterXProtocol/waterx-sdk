@@ -97,6 +97,7 @@ describe("tx-builders (v3)", () => {
     const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
     delete noSponsorConfig.packages.pyth_sponsor_rule;
     const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
+      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     const withoutSponsorRuleConfig = await buildPlaceOrderTx(noSponsorClient, {
@@ -168,6 +169,7 @@ describe("tx-builders (v3)", () => {
     const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
     delete noSponsorConfig.packages.pyth_sponsor_rule;
     const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
+      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     attachPythGrpcMocks(noSponsorClient);
@@ -196,6 +198,7 @@ describe("tx-builders (v3)", () => {
     const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
     delete noSponsorConfig.packages.pyth_sponsor_rule;
     const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
+      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     attachPythGrpcMocks(noSponsorClient);
@@ -529,6 +532,7 @@ describe("tx-builders (v3)", () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     delete cfg.packages.withdrawal_queue;
     const noQueue = new PerpClient("TESTNET", cfg, {
+      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>

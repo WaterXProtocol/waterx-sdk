@@ -7,6 +7,7 @@
  * The config URL is read from `WATERX_CONFIG_URL` (there is no default) — set it
  * in the environment or in a repo `.env` file.
  */
+import { PYTH_CORE_INFRA, pythCoreHermesEndpoint } from "../src/oracle/pyth.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
@@ -19,6 +20,7 @@ async function main(): Promise<void> {
   const t0 = Date.now();
   console.log(`fetching config: ${configUrl}`);
   const client = await PerpClient.create("TESTNET", {
+    oracleSource: "pyth_rule",
     waterxConfigUrl: configUrl,
     cache: true,
   });
@@ -37,8 +39,8 @@ async function main(): Promise<void> {
   console.log(
     `  referral_table        ${client.config.packages.waterx_referral?.referral_table ?? "(missing)"}`,
   );
-  console.log(`  pyth state            ${client.pyth.state_id}`);
-  console.log(`  pyth hermes           ${client.pyth.hermes_endpoint}`);
+  console.log(`  pyth state            ${PYTH_CORE_INFRA.TESTNET.state_id}`);
+  console.log(`  pyth hermes           ${pythCoreHermesEndpoint("TESTNET")}`);
   console.log(
     `  markets               ${Object.keys(client.config.packages.waterx_perp.markets).join(", ")}`,
   );
@@ -46,6 +48,7 @@ async function main(): Promise<void> {
   console.log("\n=== Cache hit check (2nd create) ===");
   const t1 = Date.now();
   const client2 = await PerpClient.create("TESTNET", {
+    oracleSource: "pyth_rule",
     waterxConfigUrl: configUrl,
     cache: true,
   });

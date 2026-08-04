@@ -26,6 +26,7 @@ export function integrationNetworkToClientKey(network: E2eNetwork): Network {
 export async function createIntegrationWaterXClient(): Promise<PerpClient> {
   const grpcUrl = resolveE2eGrpcUrlOverride();
   const c = await PerpClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
+    oracleSource: "pyth_rule",
     cache: true,
     waterxConfigUrl: resolveE2eWaterxConfigUrl(),
     ...(grpcUrl ? { grpcUrl } : {}),

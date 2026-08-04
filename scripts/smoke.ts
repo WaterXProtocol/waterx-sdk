@@ -16,7 +16,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { refreshOraclePrices } from "../src/oracle/index.ts";
+import { pythCoreHermesEndpoint, refreshOraclePrices } from "../src/oracle/index.ts";
+import { PYTH_CORE_INFRA } from "../src/oracle/pyth.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import type { WaterXConfig } from "../src/perp/config.ts";
 import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/perp/constants.ts";
@@ -178,10 +179,11 @@ async function main(): Promise<void> {
   if (existsSync(CONFIG_PATH)) {
     console.log(`Loading config from ${CONFIG_PATH}`);
     config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
-    client = new PerpClient("TESTNET", config);
+    client = new PerpClient("TESTNET", config, { oracleSource: "pyth_rule" });
   } else {
     console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
     client = await PerpClient.create("TESTNET", {
+      oracleSource: "pyth_rule",
       cache: true,
       waterxConfigUrl: waterxConfigUrlFromEnv(),
     });
@@ -200,8 +202,8 @@ async function main(): Promise<void> {
   console.log(
     `  referral_table        ${client.config.packages.waterx_referral?.referral_table ?? "(missing)"}`,
   );
-  console.log(`  pyth state            ${client.pyth.state_id}`);
-  console.log(`  pyth hermes           ${client.pyth.hermes_endpoint}`);
+  console.log(`  pyth state            ${PYTH_CORE_INFRA.TESTNET.state_id}`);
+  console.log(`  pyth hermes           ${pythCoreHermesEndpoint("TESTNET")}`);
   console.log(
     `  markets               ${Object.keys(client.config.packages.waterx_perp.markets).join(", ")}`,
   );

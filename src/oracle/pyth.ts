@@ -19,6 +19,7 @@ import { bcs } from "@mysten/sui/bcs";
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import type { Network } from "../constants.ts";
 import type { PythFetchPolicy } from "./config.ts";
 import type { OracleHost } from "./host.ts";
 import {
@@ -27,6 +28,73 @@ import {
   rethrowExhaustedFetch,
   trimTrailingSlashes,
 } from "./update-fetch.ts";
+
+// ============================================================================
+// Core external infra — owned by THIS source, by network
+// ============================================================================
+
+/**
+ * Everything the Core source needs that is not in the canonical
+ * `waterx-config` JSON lives HERE, in the source that consumes it —
+ * `client.pyth` carries only the caller's credential/fetch policy
+ * (see `PythAccessConfig`). No other oracle source reads this table:
+ * selecting `pyth_lazer_rule` (or any future source) must never touch a Core
+ * endpoint or Core state object, so nothing Core-shaped stays on the shared
+ * client to leak across sources.
+ *
+ * - `state_id` / `wormhole_state_id` — the Core Pyth + Wormhole state objects
+ *   the on-chain update PTB reads (below).
+ * - `hermes_endpoint` — the Core Hermes REST base for
+ *   `fetchPriceFeedsUpdateData`. Keyless today; auth-first after the Pyth Pro
+ *   migration (post-2026-08-18) via `client.pyth.api_key`.
+ */
+export interface PythCoreInfra {
+  state_id: string;
+  wormhole_state_id: string;
+  hermes_endpoint: string;
+}
+
+export const PYTH_CORE_INFRA: Record<Network, PythCoreInfra> = {
+  MAINNET: {
+    state_id: "0x1f9310238ee9298fb703c3419030b35b22bb1cc37113e3bb5007c99aec79e5b8",
+    wormhole_state_id: "0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c",
+    hermes_endpoint: "https://hermes.pyth.network",
+  },
+  TESTNET: {
+    state_id: "0x243759059f4c3111179da5878c12f68d612c21a8d54d85edc86164bb18be1c7c",
+    wormhole_state_id: "0x31358d198147da50db32eda2562951d53973a0c0ad5ed738e9b17d88b213d790",
+    hermes_endpoint: "https://hermes-beta.pyth.network",
+  },
+};
+
+/**
+ * The Core source's Hermes REST base for `network` — for consumers (BE/FE
+ * read planes) whose `ORACLE_SOURCE` fed set includes `'pyth_rule'`. A fed
+ * set WITHOUT `pyth_rule` reads the keyed Pyth Pro base instead — resolve
+ * through `resolveHermesReadEndpoint` (`oracle/read-plane.ts`) rather than
+ * branching by hand.
+ */
+export function pythCoreHermesEndpoint(network: Network): string {
+  return PYTH_CORE_INFRA[network].hermes_endpoint;
+}
+
+/**
+ * The Pyth Pro Hermes-compatible REST base — the documented drop-in
+ * replacement for the Core endpoint (`https://pyth.dourolabs.app/hermes/…`),
+ * IDENTICAL for every subscriber: only the `Authorization: Bearer` key
+ * (`client.pyth.api_key` / the `pythApiKey` create option) is
+ * account-specific, so the URL is SDK infra, not deployment config. One base
+ * for both networks — Pro has no testnet variant (Pyth feed ids are
+ * chain-agnostic; `hermes-beta` is a Core-testnet concern). Consumers with a
+ * proxy/self-hosted mirror override it per deployment via
+ * `resolveHermesReadEndpoint`'s `override` param.
+ */
+export const PYTH_PRO_HERMES_ENDPOINT = "https://pyth.dourolabs.app/hermes";
+
+/** Accessor mirror of {@link pythCoreHermesEndpoint} for the Pro base. */
+export function pythProHermesEndpoint(): string {
+  return PYTH_PRO_HERMES_ENDPOINT;
+}
 
 // ============================================================================
 // Cache — share across builders to avoid redundant Pyth state reads
@@ -525,11 +593,11 @@ async function getPriceFeedObjectId(
   client: SuiGrpcClient,
   table: PriceTableInfo,
   feedId: string,
-  cache?: PythCache,
-  pythStateId?: string,
+  cache: PythCache | undefined,
+  pythStateId: string,
 ): Promise<string | undefined> {
   const normalized = feedId.replace(/^0x/, "");
-  const cacheKey = pythStateId ? `${pythStateId}:${normalized}` : normalized;
+  const cacheKey = `${pythStateId}:${normalized}`;
   if (cache?.priceFeedObjectIdCache.has(cacheKey)) {
     return cache.priceFeedObjectIdCache.get(cacheKey);
   }
@@ -666,7 +734,9 @@ export async function buildPythPriceUpdateCalls(
   }
 
   const cache = opts?.cache;
-  const pyth = host.pyth;
+  // Core on-chain infra is the `pyth_rule` source's own table, keyed by the
+  // host's network — `client.pyth` carries only the caller's credential/policy.
+  const pyth = PYTH_CORE_INFRA[host.network];
   const [stateInfo, wormholePackageId, table] = await Promise.all([
     getPythStateInfo(host.grpcClient, pyth.state_id, cache),
     getWormholePackageId(host.grpcClient, pyth.wormhole_state_id, cache),
@@ -743,9 +813,9 @@ export async function updatePythPrices(
   feedIds: string[],
   opts?: { cache?: PythCache; feeSource?: OracleFeeSource },
 ): Promise<string[]> {
-  // `host.pyth` is the Pyth Core infra (fixed per network) plus the caller's
-  // api_key/fetch — endpoint, credential and policy all come from it.
-  const endpoint = host.pyth.hermes_endpoint;
+  // The Core source's own Hermes endpoint (per-network, rule-owned table);
+  // credential + fetch policy are the caller-supplied `client.pyth` slice.
+  const endpoint = PYTH_CORE_INFRA[host.network].hermes_endpoint;
   const updates = await fetchPriceFeedsUpdateData(endpoint, feedIds, {
     apiKey: host.pyth.api_key,
     fetch: host.pyth.fetch,

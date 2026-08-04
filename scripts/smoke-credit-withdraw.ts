@@ -33,6 +33,7 @@ interface SimResult {
 async function main(): Promise<void> {
   const address = resolveActiveAddress();
   const client = await PerpClient.create("TESTNET", {
+    oracleSource: "pyth_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

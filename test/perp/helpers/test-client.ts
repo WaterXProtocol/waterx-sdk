@@ -8,7 +8,7 @@ import { MOCK_TESTNET_CONFIG } from "./fixtures/mock-testnet-config.ts";
 
 export function createUnitTestClient(
   opts: {
-    oracleSource?: OracleSource;
+    oracleSource?: OracleSource | OracleSource[];
     pythApiKey?: string;
     pythFetch?: { timeoutMs?: number; retries?: number };
     waterxEndpoint?: string;
@@ -18,7 +18,7 @@ export function createUnitTestClient(
   // Clone so tests that mutate `client.config` (e.g. delete wlp) do not poison the shared fixture.
   return new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
     grpcUrl: "https://fullnode.test.invalid:443",
-    oracleSource: opts.oracleSource,
+    oracleSource: opts.oracleSource ?? "pyth_rule",
     pythApiKey: opts.pythApiKey,
     pythFetch: opts.pythFetch,
     waterxEndpoint: opts.waterxEndpoint,
