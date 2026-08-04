@@ -66,11 +66,25 @@ describe("PerpClient (offline)", () => {
     expect(noPkgId.isConstantTicker("USDCUSD")).toBe(false);
   });
 
-  it("throws for unknown aggregator, pyth feed, pool token, and missing wlp", () => {
+  it("throws for unknown aggregator, pyth feed, and pool token", () => {
     expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
     expect(() => client.getPythFeed("NOPE")).toThrow(/No pyth feed listed/);
     expect(() => client.getPoolTokenType("NOPE")).toThrow(/No pool token registered/);
+  });
 
+  it("prototype-key lookups are unknown, not inherited Functions", () => {
+    // pool_tokens["toString"] hits Object.prototype.toString via a bare
+    // bracket read — truthy, so it was returned as a declared coin type
+    // instead of the unknown-token throw. Same class for the alias-keyed
+    // rewarders/pools maps.
+    for (const proto of ["toString", "constructor"]) {
+      expect(() => client.getPoolTokenType(proto)).toThrow(/No pool token registered/);
+      expect(() => client.getAggregator(proto)).toThrow(/No aggregator listed/);
+      expect(client.getRewarders(proto)).toEqual([]);
+    }
+  });
+
+  it("throws for missing wlp package", () => {
     const bare = createUnitTestClient();
     bare.config = {
       ...bare.config,
@@ -218,6 +232,15 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     expect(() => new PerpClient("TESTNET", config, { oracleSource: [] })).toThrow(
       /oracleSource is REQUIRED/,
     );
+    // Values outside the canonical ORACLE_SOURCES list (legacy 'core'/'pro',
+    // typos) fail HERE too — same authority as parseOracleSourceList, so the
+    // env parser and the client front door can never disagree.
+    expect(
+      () =>
+        new PerpClient("TESTNET", config, {
+          oracleSource: "core" as unknown as CreateClientOptions["oracleSource"],
+        }),
+    ).toThrow(/oracleSource is REQUIRED/);
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {

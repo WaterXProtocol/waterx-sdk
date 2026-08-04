@@ -158,6 +158,17 @@ describe("WaterxRule — port", () => {
     );
   });
 
+  it("fetchUpdateData throws for a prototype-key ticker BEFORE fetching — never reaches the quote-center", async () => {
+    // feeds["toString"] is an inherited Function; a bare bracket-undefined
+    // check passed it as listed and sent the name to the network.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = mockQuoteCenterFetch(rawEnvelope(["BTCUSD"]));
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "toString"])).rejects.toThrow(
+      /No waterx_rule feed listed for ticker: toString/,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("fetchUpdateData accepts an envelope covering every requested ticker", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockQuoteCenterFetch(rawEnvelope(["BTCUSD", "ETHUSD"]));

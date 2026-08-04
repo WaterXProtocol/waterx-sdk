@@ -29,14 +29,33 @@ export type PriceUpdateRuleKind =
   | "waterx_rule";
 
 /**
- * The subset of `PriceUpdateRuleKind`s listable in a client's `oracleSource`
- * create option (see `OracleHost.oracleSources`) — i.e. rules that can serve as
- * the on-chain price *update* leg `refreshOraclePrices` runs before aggregating.
- * `supra_rule` and `constant_rule` are auxiliary rules fed alongside whichever
- * source is selected (see `aggregateTicker`), not sources themselves. The SDK
- * never reads `process.env` — consumers resolve their own env var to this type.
+ * The canonical list of selectable oracle sources — the SINGLE authority the
+ * {@link OracleSource} union derives from (the value-list→union derive
+ * idiom of `unified-client.ts`'s `NON_CLIENT_FIRST`, plus `Object.freeze`
+ * so the immutability is RUNTIME truth: `as const` alone would let a JS
+ * consumer push into the array and desync the membership Set built from it
+ * in `source-list.ts`). Runtime membership checks and the `ORACLE_SOURCE`
+ * env parser live there, on `isOracleSource` / `parseOracleSourceList`.
+ * Only sources belong here: `supra_rule` and `constant_rule` are auxiliary
+ * rules fed alongside whichever sources are selected (see
+ * `aggregateTicker`), not sources themselves — the `satisfies` keeps
+ * entries inside `PriceUpdateRuleKind` but adding an auxiliary rule to this
+ * list is an (incorrect) editorial decision this comment exists to prevent.
  */
-export type OracleSource = "pyth_rule" | "pyth_lazer_rule" | "waterx_rule";
+export const ORACLE_SOURCES = Object.freeze([
+  "pyth_rule",
+  "pyth_lazer_rule",
+  "waterx_rule",
+] as const satisfies readonly PriceUpdateRuleKind[]);
+
+/**
+ * The kinds listable in a client's `oracleSource` create option (see
+ * `OracleHost.oracleSources`) — i.e. rules that can serve as the on-chain
+ * price *update* leg `refreshOraclePrices` runs before aggregating. Derived
+ * from {@link ORACLE_SOURCES}. The SDK never reads `process.env` — consumers
+ * resolve their own env var to this type.
+ */
+export type OracleSource = (typeof ORACLE_SOURCES)[number];
 
 /**
  * Off-chain payload fetched by a rule, tagged by `kind` so a caller holding

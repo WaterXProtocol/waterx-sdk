@@ -12,6 +12,7 @@ import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { Network } from "../../constants.ts";
+import { ownEntry } from "../../utils/record.ts";
 import type { PythFetchPolicy, PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
@@ -211,7 +212,9 @@ export const PythLazerRule: PriceUpdateRule = {
     // not fail per ticker as if only that feed were missing.
     const { feeds } = requireLazerPackage(host);
     const feedIds = tickers.map((ticker) => {
-      const feedId = feeds[ticker];
+      // ownEntry: a prototype-key ticker ("toString") must throw here as
+      // unlisted, not turn an inherited Function into a "feed id".
+      const feedId = ownEntry(feeds, ticker);
       if (feedId === undefined) {
         throw new Error(`No pyth_lazer_rule feed listed for ticker: ${ticker}`);
       }
@@ -249,7 +252,7 @@ export const PythLazerRule: PriceUpdateRule = {
     if (!payload || tickers.length === 0) return null;
     const packedFeedIds = new Set(payload.feedIds);
     for (const ticker of tickers) {
-      const feedId = host.config.packages.pyth_lazer_rule?.feeds?.[ticker];
+      const feedId = ownEntry(host.config.packages.pyth_lazer_rule?.feeds, ticker);
       if (feedId === undefined || !packedFeedIds.has(feedId)) return null;
     }
     return { kind: "pyth_lazer_rule", payload };

@@ -69,6 +69,10 @@ export type {
   OracleSource,
   UpdateDataProvider,
 } from "./price-update-rule.ts";
+// Canonical OracleSource value list + THE env-string parser consumers fold
+// onto — semantics and rationale in `source-list.ts`'s header.
+export { ORACLE_SOURCES } from "./price-update-rule.ts";
+export { isOracleSource, parseOracleSourceList } from "./source-list.ts";
 
 // Per-source READ-plane resolution — which tickers a source can price
 // off-chain and with which ids (`resolveOracleReadPlan`), and which
@@ -100,6 +104,9 @@ export {
   BATCH_PRICE_INTENT,
   WATERX_INFRA,
   waterxQuoteCenterEndpoint,
+  // Rule-owned payload accessor (kind-check + unwrap in one place) — never
+  // hand-cast the payload shape.
+  waterxEnvelopeOf,
 } from "./rules/waterx-rule.ts";
 export type {
   WaterxUpdatePayload,

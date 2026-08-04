@@ -9,6 +9,7 @@
 
 import type { Transaction } from "@mysten/sui/transactions";
 
+import { ownEntry } from "../../utils/record.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -107,7 +108,7 @@ export const PythCoreRule: PriceUpdateRule = {
     for (const ticker of tickers) {
       // Same lookup as `host.getPythFeed(ticker)` minus its throw — an
       // unlisted ticker is a miss here, not an error.
-      const feedId = host.config.packages.pyth_rule?.feeds?.[ticker]?.feed_id;
+      const feedId = ownEntry(host.config.packages.pyth_rule?.feeds, ticker)?.feed_id;
       if (feedId === undefined || !packedFeedIds.has(feedId)) return null;
       feedIds.push(feedId);
     }

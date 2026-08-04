@@ -113,15 +113,20 @@ ONE **required** client create option, `oracleSource`, names the price-update so
 
 **Multi-source fed sets.** With a list, ONE build fetches and feeds EVERY listed source's data in the same PTB; the chain's per-ticker aggregator **weight tables** decide which contributions count — feeding an unweighted rule's price is dropped on-chain, while starving a weighted rule aborts. That asymmetry is what makes weight migrations (Core→Pro, Pyth↔waterx coexistence) safe: keep the list a **superset** of every ticker's weighted rule set and flip weights per ticker at any time — an env edit, never an SDK release. (One caveat: waterx's feed call burns a per-symbol signed-timestamp high-water mark regardless of weights — see the replay note below.)
 
-**No cross-source fallback, no feeds guard at init.** Construction rejects an empty/nullish `oracleSource`, but a listed source whose feed for a requested ticker is absent is **not** an error at client creation — the build fails at **tx-build** only when **no** listed source serves the ticker (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
+**No cross-source fallback, no feeds guard at init.** Construction rejects an empty/nullish `oracleSource` **and any value outside `ORACLE_SOURCES`** (a legacy `'core'` / `'pyth'` string fails at `create`), but a listed source whose feed for a requested ticker is absent is **not** an error at client creation — the build fails at **tx-build** only when **no** listed source serves the ticker (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
 
 Every source's external infra is a **rule-owned per-network table**, never deployment-overridable and never in the config JSON: `PYTH_CORE_INFRA` (`src/oracle/pyth.ts` — Pyth state ids + the keyless Core Hermes endpoint, read-plane accessor `pythCoreHermesEndpoint(network)`), `LAZER_INFRA` (`src/oracle/rules/pyth-lazer-rule.ts`), `WATERX_INFRA` (`src/oracle/rules/waterx-rule.ts` — testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`, accessor `waterxQuoteCenterEndpoint(network)`). For **price READS** under a fed set without `pyth_rule`, the documented Pyth Pro base (`pythProHermesEndpoint()` — identical for every subscriber, auth via the Bearer key) applies: resolve the read endpoint with `resolveHermesReadEndpoint(network, sources, override?)` instead of branching by hand, and pair it with `resolveOracleReadPlan` for the per-source served-sets/ids. `client.pyth` is the access-only `PythAccessConfig` — just the caller-supplied `pythApiKey` / `pythFetch` create options (a secret has no place in a public CDN JSON); `client.waterx` is likewise `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides only; fetch policy resolves **`waterxFetch` → built-in defaults** — deliberately no `pythFetch` fallback, sources never share config). See the browser/CORS note below.
 
 ```ts
-// Per-environment wiring — the consumer owns the env var, not the SDK:
+// Per-environment wiring — the consumer owns the env var, not the SDK.
+// parseOracleSourceList is THE canonical parser (trim, drop empty entries,
+// validate every value, dedupe, throw operator-actionably) — never a bare
+// split-and-cast, which would hand the strict constructor untrimmed junk.
+import { parseOracleSourceList } from "@waterx/sdk/oracle";
+
 const perp = await PerpClient.create(network, {
   waterxConfigUrl,
-  oracleSource: process.env.ORACLE_SOURCE!.split(",") as OracleSource[], // REQUIRED; comma list = the fed set
+  oracleSource: parseOracleSourceList(process.env.ORACLE_SOURCE), // REQUIRED; comma list = the fed set
   pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed (Lazer is auth-first)
 });
 ```
@@ -133,7 +138,7 @@ This is the coexistence rollout pattern: staging lists every source under migrat
 Every source plugs in the same way — routing is driven **only** by the client's `oracleSource` option (never a config `enabled` flag, never `process.env`):
 
 1. **Implement `PriceUpdateRule`** in `src/oracle/rules/<name>-rule.ts` — all port fields (`src/oracle/price-update-rule.ts`): `kind`, `requiresFeeSource` (`true` iff the on-chain verify draws a per-update fee — gates the fail-fast fee-source check), `supportedTickers`, `fetchUpdateData`, `narrowUpdateData` (subset a cached whole-universe payload to one build's tickers — a divisible payload returns a per-feed subset, an indivisible one returns itself whole iff fully covered; uncovered ticker → `null` miss), `buildUpdateCalls`.
-2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value (added to the union in `price-update-rule.ts`).
+2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value — added to `ORACLE_SOURCES` in `price-update-rule.ts` (the union derives from that list; a registry test pins every listed value to a registered rule).
 3. **Publish the on-chain rule package** — its config entry (package ids, per-ticker `feeds`) arrives via the normal `waterx-config` deploy pipeline; type it in `OraclePackages` (`src/oracle/config.ts`).
 4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a **rule-owned** per-network table inside the rule's own file, mirroring `LAZER_INFRA` / `WATERX_INFRA` (never on the shared client, never in `oracle/config.ts`). Wire its read-plane served-set/ids into `resolveOracleReadPlan` (`src/oracle/read-plane.ts`).
 5. **Consumers flip `oracleSource`** per environment — no consumer code change, no SDK re-release.

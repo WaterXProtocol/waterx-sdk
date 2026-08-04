@@ -16,6 +16,49 @@ number alone.
 
 ## [Unreleased]
 
+### Added
+
+- `parseOracleSourceList(raw)` + the canonical `ORACLE_SOURCES` value list
+  (#84) — THE `ORACLE_SOURCE` env-string parser consumers fold onto (split on `,`,
+  trim, DROP empty entries, validate every entry, dedupe order-preserving,
+  throw operator-actionably on empty/invalid). The FE and BE previously
+  carried twin hand-written parsers whose semantics drifted once in review
+  (a trailing comma booted one deployment green and 500'd the other);
+  the semantics now live in one exported function — and STRICTER than both
+  consumers' `in`-operator checks: an entry named like an
+  `Object.prototype` key (`toString`, …) passed those and died deep in the
+  stack; the Set-based check rejects it at parse. Zod adopters must wrap
+  the throw into `ctx.addIssue` (pattern in the module header) or a single
+  bad entry masks sibling env issues at boot. `ORACLE_SOURCES`
+  is the single authority the `OracleSource` union DERIVES from (drift is
+  impossible by construction), a test pins every canonical value to a
+  registered rule, and `PerpClient` construction validates against the same
+  list — the env parser and the client front door can never disagree.
+- `waterxEnvelopeOf` is re-exported from `@waterx/sdk/oracle` and `perp`
+  (#84) —
+  the rule-owned payload accessor (kind-check + unwrap in one place). A
+  consumer prefetch cache hand-cast the payload shape and shipped a
+  silently-dead guard; deep-importing `oracle/rules/waterx-rule` is no
+  longer necessary to do it right.
+- `isOracleSource(value)` type predicate (#84) — the ONE runtime
+  `ORACLE_SOURCES` membership check; `parseOracleSourceList` and
+  `PerpClient`'s ctor validation both call it, so the env parser and the
+  create-option front door share a single implementation instead of two
+  agreeing ones.
+
+### Fixed
+
+- Prototype-chain ticker lookups closed EVERYWHERE, not just where `in` was
+  spelled (#84): every externally-keyed config-record read (`feeds`,
+  `markets`, `aggregators`, `pool_tokens`, and the alias-keyed
+  `rewarders`/`pools` staking maps — read-plane resolution, waterx/lazer/core
+  rule fetch paths, `PerpConfigView` getters, `getCollateralAssets`, the
+  staking pool resolver) now funnels through an own-key `ownEntry` helper. Previously a ticker named like an
+  `Object.prototype` key (`toString`, …) read as an inherited Function:
+  classified `unreadable` by `resolveOracleReadPlan`'s hermes arm and — on
+  the write path — passed the waterx/lazer feed-listing throws and reached
+  the network.
+
 ## [4.3.0] - 2026-08-04
 
 _Oracle-source decoupling, completed for ALL THREE sources: every oracle
