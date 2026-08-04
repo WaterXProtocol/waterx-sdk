@@ -56,6 +56,7 @@ import { Transaction } from "@mysten/sui/transactions";
 const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl: "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+  oracleSource: "pyth_rule", // REQUIRED — single source or a list (the fed set); see "Oracle sources"
 });
 const signer = /* your Ed25519Keypair or wallet Signer */;
 
@@ -94,34 +95,36 @@ import { PredictClient } from "@waterx/sdk/prediction";
 
 const waterxConfigUrl =
   "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json";
-const perp = await PerpClient.create("TESTNET", { waterxConfigUrl }); // or PerpClient.testnet({ waterxConfigUrl })
-const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // or PredictClient.testnet({ waterxConfigUrl })
+const perp = await PerpClient.create("TESTNET", { waterxConfigUrl, oracleSource: "pyth_rule" }); // or PerpClient.testnet({ ... })
+const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // predict line needs no oracle source
 ```
 
 Read-only queries use gRPC `simulateTransaction` (no signer) — the `getX` view helpers, e.g. `await perp.simulate(tx)` or `getMarketData(perp, …)`.
 
 ## Oracle sources
 
-ONE client create option, `oracleSource`, selects the price-update source. Each source is **self-contained** — it owns its own infra + config and does **not** back-stop any other source. The name is source-neutral on purpose: a future source need not be Pyth. The SDK **never reads `process.env`** — each consumer wires it from its own env var, so every environment runs the **same SDK version** and differs only by env:
+ONE **required** client create option, `oracleSource`, names the price-update source(s) — a single value or a **list (the fed set)**. Each source is **self-contained** — it owns its own infra + config and does **not** back-stop any other source. There is **no default source**: a client that has not named its sources fails at creation. The name is source-neutral on purpose: a future source need not be Pyth. The SDK **never reads `process.env`** — each consumer wires it from its own env var, so every environment runs the **same SDK version** and differs only by env:
 
-| Option         | Values                                                            | What it selects                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `oracleSource` | `'pyth_rule'` (default) \| `'pyth_lazer_rule'` \| `'waterx_rule'` | The price-update source. `'pyth_rule'` = Pyth Core updates (Hermes VAA + per-feed update fees, keyless `hermes.pyth.network`). `'pyth_lazer_rule'` = Pyth Lazer signed updates (ONE `leEcdsa` verify per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` feeds + a `pythApiKey`. `'waterx_rule'` = the first-party WaterX quote-center (Nautilus-TEE, ed25519-signed CEX prices): one signed batch envelope per build, no API key and no per-update fee; needs `packages.waterx_rule` feeds. |
+| Option         | Values                                                                             | What it selects                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oracleSource` | `OracleSource \| OracleSource[]` of `'pyth_rule'` \| `'pyth_lazer_rule'` \| `'waterx_rule'` — REQUIRED, no default | The price-update source(s). `'pyth_rule'` = Pyth Core updates (Hermes VAA + per-feed update fees, keyless `hermes.pyth.network`). `'pyth_lazer_rule'` = Pyth Lazer signed updates (ONE `leEcdsa` verify per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` feeds + a `pythApiKey`. `'waterx_rule'` = the first-party WaterX quote-center (Nautilus-TEE, ed25519-signed CEX prices): one signed batch envelope per build, no API key and no per-update fee; needs `packages.waterx_rule` feeds. |
 
-**No cross-source fallback, no init guard.** Selecting a source whose feed for a requested ticker is absent is **not** an error at client creation — it fails at **tx-build** for exactly those tickers (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
+**Multi-source fed sets.** With a list, ONE build fetches and feeds EVERY listed source's data in the same PTB; the chain's per-ticker aggregator **weight tables** decide which contributions count — feeding an unweighted rule's price is dropped on-chain, while starving a weighted rule aborts. That asymmetry is what makes weight migrations (Core→Pro, Pyth↔waterx coexistence) safe: keep the list a **superset** of every ticker's weighted rule set and flip weights per ticker at any time — an env edit, never an SDK release. (One caveat: waterx's feed call burns a per-symbol signed-timestamp high-water mark regardless of weights — see the replay note below.)
 
-The Pyth Core infra (`client.pyth`: state ids + Hermes endpoint) is **fixed per network** by `PYTH_DEFAULTS` and is **not** deployment-overridable — the canonical `waterx-config` JSON carries no `pyth` block. The `pyth_lazer_rule` source reads only the credential/policy (`api_key`/`fetch`) from `client.pyth`; its on-chain infra comes from `LAZER_DEFAULTS` + config. The credential and fetch policy are passed at client init (`pythApiKey` / `pythFetch`), never through the JSON. `waterx_rule` touches no Pyth infra at all: its quote-center endpoint **defaults** to `WATERX_DEFAULTS[network]` (testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`) and is overridable with `waterxEndpoint`; its fetch policy/transport resolves **`waterxFetch` → `pythFetch` → built-in defaults** (15s timeout, 2 retries), so the dedicated override wins and the shared Pyth policy is only the fallback. Both are client-init options — see the browser/CORS note below.
+**No cross-source fallback, no feeds guard at init.** Construction rejects an empty/nullish `oracleSource`, but a listed source whose feed for a requested ticker is absent is **not** an error at client creation — the build fails at **tx-build** only when **no** listed source serves the ticker (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
+
+Every source's external infra is a **rule-owned per-network table**, never deployment-overridable and never in the config JSON: `PYTH_CORE_INFRA` (`src/oracle/pyth.ts` — Pyth state ids + the keyless Core Hermes endpoint, read-plane accessor `pythCoreHermesEndpoint(network)`), `LAZER_INFRA` (`src/oracle/rules/pyth-lazer-rule.ts`), `WATERX_INFRA` (`src/oracle/rules/waterx-rule.ts` — testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`, accessor `waterxQuoteCenterEndpoint(network)`). `client.pyth` is the access-only `PythAccessConfig` — just the caller-supplied `pythApiKey` / `pythFetch` create options (a secret has no place in a public CDN JSON); `client.waterx` is likewise `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides only; fetch policy resolves **`waterxFetch` → built-in defaults** — deliberately no `pythFetch` fallback, sources never share config). See the browser/CORS note below.
 
 ```ts
 // Per-environment wiring — the consumer owns the env var, not the SDK:
 const perp = await PerpClient.create(network, {
   waterxConfigUrl,
-  oracleSource: process.env.ORACLE_SOURCE as OracleSource | undefined, // e.g. staging: 'pyth_lazer_rule' | 'waterx_rule'
-  pythApiKey: process.env.PYTH_API_KEY, // Lazer is auth-first; unused by 'pyth_rule' / 'waterx_rule'
+  oracleSource: process.env.ORACLE_SOURCE!.split(",") as OracleSource[], // REQUIRED; comma list = the fed set
+  pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed (Lazer is auth-first)
 });
 ```
 
-This is the staging-Lazer / prod-Core rollout pattern: staging sets `ORACLE_SOURCE=pyth_lazer_rule` (+ `PYTH_API_KEY`) — or `ORACLE_SOURCE=waterx_rule`, which needs no credential — while production leaves it unset — flipping an environment is an env-var change, never an SDK release.
+This is the coexistence rollout pattern: staging lists every source under migration (`ORACLE_SOURCE=pyth_rule,pyth_lazer_rule,waterx_rule` + `PYTH_API_KEY`) while production stays single-value (`ORACLE_SOURCE=pyth_rule`) until its weight tables move — flipping an environment is an env-var change, never an SDK release.
 
 ### Adding an oracle source (runbook)
 
@@ -130,10 +133,10 @@ Every source plugs in the same way — routing is driven **only** by the client'
 1. **Implement `PriceUpdateRule`** in `src/oracle/rules/<name>-rule.ts` — all port fields (`src/oracle/price-update-rule.ts`): `kind`, `requiresFeeSource` (`true` iff the on-chain verify draws a per-update fee — gates the fail-fast fee-source check), `supportedTickers`, `fetchUpdateData`, `narrowUpdateData` (subset a cached whole-universe payload to one build's tickers — a divisible payload returns a per-feed subset, an indivisible one returns itself whole iff fully covered; uncovered ticker → `null` miss), `buildUpdateCalls`.
 2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value (added to the union in `price-update-rule.ts`).
 3. **Publish the on-chain rule package** — its config entry (package ids, per-ticker `feeds`) arrives via the normal `waterx-config` deploy pipeline; type it in `OraclePackages` (`src/oracle/config.ts`).
-4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a per-network map in `src/oracle/config.ts`, mirroring `LAZER_DEFAULTS` / `WATERX_DEFAULTS`.
+4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a **rule-owned** per-network table inside the rule's own file, mirroring `LAZER_INFRA` / `WATERX_INFRA` (never on the shared client, never in `oracle/config.ts`). Wire its read-plane served-set/ids into `resolveOracleReadPlan` (`src/oracle/read-plane.ts`).
 5. **Consumers flip `oracleSource`** per environment — no consumer code change, no SDK re-release.
 
-The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one enclave-signed batch envelope covering the requested tickers from the quote-center (`GET /v1/quotes/update?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_batch_latest` call per collector, so it emits no shared verify step. On-chain a freshness miss / replayed timestamp abstains (the other weighted rules cover); a config mismatch or bad signature aborts.
+The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one enclave-signed batch envelope covering the requested tickers from the quote-center (`GET /v1/quotes/update?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_batch_latest` call per collector, so it emits no shared verify step. On-chain a **freshness** miss abstains (the other weighted rules cover); a config mismatch or bad signature aborts — and so does a **replayed** signed timestamp (`EReplayedSignature`, audit F-014: a signed tuple is single-use per symbol, weight-independent). Consequence: two PTBs carrying the same envelope for the same symbol cannot both land — never share one fetched envelope across concurrent builds for the same symbol.
 
 > **Browser consumers:** this source fetches the quote-center directly from the page, so the quote-center deployment must return `Access-Control-Allow-Origin` for the app's origin. For an origin that is not on that allowlist, point the SDK at your own proxy instead of the default host — the endpoint and the transport are both overridable at client init:
 >
@@ -148,7 +151,7 @@ The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules
 > });
 > ```
 >
-> Unset, `waterxEndpoint` falls back to `WATERX_DEFAULTS[network]` and `waterxFetch` to `pythFetch`, then to the built-in policy (15s timeout, 2 retries). Both are inert under the Pyth sources. They are also top-level options on the umbrella `WaterXClient.create({ oracleSource, waterxEndpoint, waterxFetch, … })`, which forwards them to the perp line. Node/keeper consumers are unaffected by CORS either way.
+> Unset, `waterxEndpoint` falls back to the rule-owned `WATERX_INFRA[network]` and `waterxFetch` to the built-in policy (15s timeout, 2 retries) — there is deliberately no `pythFetch` fallback. Both are inert under the Pyth sources. They are also top-level options on the umbrella `WaterXClient.create({ oracleSource, waterxEndpoint, waterxFetch, … })`, which forwards them to the perp line. Node/keeper consumers are unaffected by CORS either way.
 
 ## Recipes & full surface
 

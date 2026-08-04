@@ -15,7 +15,9 @@ that note before upgrading, and do not infer compatibility from the version numb
 
 ## [Unreleased]
 
-## [4.2.0] - 2026-08-03
+_Ships as **4.2.0** (the version `package.json` already pins); this section
+moves under a dated `[4.2.0]` header at release tagging, per the repo's
+changelog workflow._
 
 _Oracle-source decoupling, completed for ALL THREE sources: every oracle
 source is fully self-contained — its endpoints and on-chain object ids live
