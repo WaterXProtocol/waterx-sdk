@@ -45,7 +45,22 @@ describe("parseOracleSourceList", () => {
         /ORACLE_SOURCE must be a comma-separated list/,
       );
     }
+    // Both nullish forms get the operator-actionable message, never a
+    // TypeError from the message branch (null arrives from
+    // URLSearchParams.get-shaped feeders).
     expect(() => parseOracleSourceList(undefined)).toThrow(/unset/);
+    expect(() => parseOracleSourceList(null)).toThrow(/unset/);
+  });
+
+  it("rejects Object.prototype key names — the `in`-operator hole both consumers shipped is closed here", () => {
+    // 'toString' in {pyth_rule: true} === true via the prototype chain, so
+    // the FE/BE Record guards passed these and died deep in the stack; the
+    // Set-based check must never regress to that.
+    for (const proto of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
+      expect(() => parseOracleSourceList(`pyth_rule,${proto}`)).toThrow(
+        /ORACLE_SOURCE must be a comma-separated list/,
+      );
+    }
   });
 
   it("throws when ANY entry is not an SDK rule value (legacy core/pro included)", () => {

@@ -104,7 +104,11 @@ export function resolveOracleReadPlan(
       const feeds = host.config.packages.waterx_rule?.feeds;
       return {
         plane: "quote_center",
-        tickers: feeds ? tickers.filter((ticker) => ticker in feeds) : [],
+        // Object.hasOwn, NEVER the `in` operator: `in` walks the prototype
+        // chain, so a ticker named like an Object.prototype key ("toString",
+        // "constructor", …) would count as feeds-listed and poison the
+        // quote-center batch (which 404s whole batches on unknown symbols).
+        tickers: feeds ? tickers.filter((ticker) => Object.hasOwn(feeds, ticker)) : [],
         unreadable: [],
       };
     }

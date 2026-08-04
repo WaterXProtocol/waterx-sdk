@@ -23,7 +23,12 @@ that note before upgrading, and do not infer compatibility from the version numb
   throw operator-actionably on empty/invalid). The FE and BE previously
   carried twin hand-written parsers whose semantics drifted once in review
   (a trailing comma booted one deployment green and 500'd the other);
-  identical semantics now live in one exported function. `ORACLE_SOURCES`
+  the semantics now live in one exported function — and STRICTER than both
+  consumers' `in`-operator checks: an entry named like an
+  `Object.prototype` key (`toString`, …) passed those and died deep in the
+  stack; the Set-based check rejects it at parse. Zod adopters must wrap
+  the throw into `ctx.addIssue` (pattern in the module header) or a single
+  bad entry masks sibling env issues at boot. `ORACLE_SOURCES`
   is the single authority the `OracleSource` union DERIVES from (drift is
   impossible by construction), a test pins every canonical value to a
   registered rule, and `PerpClient` construction validates against the same
