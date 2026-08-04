@@ -9,6 +9,13 @@ import { ORACLE_SOURCES } from "../../../src/oracle/price-update-rule.ts";
 import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
 import { parseOracleSourceList } from "../../../src/oracle/source-list.ts";
 
+describe("ORACLE_SOURCES", () => {
+  it("is frozen at runtime — a JS consumer cannot desync the ctor's membership check from the parser's Set", () => {
+    expect(Object.isFrozen(ORACLE_SOURCES)).toBe(true);
+    expect(() => (ORACLE_SOURCES as unknown as string[]).push("core")).toThrow();
+  });
+});
+
 describe("parseOracleSourceList", () => {
   it("a single value parses as a one-element list", () => {
     for (const source of ORACLE_SOURCES) {
