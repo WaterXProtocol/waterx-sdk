@@ -97,7 +97,7 @@ export class PerpConfigView {
    */
   getPoolTokenType(tickerOrName: string): string {
     const poolTokens = this.config.packages.wlp?.pool_tokens ?? {};
-    const exact = poolTokens[tickerOrName];
+    const exact = ownEntry(poolTokens, tickerOrName);
     if (exact) return exact;
     for (const t of Object.values(poolTokens)) {
       if (typeof t === "string" && t.split("::").pop() === tickerOrName) return t;
@@ -121,7 +121,7 @@ export class PerpConfigView {
   getRewarders(
     stakeAlias: string,
   ): { alias: string; rewarder_id: string; coin_type: string; decimals: number }[] {
-    const map = this.config.packages.waterx_staking?.rewarders?.[stakeAlias];
+    const map = ownEntry(this.config.packages.waterx_staking?.rewarders, stakeAlias);
     if (!map) return [];
     return Object.entries(map).map(([alias, entry]) => ({ alias, ...entry }));
   }

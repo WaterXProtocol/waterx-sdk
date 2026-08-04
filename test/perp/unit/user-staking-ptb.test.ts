@@ -46,6 +46,19 @@ describe("user/staking PTB builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("a prototype-key stakeAlias throws not-deployed — never an inherited Function as a pool id", () => {
+    const tx = new Transaction();
+    expect(() =>
+      stake(client, tx, {
+        accountId,
+        stakeAlias: "toString",
+        stakeType,
+        stakeAmount: 1_000_000n,
+        rewarderTypes: [],
+      }),
+    ).toThrow(/pools\[toString\] is not set/);
+  });
+
   it("stake and unstake without rewarderTypes skip settlement loops", () => {
     const withRewarder = new Transaction();
     stake(client, withRewarder, {

@@ -49,10 +49,11 @@ number alone.
 ### Fixed
 
 - Prototype-chain ticker lookups closed EVERYWHERE, not just where `in` was
-  spelled (#84): every ticker-keyed config-record read (`feeds`, `markets`,
-  `aggregators` — read-plane resolution, waterx/lazer/core rule fetch paths,
-  `PerpConfigView` getters, `getCollateralAssets`) now funnels through an
-  own-key `ownEntry` helper. Previously a ticker named like an
+  spelled (#84): every externally-keyed config-record read (`feeds`,
+  `markets`, `aggregators`, `pool_tokens`, and the alias-keyed
+  `rewarders`/`pools` staking maps — read-plane resolution, waterx/lazer/core
+  rule fetch paths, `PerpConfigView` getters, `getCollateralAssets`, the
+  staking pool resolver) now funnels through an own-key `ownEntry` helper. Previously a ticker named like an
   `Object.prototype` key (`toString`, …) read as an inherited Function:
   classified `unreadable` by `resolveOracleReadPlan`'s hermes arm and — on
   the write path — passed the waterx/lazer feed-listing throws and reached
