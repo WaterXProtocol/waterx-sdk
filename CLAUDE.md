@@ -50,28 +50,31 @@ SDK types (`WaterXConfig`, `WaterxPerpPackage`, `WlpPackage`, etc.) in
 `src/perp/config.ts` mirror that schema 1:1, snake_case included.
 
 External chain infra (Pyth state, Wormhole state, Hermes endpoint) is
-**not** in the JSON — it lives in `PYTH_DEFAULTS[network]` /
-`LAZER_DEFAULTS[network]` (`src/oracle/config.ts`, re-exported from
-`perp/config.ts`) and the Pyth Core block is exposed on `client.pyth`. It is
-**fixed per network** and **not** deployment-overridable — there is **no `pyth`
-block in the JSON** and the SDK never reads one. The Lazer Bearer token and the
-fetch policy are supplied at client init via the `pythApiKey` / `pythFetch`
-create options (a secret has no place in a public CDN JSON), layered onto
-`client.pyth`.
+**not** in the JSON — every source's infra is a rule-owned per-network table:
+`PYTH_CORE_INFRA` (`src/oracle/pyth.ts`), `LAZER_INFRA`
+(`src/oracle/rules/pyth-lazer-rule.ts`), `WATERX_INFRA`
+(`src/oracle/rules/waterx-rule.ts`). It is **fixed per network** and **not**
+deployment-overridable — there is **no `pyth` block in the JSON** and the SDK
+never reads one. `client.pyth` is `PythAccessConfig` — ONLY the caller-supplied
+`pythApiKey` / `pythFetch` create options (a secret has no place in a public
+CDN JSON); it carries no endpoints or object ids. Read-plane endpoint
+accessors for consumers: `pythCoreHermesEndpoint(network)` /
+`waterxQuoteCenterEndpoint(network)`.
 
-Which price-update **source** runs is the client's `oracleSource` create option
-(`'pyth_rule'` default \| `'pyth_lazer_rule'` \| `'waterx_rule'`). Each source is
-self-contained with **no cross-source fallback** and **no client-creation guard**:
-selecting a source whose feed for a ticker is absent fails at **tx-build** for
-that ticker (constant-only tickers are exempt), not at init; a present-but-wrong
-feed id is left to abort on-chain at dry-run. `client.pyth` is the same Core infra
-for every source — the `pyth_lazer_rule` source reads only `api_key`/`fetch` from
-it and gets its on-chain infra from `LAZER_DEFAULTS` + config. `'waterx_rule'`
-(first-party Nautilus-TEE quote-center, ed25519 signed batches) touches no Pyth
-infra: its host comes from `WATERX_DEFAULTS[network]` onto `client.waterx`,
-overridable per client via the `waterxEndpoint` / `waterxFetch` create options
-(fetch policy/transport precedence: `waterxFetch` → `pythFetch` → the
-`fetchWithPolicy` defaults).
+Which price-update **sources** run is the client's REQUIRED `oracleSource`
+create option — a single value or a LIST (the fed set): every listed source's
+data is fetched and fed in one build, and the chain's per-ticker weight tables
+arbitrate. There is **no default source**, **no cross-source fallback**, and
+**no client-creation feeds guard**: a ticker no listed source serves fails at
+**tx-build** (constant-only tickers are exempt), not at init; a
+present-but-wrong feed id is left to abort on-chain at dry-run. The
+`pyth_lazer_rule` source reads only `api_key`/`fetch` from `client.pyth` and
+gets its on-chain infra from `LAZER_INFRA` + config. `'waterx_rule'`
+(first-party Nautilus-TEE quote-center, ed25519 signed batches) touches no
+Pyth infra: its host comes from `WATERX_INFRA[network]`, overridable per
+client via the `waterxEndpoint` / `waterxFetch` create options (fetch policy
+precedence: `waterxFetch` → the `fetchWithPolicy` defaults — deliberately no
+`pythFetch` fallback).
 
 `WaterXClient` is the **umbrella** entry point exposing three namespaces:
 `client.account` (shared `waterx_account` + credit/custody), `client.perp` (the
@@ -260,7 +263,7 @@ src/
   `signAndExecuteTransaction`, `packageIds()`). `PerpClient` / `PredictClient` extend it.
 - **`unified-client.ts`** — `WaterXClient`, the umbrella entry point (`client.account` / `client.perp` / `client.predict`), with async `static create(opts)` / `fromClients(perp, predict)`. `Client` is a deprecated alias. `account/index.ts` aggregates the shared `waterx_account` + credit + custody builders for `client.account` from the **`account/` base itself** (re-exports **down** from `account/account.ts` + `account/funding/*`, never up into `perp/`). The builders are typed to the `AccountClientLike` capability interface (`account/client.ts`), which `PerpClient` satisfies structurally. The account/funding/referral builders were **moved** out of perp into the `account/` base (`account/account.ts`, `account/account-request.ts`, `account/referral.ts`, `account/funding/{credit,custody,wormhole,balance,consolidate}.ts`) — there are no leftover `perp/user/*` or `utils/*` re-export shims; consumers import from `account/` (or the `.`/`@waterx/sdk/account` surface) directly.
 - **`constants.ts`** — shared, line-agnostic primitives only: `Network`, scaling (`BPS_SCALE` / `FLOAT_SCALE` / `DOUBLE_SCALE`), decimals, `MS_PER_YEAR`, `DRY_RUN_SENDER` (zero-address simulate sender). **Nothing chain-specific.** Perp-domain enums live in `perp/constants.ts`.
-- **`perp/config.ts`** — `WaterXConfig` schema (perp/wlp/staking packages; `WaterXPackages extends AccountPackages, OraclePackages`), `loadConfig()` (URL from the `waterxConfigUrl` opt only — no env fallback, no default; throws when unset), `clearConfigCache()`. The account/funding/referral package types live in `account/config.ts`; the oracle-rule package types + `PythInfraConfig`/`PYTH_DEFAULTS` live in `oracle/config.ts` (shared infra — `OracleHost` depends on its `OracleConfig`, not on `perp/`). Both are re-exported here for back-compat.
+- **`perp/config.ts`** — `WaterXConfig` schema (perp/wlp/staking packages; `WaterXPackages extends AccountPackages, OraclePackages`), `loadConfig()` (URL from the `waterxConfigUrl` opt only — no env fallback, no default; throws when unset), `clearConfigCache()`. The account/funding/referral package types live in `account/config.ts`; the oracle-rule package types + `PythAccessConfig`/`WaterxAccessConfig` live in `oracle/config.ts` (shared — `OracleHost` depends on its `OracleConfig`, not on `perp/`; per-source infra lives with each rule, not here). Both are re-exported here for back-compat.
 - **`perp/client.ts`** — `PerpClient` (the perp sub-client; formerly `WaterXClient`) with async `static create(network, opts)`. Extends `BaseLineClient`; delegates config-schema lookups (`getMarket`, `wlpType`, `creditType`, …) to `perp/config-view.ts`. Reached as `client.perp` on the umbrella.
 - **`perp/config-view.ts`** — `PerpConfigView`: the canonical-schema lookups split off the transport client; pure, no gRPC.
 - **`perp/liq-view.ts`** — `calcEstLiqPriceRawFromView(position, opts)`: maps a fetched `PositionDataView` row onto `utils/math.ts::calcEstLiqPriceRaw`'s twelve raw fields (nine off the row, three off `opts`), and carries the invariant that `opts.basePriceUsd` / `opts.collateralPriceUsd` MUST be the prices the row was read at (the row does not carry them, so nothing can check it). Lives perp-side, not in `utils/math.ts`: `PositionDataView` is a perp read type and importing it into the shared `utils/` base would invert the `perp/ → utils/` direction. Pure mapping, no client — hence separate from `perp/fetch/`, which is transport.
@@ -283,7 +286,7 @@ src/
 - **`perp/tx-builders.ts`** — barrel over `perp/tx-builders/` high-level async `build*Tx` composers, split by domain: `common.ts` (`CommonBuildOpts` + request/execute envelope + WLP oracle refresh), `consolidate.ts` (`appendConsolidate*` parked-balance → wxUSD pre-sweep, `consolidateToUsd` default `true`), `trading.ts` (position lifecycle + collateral + order lifecycle), `wlp.ts` (mint / mint+stake / unstake+redeem / cancel-redeem+restake), `rewards.ts` (claim staking rewards), `credit.ts` (cross-chain bridge). Sync low-level builders never auto-prepend the sweep — apps must call async `build*Tx` (or `buildConsolidateToUsdTx` separately).
 - **`account/funding/balance.ts`** — shared gRPC probe/rescale helpers for `appendConsolidateToUsd` (in `account/funding/consolidate.ts`) and `getSpendableCreditBalance`.
 - **`prediction/tx-builders.ts`** — async **`buildPlaceOrderTx`** / **`buildBatchClaimTx`** with the same optional pre-sweep (needs `PerpClient` + `PredictClient`). Umbrella `WaterXClient.buildPredictPlaceOrderTx` / `buildPredictBatchClaimTx` wrap both clients. Sync `placeOrder` / `batchClaim` in `prediction.ts` do not auto-sweep.
-- **`oracle/`** — the single source of truth for oracle freshness, split by concern: `pyth.ts` (Hermes REST + on-chain Pyth update PTB + `PythCache`; **no** rule imports), `rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` (one oracle rule per file), `aggregate.ts` (the sole orchestrator — `aggregateTicker` / `aggregateTickerWithPyth` / `refreshOraclePrices`), `host.ts` (`OracleHost` structural interface; `PerpClient` satisfies it, so the oracle code is decoupled from the concrete client), `config.ts` (the oracle-rule package schema + `PythInfraConfig`/`PYTH_DEFAULTS` + the narrow `OracleConfig`/`OraclePackages` — hoisted out of `perp/config.ts`, which now re-exports them and `WaterXPackages extends OraclePackages`). Public surface re-exported from `oracle/index.ts`. Was the monolithic `utils/pyth.ts`.
+- **`oracle/`** — the single source of truth for oracle freshness, split by concern: `pyth.ts` (Hermes REST + on-chain Pyth update PTB + `PythCache`; **no** rule imports), `rules/{pyth-rule,supra-rule,constant-rule,sponsor}.ts` (one oracle rule per file), `aggregate.ts` (the sole orchestrator — `aggregateTicker` / `aggregateTickerWithPyth` / `refreshOraclePrices`), `host.ts` (`OracleHost` structural interface; `PerpClient` satisfies it, so the oracle code is decoupled from the concrete client), `config.ts` (the oracle-rule package schema + the access-only `PythAccessConfig`/`WaterxAccessConfig` slices + the narrow `OracleConfig`/`OraclePackages` — hoisted out of `perp/config.ts`, which now re-exports them and `WaterXPackages extends OraclePackages`; per-source INFRA tables live with their rules: `PYTH_CORE_INFRA` in `pyth.ts`, `LAZER_INFRA`/`WATERX_INFRA` in their rule files), `read-plane.ts` (`resolveOracleReadPlan` — per-source read served-sets/ids), `rule-registry.ts` (`resolveOracleRule`, exported). Public surface re-exported from `oracle/index.ts`. Was the monolithic `utils/pyth.ts`.
 - **`generated/`** — the **single** `sui-ts-codegen` output root for every package in `sui-codegen.config.mjs` (incl. `native_custody` and `waterx_prediction` — the prediction line imports from here too; there is no longer a separate `src/prediction/generated/`). Never hand-edit; rerun `pnpm codegen` after Move ABI changes. `scripts/fix-generated-imports.ts` normalizes paths post-codegen **and** annotates the MoveStructs that embed a MoveEnum (`VecSet`/`LinkedTable`/`Node`, `waterx_prediction` `Market`/`MarketView`) with `: MoveStruct<any, any>` to dodge TS2883.
 
 ## Naming conventions
@@ -300,4 +303,5 @@ src/
 - Cancel-order wildcard: pass `orderTypeTag: ORDER_TAG_WILDCARD` (255) and `triggerPrice: 0n` to scan all 4 books by `orderId`.
 - Price scaling: human-readable USD (`50000`) → raw 1e9-scaled bigint via `rawPrice(usd)`. Pass the raw form to `acceptablePrice` / `triggerPrice` / size args.
 - Mainnet config is **not yet deployed**; loading `MAINNET` will fail until the maintainers publish `mainnet.json` to the config repo.
-- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) ships as `oracleSource: 'waterx_rule'` — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls ONE enclave-signed batch envelope covering the build's tickers from the quote-center (`GET /v1/quotes/update`, public read) and then verifies AND feeds in a single `collect_batch_latest` per collector, so its `buildUpdateCalls` emits nothing. The quote-center host comes from `WATERX_DEFAULTS[network]`, overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy/transport precedence `waterxFetch` → `pythFetch` → defaults) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live envelope that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain.
+- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) ships as an `oracleSource` list entry (`'waterx_rule'`) — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls ONE enclave-signed batch envelope covering the build's tickers from the quote-center (`GET /v1/quotes/update`, public read) and then verifies AND feeds in a single `collect_batch_latest` per collector, so its `buildUpdateCalls` emits nothing. The quote-center host comes from the rule-owned `WATERX_INFRA[network]` table (in `rules/waterx-rule.ts`; accessor `waterxQuoteCenterEndpoint(network)`), overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy precedence `waterxFetch` → defaults — deliberately NO `pythFetch` fallback; sources never share config) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live envelope that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain. CONCURRENCY CAVEAT: on-chain, a replayed per-symbol signed timestamp ABORTS `EReplayedSignature` (audit F-014, weight-independent) — never hand one fetched envelope to two concurrent builds for the same symbol.
+- Legacy oracle knobs are GONE: no `client.pyth.hermes_endpoint` / `PythInfraConfig` / `PYTH_DEFAULTS` (Core infra lives in the rule-owned `PYTH_CORE_INFRA` in `src/oracle/pyth.ts`; read-plane accessor `pythCoreHermesEndpoint(network)`), no `LAZER_DEFAULTS` (now `LAZER_INFRA` inside `rules/pyth-lazer-rule.ts`), no `WATERX_DEFAULTS` / `WaterxInfraConfig` (now `WATERX_INFRA` / `WaterxAccessConfig`). `client.pyth` is `PythAccessConfig` (caller `api_key` + `fetch` only); `client.waterx` is `WaterxAccessConfig` (caller overrides only). `oracleSource` is REQUIRED at client creation and accepts a list (the fed set) — there is no default source and no cross-source fallback anywhere.

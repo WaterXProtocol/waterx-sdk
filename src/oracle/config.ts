@@ -169,9 +169,9 @@ export type PythFetchPolicy = { timeoutMs?: number; retries?: number };
  * `client.pyth` — ONLY the caller-supplied Pyth credential + fetch policy,
  * shared by the Pyth-family rules (`pyth_rule`, `pyth_lazer_rule`). It carries
  * NO endpoints and NO on-chain object ids: every oracle source owns its own
- * infra, co-located with its rule (`PYTH_CORE_INFRA` in
- * `rules/pyth-core-infra.ts`; the Lazer constants inside
- * `rules/pyth-lazer-rule.ts`). A non-Pyth source never reads this slice.
+ * infra, co-located with its rule (`PYTH_CORE_INFRA` in `oracle/pyth.ts`;
+ * the Lazer constants inside `rules/pyth-lazer-rule.ts`). A non-Pyth source
+ * never reads this slice.
  * Nothing here is sourced from the canonical `waterx-config` JSON — a Bearer
  * secret has no place in a public CDN document.
  */
