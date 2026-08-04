@@ -9,9 +9,10 @@ reference the PR that introduced them.
 numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
 package MAY ship a breaking change in a PATCH or MINOR release. Every consumer is
 first-party and pins the SDK **exact**, so no consumer takes a break implicitly; a
-`^`-range consumer would, and none exists. `4.0.1` shipped breaking as a patch and `4.1.0`
-as a minor. Each such release NAMES its breaking changes at the top of its section — read
-that note before upgrading, and do not infer compatibility from the version number alone.
+`^`-range consumer would, and none exists. `4.0.1` shipped breaking as a patch; `4.1.0`
+and `4.3.0` as minors. Each such release NAMES its breaking changes at the top of its
+section — read that note before upgrading, and do not infer compatibility from the version
+number alone.
 
 ## [Unreleased]
 
@@ -42,16 +43,13 @@ that note before upgrading, and do not infer compatibility from the version numb
 
 ## [4.3.0] - 2026-08-04
 
-_Published as **4.3.0** (renumbered at release; the section below was
-drafted as 4.2.0 — no 4.2.0 exists on npm)._
-
 _Oracle-source decoupling, completed for ALL THREE sources: every oracle
 source is fully self-contained — its endpoints and on-chain object ids live
 with its rule, nothing source-shaped rides on the shared client, and there is
 no default source and no cross-source fallback anywhere. Includes `4.1.0`'s
 `waterx_rule` (merged), now held to the same per-source contract._
 
-_Ships as a MINOR carrying the **BREAKING** entries below, on `4.1.0`'s
+_Released as a MINOR carrying the **BREAKING** entries below, on `4.1.0`'s
 rationale (see its note): both first-party consumers pin exact and adapt in
 the same change set. Read the migration lines before bumping._
 
