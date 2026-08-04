@@ -621,6 +621,33 @@ describe("refreshOraclePrices — multi-source fed set", () => {
     return fake;
   }
 
+  it("dedupes the caller's ticker list — a repeated ticker must not double-aggregate in one PTB", async () => {
+    // Pre-existing base hazard: a duplicated ticker aggregated TWICE in one
+    // tx — wasted gas everywhere, and under waterx a hard on-chain ABORT
+    // (the second collect_batch_latest replays the same envelope timestamp,
+    // EReplayedSignature/F-014).
+    const client = createUnitTestClient({ oracleSource: ["waterx_rule"] });
+    attachPythGrpcMocks(client);
+    const fakeWaterx = createFakeWaterxRule(["BTCUSD", "ETHUSD"]);
+
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD", "BTCUSD"], {
+      ruleOverrides: { waterx_rule: fakeWaterx },
+    });
+
+    expect(fakeWaterx.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD", "ETHUSD"]);
+    // One collector per UNIQUE ticker: waterx's verify+feed is one
+    // collect_batch_latest per collector, so counting those commands counts
+    // aggregations.
+    const collectCalls = tx
+      .getData()
+      .commands.filter(
+        (command) =>
+          command.$kind === "MoveCall" && command.MoveCall.function === "collect_batch_latest",
+      );
+    expect(collectCalls).toHaveLength(2);
+  });
+
   it("feeds EVERY listed source's group in one build (per-source fetch + per-source tickers)", async () => {
     const client = createUnitTestClient({
       oracleSource: ["pyth_lazer_rule", "waterx_rule"],

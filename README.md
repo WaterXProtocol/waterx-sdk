@@ -11,19 +11,21 @@ The perp and prediction lines expose builder functions with **colliding names** 
 ```ts
 import { WaterXClient } from "@waterx/sdk";
 
-// waterxConfigUrl is REQUIRED — the SDK has no built-in default and never reads env.
+// waterxConfigUrl and oracleSource are REQUIRED — the SDK has no built-in
+// defaults and never reads env. oracleSource: see "Oracle sources" below.
 const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl:
     "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+  oracleSource: "pyth_rule",
 });
 client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
 client.perp.buildPlaceOrderTx(params); // perpetuals
 client.predict.placeOrder(tx, params); // prediction markets
 // client.perp / client.predict ARE the line clients — sign/execute on them directly:
 //   await client.perp.signAndExecuteTransaction({ transaction: tx, signer })
-// each line can target a different network + URL:
-//   WaterXClient.create({ perp: { network: "MAINNET", waterxConfigUrl: mainnetUrl }, predict: { network: "TESTNET", waterxConfigUrl: testnetUrl } })
+// each line can target a different network + URL (oracleSource stays top-level):
+//   WaterXClient.create({ oracleSource: "pyth_rule", perp: { network: "MAINNET", waterxConfigUrl: mainnetUrl }, predict: { network: "TESTNET", waterxConfigUrl: testnetUrl } })
 ```
 
 > `WaterXClient` is the umbrella entry point. `Client` is kept as a **deprecated alias** for one major cycle.
@@ -113,7 +115,7 @@ ONE **required** client create option, `oracleSource`, names the price-update so
 
 **No cross-source fallback, no feeds guard at init.** Construction rejects an empty/nullish `oracleSource`, but a listed source whose feed for a requested ticker is absent is **not** an error at client creation — the build fails at **tx-build** only when **no** listed source serves the ticker (constant-only tickers, which need no price update, are exempt). A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
 
-Every source's external infra is a **rule-owned per-network table**, never deployment-overridable and never in the config JSON: `PYTH_CORE_INFRA` (`src/oracle/pyth.ts` — Pyth state ids + the keyless Core Hermes endpoint, read-plane accessor `pythCoreHermesEndpoint(network)`), `LAZER_INFRA` (`src/oracle/rules/pyth-lazer-rule.ts`), `WATERX_INFRA` (`src/oracle/rules/waterx-rule.ts` — testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`, accessor `waterxQuoteCenterEndpoint(network)`). `client.pyth` is the access-only `PythAccessConfig` — just the caller-supplied `pythApiKey` / `pythFetch` create options (a secret has no place in a public CDN JSON); `client.waterx` is likewise `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides only; fetch policy resolves **`waterxFetch` → built-in defaults** — deliberately no `pythFetch` fallback, sources never share config). See the browser/CORS note below.
+Every source's external infra is a **rule-owned per-network table**, never deployment-overridable and never in the config JSON: `PYTH_CORE_INFRA` (`src/oracle/pyth.ts` — Pyth state ids + the keyless Core Hermes endpoint, read-plane accessor `pythCoreHermesEndpoint(network)`), `LAZER_INFRA` (`src/oracle/rules/pyth-lazer-rule.ts`), `WATERX_INFRA` (`src/oracle/rules/waterx-rule.ts` — testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`, accessor `waterxQuoteCenterEndpoint(network)`). For **price READS** under a fed set without `pyth_rule`, the documented Pyth Pro base (`pythProHermesEndpoint()` — identical for every subscriber, auth via the Bearer key) applies: resolve the read endpoint with `resolveHermesReadEndpoint(network, sources, override?)` instead of branching by hand, and pair it with `resolveOracleReadPlan` for the per-source served-sets/ids. `client.pyth` is the access-only `PythAccessConfig` — just the caller-supplied `pythApiKey` / `pythFetch` create options (a secret has no place in a public CDN JSON); `client.waterx` is likewise `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides only; fetch policy resolves **`waterxFetch` → built-in defaults** — deliberately no `pythFetch` fallback, sources never share config). See the browser/CORS note below.
 
 ```ts
 // Per-environment wiring — the consumer owns the env var, not the SDK:

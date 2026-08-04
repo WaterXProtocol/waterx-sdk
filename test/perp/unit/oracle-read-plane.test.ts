@@ -8,7 +8,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { OracleHost } from "../../../src/oracle/host.ts";
-import { resolveOracleReadPlan } from "../../../src/oracle/read-plane.ts";
+import { PYTH_PRO_HERMES_ENDPOINT, pythCoreHermesEndpoint } from "../../../src/oracle/pyth.ts";
+import {
+  resolveHermesReadEndpoint,
+  resolveOracleReadPlan,
+} from "../../../src/oracle/read-plane.ts";
 
 function hostWith(packages: Record<string, unknown>): OracleHost {
   return { config: { packages } } as unknown as OracleHost;
@@ -80,5 +84,38 @@ describe("resolveOracleReadPlan", () => {
     const plan = resolveOracleReadPlan(hostWith({}), "waterx_rule", ["BTCUSD", "ETHUSD"]);
 
     expect(plan).toEqual({ plane: "quote_center", tickers: [], unreadable: [] });
+  });
+});
+
+describe("resolveHermesReadEndpoint", () => {
+  it("pyth_rule in the fed set wins — the Core source's own keyless endpoint, per network", () => {
+    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_rule"])).toBe(
+      pythCoreHermesEndpoint("TESTNET"),
+    );
+    expect(resolveHermesReadEndpoint("MAINNET", ["waterx_rule", "pyth_rule"])).toBe(
+      pythCoreHermesEndpoint("MAINNET"),
+    );
+  });
+
+  it("without pyth_rule, resolves the documented Pyth Pro base — total, never a throw", () => {
+    // The Pro base is IDENTICAL for every subscriber (auth is the Bearer key,
+    // not the URL) — so a lazer/waterx-only fed set always has a first-class
+    // read endpoint without any deployment-supplied URL.
+    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_lazer_rule"])).toBe(
+      PYTH_PRO_HERMES_ENDPOINT,
+    );
+    expect(resolveHermesReadEndpoint("MAINNET", ["waterx_rule"])).toBe(PYTH_PRO_HERMES_ENDPOINT);
+  });
+
+  it("a deployment override (proxy / self-hosted mirror) beats the Pro base, never the Core branch", () => {
+    const override = "https://app.example/api/hermes";
+    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_lazer_rule", "waterx_rule"], override)).toBe(
+      override,
+    );
+    // With pyth_rule listed the Core endpoint still wins — the override is a
+    // Pro-side knob, not a Core replacement.
+    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_rule"], override)).toBe(
+      pythCoreHermesEndpoint("TESTNET"),
+    );
   });
 });

@@ -11,14 +11,18 @@
  * sources share which feeds namespace.
  */
 
+import type { Network } from "../constants.ts";
 import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
+import { pythCoreHermesEndpoint, pythProHermesEndpoint } from "./pyth.ts";
 
 /**
  * One source's read plan for a requested ticker set.
  *
  * - `plane: "hermes"` (pyth sources) — price via a Hermes-compatible REST
- *   endpoint, one entry per servable ticker mapped to its HEX feed id.
+ *   endpoint, one entry per servable ticker mapped to its HEX feed id. The
+ *   endpoint to execute against is {@link resolveHermesReadEndpoint} — the
+ *   plan (ids) plus that resolver (host) is the complete read contract.
  * - `plane: "quote_center"` (waterx) — price via the quote-center symbols
  *   api, keyed by ticker; served set = the `waterx_rule.feeds` block. An
  *   ABSENT block (source listed, package missing from the loaded config)
@@ -46,6 +50,31 @@ export type OracleReadPlan = { unreadable: string[] } & (
  * THIS source's read plane — callers decide how to degrade (typically: ask
  * the next source in their `ORACLE_SOURCE` list, then omit).
  */
+/**
+ * The Hermes-compatible REST base a deployment's hermes-plane read plans
+ * execute against — the endpoint half of the read contract
+ * ({@link resolveOracleReadPlan} is the ids half):
+ *
+ * - `pyth_rule` in the fed set → the Core source's own keyless endpoint
+ *   (`pythCoreHermesEndpoint(network)`).
+ * - otherwise → `override` when the deployment set one (a proxy or
+ *   self-hosted mirror), else the documented Pyth Pro base
+ *   (`pythProHermesEndpoint()` — identical for every subscriber; auth is the
+ *   caller's `pythApiKey` Bearer, not a per-deployment URL).
+ *
+ * Total — never throws, never falls back Core-ward: a fed set without
+ * `pyth_rule` reads Pro (or the override), full stop.
+ */
+export function resolveHermesReadEndpoint(
+  network: Network,
+  sources: readonly OracleSource[],
+  override?: string,
+): string {
+  if (sources.includes("pyth_rule")) return pythCoreHermesEndpoint(network);
+
+  return override ?? pythProHermesEndpoint();
+}
+
 export function resolveOracleReadPlan(
   host: OracleHost,
   source: OracleSource,

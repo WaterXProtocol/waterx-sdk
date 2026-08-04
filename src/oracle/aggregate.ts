@@ -299,6 +299,13 @@ export async function refreshOraclePrices(
   } = {},
 ): Promise<void> {
   if (tickers.length === 0) return;
+  // Dedupe the caller's list (order-preserving): a repeated ticker would
+  // otherwise aggregate TWICE in this one PTB — wasted gas for every rule,
+  // and a hard ABORT under waterx: the second `collect_batch_latest` carries
+  // the same envelope, and the on-chain per-symbol replay guard rejects an
+  // already-accepted signed timestamp (`EReplayedSignature`, F-014) even
+  // inside a single transaction.
+  tickers = [...new Set(tickers)];
 
   // price_info_object lookup for every ticker with a pyth_rule.feeds entry —
   // needed by aggregateTicker's (unchanged) Pyth feed step below regardless of

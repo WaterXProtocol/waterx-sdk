@@ -68,13 +68,32 @@ export const PYTH_CORE_INFRA: Record<Network, PythCoreInfra> = {
 };
 
 /**
- * The Core source's Hermes REST base for `network` — the ONE accessor
- * consumers (BE/FE read planes) use when, and only when, their own
- * `ORACLE_SOURCE` env resolves to `'pyth_rule'`. Under any other source the
- * read endpoint is that source's own configuration — never this one.
+ * The Core source's Hermes REST base for `network` — for consumers (BE/FE
+ * read planes) whose `ORACLE_SOURCE` fed set includes `'pyth_rule'`. A fed
+ * set WITHOUT `pyth_rule` reads the keyed Pyth Pro base instead — resolve
+ * through `resolveHermesReadEndpoint` (`oracle/read-plane.ts`) rather than
+ * branching by hand.
  */
 export function pythCoreHermesEndpoint(network: Network): string {
   return PYTH_CORE_INFRA[network].hermes_endpoint;
+}
+
+/**
+ * The Pyth Pro Hermes-compatible REST base — the documented drop-in
+ * replacement for the Core endpoint (`https://pyth.dourolabs.app/hermes/…`),
+ * IDENTICAL for every subscriber: only the `Authorization: Bearer` key
+ * (`client.pyth.api_key` / the `pythApiKey` create option) is
+ * account-specific, so the URL is SDK infra, not deployment config. One base
+ * for both networks — Pro has no testnet variant (Pyth feed ids are
+ * chain-agnostic; `hermes-beta` is a Core-testnet concern). Consumers with a
+ * proxy/self-hosted mirror override it per deployment via
+ * `resolveHermesReadEndpoint`'s `override` param.
+ */
+export const PYTH_PRO_HERMES_ENDPOINT = "https://pyth.dourolabs.app/hermes";
+
+/** Accessor mirror of {@link pythCoreHermesEndpoint} for the Pro base. */
+export function pythProHermesEndpoint(): string {
+  return PYTH_PRO_HERMES_ENDPOINT;
 }
 
 // ============================================================================

@@ -44,11 +44,14 @@ export {
   endpointSupportedFeedIds,
   probeMissingFeeds,
   buildPythPriceUpdateCalls,
-  // The Core source's own read-plane endpoint accessor — for consumers whose
-  // ORACLE_SOURCE resolves to 'pyth_rule'. There is no client-level endpoint
-  // field: each source owns its infra, and a consumer on another source must
-  // configure that source's endpoint itself (no cross-source fallback).
+  // The pyth read-plane endpoint accessors — Core (keyless, per network) and
+  // Pro (the documented fixed base; auth via the caller's Bearer key). There
+  // is no client-level endpoint field: consumers pick via
+  // `resolveHermesReadEndpoint` (pyth_rule listed → Core, else override ??
+  // Pro) — never a hand-rolled branch, never a cross-source fallback.
   pythCoreHermesEndpoint,
+  pythProHermesEndpoint,
+  PYTH_PRO_HERMES_ENDPOINT,
   updatePythPrices,
   HermesEndpointRejectedAllFeedsError,
   MISSING_FEED_MEMO_TTL_MS,
@@ -68,10 +71,13 @@ export type {
 } from "./price-update-rule.ts";
 
 // Per-source READ-plane resolution — which tickers a source can price
-// off-chain and with which ids. The one place the "lazer reads through
-// `pyth_rule.feeds` hex ids" invariant lives; consumers resolve through this
-// instead of hardcoding namespace sharing.
-export { resolveOracleReadPlan } from "./read-plane.ts";
+// off-chain and with which ids (`resolveOracleReadPlan`), and which
+// Hermes-compatible base the hermes plans execute against
+// (`resolveHermesReadEndpoint`: pyth_rule listed → Core, else override ??
+// the documented Pyth Pro base). The one place the "lazer reads through
+// `pyth_rule.feeds` hex ids" invariant lives; consumers resolve through
+// this instead of hardcoding namespace sharing or endpoint branching.
+export { resolveOracleReadPlan, resolveHermesReadEndpoint } from "./read-plane.ts";
 export type { OracleReadPlan } from "./read-plane.ts";
 
 // Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)

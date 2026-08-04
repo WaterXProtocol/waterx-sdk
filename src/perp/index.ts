@@ -138,6 +138,8 @@ export {
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
   pythCoreHermesEndpoint,
+  pythProHermesEndpoint,
+  resolveHermesReadEndpoint,
   waterxQuoteCenterEndpoint,
   refreshOraclePrices,
   updatePythPrices,

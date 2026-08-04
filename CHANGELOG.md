@@ -119,6 +119,23 @@ the same change set. Read the migration lines before bumping._
   NOTHING). Plans carry `unreadable` — tickers a source writes on-chain but
   cannot read-price (e.g. a lazer-fed ticker with no hex entry) — so
   consumers surface the config gap loudly.
+- `resolveHermesReadEndpoint(network, sources, override?)` +
+  `pythProHermesEndpoint()` / `PYTH_PRO_HERMES_ENDPOINT` — the endpoint half
+  of the hermes read contract: `pyth_rule` in the fed set → the Core
+  source's keyless endpoint; otherwise the deployment `override` (proxy /
+  mirror) or the documented Pyth Pro base
+  (`https://pyth.dourolabs.app/hermes` — identical for every subscriber,
+  auth via the caller's Bearer key). Total, never a throw, never a
+  Core-ward fallback.
+
+### Fixed
+
+- `refreshOraclePrices` dedupes its `tickers` input (order-preserving) — a
+  repeated ticker previously aggregated TWICE in one PTB: wasted gas under
+  every rule, and a hard on-chain ABORT under `waterx_rule` (the second
+  `collect_batch_latest` replays the same envelope timestamp —
+  `EReplayedSignature`, F-014). Pre-existing on `main`; surfaced by the
+  multi-source review.
 - `BATCH_PRICE_INTENT` — the quote-center's signing intent, exported so
   read-plane consumers mirror the rule's own envelope intent check.
 
