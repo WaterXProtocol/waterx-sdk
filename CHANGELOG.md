@@ -16,6 +16,8 @@ number alone.
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-08-04
+
 ### Added
 
 - `parseOracleSourceList(raw)` + the canonical `ORACLE_SOURCES` value list
