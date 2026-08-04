@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { ORACLE_SOURCES } from "../../../src/oracle/price-update-rule.ts";
 import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
-import { parseOracleSourceList } from "../../../src/oracle/source-list.ts";
+import { isOracleSource, parseOracleSourceList } from "../../../src/oracle/source-list.ts";
 
 describe("ORACLE_SOURCES", () => {
   it("is frozen at runtime — a JS consumer cannot desync the ctor's membership check from the parser's Set", () => {
@@ -75,6 +75,15 @@ describe("parseOracleSourceList", () => {
       expect(() => parseOracleSourceList(bad)).toThrow(
         /ORACLE_SOURCE must be a comma-separated list/,
       );
+    }
+  });
+});
+
+describe("isOracleSource", () => {
+  it("accepts exactly the ORACLE_SOURCES values, rejecting legacy names and prototype keys", () => {
+    for (const source of ORACLE_SOURCES) expect(isOracleSource(source)).toBe(true);
+    for (const bad of ["core", "pyth", "supra_rule", "toString", "constructor", ""]) {
+      expect(isOracleSource(bad)).toBe(false);
     }
   });
 });

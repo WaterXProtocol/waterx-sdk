@@ -33,6 +33,7 @@ import {
   newBatchPayload,
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
+import { ownEntry } from "../../utils/record.ts";
 import type { WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
@@ -365,7 +366,9 @@ export const WaterxRule: PriceUpdateRule = {
     // not fail per ticker as if only that feed were missing.
     const { feeds } = requireWaterxPackage(host);
     for (const ticker of tickers) {
-      if (feeds[ticker] === undefined) {
+      // ownEntry: a prototype-key ticker ("toString") must throw here as
+      // unlisted, not pass as an inherited Function and reach the network.
+      if (ownEntry(feeds, ticker) === undefined) {
         throw new Error(`No waterx_rule feed listed for ticker: ${ticker}`);
       }
     }

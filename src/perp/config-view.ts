@@ -9,6 +9,7 @@
  * Tested in isolation against a plain config object — no network needed.
  */
 
+import { ownEntry } from "../utils/record.ts";
 import type { NativeCustodyAsset, WaterXConfig, WormholeInfraConfig } from "./config.ts";
 
 export class PerpConfigView {
@@ -30,21 +31,21 @@ export class PerpConfigView {
 
   /** `waterx_perp.markets[ticker]`, throws if unknown. */
   getMarket(ticker: string) {
-    const m = this.config.packages.waterx_perp?.markets?.[ticker];
+    const m = ownEntry(this.config.packages.waterx_perp?.markets, ticker);
     if (!m) throw new Error(`Unknown market ticker: ${ticker}`);
     return m;
   }
 
   /** `waterx_oracle.aggregators[ticker]`, throws if unknown. */
   getAggregator(ticker: string): string {
-    const a = this.config.packages.waterx_oracle?.aggregators?.[ticker];
+    const a = ownEntry(this.config.packages.waterx_oracle?.aggregators, ticker);
     if (!a) throw new Error(`No aggregator listed for ticker: ${ticker}`);
     return a;
   }
 
   /** `pyth_rule.feeds[ticker]`, throws if unknown. */
   getPythFeed(ticker: string) {
-    const f = this.config.packages.pyth_rule?.feeds?.[ticker];
+    const f = ownEntry(this.config.packages.pyth_rule?.feeds, ticker);
     if (!f) throw new Error(`No pyth feed listed for ticker: ${ticker}`);
     return f;
   }
@@ -69,7 +70,7 @@ export class PerpConfigView {
   isConstantTicker(ticker: string): boolean {
     const c = this.config.packages.constant_rule;
     if (!c?.published_at || !c.config) return false;
-    return c.feeds?.[ticker] !== undefined;
+    return ownEntry(c.feeds, ticker) !== undefined;
   }
 
   /**

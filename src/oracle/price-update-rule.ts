@@ -30,19 +30,17 @@ export type PriceUpdateRuleKind =
 
 /**
  * The canonical list of selectable oracle sources — the SINGLE authority the
- * {@link OracleSource} union derives from (same idiom as
- * `unified-client.ts`'s `NON_CLIENT_FIRST`), so value list and type can never
- * drift. `Object.freeze` makes the immutability RUNTIME truth, not just a
- * type: `as const` alone would let a JS consumer push into the array and
- * desync `PerpClient`'s membership check from `parseOracleSourceList`'s
- * module-initialized Set. Consumers use it to validate an `ORACLE_SOURCE`
- * env string (see
- * `parseOracleSourceList`) or build exhaustiveness guards. Only sources
- * belong here: `supra_rule` and `constant_rule` are auxiliary rules fed
- * alongside whichever sources are selected (see `aggregateTicker`), not
- * sources themselves — the `satisfies` keeps entries inside
- * `PriceUpdateRuleKind` but adding an auxiliary rule to this list is an
- * (incorrect) editorial decision this comment exists to prevent.
+ * {@link OracleSource} union derives from (the value-list→union derive
+ * idiom of `unified-client.ts`'s `NON_CLIENT_FIRST`, plus `Object.freeze`
+ * so the immutability is RUNTIME truth: `as const` alone would let a JS
+ * consumer push into the array and desync the membership Set built from it
+ * in `source-list.ts`). Runtime membership checks and the `ORACLE_SOURCE`
+ * env parser live there, on `isOracleSource` / `parseOracleSourceList`.
+ * Only sources belong here: `supra_rule` and `constant_rule` are auxiliary
+ * rules fed alongside whichever sources are selected (see
+ * `aggregateTicker`), not sources themselves — the `satisfies` keeps
+ * entries inside `PriceUpdateRuleKind` but adding an auxiliary rule to this
+ * list is an (incorrect) editorial decision this comment exists to prevent.
  */
 export const ORACLE_SOURCES = Object.freeze([
   "pyth_rule",

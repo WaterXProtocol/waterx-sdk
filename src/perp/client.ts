@@ -13,6 +13,7 @@
 
 import { BaseLineClient } from "../base-client.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../oracle/price-update-rule.ts";
+import { isOracleSource } from "../oracle/source-list.ts";
 import type { FetchPolicy } from "../oracle/update-fetch.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
@@ -140,19 +141,17 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.waterxEndpoint !== undefined ? { endpoint: opts.waterxEndpoint } : {}),
       ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
     };
-    // Normalize single-or-list to a deduped, order-preserving list, validated
-    // against the CANONICAL value list (`ORACLE_SOURCES` — the same authority
-    // `parseOracleSourceList` uses, so the env parser and this front door can
-    // never disagree). An empty list, a nullish entry (an untyped caller
-    // omitting the REQUIRED option), or an unregistered value (`'core'`,
-    // `'pyth'`, …) is a caller bug, not "no oracle": fail construction loudly
-    // instead of booting green and surfacing as `OracleSourceNotImplemented`
-    // at the first tx-build.
+    // Normalize single-or-list to a deduped, order-preserving list, gated by
+    // `isOracleSource` — the SAME predicate `parseOracleSourceList` uses. An
+    // empty list, a nullish entry (an untyped caller omitting the REQUIRED
+    // option), or an unregistered value (`'core'`, `'pyth'`, …) fails
+    // construction loudly instead of booting green and surfacing as
+    // `OracleSourceNotImplemented` at the first tx-build.
     const sources = Array.isArray(opts.oracleSource) ? opts.oracleSource : [opts.oracleSource];
     this.oracleSources = [...new Set(sources)];
     if (
       this.oracleSources.length === 0 ||
-      this.oracleSources.some((source) => !(ORACLE_SOURCES as readonly string[]).includes(source))
+      this.oracleSources.some((source) => !isOracleSource(source))
     ) {
       throw new Error(
         `oracleSource is REQUIRED and must name at least one of ${ORACLE_SOURCES.join(" | ")} ` +

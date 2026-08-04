@@ -87,6 +87,27 @@ describe("resolveOracleReadPlan", () => {
     expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"], unreadable: [] });
   });
 
+  it("hermes arms: an Object.prototype key name is neither served nor unreadable — no bracket-walk hole either", () => {
+    // `writeFeeds?.[ticker]` walked the prototype chain exactly like `in`:
+    // feeds["toString"] is an inherited Function (≠ undefined), so a
+    // prototype-key ticker was classified `unreadable` for the pyth sources.
+    // Own-key lookups must read it as simply not-listed.
+    const host = hostWith({
+      pyth_rule: { feeds: HEX_FEEDS },
+      pyth_lazer_rule: { feeds: { BTCUSD: 1 } },
+    });
+
+    const pyth = resolveOracleReadPlan(host, "pyth_rule", ["BTCUSD", "toString", "constructor"]);
+    if (pyth.plane !== "hermes") throw new Error("unreachable");
+    expect([...pyth.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
+    expect(pyth.unreadable).toEqual([]);
+
+    const lazer = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "toString"]);
+    if (lazer.plane !== "hermes") throw new Error("unreachable");
+    expect([...lazer.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
+    expect(lazer.unreadable).toEqual([]);
+  });
+
   it("waterx_rule: an absent feeds block serves NOTHING — never a silent quote-center takeover", () => {
     // Claiming unlisted tickers would reroute every read to the quote-center
     // (it serves symbols regardless of on-chain config) and swallow tickers a

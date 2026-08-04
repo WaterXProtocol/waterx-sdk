@@ -1,4 +1,5 @@
 import type { WaterXConfig } from "../perp/config.ts";
+import { ownEntry } from "./record.ts";
 
 /** Returns all registered market tickers (e.g. "BTCUSD") from waterx-config. */
 export function getMarketTickers(config: WaterXConfig): string[] {
@@ -14,5 +15,7 @@ export function getMarketTickers(config: WaterXConfig): string[] {
  */
 export function getCollateralAssets(config: WaterXConfig): string[] {
   const feeds = config.packages.pyth_rule?.feeds ?? {};
-  return Object.keys(config.packages.wlp.pool_tokens).filter((t) => feeds[t] !== undefined);
+  return Object.keys(config.packages.wlp.pool_tokens).filter(
+    (t) => ownEntry(feeds, t) !== undefined,
+  );
 }

@@ -138,6 +138,7 @@ export {
   ORACLE_SOURCES,
   buildPythPriceUpdateCalls,
   fetchPriceFeedsUpdateData,
+  isOracleSource,
   parseOracleSourceList,
   pythCoreHermesEndpoint,
   pythProHermesEndpoint,

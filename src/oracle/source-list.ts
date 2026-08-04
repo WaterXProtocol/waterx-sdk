@@ -28,16 +28,26 @@
 
 import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
 
-// Widened-annotation Set (not an assertion) so the type-predicate filter
-// below narrows by CONSTRUCTION rather than by cast.
+// Widened-annotation Set (not an assertion) so the type predicate below
+// narrows by CONSTRUCTION rather than by cast.
 const ORACLE_SOURCE_SET: ReadonlySet<string> = new Set(ORACLE_SOURCES);
+
+/**
+ * THE runtime membership check for {@link ORACLE_SOURCES} — the parser below
+ * and `PerpClient`'s ctor validation both use this one predicate, so the env
+ * parser and the create-option front door can never disagree. `Set.has`,
+ * never `in`/bracket reads (prototype-chain safe by construction).
+ */
+export function isOracleSource(value: string): value is OracleSource {
+  return ORACLE_SOURCE_SET.has(value);
+}
 
 export function parseOracleSourceList(raw: string | null | undefined): OracleSource[] {
   const parts = (raw ?? "")
     .split(",")
     .map((part) => part.trim())
     .filter((part) => part !== "");
-  const sources = parts.filter((part): part is OracleSource => ORACLE_SOURCE_SET.has(part));
+  const sources = parts.filter(isOracleSource);
   if (parts.length === 0 || sources.length !== parts.length) {
     const got = raw == null || raw.trim() === "" ? "unset" : `'${raw}'`;
     throw new Error(

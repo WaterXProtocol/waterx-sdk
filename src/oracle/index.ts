@@ -72,7 +72,7 @@ export type {
 // Canonical OracleSource value list + THE env-string parser consumers fold
 // onto — semantics and rationale in `source-list.ts`'s header.
 export { ORACLE_SOURCES } from "./price-update-rule.ts";
-export { parseOracleSourceList } from "./source-list.ts";
+export { isOracleSource, parseOracleSourceList } from "./source-list.ts";
 
 // Per-source READ-plane resolution — which tickers a source can price
 // off-chain and with which ids (`resolveOracleReadPlan`), and which

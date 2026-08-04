@@ -12,6 +12,7 @@
  */
 
 import type { Network } from "../constants.ts";
+import { ownEntry } from "../utils/record.ts";
 import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 import { pythCoreHermesEndpoint, pythProHermesEndpoint } from "./pyth.ts";
@@ -83,10 +84,13 @@ export function resolveOracleReadPlan(
   switch (source) {
     case "pyth_rule":
     case "pyth_lazer_rule": {
+      // All ticker lookups go through `ownEntry` (own-keys-only): a ticker
+      // named like an Object.prototype key ("toString", "constructor", …)
+      // must read as not-listed, not as an inherited Function.
       const hexFeeds = host.config.packages.pyth_rule?.feeds;
       const feedIdByTicker = new Map<string, string>();
       for (const ticker of tickers) {
-        const feedId = hexFeeds?.[ticker]?.feed_id;
+        const feedId = ownEntry(hexFeeds, ticker)?.feed_id;
         if (feedId !== undefined) feedIdByTicker.set(ticker, feedId);
       }
       // For pyth_rule the write and read namespaces coincide, so `unreadable`
@@ -94,21 +98,20 @@ export function resolveOracleReadPlan(
       const writeFeeds =
         source === "pyth_lazer_rule" ? host.config.packages.pyth_lazer_rule?.feeds : hexFeeds;
       const unreadable = tickers.filter(
-        (ticker) => writeFeeds?.[ticker] !== undefined && !feedIdByTicker.has(ticker),
+        (ticker) => ownEntry(writeFeeds, ticker) !== undefined && !feedIdByTicker.has(ticker),
       );
       return { plane: "hermes", feedIdByTicker, unreadable };
     }
     case "waterx_rule": {
       // Absent feeds block ⇒ serves nothing (see the OracleReadPlan doc) —
-      // never claim tickers the config doesn't name.
+      // never claim tickers the config doesn't name. `ownEntry` (own-keys-
+      // only, never the `in` operator or a bare bracket read) so a
+      // prototype-key ticker can't count as feeds-listed and poison the
+      // quote-center batch (which 404s whole batches on unknown symbols).
       const feeds = host.config.packages.waterx_rule?.feeds;
       return {
         plane: "quote_center",
-        // Object.hasOwn, NEVER the `in` operator: `in` walks the prototype
-        // chain, so a ticker named like an Object.prototype key ("toString",
-        // "constructor", …) would count as feeds-listed and poison the
-        // quote-center batch (which 404s whole batches on unknown symbols).
-        tickers: feeds ? tickers.filter((ticker) => Object.hasOwn(feeds, ticker)) : [],
+        tickers: tickers.filter((ticker) => ownEntry(feeds, ticker) !== undefined),
         unreadable: [],
       };
     }

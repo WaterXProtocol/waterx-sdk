@@ -26,6 +26,7 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
+import { ownEntry } from "../utils/record.ts";
 import type { OracleHost } from "./host.ts";
 import type {
   OracleSource,
@@ -211,7 +212,7 @@ export function aggregateTickerWithConstant(
   host: OracleHost,
   args: { ticker: string },
 ): void {
-  if (host.config.packages.pyth_rule?.feeds?.[args.ticker] !== undefined) {
+  if (ownEntry(host.config.packages.pyth_rule?.feeds, args.ticker) !== undefined) {
     throw new Error(
       `'${args.ticker}' is in pyth_rule.feeds (dual-feed) — feed both via aggregateTicker({ priceInfoObjectId }) / refreshOraclePrices, not aggregateTickerWithConstant`,
     );
@@ -311,7 +312,7 @@ export async function refreshOraclePrices(
   // needed by aggregateTicker's (unchanged) Pyth feed step below regardless of
   // which rule performed the on-chain update for that ticker.
   const pythTickers = tickers.filter(
-    (t) => host.config.packages.pyth_rule?.feeds?.[t] !== undefined,
+    (t) => ownEntry(host.config.packages.pyth_rule?.feeds, t) !== undefined,
   );
   const priceInfoByTicker = new Map<string, string>();
   pythTickers.forEach((t) => priceInfoByTicker.set(t, host.getPythFeed(t).price_info_object));

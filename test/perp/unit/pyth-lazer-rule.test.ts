@@ -233,6 +233,16 @@ describe("PythLazerRule.fetchUpdateData", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("throws for a prototype-key ticker — an inherited Function must not become a feed id", async () => {
+    const client = createLazerTestClient();
+    const fetchSpy = mockLazerFetch();
+
+    await expect(PythLazerRule.fetchUpdateData(client, ["toString"])).rejects.toThrow(
+      /No pyth_lazer_rule feed listed for ticker: toString/,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("throws the package-not-deployed error (not a per-ticker feed error) when the config carries no pyth_lazer_rule package", async () => {
     const client = createLazerTestClient();
     delete client.config.packages.pyth_lazer_rule;

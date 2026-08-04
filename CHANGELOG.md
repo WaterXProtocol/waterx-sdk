@@ -40,6 +40,23 @@ number alone.
   consumer prefetch cache hand-cast the payload shape and shipped a
   silently-dead guard; deep-importing `oracle/rules/waterx-rule` is no
   longer necessary to do it right.
+- `isOracleSource(value)` type predicate (#84) — the ONE runtime
+  `ORACLE_SOURCES` membership check; `parseOracleSourceList` and
+  `PerpClient`'s ctor validation both call it, so the env parser and the
+  create-option front door share a single implementation instead of two
+  agreeing ones.
+
+### Fixed
+
+- Prototype-chain ticker lookups closed EVERYWHERE, not just where `in` was
+  spelled (#84): every ticker-keyed config-record read (`feeds`, `markets`,
+  `aggregators` — read-plane resolution, waterx/lazer/core rule fetch paths,
+  `PerpConfigView` getters, `getCollateralAssets`) now funnels through an
+  own-key `ownEntry` helper. Previously a ticker named like an
+  `Object.prototype` key (`toString`, …) read as an inherited Function:
+  classified `unreadable` by `resolveOracleReadPlan`'s hermes arm and — on
+  the write path — passed the waterx/lazer feed-listing throws and reached
+  the network.
 
 ## [4.3.0] - 2026-08-04
 
