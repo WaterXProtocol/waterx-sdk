@@ -15,9 +15,26 @@ that note before upgrading, and do not infer compatibility from the version numb
 
 ## [Unreleased]
 
-_Ships as **4.2.0** (the version `package.json` already pins); this section
-moves under a dated `[4.2.0]` header at release tagging, per the repo's
-changelog workflow._
+### Added
+
+- `parseOracleSourceList(raw)` + the canonical `ORACLE_SOURCES` value list —
+  THE `ORACLE_SOURCE` env-string parser consumers fold onto (split on `,`,
+  trim, DROP empty entries, validate every entry, dedupe order-preserving,
+  throw operator-actionably on empty/invalid). The FE and BE previously
+  carried twin hand-written parsers whose semantics drifted once in review
+  (a trailing comma booted one deployment green and 500'd the other);
+  identical semantics now live in one exported function. `ORACLE_SOURCES`
+  is compile-pinned to the `OracleSource` union in both directions.
+- `waterxEnvelopeOf` is re-exported from `@waterx/sdk/oracle` (and `perp`) —
+  the rule-owned payload accessor (kind-check + unwrap in one place). A
+  consumer prefetch cache hand-cast the payload shape and shipped a
+  silently-dead guard; deep-importing `oracle/rules/waterx-rule` is no
+  longer necessary to do it right.
+
+## [4.3.0] - 2026-08-04
+
+_Published as **4.3.0** (renumbered at release; the section below was
+drafted as 4.2.0 — no 4.2.0 exists on npm)._
 
 _Oracle-source decoupling, completed for ALL THREE sources: every oracle
 source is fully self-contained — its endpoints and on-chain object ids live

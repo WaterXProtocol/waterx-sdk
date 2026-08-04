@@ -39,6 +39,25 @@ export type PriceUpdateRuleKind =
 export type OracleSource = "pyth_rule" | "pyth_lazer_rule" | "waterx_rule";
 
 /**
+ * The canonical VALUE list for {@link OracleSource} — the runtime twin of the
+ * union above, for consumers that validate an `ORACLE_SOURCE` env string
+ * (see `parseOracleSourceList`) or build exhaustiveness guards. The
+ * `satisfies` + the assertion type below pin it to the union in BOTH
+ * directions: adding a source to one without the other stops compiling.
+ */
+export const ORACLE_SOURCES = [
+  "pyth_rule",
+  "pyth_lazer_rule",
+  "waterx_rule",
+] as const satisfies readonly OracleSource[];
+// Completeness check: every OracleSource must appear in ORACLE_SOURCES.
+type _OracleSourcesExhaustive = OracleSource extends (typeof ORACLE_SOURCES)[number]
+  ? true
+  : ["ORACLE_SOURCES is missing a member of OracleSource"];
+const _oracleSourcesExhaustive: _OracleSourcesExhaustive = true;
+void _oracleSourcesExhaustive;
+
+/**
  * Off-chain payload fetched by a rule, tagged by `kind` so a caller holding
  * several rules' results can tell them apart. `payload` is `unknown` here —
  * each rule implementation narrows it to its own shape (e.g. `PythCoreRule`'s
