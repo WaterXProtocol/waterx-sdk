@@ -29,33 +29,31 @@ export type PriceUpdateRuleKind =
   | "waterx_rule";
 
 /**
- * The subset of `PriceUpdateRuleKind`s listable in a client's `oracleSource`
- * create option (see `OracleHost.oracleSources`) — i.e. rules that can serve as
- * the on-chain price *update* leg `refreshOraclePrices` runs before aggregating.
- * `supra_rule` and `constant_rule` are auxiliary rules fed alongside whichever
- * source is selected (see `aggregateTicker`), not sources themselves. The SDK
- * never reads `process.env` — consumers resolve their own env var to this type.
- */
-export type OracleSource = "pyth_rule" | "pyth_lazer_rule" | "waterx_rule";
-
-/**
- * The canonical VALUE list for {@link OracleSource} — the runtime twin of the
- * union above, for consumers that validate an `ORACLE_SOURCE` env string
- * (see `parseOracleSourceList`) or build exhaustiveness guards. The
- * `satisfies` + the assertion type below pin it to the union in BOTH
- * directions: adding a source to one without the other stops compiling.
+ * The canonical list of selectable oracle sources — the SINGLE authority the
+ * {@link OracleSource} union derives from (same idiom as
+ * `unified-client.ts`'s `NON_CLIENT_FIRST`), so value list and type can never
+ * drift. Consumers use it to validate an `ORACLE_SOURCE` env string (see
+ * `parseOracleSourceList`) or build exhaustiveness guards. Only sources
+ * belong here: `supra_rule` and `constant_rule` are auxiliary rules fed
+ * alongside whichever sources are selected (see `aggregateTicker`), not
+ * sources themselves — the `satisfies` keeps entries inside
+ * `PriceUpdateRuleKind` but adding an auxiliary rule to this list is an
+ * (incorrect) editorial decision this comment exists to prevent.
  */
 export const ORACLE_SOURCES = [
   "pyth_rule",
   "pyth_lazer_rule",
   "waterx_rule",
-] as const satisfies readonly OracleSource[];
-// Completeness check: every OracleSource must appear in ORACLE_SOURCES.
-type _OracleSourcesExhaustive = OracleSource extends (typeof ORACLE_SOURCES)[number]
-  ? true
-  : ["ORACLE_SOURCES is missing a member of OracleSource"];
-const _oracleSourcesExhaustive: _OracleSourcesExhaustive = true;
-void _oracleSourcesExhaustive;
+] as const satisfies readonly PriceUpdateRuleKind[];
+
+/**
+ * The kinds listable in a client's `oracleSource` create option (see
+ * `OracleHost.oracleSources`) — i.e. rules that can serve as the on-chain
+ * price *update* leg `refreshOraclePrices` runs before aggregating. Derived
+ * from {@link ORACLE_SOURCES}. The SDK never reads `process.env` — consumers
+ * resolve their own env var to this type.
+ */
+export type OracleSource = (typeof ORACLE_SOURCES)[number];
 
 /**
  * Off-chain payload fetched by a rule, tagged by `kind` so a caller holding

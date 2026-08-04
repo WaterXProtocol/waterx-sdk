@@ -18,13 +18,17 @@
 
 import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
 
+// Widened-annotation Set (not an assertion) so the type-predicate filter
+// below narrows by CONSTRUCTION rather than by cast.
+const ORACLE_SOURCE_SET: ReadonlySet<string> = new Set(ORACLE_SOURCES);
+
 export function parseOracleSourceList(raw: string | undefined): OracleSource[] {
   const parts = (raw ?? "")
     .split(",")
     .map((part) => part.trim())
     .filter((part) => part !== "");
-  const invalid = parts.filter((part) => !(ORACLE_SOURCES as readonly string[]).includes(part));
-  if (parts.length === 0 || invalid.length > 0) {
+  const sources = parts.filter((part): part is OracleSource => ORACLE_SOURCE_SET.has(part));
+  if (parts.length === 0 || sources.length !== parts.length) {
     const got = raw === undefined || raw.trim() === "" ? "unset" : `'${raw}'`;
     throw new Error(
       `ORACLE_SOURCE must be a comma-separated list of ${ORACLE_SOURCES.join(" | ")} ` +
@@ -32,5 +36,5 @@ export function parseOracleSourceList(raw: string | undefined): OracleSource[] {
     );
   }
 
-  return [...new Set(parts as OracleSource[])];
+  return [...new Set(sources)];
 }

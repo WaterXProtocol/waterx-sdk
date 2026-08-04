@@ -218,6 +218,15 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     expect(() => new PerpClient("TESTNET", config, { oracleSource: [] })).toThrow(
       /oracleSource is REQUIRED/,
     );
+    // Values outside the canonical ORACLE_SOURCES list (legacy 'core'/'pro',
+    // typos) fail HERE too — same authority as parseOracleSourceList, so the
+    // env parser and the client front door can never disagree.
+    expect(
+      () =>
+        new PerpClient("TESTNET", config, {
+          oracleSource: "core" as unknown as CreateClientOptions["oracleSource"],
+        }),
+    ).toThrow(/oracleSource is REQUIRED/);
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {

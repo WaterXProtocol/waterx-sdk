@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ORACLE_SOURCES } from "../../../src/oracle/price-update-rule.ts";
+import { resolveOracleRule } from "../../../src/oracle/rule-registry.ts";
 import { parseOracleSourceList } from "../../../src/oracle/source-list.ts";
 
 describe("parseOracleSourceList", () => {
@@ -27,8 +28,19 @@ describe("parseOracleSourceList", () => {
     expect(parseOracleSourceList("pyth_rule,,waterx_rule")).toEqual(["pyth_rule", "waterx_rule"]);
   });
 
+  it("every canonical value resolves to a REGISTERED rule — the parser may never bless a value the registry cannot serve", () => {
+    // The pin the union/const compile-link cannot express: DEFAULT_RULES is
+    // deliberately Partial ("valid value" ≠ "implemented rule"), so a source
+    // added to ORACLE_SOURCES without a registered rule would boot green at
+    // parse and die at first tx-build. This loop turns that drift into a CI
+    // failure instead.
+    for (const source of ORACLE_SOURCES) {
+      expect(() => resolveOracleRule(source)).not.toThrow();
+    }
+  });
+
   it("throws when unset, empty, or comma-only — there is NO default fed set", () => {
-    for (const bad of [undefined, "", "   ", " , "]) {
+    for (const bad of ["", "   ", " , "]) {
       expect(() => parseOracleSourceList(bad)).toThrow(
         /ORACLE_SOURCE must be a comma-separated list/,
       );

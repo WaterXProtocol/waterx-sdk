@@ -24,7 +24,10 @@ that note before upgrading, and do not infer compatibility from the version numb
   carried twin hand-written parsers whose semantics drifted once in review
   (a trailing comma booted one deployment green and 500'd the other);
   identical semantics now live in one exported function. `ORACLE_SOURCES`
-  is compile-pinned to the `OracleSource` union in both directions.
+  is the single authority the `OracleSource` union DERIVES from (drift is
+  impossible by construction), a test pins every canonical value to a
+  registered rule, and `PerpClient` construction validates against the same
+  list — the env parser and the client front door can never disagree.
 - `waterxEnvelopeOf` is re-exported from `@waterx/sdk/oracle` (and `perp`) —
   the rule-owned payload accessor (kind-check + unwrap in one place). A
   consumer prefetch cache hand-cast the payload shape and shipped a
