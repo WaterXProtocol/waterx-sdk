@@ -59,7 +59,8 @@ the same change set. Read the migration lines before bumping._
 
 ### Changed
 
-- **Pyth Lazer on mainnet: the v2 verify entry, and a 1000ms fetch channel.**
+- **Pyth Lazer on mainnet: the v2 verify entry, and a 1000ms fetch channel**
+  ([#85](https://github.com/WaterXProtocol/waterx-sdk/pull/85)).
   `LAZER_INFRA` gains `verify_entry` and `channel` per network, because both
   now differ between them:
   - **mainnet** calls `pyth_lazer::parse_and_verify_le_ecdsa_update_v2` on the
