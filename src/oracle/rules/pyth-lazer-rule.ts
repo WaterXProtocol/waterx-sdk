@@ -4,8 +4,9 @@
  * appends per lazer-routed ticker. Fetches one `leEcdsa` payload for all
  * requested integer feed ids from the Lazer HTTP API (Bearer-authenticated
  * via the `pythApiKey` create option), verifies it ONCE on-chain via
- * `pyth_lazer::parse_and_verify_le_ecdsa_update`, and hands the resulting
- * `Update` PTB value back through a `RuleUpdateHandle` for the feed calls.
+ * `pyth_lazer`'s verify entry for that network (see `LAZER_INFRA`), and hands the
+ * resulting `Update` PTB value back through a `RuleUpdateHandle` for the feed
+ * calls.
  */
 
 import { fromHex } from "@mysten/bcs";
@@ -33,22 +34,47 @@ import { fetchWithPolicy, joinEndpointPath, rethrowExhaustedFetch } from "../upd
  *   `POST /v1/latest_price` (Bearer-authenticated). The service is
  *   network-agnostic (one signed payload verifies on any chain that trusts the
  *   Lazer signers), so both networks share the production host.
- * - `verifier_package` — the Sui package carrying
- *   `pyth_lazer::parse_and_verify_le_ecdsa_update`. Per-network: testnet is
- *   still the original v1 publish; mainnet is the v2-upgraded package (which
- *   still exposes the v1 entry `pyth_lazer_rule` binds). Values mirror the
- *   contract repo's `pyth_lazer_rule/Move.toml` published-at pins.
+ * - `verifier_package` / `verify_entry` — the Sui package carrying the verify
+ *   call, and which entry to call. These track what `pyth_lazer_rule` binds on
+ *   that network, so they move together:
+ *   - **mainnet** — the v2 package `0xefbfd064…` and the **v2** entry. The rule
+ *     was republished v2-bound after a 2026-08-05 mainnet probe: the ORIGINAL
+ *     package `0x7b502c…` now aborts `EDifferentVersion` (`state::current_cap`)
+ *     for any payload — the shared `State` has been migrated past that code —
+ *     and its v1 entry aborts `EInvalidChannel` on `fixed_rate@1000ms`, the only
+ *     channel WaterX's Pyth Pro grant permits.
+ *   - **testnet** — still the original v1 publish, which has no `update_v2`
+ *     module at all, so the v1 entry is the only one that exists there.
+ *   Both entries take `(state, clock, bytes)` and accept the same `leEcdsa`
+ *   payload. Values mirror the contract repo's `pyth_lazer_rule/Move.toml`
+ *   published-at pins.
  */
-export const LAZER_INFRA: Record<Network, { endpoint: string; verifier_package: string }> = {
+export const LAZER_INFRA: Record<
+  Network,
+  { endpoint: string; verifier_package: string; verify_entry: LazerVerifyEntry; channel: string }
+> = {
   MAINNET: {
     endpoint: "https://pyth-lazer.dourolabs.app",
     verifier_package: "0xefbfd064480777699fd9c557a5804d72ace7bc82661fdc8d1f1a44ea6d92ee10",
+    verify_entry: "parse_and_verify_le_ecdsa_update_v2",
+    channel: "fixed_rate@1000ms",
   },
   TESTNET: {
     endpoint: "https://pyth-lazer.dourolabs.app",
     verifier_package: "0xf5bd2141967507050a91b58de3d95e77c432cd90d1799ee46effc27430a68c21",
+    verify_entry: "parse_and_verify_le_ecdsa_update",
+    channel: "fixed_rate@200ms",
   },
 };
+
+/**
+ * The `pyth_lazer` verify entry a network's deployed rule consumes. `_v2`
+ * returns `update_v2::Update`; the v1 entry returns `update::Update`, and the
+ * two are NOT interchangeable — the rule's `feed` takes one concrete type.
+ */
+export type LazerVerifyEntry =
+  | "parse_and_verify_le_ecdsa_update"
+  | "parse_and_verify_le_ecdsa_update_v2";
 
 /** `pyth_lazer_rule`'s narrowed `RuleUpdateData.payload` shape. */
 export interface PythLazerUpdatePayload {
@@ -73,9 +99,15 @@ export interface PythLazerUpdatePayload {
  *   and every xStock — are `min_channel: fixed_rate@200ms` (Lazer symbol
  *   registry, verified 2026-07-22: the same 29-feed batch 400s at
  *   `real_time`/`50ms` and serves 200 with the leEcdsa blob at `200ms`).
- *   200ms is the fastest channel every configured feed supports, and the
- *   deployed rule accepts it: the v1 on-chain `channel::from_u8` aborts only
- *   on the 1000ms fixed-rate channel (real_time / 50ms / 200ms are safe).
+ *   The channel is therefore per-network (`LAZER_INFRA[network].channel`), and
+ *   it is bounded from BOTH sides — by what the feeds publish and by what the
+ *   grant allows:
+ *   - **mainnet: `fixed_rate@1000ms`.** WaterX's Pyth Pro grant no longer
+ *     permits anything faster ("Channel fixed_rate@200ms violates rate limit.
+ *     Minimum allowed channel is 1000ms", measured 2026-08-05), and the
+ *     mainnet rule is v2-bound, so it accepts that channel.
+ *   - **testnet: `fixed_rate@200ms`.** Its rule is still v1-bound, and the v1
+ *     on-chain `channel::from_u8` aborts on the 1000ms channel.
  * - `formats: leEcdsa` + `jsonBinaryEncoding: hex` — the Sui verifier takes
  *   the `leEcdsa` framing; hex matches `fromHex` below.
  */
@@ -83,7 +115,6 @@ const LAZER_LATEST_PRICE_REQUEST = {
   properties: ["price", "exponent", "confidence"],
   formats: ["leEcdsa"],
   jsonBinaryEncoding: "hex",
-  channel: "fixed_rate@200ms",
 } as const;
 
 /**
@@ -135,6 +166,7 @@ function requireLazerPackage(host: OracleHost): PythLazerRulePackage {
  */
 async function fetchLazerSignedUpdate(
   endpoint: string,
+  channel: string,
   apiKey: string,
   feedIds: number[],
   fetchOpts?: PythFetchPolicy,
@@ -151,7 +183,7 @@ async function fetchLazerSignedUpdate(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceFeedIds: feedIds, ...LAZER_LATEST_PRICE_REQUEST }),
+        body: JSON.stringify({ priceFeedIds: feedIds, ...LAZER_LATEST_PRICE_REQUEST, channel }),
       },
       { apiKey, ...fetchOpts },
     );
@@ -223,6 +255,7 @@ export const PythLazerRule: PriceUpdateRule = {
     }
     const update = await fetchLazerSignedUpdate(
       LAZER_INFRA[host.network].endpoint,
+      LAZER_INFRA[host.network].channel,
       apiKey,
       feedIds,
       host.pyth.fetch,
@@ -233,7 +266,7 @@ export const PythLazerRule: PriceUpdateRule = {
   /**
    * A Lazer payload is ONE signed `leEcdsa` message covering every feed it was
    * fetched for — verification is a single flat signature check over the whole
-   * message (`parse_and_verify_le_ecdsa_update`, no per-feed cost), so the
+   * message (one `parse_and_verify_le_ecdsa_update*` call, no per-feed cost), so the
    * payload is indivisible: it can only be served whole. Returns the whole
    * payload iff every requested ticker's integer feed id is packed in THIS
    * payload's `feedIds`; any coverage gap (unlisted ticker, or a feed this
@@ -256,11 +289,15 @@ export const PythLazerRule: PriceUpdateRule = {
   },
 
   /**
-   * Appends the single `parse_and_verify_le_ecdsa_update(state, clock, bytes)`
+   * Appends the single `parse_and_verify_le_ecdsa_update*(state, clock, bytes)`
    * call — one secp256k1 signature check covering every feed in the payload —
    * and returns its `Update` result as the handle the per-ticker feed leg
    * consumes. `opts.cache` / `opts.feeSource` are Pyth-Core-specific and
    * ignored (Lazer verification charges no update fee).
+   *
+   * The entry name comes from `LAZER_INFRA[network].verify_entry`: mainnet's
+   * rule binds `update_v2`, testnet's is still the v1 publish. Both take
+   * `(state, clock, bytes)` and accept the same `leEcdsa` payload.
    */
   buildUpdateCalls(
     tx: Transaction,
@@ -276,8 +313,9 @@ export const PythLazerRule: PriceUpdateRule = {
     );
     if (!payload) return undefined;
     const lazer = requireLazerPackage(host);
+    const infra = LAZER_INFRA[host.network];
     const [update] = tx.moveCall({
-      target: `${LAZER_INFRA[host.network].verifier_package}::pyth_lazer::parse_and_verify_le_ecdsa_update`,
+      target: `${infra.verifier_package}::pyth_lazer::${infra.verify_entry}`,
       arguments: [tx.object(lazer.state), tx.object.clock(), tx.pure.vector("u8", payload.update)],
     });
     return { kind: "pyth_lazer_rule", update };

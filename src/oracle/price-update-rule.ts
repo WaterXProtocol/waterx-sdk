@@ -104,7 +104,7 @@ export function assertRuleUpdateData<T>(
  */
 export type RuleUpdateHandle = {
   readonly kind: "pyth_lazer_rule";
-  /** Result of `pyth_lazer::parse_and_verify_le_ecdsa_update` in this PTB. */
+  /** Result of `pyth_lazer::parse_and_verify_le_ecdsa_update_v2` in this PTB. */
   readonly update: TransactionArgument;
 };
 

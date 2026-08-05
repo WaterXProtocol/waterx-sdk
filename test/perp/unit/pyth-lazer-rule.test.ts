@@ -115,6 +115,17 @@ function createLazerTestClient(oracleSource?: "pyth_lazer_rule") {
   return client;
 }
 
+/**
+ * Same client, but presenting as MAINNET. Mainnet's deployed rule is v2-bound
+ * and its Pyth Pro grant caps the channel at 1000ms, so both the fetch request
+ * and the verify call differ from testnet's — see `LAZER_INFRA`.
+ */
+function createMainnetLazerTestClient() {
+  const client = createLazerTestClient();
+  (client as unknown as { network: string }).network = "MAINNET";
+  return client;
+}
+
 function mockLazerFetch(): ReturnType<typeof vi.fn> {
   const fetchSpy = vi.fn(async () => ({
     ok: true,
@@ -212,6 +223,26 @@ describe("PythLazerRule.fetchUpdateData", () => {
     });
   });
 
+  it("pins fixed_rate@1000ms on mainnet — the fastest channel the Pyth Pro grant allows", async () => {
+    const client = createMainnetLazerTestClient();
+    let captured: RequestInit | undefined;
+    globalThis.fetch = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      captured = init;
+      return {
+        ok: true,
+        json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),
+      };
+    }) as unknown as typeof fetch;
+
+    await PythLazerRule.fetchUpdateData(client, ["BTCUSD"]);
+
+    // 200ms is rejected outright: "Channel fixed_rate@200ms violates rate
+    // limit. Minimum allowed channel is 1000ms" (measured 2026-08-05). The
+    // v2-bound mainnet rule accepts the 1000ms channel; the v1 testnet one
+    // would abort on it, hence the per-network split.
+    expect(JSON.parse(String(captured?.body)).channel).toBe("fixed_rate@1000ms");
+  });
+
   it("returns null and skips the fetch for an empty ticker list", async () => {
     const client = createLazerTestClient();
     const fetchSpy = mockLazerFetch();
@@ -284,6 +315,22 @@ describe("PythLazerRule.fetchUpdateData", () => {
 });
 
 describe("PythLazerRule.buildUpdateCalls", () => {
+  it("calls the v2 verify entry on the v2 package on mainnet", async () => {
+    const client = createMainnetLazerTestClient();
+    const tx = new Transaction();
+
+    await buildHandle(tx, client, [1]);
+
+    const calls = moveCalls(tx);
+    expect(calls).toHaveLength(1);
+    // The v2 package, NOT the original `0x7b502c…` — that one aborts
+    // EDifferentVersion now that the shared State has been migrated past it.
+    expect(calls[0].package).toBe(LAZER_INFRA.MAINNET.verifier_package);
+    // `_v2`: the mainnet rule binds `update_v2::Update`, and the v1 entry
+    // aborts EInvalidChannel on the only channel the grant allows anyway.
+    expect(calls[0].function).toBe("parse_and_verify_le_ecdsa_update_v2");
+  });
+
   it("appends exactly the contract's parse_and_verify_le_ecdsa_update(state, clock, bytes) call and returns the Update handle", async () => {
     const client = createUnitTestClient();
     const tx = new Transaction();
