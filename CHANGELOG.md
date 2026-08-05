@@ -16,6 +16,31 @@ number alone.
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-08-05
+
+### Changed
+
+- **Pyth Lazer on mainnet: the v2 verify entry, and a 1000ms fetch channel**
+  ([#85](https://github.com/WaterXProtocol/waterx-sdk/pull/85)).
+  `LAZER_INFRA` gains `verify_entry` and `channel` per network, because both
+  now differ between them:
+  - **mainnet** calls `pyth_lazer::parse_and_verify_le_ecdsa_update_v2` on the
+    v2 package `0xefbfd064…` and requests `fixed_rate@1000ms`. The rule was
+    republished v2-bound (waterx-contract) after a 2026-08-05 mainnet probe
+    found the v1 path dead twice over: the ORIGINAL package `0x7b502c…` aborts
+    `EDifferentVersion` in `state::current_cap` for *any* payload — the shared
+    `State` has been migrated past that code — and the v1 entry aborts
+    `EInvalidChannel` in `channel::from_v2` on `fixed_rate@1000ms`, which is
+    the only channel WaterX's Pyth Pro grant still permits (200ms →
+    *"violates rate limit. Minimum allowed channel is 1000ms"*).
+  - **testnet** is unchanged (`parse_and_verify_le_ecdsa_update`,
+    `fixed_rate@200ms`): its Lazer package is still the v1-only publish with no
+    `update_v2` module, and its rule is v1-bound, so the v1 entry is the only
+    one that exists — and it aborts on the 1000ms channel.
+
+  No public API change; `LAZER_INFRA` is exported, so deep importers see two
+  new fields. Consumers on mainnet need this to build a Lazer PTB at all.
+
 ## [4.3.1] - 2026-08-04
 
 ### Added
@@ -102,27 +127,6 @@ the same change set. Read the migration lines before bumping._
   `waterxFetch` explicitly. No compile error: this is a behavior change.
 
 ### Changed
-
-- **Pyth Lazer on mainnet: the v2 verify entry, and a 1000ms fetch channel**
-  ([#85](https://github.com/WaterXProtocol/waterx-sdk/pull/85)).
-  `LAZER_INFRA` gains `verify_entry` and `channel` per network, because both
-  now differ between them:
-  - **mainnet** calls `pyth_lazer::parse_and_verify_le_ecdsa_update_v2` on the
-    v2 package `0xefbfd064…` and requests `fixed_rate@1000ms`. The rule was
-    republished v2-bound (waterx-contract) after a 2026-08-05 mainnet probe
-    found the v1 path dead twice over: the ORIGINAL package `0x7b502c…` aborts
-    `EDifferentVersion` in `state::current_cap` for *any* payload — the shared
-    `State` has been migrated past that code — and the v1 entry aborts
-    `EInvalidChannel` in `channel::from_v2` on `fixed_rate@1000ms`, which is
-    the only channel WaterX's Pyth Pro grant still permits (200ms →
-    *"violates rate limit. Minimum allowed channel is 1000ms"*).
-  - **testnet** is unchanged (`parse_and_verify_le_ecdsa_update`,
-    `fixed_rate@200ms`): its Lazer package is still the v1-only publish with no
-    `update_v2` module, and its rule is v1-bound, so the v1 entry is the only
-    one that exists — and it aborts on the 1000ms channel.
-
-  No public API change; `LAZER_INFRA` is exported, so deep importers see two
-  new fields. Consumers on mainnet need this to build a Lazer PTB at all.
 
 - **BREAKING: `oracleSource` is REQUIRED at client creation** (`PerpClient`
   and `WaterXClient` create options). There is no `'pyth_rule'` default: every
