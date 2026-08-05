@@ -97,7 +97,7 @@ export function assertRuleUpdateData<T>(
  * return when its collector-feed leg needs a value produced by the update leg
  * *within the same PTB*. Pyth Core needs none (its feed leg reads the shared
  * `PriceInfoObject` the update leg refreshed), so it returns `void`. The Lazer
- * rule returns the verified `pyth_lazer::update::Update` result — one
+ * rule returns the verified-update result of its network's verify entry — one
  * signature verification covers every feed in the payload, and
  * `pyth_lazer_rule::feed` takes it by reference per ticker (see
  * `aggregateTicker`'s `lazerUpdate` arg).
@@ -105,10 +105,13 @@ export function assertRuleUpdateData<T>(
 export type RuleUpdateHandle = {
   readonly kind: "pyth_lazer_rule";
   /**
-   * Result of this network's `LAZER_INFRA.verify_entry` in this PTB —
-   * `pyth_lazer::parse_and_verify_le_ecdsa_update_v2` on mainnet,
-   * `…_le_ecdsa_update` (v1) on testnet. Both yield the same
-   * `pyth_lazer::update::Update` value.
+   * Opaque result of this network's `LAZER_INFRA.verify_entry` in this PTB,
+   * passed straight to `pyth_lazer_rule::feed`. The Move type is
+   * network-dependent and never named here: mainnet's
+   * `pyth_lazer::parse_and_verify_le_ecdsa_update_v2` yields
+   * `pyth_lazer::update_v2::Update`, testnet's v1
+   * `…_le_ecdsa_update` yields `pyth_lazer::update::Update`, and each
+   * network's `pyth_lazer_rule` is published bound to the matching one.
    */
   readonly update: TransactionArgument;
 };

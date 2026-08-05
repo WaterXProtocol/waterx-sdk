@@ -102,9 +102,10 @@ async function resolveGroupUpdateData(
  *   if it is stale — it never aborts — so the call stays mandatory while
  *   `pyth_rule` remains in the ticker's on-chain weighted set
  *   (`EMissingPriceSource` requires every weighted rule to appear).
- * - **Lazer** — fed when `lazerUpdate` is supplied: the verified
- *   `pyth_lazer::update::Update` produced by this PTB's lazer update leg
- *   (see `PythLazerRule.buildUpdateCalls`). If the ticker's aggregator does
+ * - **Lazer** — fed when `lazerUpdate` is supplied: the verified update this
+ *   PTB's lazer update leg produced with the network's verify entry
+ *   (`update_v2::Update` on mainnet, `update::Update` on testnet — see
+ *   `PythLazerRule.buildUpdateCalls`). If the ticker's aggregator does
  *   not (yet) weight `PythLazerRule`, the contribution is silently dropped
  *   on-chain — feeding ahead of the weight migration is harmless.
  * - **Supra** — fed alongside Pyth/Lazer when supra is enabled + wired
