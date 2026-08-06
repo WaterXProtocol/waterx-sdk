@@ -104,8 +104,8 @@ client.predict.placeOrder(ptx, {
   marketId: "0x...", // market id bytes or 0x-hex
   selection: "YES", // "YES" | "NO"
   maxSpend: 1_000_000n, // cap in settlement-coin base units
-  minShares: 1n, // slippage floor — 0 accepts any fill
-  priceCapBps: 5_000n, // max price paid, in bps (5_000 = 0.50)
+  minShares: 1n, // fill floor — chain asserts filled_shares >= this; 0 accepts any fill
+  priceCapBps: 5_000n, // max price per share, bps of the 1-unit payout; MUST be <= 10_000
   expiryTs: BigInt(Date.now() + 60_000), // ms epoch
 });
 await client.predict.signAndExecuteTransaction({ transaction: ptx, signer });
@@ -201,7 +201,11 @@ import { PredictClient } from "@waterx/sdk/prediction";
 
 const waterxConfigUrl =
   "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json";
-const perp = await PerpClient.create("TESTNET", { waterxConfigUrl, oracleSource: "pyth_rule" }); // or PerpClient.testnet({ ... })
+// oracleSource must cover each ticker's weighted rules — see "Oracle sources".
+const perp = await PerpClient.create("TESTNET", {
+  waterxConfigUrl,
+  oracleSource: ["pyth_rule", "pyth_lazer_rule"],
+}); // or PerpClient.testnet({ ... })
 const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // predict line needs no oracle source
 ```
 

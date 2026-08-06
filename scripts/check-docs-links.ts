@@ -95,8 +95,7 @@ function main(): void {
     process.exit(1);
   }
 
-  const skipped = IGNORED.size > 0 ? ` (${IGNORED.size} ignored)` : "";
-  console.log(`✓ docs:check — all relative links resolve in ${docs.length} docs${skipped}`);
+  console.log(`✓ docs:check — all relative links resolve in ${docs.length} docs`);
 }
 
 // Only run as a CLI — importing this module (the unit test does) must not exit.
