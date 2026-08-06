@@ -146,15 +146,28 @@ Weights are on-chain state that changes without an SDK release, so read them rat
 trusting any list written here. [Oracle sources](#oracle-sources) has the full model.
 
 **3 — Create a wxa account.** One account serves both product lines; every trading call
-needs one. The id lands in the `AccountCreated` event — read it from the execution result,
-then treat it as the user's durable handle.
+needs one. The id is **not** a builder return value — it lands in the `AccountCreated`
+event, so read it back off the digest, then treat it as the user's durable handle. (A
+simulate emits the same event but creates nothing; only read an id back after a real
+execute.)
 
 ```ts
 import { Transaction } from "@mysten/sui/transactions";
+import { AccountCreated } from "@waterx/sdk/generated/waterx_account/events";
 
 const tx = new Transaction();
 client.account.createAccount(tx, { alias: "alice" });
-await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
+const exec = await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
+const digest = exec.Transaction?.digest ?? "";
+
+// Decode the event's `bcs`, never its `json` — only the BCS layout is the Move
+// struct. (`as const` is load-bearing: it is what types `events` as present.)
+const res = await client.perp.grpcClient.getTransaction({
+  digest,
+  include: { events: true } as const,
+});
+const ev = res.Transaction?.events?.find((e) => e.eventType.endsWith("::events::AccountCreated"));
+const accountId = ev ? AccountCreated.parse(ev.bcs).account_object_address : undefined;
 ```
 
 → [`examples/actions/action-create-account.ts`](./examples/actions/action-create-account.ts)

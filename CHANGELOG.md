@@ -79,6 +79,22 @@ number alone.
   but creates nothing — so the "take the id, fund it, re-run" instruction dead-ended on the
   standard path. `simThenMaybeExecute` now reports whether the tx actually landed, and the
   example only presents a reusable id after a successful execute.
+- **`WATERX_EXECUTE=1` now prints the account id it just created** (#86). The previous fix
+  stopped the example claiming an id that did not exist, but on the success path it still
+  only told the operator to "take `account_object_address` from the AccountCreated event
+  above" — and nothing had ever printed that event, so `WATERX_ACCOUNT_ID` was
+  unobtainable and the walkthrough dead-ended one step later instead. `simThenMaybeExecute`
+  now returns `{ executed, digest }`, and a new `accountIdFromDigest` helper reads the id
+  back off the digest (decoding the event's `bcs`, not its `json`, whose field shapes are
+  documented as varying per RPC implementation). `quickstart.ts` prints the ready-to-paste
+  `export WATERX_ACCOUNT_ID=0x…`; `actions/action-create-account.ts`, whose header always
+  claimed the id "lands in the AccountCreated event", now prints it too. README step 3 and
+  the Skill's step 3 gain the read-back they only described.
+- **The shipped Skill's snippets are copy-pasteable** (#86). Step 2 called
+  `parseOracleSourceList` and `WaterXClient.create` with no import line, step 3 used
+  `Transaction`, and step 5 used `rawPrice` — so every snippet failed on paste with an
+  undefined identifier. Each block now carries its imports (`@waterx/sdk`,
+  `@waterx/sdk/oracle`, `@waterx/sdk/perp`, `@mysten/sui/transactions`).
 
 ## [4.3.2] - 2026-08-05
 

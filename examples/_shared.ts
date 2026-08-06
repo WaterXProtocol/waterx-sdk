@@ -9,6 +9,8 @@
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain
  *   - `dump(label, value)` — pretty-print a BCS-parsed struct (bigint → string)
+ *   - `accountIdFromDigest(client, digest)` — the new wxa account id of an executed
+ *     `createAccount`, read out of its `AccountCreated` event
  *   - `requireEnv(name)` — throw if missing
  *
  * Examples default to **simulate-only** for write actions. Pass
@@ -21,6 +23,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { AccountCreated } from "../src/generated/waterx_account/events.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../src/oracle/price-update-rule.ts";
 import { parseOracleSourceList } from "../src/oracle/source-list.ts";
 import { PerpClient } from "../src/perp/client.ts";
@@ -159,30 +162,64 @@ export function shouldExecute(): boolean {
 }
 
 /**
- * Sim, then optionally execute when `WATERX_EXECUTE=1`.
+ * What `simThenMaybeExecute` did.
  *
- * Returns whether the tx actually LANDED ON CHAIN — `false` for every
- * simulate-only path (the default), a failed sim, and a failed execute.
+ * `executed` is true only when the tx actually LANDED ON CHAIN — false for
+ * every simulate-only path (the default), a failed sim, and a failed execute.
  * Callers that go on to describe on-chain effects (a created object id, a
- * filled order) must branch on this rather than on `WATERX_EXECUTE` alone:
- * a simulate emits the same events as a real run, but creates nothing.
+ * filled order) must branch on it rather than on `WATERX_EXECUTE` alone: a
+ * simulate emits the same events as a real run, but creates nothing. `digest`
+ * is `""` whenever `executed` is false — there is no tx to look up.
  */
+export interface ExecOutcome {
+  executed: boolean;
+  digest: string;
+}
+
+/** Sim, then optionally execute when `WATERX_EXECUTE=1`. */
 export async function simThenMaybeExecute(
   client: PerpClient,
   tx: Transaction,
   label: string,
   signer?: Ed25519Keypair,
-): Promise<boolean> {
+): Promise<ExecOutcome> {
   const sender = signer?.toSuiAddress() ?? DRY_RUN_SENDER;
-  if (!(await sim(client, tx, label, sender))) return false;
+  if (!(await sim(client, tx, label, sender))) return { executed: false, digest: "" };
   if (shouldExecute() && signer) {
-    return (await execute(client, signer, tx, `${label} (execute)`)).success;
+    const { digest, success } = await execute(client, signer, tx, `${label} (execute)`);
+    return { executed: success, digest: success ? digest : "" };
   } else if (shouldExecute() && !signer) {
     console.log("  (WATERX_EXECUTE=1 set but no signer wired into this example)");
   } else {
     console.log("  (set WATERX_EXECUTE=1 to actually sign and send)");
   }
-  return false;
+  return { executed: false, digest: "" };
+}
+
+/**
+ * The `account_object_address` an executed `createAccount` minted.
+ *
+ * Nothing hands the id back from the builder — it exists only in the
+ * `AccountCreated` event, so it has to be read back off the digest. Decoded
+ * from the event's BCS rather than its `json`, whose field shapes are
+ * documented as varying between RPC implementations; the BCS layout is the
+ * Move struct itself.
+ *
+ * Returns `undefined` when the node served no `AccountCreated` event for the
+ * digest — callers fall back to pointing the operator at the digest.
+ */
+export async function accountIdFromDigest(
+  client: PerpClient,
+  digest: string,
+): Promise<string | undefined> {
+  const res = await client.grpcClient.getTransaction({
+    digest,
+    include: { events: true } as const,
+  });
+  const created = res.Transaction?.events?.find((e) =>
+    e.eventType.endsWith("::events::AccountCreated"),
+  );
+  return created ? AccountCreated.parse(created.bcs).account_object_address : undefined;
 }
 
 /** Pretty-print a BCS-parsed struct (or any object) with bigints stringified. */

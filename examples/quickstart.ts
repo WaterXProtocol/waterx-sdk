@@ -32,7 +32,14 @@ import {
   getAccountPositions,
   rawPrice,
 } from "../src/perp/index.ts";
-import { buildClient, dump, loadActiveKeypair, run, simThenMaybeExecute } from "./_shared.ts";
+import {
+  accountIdFromDigest,
+  buildClient,
+  dump,
+  loadActiveKeypair,
+  run,
+  simThenMaybeExecute,
+} from "./_shared.ts";
 
 const TICKER = process.env.WATERX_TICKER ?? "BTCUSD";
 
@@ -51,18 +58,30 @@ run(async () => {
   if (!accountId) {
     const tx = new Transaction();
     createAccount(client, tx, { alias: process.env.WATERX_ALIAS ?? "quickstart" });
-    const created = await simThenMaybeExecute(client, tx, "createAccount", keypair);
+    const { executed, digest } = await simThenMaybeExecute(client, tx, "createAccount", keypair);
     // A simulate emits the AccountCreated event too, but creates NO account —
     // the id in a dry-run's events does not exist on chain and reusing it
-    // aborts `EAccountNotFound`. Only point at a real id after a real execute.
+    // aborts `EAccountNotFound`. Only read an id back after a real execute.
+    if (!executed) {
+      console.log(
+        "\n  Simulated only — no account exists on chain yet, so there is no id\n" +
+          "  to carry forward. Re-run with WATERX_EXECUTE=1 to actually create one:\n" +
+          "    WATERX_EXECUTE=1 pnpm exec tsx examples/quickstart.ts",
+      );
+      return;
+    }
+    // The id is not a return value of `createAccount` — it lives in the
+    // AccountCreated event, which is why this step reads it back off the digest.
+    const newAccountId = await accountIdFromDigest(client, digest);
     console.log(
-      created
-        ? "\n  Account created. Take `account_object_address` from the\n" +
-            "  AccountCreated event above, fund it (actions/action-request-deposit.ts),\n" +
-            "  then re-run with WATERX_ACCOUNT_ID=0x... to place an order."
-        : "\n  Simulated only — no account exists on chain yet, so there is no id\n" +
-            "  to carry forward. Re-run with WATERX_EXECUTE=1 to actually create one:\n" +
-            "    WATERX_EXECUTE=1 pnpm exec tsx examples/quickstart.ts",
+      newAccountId
+        ? `\n  Account created: ${newAccountId}\n` +
+            "  Fund it (actions/action-request-deposit.ts), then re-run to place an order:\n" +
+            `    export WATERX_ACCOUNT_ID=${newAccountId}\n` +
+            "    pnpm exec tsx examples/quickstart.ts"
+        : `\n  Account created in ${digest}, but this node served no AccountCreated\n` +
+            "  event for it. Read `account_object_address` off that digest in an\n" +
+            "  explorer, then re-run with WATERX_ACCOUNT_ID=0x... to place an order.",
     );
     return;
   }

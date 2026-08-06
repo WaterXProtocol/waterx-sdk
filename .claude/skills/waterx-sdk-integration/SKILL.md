@@ -36,6 +36,9 @@ Node ≥ 22. ESM and CJS both resolve.
 ## Step 2 — Supply the two required options
 
 ```ts
+import { WaterXClient } from "@waterx/sdk";
+import { parseOracleSourceList } from "@waterx/sdk/oracle";
+
 const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl: process.env.WATERX_CONFIG_URL, // REQUIRED — no default, no env fallback
@@ -80,11 +83,29 @@ It is **not** a Sui address — it is an object id returned by `create_account` 
 in the `AccountCreated` event.
 
 ```ts
+import { Transaction } from "@mysten/sui/transactions";
+import { AccountCreated } from "@waterx/sdk/generated/waterx_account/events";
+
 const tx = new Transaction();
 client.account.createAccount(tx, { alias: "alice" });
-const res = await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
-// read account_object_address out of the AccountCreated event; persist it
+const exec = await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
+const digest = exec.Transaction?.digest ?? "";
+
+// The id is NOT a builder return value — read it back off the digest. Decode the
+// event's `bcs`, never its `json`: only the BCS layout is the Move struct itself.
+// (`as const` is load-bearing — it is what types `events` as present.)
+const res = await client.perp.grpcClient.getTransaction({
+  digest,
+  include: { events: true } as const,
+});
+const ev = res.Transaction?.events?.find((e) => e.eventType.endsWith("::events::AccountCreated"));
+const accountId = ev ? AccountCreated.parse(ev.bcs).account_object_address : undefined; // persist
 ```
+
+A **simulate emits the same `AccountCreated` event but creates nothing** — the address
+in a dry run's events is not on chain and reusing it aborts `EAccountNotFound`. Only read
+an id back after a real execute. Runnable version:
+`accountIdFromDigest` in `examples/_shared.ts`.
 
 ## Step 4 — Fund it
 
@@ -102,6 +123,8 @@ Builders are **build-only**: they return or mutate a `Transaction`. Signing stay
 you — a keypair, or a browser wallet.
 
 ```ts
+import { rawPrice } from "@waterx/sdk/perp";
+
 const tx = await client.perp.buildPlaceOrderTx({
   ticker: "BTCUSD",
   collateralType: client.perp.creditType(),
