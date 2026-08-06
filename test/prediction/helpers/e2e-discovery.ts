@@ -316,7 +316,11 @@ async function scanAccountPositions(
   return out;
 }
 
-/** Scan up to `maxSamples` recent orders; return any OPEN orders for the account. */
+/**
+ * Scan up to `maxSamples` recent orders; return OPEN orders for the account on
+ * **unresolved** markets only. Matches the `openOrderId` contract (fillOrder /
+ * cancelOrder targets) — a resolved market rejects fills with EMarketAlreadyResolved (12).
+ */
 async function scanAccountOpenOrders(
   client: PredictClient,
   accountId: string,
@@ -329,7 +333,9 @@ async function scanAccountOpenOrders(
   const stop = back - BigInt(maxSamples) > cursor.front ? back - BigInt(maxSamples) : cursor.front;
   for (let id = back; id >= stop; id -= 1n) {
     const o = await loadOrder(client, id);
-    if (o && o.accountId === accountId && o.kind === "OPEN") out.push(o);
+    if (o && o.accountId === accountId && o.kind === "OPEN") {
+      if (!(await isMarketResolved(client, o.marketId))) out.push(o);
+    }
     if (id === 0n) break;
   }
   return out;
@@ -449,7 +455,14 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     // Try seed-pinned ids first (cheap path).
     if (seed?.openOrderId) {
       const o = await loadOrder(client, BigInt(seed.openOrderId));
-      if (o && o.accountId === accountId && o.kind === "OPEN") openOrderId = o.orderId;
+      if (
+        o &&
+        o.accountId === accountId &&
+        o.kind === "OPEN" &&
+        !(await isMarketResolved(client, o.marketId))
+      ) {
+        openOrderId = o.orderId;
+      }
     }
     if (seed?.openPositionId) {
       const p = await loadPosition(client, BigInt(seed.openPositionId));
