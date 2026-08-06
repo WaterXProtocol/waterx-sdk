@@ -60,6 +60,8 @@ jobs:
         if: steps.cache-nm.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # Sub-second, pure filesystem — rides the lint job rather than its own.
+      - run: pnpm docs:check
 
   typecheck:
     needs: setup

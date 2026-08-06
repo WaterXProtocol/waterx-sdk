@@ -153,6 +153,14 @@ async function scanAccountOpenOrders(
     try {
       const o = await getChainOrderView(client, { orderId: id });
       if (o.accountId === accountId && o.kind === "OPEN") {
+        // Skip orders whose market already resolved — fill_order aborts 12
+        // (EMarketAlreadyResolved); re-seeding must place a fresh open order.
+        try {
+          const market = await getMarketById(client, { marketId: o.marketId });
+          if (market.resolved) continue;
+        } catch {
+          continue;
+        }
         out.push({ id: o.orderId, marketIdHex: o.marketIdHex });
       }
     } catch {

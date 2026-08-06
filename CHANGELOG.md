@@ -16,6 +16,86 @@ number alone.
 
 ## [Unreleased]
 
+### Added
+
+- **Integration docs: a first-integration walkthrough, a shipped Skill, and a docs link
+  check** ([WL-2022](https://bucketprotocol.atlassian.net/browse/WL-2022)).
+  - `.claude/skills/waterx-sdk-integration/SKILL.md` — the fixed integration flow
+    (entry point → required options → account → funding → build/simulate/execute →
+    reads), with a red-flags list and an abort/error table. Ships **inside the npm
+    package** (`files` names the SKILL.md path explicitly, so a second skill is a
+    deliberate publish decision rather than a directory glob), so a consumer can
+    `cp -r node_modules/@waterx/sdk/.claude/skills/… .claude/skills/`. Indexed by the
+    new root `SKILLS.md`.
+  - `examples/quickstart.ts` — the README's **First integration** walkthrough as one
+    runnable file. It is the snippet's source of truth, so `pnpm lint` and
+    `pnpm typecheck` keep the documented code from drifting.
+  - `pnpm docs:check` (`scripts/check-docs-links.ts`) — resolves every relative link in
+    `git ls-files '*.md'`, so a new doc is covered the moment it is tracked; exclusions
+    are named in an `IGNORED` map, never implicit. Wired into `pnpm check` **and** the
+    CI `Lint` job (`pnpm check` is not the CI contract in this repo, so `check` alone
+    would never have run it). It found and fixed one already-broken link in
+    `test/perp/README.md`.
+  - README gains consumer-oriented **Install** (peer deps, Node ≥ 22, ESM+CJS), **First
+    integration**, **Troubleshooting**, and a **Documentation map**.
+
+### Fixed
+
+- **`pnpm oracle:aggregates` now accepts a fed-set LIST** (WL-2022). The script kept a
+  local copy of the oracle-source list and validated with a single-value `includes()`,
+  so `ORACLE_SOURCE=pyth_rule,pyth_lazer_rule` — the value the README, the examples, and
+  the Skill all tell you to export before running this exact diagnostic — exited 1 with
+  "Unknown oracle source". The copy was also already stale, omitting `waterx_rule`. It
+  now uses the SDK's own `parseOracleSourceList` / `ORACLE_SOURCES`.
+- **`examples/` no longer hardcodes a single oracle source** (WL-2022). `buildClient()`
+  pinned `oracleSource: "pyth_rule"`, but testnet weights majors such as `BTCUSD` for
+  **both** `pyth_rule` and `pyth_lazer_rule` — so every oracle-backed example aborted
+  `EMissingPriceSource` at simulate. It now reads `ORACLE_SOURCE` through
+  `parseOracleSourceList` and forwards `PYTH_API_KEY` as `pythApiKey`, matching the
+  env-driven wiring the README prescribes for real consumers. The default is the pair,
+  because an absent Lazer key fails with `LazerApiKeyMissing` — which names what to set
+  — where the old default failed with an opaque on-chain abort. Only the 16 oracle-backed
+  examples reach either path; the other 34 need no oracle leg.
+- **`docs:check` no longer passes from the wrong directory.** It resolved paths against
+  `process.cwd()`, so running it from a subdirectory found zero docs and exited **0** —
+  a silent green. It now resolves against the repo root (`REPO_ROOT`) and lets a missing
+  tracked doc throw rather than skipping it.
+- **Stale paths in `CLAUDE.md`**: `account.ts`, `custody.ts`, `credit.ts`, and
+  `referral.ts` were still listed under `perp/user/` after the move into the `account/`
+  base. `perp/user/` has five files, none of them those.
+- **"Mainnet config is not published" was stale**
+  ([#86](https://github.com/WaterXProtocol/waterx-sdk/pull/86)). `mainnet.json` is live in
+  the config repo and `MAINNET` loads (30 markets, prediction included), so the
+  Troubleshooting row steered valid mainnet integrators to testnet for no reason. Replaced
+  with the failure they actually hit: mainnet configures `pyth_rule` + `constant_rule`
+  only — no `pyth_lazer_rule` / `waterx_rule` block — so an `ORACLE_SOURCE` copied from
+  testnet that names only those fails at tx-build. Same correction in `CLAUDE.md`.
+- **Client snippets that list `pyth_lazer_rule` now pass `pythApiKey`** (#86). The
+  umbrella and per-line recipes in the README, and Step 2 of the shipped Skill, selected
+  Lazer without the credential it requires — an oracle-backed build copied from them threw
+  `LazerApiKeyMissing`.
+- **`examples/quickstart.ts` no longer points at an account that was never created** (#86).
+  Simulate-only is the default, and a dry run emits `AccountCreated` just like a real one,
+  but creates nothing — so the "take the id, fund it, re-run" instruction dead-ended on the
+  standard path. `simThenMaybeExecute` now reports whether the tx actually landed, and the
+  example only presents a reusable id after a successful execute.
+- **`WATERX_EXECUTE=1` now prints the account id it just created** (#86). The previous fix
+  stopped the example claiming an id that did not exist, but on the success path it still
+  only told the operator to "take `account_object_address` from the AccountCreated event
+  above" — and nothing had ever printed that event, so `WATERX_ACCOUNT_ID` was
+  unobtainable and the walkthrough dead-ended one step later instead. `simThenMaybeExecute`
+  now returns `{ executed, digest }`, and a new `accountIdFromDigest` helper reads the id
+  back off the digest (decoding the event's `bcs`, not its `json`, whose field shapes are
+  documented as varying per RPC implementation). `quickstart.ts` prints the ready-to-paste
+  `export WATERX_ACCOUNT_ID=0x…`; `actions/action-create-account.ts`, whose header always
+  claimed the id "lands in the AccountCreated event", now prints it too. README step 3 and
+  the Skill's step 3 gain the read-back they only described.
+- **The shipped Skill's snippets are copy-pasteable** (#86). Step 2 called
+  `parseOracleSourceList` and `WaterXClient.create` with no import line, step 3 used
+  `Transaction`, and step 5 used `rawPrice` — so every snippet failed on paste with an
+  undefined identifier. Each block now carries its imports (`@waterx/sdk`,
+  `@waterx/sdk/oracle`, `@waterx/sdk/perp`, `@mysten/sui/transactions`).
+
 ## [4.3.2] - 2026-08-05
 
 ### Changed
