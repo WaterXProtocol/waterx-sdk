@@ -40,6 +40,7 @@ const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl: process.env.WATERX_CONFIG_URL, // REQUIRED — no default, no env fallback
   oracleSource: parseOracleSourceList(process.env.ORACLE_SOURCE), // REQUIRED — no default
+  pythApiKey: process.env.PYTH_API_KEY, // required iff the set includes 'pyth_lazer_rule'
 });
 ```
 

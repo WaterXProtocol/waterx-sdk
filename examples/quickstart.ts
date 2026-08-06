@@ -51,11 +51,18 @@ run(async () => {
   if (!accountId) {
     const tx = new Transaction();
     createAccount(client, tx, { alias: process.env.WATERX_ALIAS ?? "quickstart" });
-    await simThenMaybeExecute(client, tx, "createAccount", keypair);
+    const created = await simThenMaybeExecute(client, tx, "createAccount", keypair);
+    // A simulate emits the AccountCreated event too, but creates NO account —
+    // the id in a dry-run's events does not exist on chain and reusing it
+    // aborts `EAccountNotFound`. Only point at a real id after a real execute.
     console.log(
-      "\n  No WATERX_ACCOUNT_ID set. Take `account_object_address` from the\n" +
-        "  AccountCreated event, fund it (actions/action-request-deposit.ts),\n" +
-        "  then re-run with WATERX_ACCOUNT_ID=0x... to place an order.",
+      created
+        ? "\n  Account created. Take `account_object_address` from the\n" +
+            "  AccountCreated event above, fund it (actions/action-request-deposit.ts),\n" +
+            "  then re-run with WATERX_ACCOUNT_ID=0x... to place an order."
+        : "\n  Simulated only — no account exists on chain yet, so there is no id\n" +
+            "  to carry forward. Re-run with WATERX_EXECUTE=1 to actually create one:\n" +
+            "    WATERX_EXECUTE=1 pnpm exec tsx examples/quickstart.ts",
     );
     return;
   }

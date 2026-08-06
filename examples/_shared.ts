@@ -158,22 +158,31 @@ export function shouldExecute(): boolean {
   return process.env.WATERX_EXECUTE === "1";
 }
 
-/** Sim, then optionally execute when `WATERX_EXECUTE=1`. */
+/**
+ * Sim, then optionally execute when `WATERX_EXECUTE=1`.
+ *
+ * Returns whether the tx actually LANDED ON CHAIN — `false` for every
+ * simulate-only path (the default), a failed sim, and a failed execute.
+ * Callers that go on to describe on-chain effects (a created object id, a
+ * filled order) must branch on this rather than on `WATERX_EXECUTE` alone:
+ * a simulate emits the same events as a real run, but creates nothing.
+ */
 export async function simThenMaybeExecute(
   client: PerpClient,
   tx: Transaction,
   label: string,
   signer?: Ed25519Keypair,
-): Promise<void> {
+): Promise<boolean> {
   const sender = signer?.toSuiAddress() ?? DRY_RUN_SENDER;
-  if (!(await sim(client, tx, label, sender))) return;
+  if (!(await sim(client, tx, label, sender))) return false;
   if (shouldExecute() && signer) {
-    await execute(client, signer, tx, `${label} (execute)`);
+    return (await execute(client, signer, tx, `${label} (execute)`)).success;
   } else if (shouldExecute() && !signer) {
     console.log("  (WATERX_EXECUTE=1 set but no signer wired into this example)");
   } else {
     console.log("  (set WATERX_EXECUTE=1 to actually sign and send)");
   }
+  return false;
 }
 
 /** Pretty-print a BCS-parsed struct (or any object) with bigints stringified. */

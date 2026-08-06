@@ -63,6 +63,22 @@ number alone.
 - **Stale paths in `CLAUDE.md`**: `account.ts`, `custody.ts`, `credit.ts`, and
   `referral.ts` were still listed under `perp/user/` after the move into the `account/`
   base. `perp/user/` has five files, none of them those.
+- **"Mainnet config is not published" was stale**
+  ([#86](https://github.com/WaterXProtocol/waterx-sdk/pull/86)). `mainnet.json` is live in
+  the config repo and `MAINNET` loads (30 markets, prediction included), so the
+  Troubleshooting row steered valid mainnet integrators to testnet for no reason. Replaced
+  with the failure they actually hit: mainnet configures `pyth_rule` + `constant_rule`
+  only — no `pyth_lazer_rule` / `waterx_rule` block — so an `ORACLE_SOURCE` copied from
+  testnet that names only those fails at tx-build. Same correction in `CLAUDE.md`.
+- **Client snippets that list `pyth_lazer_rule` now pass `pythApiKey`** (#86). The
+  umbrella and per-line recipes in the README, and Step 2 of the shipped Skill, selected
+  Lazer without the credential it requires — an oracle-backed build copied from them threw
+  `LazerApiKeyMissing`.
+- **`examples/quickstart.ts` no longer points at an account that was never created** (#86).
+  Simulate-only is the default, and a dry run emits `AccountCreated` just like a real one,
+  but creates nothing — so the "take the id, fund it, re-run" instruction dead-ended on the
+  standard path. `simThenMaybeExecute` now reports whether the tx actually landed, and the
+  example only presents a reusable id after a successful execute.
 
 ## [4.3.2] - 2026-08-05
 

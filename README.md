@@ -18,6 +18,7 @@ const client = await WaterXClient.create({
   waterxConfigUrl:
     "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
   oracleSource: ["pyth_rule", "pyth_lazer_rule"],
+  pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed
 });
 client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
 client.perp.buildPlaceOrderTx(params); // perpetuals
@@ -205,6 +206,7 @@ const waterxConfigUrl =
 const perp = await PerpClient.create("TESTNET", {
   waterxConfigUrl,
   oracleSource: ["pyth_rule", "pyth_lazer_rule"],
+  pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed
 }); // or PerpClient.testnet({ ... })
 const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // predict line needs no oracle source
 ```
@@ -296,7 +298,7 @@ these surface at simulate, before you spend gas.
 | CORS failure fetching the quote-center (browser only) | `waterx_rule` fetches from the page and your origin is not on the allowlist. Point `waterxEndpoint` at a same-origin proxy; its base path is preserved. Node and keeper consumers are unaffected. |
 | Ticker lookups return nothing | Wrong format. Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the config JSON's `markets` keys. |
 | Prices off by 10⁹, or an order fills far from the intended level | A human-readable number was passed where a raw 1e9-scaled `u64` belongs. Wrap in `rawPrice()`. Exception: view `basePriceUsd` args take a **whole-dollar** u64 — use `parseWholeDollarU64`. |
-| Loading `MAINNET` fails | Mainnet config is not published yet. Use `TESTNET` until the maintainers publish `mainnet.json`. |
+| `… has no feed configured for ticker(s)` on `MAINNET` with a fed set copied from testnet | The two networks configure **different sources**. Today's `mainnet.json` carries `pyth_rule` (plus `constant_rule` for `USDCUSD`) and **no** `pyth_lazer_rule` / `waterx_rule` block, so an `ORACLE_SOURCE` naming only those serves nothing there. Listing an unconfigured source *alongside* `pyth_rule` is harmless — it contributes no tickers. Confirm per network with `pnpm oracle:aggregates:mainnet`. |
 
 ## Documentation map
 
