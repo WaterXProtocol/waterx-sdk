@@ -18,24 +18,21 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { REPO_ROOT } from "./load-repo-env.ts";
 
 /**
  * Docs deliberately excluded, each with a reason. Prefer fixing the doc over
- * adding a line here.
+ * adding a line here — an entry hides real rot, which is how the one link this
+ * checker first caught survived a repo reorg.
  */
-const IGNORED = new Map([
-  // 48 links stale since the prediction test/src reorg (`../src/prediction.ts`,
-  // `e2e/*.e2e.test.ts`). Repairing them needs per-link judgement — some
-  // `*.integration.test.ts` targets are real — so it is its own change.
-  ["test/prediction/COVERAGE.md", "stale since the prediction reorg; needs its own pass"],
-]);
+export const IGNORED = new Map<string, string>();
 
 /** `[text](target)` — target captured up to the closing paren or a title. */
 const MARKDOWN_LINK = /\[[^\]]*\]\(\s*(<[^>]*>|[^)\s]+)/g;
 
-interface BrokenLink {
+export interface BrokenLink {
   doc: string;
   line: number;
   target: string;
@@ -47,13 +44,18 @@ function isRelative(target: string): boolean {
   return !target.startsWith("#") && !/^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
-function trackedDocs(): string[] {
-  const out = execFileSync("git", ["ls-files", "*.md"], { cwd: REPO_ROOT, encoding: "utf8" });
+function trackedDocs(root: string): string[] {
+  const out = execFileSync("git", ["ls-files", "*.md"], { cwd: root, encoding: "utf8" });
   return out.split("\n").filter((line) => line !== "" && !IGNORED.has(line));
 }
 
-function checkDoc(doc: string): BrokenLink[] {
-  const abs = path.resolve(REPO_ROOT, doc);
+/**
+ * Broken relative links in one doc. `root` is a parameter (not `process.cwd()`)
+ * because cwd made a run from any subdirectory report zero docs and exit 0 — a
+ * silent green. It also lets the unit test point at a fixture tree.
+ */
+export function checkDoc(doc: string, root: string = REPO_ROOT): BrokenLink[] {
+  const abs = path.resolve(root, doc);
   const docDir = path.dirname(abs);
   const broken: BrokenLink[] = [];
 
@@ -71,7 +73,7 @@ function checkDoc(doc: string): BrokenLink[] {
             doc,
             line: index + 1,
             target: raw,
-            resolved: path.relative(REPO_ROOT, resolved),
+            resolved: path.relative(root, resolved),
           });
         }
       }
@@ -81,8 +83,8 @@ function checkDoc(doc: string): BrokenLink[] {
 }
 
 function main(): void {
-  const docs = trackedDocs();
-  const broken = docs.flatMap(checkDoc);
+  const docs = trackedDocs(REPO_ROOT);
+  const broken = docs.flatMap((doc) => checkDoc(doc, REPO_ROOT));
 
   if (broken.length > 0) {
     console.error(`✗ ${broken.length} broken relative link(s):\n`);
@@ -97,4 +99,7 @@ function main(): void {
   console.log(`✓ docs:check — all relative links resolve in ${docs.length} docs${skipped}`);
 }
 
-main();
+// Only run as a CLI — importing this module (the unit test does) must not exit.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}
