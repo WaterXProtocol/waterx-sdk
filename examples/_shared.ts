@@ -3,7 +3,8 @@
  *
  *   - `buildClient(network?)` — async PerpClient constructor (testnet default);
  *     reads the config URL from `WATERX_CONFIG_URL` (required — the SDK has no default)
- *     and the oracle fed set from `ORACLE_SOURCE` (comma list; defaults to `pyth_rule`)
+ *     and the oracle fed set from `ORACLE_SOURCE` (comma list; defaults to the pair
+ *     testnet weights, `pyth_rule,pyth_lazer_rule` — which needs `PYTH_API_KEY`)
  *   - `loadActiveKeypair()` — read the local Sui CLI's active ed25519 keypair
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain
@@ -36,18 +37,16 @@ export async function buildClient(network: Network = "TESTNET"): Promise<PerpCli
         "(e.g. https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json)",
     );
   }
-  // The fed set must COVER each ticker's weighted rules on chain — starving a
-  // weighted rule aborts `EMissingPriceSource`, feeding an unweighted one is
-  // simply dropped. So this is env-driven, exactly as a real consumer wires it;
-  // `pyth_rule` alone is only the fallback for deployments still on one source.
-  // Diagnose a mismatch with `pnpm oracle:aggregates:testnet`.
-  const oracleSource = process.env.ORACLE_SOURCE
-    ? parseOracleSourceList(process.env.ORACLE_SOURCE)
-    : "pyth_rule";
+  // Env-driven, exactly as a real consumer wires it. The default is the pair
+  // testnet weights for its majors: a single `pyth_rule` builds nothing for
+  // BTCUSD (the collector starves a weighted rule → `EMissingPriceSource`),
+  // whereas a missing Lazer key fails with `LazerApiKeyMissing`, which at least
+  // names what to set. Only the 16 oracle-backed examples reach either path.
+  // Check a network's actual weights with `pnpm oracle:aggregates:testnet`.
   return PerpClient.create(network, {
     cache: true,
     waterxConfigUrl,
-    oracleSource,
+    oracleSource: parseOracleSourceList(process.env.ORACLE_SOURCE || "pyth_rule,pyth_lazer_rule"),
     pythApiKey: process.env.PYTH_API_KEY, // required iff pyth_lazer_rule is listed
   });
 }

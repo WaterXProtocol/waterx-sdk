@@ -17,7 +17,7 @@ const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl:
     "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
-  oracleSource: "pyth_rule",
+  oracleSource: ["pyth_rule", "pyth_lazer_rule"],
 });
 client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
 client.perp.buildPlaceOrderTx(params); // perpetuals
@@ -47,12 +47,11 @@ pnpm add @waterx/sdk @mysten/sui @mysten/bcs
 `@mysten/sui` (`^2.9.0`) and `@mysten/bcs` (`^1.9.0`) are **peer** dependencies — the SDK
 does not bundle them, so your app and the SDK share one Sui client and one BCS registry.
 
-|                | Requirement                                                                             |
-| -------------- | --------------------------------------------------------------------------------------- |
-| Node           | **≥ 22** (inherited from `@mysten/sui`; CI builds and tests on 24)                       |
-| Module formats | ESM **and** CJS — `import`/`require` both resolve, including on every subpath export      |
-| Runtime deps   | one (`@noble/hashes`), plus the two peers above                                           |
-| Browser        | supported; see the CORS note under [Oracle sources](#oracle-sources) for `waterx_rule`    |
+- **Node ≥ 22** (declared in `engines`; CI builds and tests on 24).
+- **ESM and CJS** both resolve, including on every subpath export.
+- **One runtime dependency** (`@noble/hashes`), plus the two peers above.
+- **Browser supported** — see the CORS note under [Oracle sources](#oracle-sources) if you
+  use `waterx_rule`.
 
 Contributor setup (building this repo rather than consuming it) is under
 [Development](#development).
@@ -118,8 +117,8 @@ await client.predict.signAndExecuteTransaction({ transaction: ptx, signer });
 
 The quickstart above starts from an `accountId` you already have. If you have none yet,
 this is the whole arc. **[`examples/quickstart.ts`](./examples/quickstart.ts) is this
-walkthrough as one runnable file** — it is covered by `pnpm lint` and `pnpm typecheck`,
-so it cannot drift from the API:
+walkthrough as one runnable file** — being real code, it is covered by `pnpm lint` and
+`pnpm typecheck`, so the API it exercises cannot go stale unnoticed:
 
 ```bash
 export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
@@ -142,9 +141,8 @@ it up:
 pnpm oracle:aggregates:testnet    # per-ticker aggregator sources + weights
 ```
 
-On testnet today, majors such as `BTCUSD` are weighted for **both** `pyth_rule` and
-`pyth_lazer_rule`, so a single-source client cannot build an order for them. See
-[Oracle sources](#oracle-sources) for the full model.
+Weights are on-chain state that changes without an SDK release, so read them rather than
+trusting any list written here. [Oracle sources](#oracle-sources) has the full model.
 
 **3 — Create a wxa account.** One account serves both product lines; every trading call
 needs one. The id lands in the `AccountCreated` event — read it from the execution result,
@@ -282,19 +280,19 @@ Perp `build*Tx` helpers are oracle-backed (`async`; they refresh prices before t
 Every row below is a message the SDK or the chain actually emits. Simulate first — all of
 these surface at simulate, before you spend gas.
 
-| Symptom                                                                    | Cause                                                                                                                                | Fix                                                                                                                                                                          |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `loadConfig: no config URL — pass opts.waterxConfigUrl`                    | `waterxConfigUrl` unset. There is no default and no env fallback.                                                                    | Read the URL in your app and pass it to `create()`.                                                                                                                          |
-| `oracleSource is REQUIRED and must name at least one of …`                 | `oracleSource` missing, empty, or a retired value (`'core'`, `'pyth'`).                                                              | Pass a current value. Parse env with `parseOracleSourceList` rather than a bare `split`.                                                                                      |
-| `oracleSource [...] has no feed configured for ticker(s): …`               | No listed source serves that ticker in this deployment's config. Raised at **tx-build**, not at client creation.                      | Add the ticker's feed under a listed source, or list a source that serves it. Constant-only tickers are exempt.                                                               |
-| `EMissingPriceSource` (Move abort in `aggregator::remove_outliers`)        | The fed set does **not cover** the ticker's on-chain weighted rules. Starving a weighted rule aborts; feeding an unweighted one is a no-op. | Run `pnpm oracle:aggregates:testnet` to see the per-ticker weights, then widen `oracleSource` to a superset. On testnet, majors need `pyth_rule,pyth_lazer_rule`.              |
-| `LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token`   | `'pyth_lazer_rule'` is listed but `pythApiKey` was not passed. The SDK never reads `process.env` for it.                              | Pass `pythApiKey` at client creation from your own env var.                                                                                                                  |
-| `EAccountNotFound` (Move abort in `account::borrow_account`)               | The `accountId` does not exist on this network — usually a fixture from another deployment, or a Sui address used where a wxa account id belongs. | Create one (`client.account.createAccount`) and use the id from the `AccountCreated` event.                                                                                   |
-| `EReplayedSignature`                                                       | One `waterx_rule` envelope was fed twice for the same symbol. A signed timestamp is single-use per symbol, regardless of weights (audit F-014). | Never share a fetched envelope across concurrent builds for the same symbol — fetch per build.                                                                                |
-| CORS failure fetching the quote-center, browser only                       | `waterx_rule` fetches from the page, and the deployment's allowlist does not include your origin.                                    | Point `waterxEndpoint` at a same-origin proxy (its base path is preserved). Node and keeper consumers are unaffected.                                                         |
-| Ticker lookups return nothing                                              | Wrong ticker format.                                                                                                                 | Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the config JSON's `markets` keys.                                                              |
-| Prices off by 10⁹, or an order fills nowhere near the intended level        | A human-readable number was passed where a raw 1e9-scaled `u64` belongs.                                                             | Wrap prices and sizes in `rawPrice()`. Note the exception: view `basePriceUsd` args take a **whole-dollar** u64 — use `parseWholeDollarU64`.                                  |
-| Loading `MAINNET` fails                                                    | Mainnet config is not published yet.                                                                                                 | Use `TESTNET` until the maintainers publish `mainnet.json`.                                                                                                                    |
+| Message | What it means, and what to do |
+| ------- | ------------------------------ |
+| `loadConfig: no config URL — pass opts.waterxConfigUrl` | `waterxConfigUrl` is unset; there is no default and no env fallback. Read the URL in your app and pass it to `create()`. |
+| `oracleSource is REQUIRED and must name at least one of …` | Missing, empty, or a retired value (`'core'`, `'pyth'`). Parse env with `parseOracleSourceList`, not a bare `split`. |
+| `oracleSource [...] has no feed configured for ticker(s): …` | No listed source serves that ticker in this deployment. Raised at **tx-build**, not at client creation. Add the feed under a listed source, or list a source that serves it. Constant-only tickers are exempt. |
+| `EMissingPriceSource` (Move abort in `aggregator::remove_outliers`) | The fed set does not cover that ticker's on-chain weighted rules — starving a weighted rule aborts, feeding an unweighted one is a no-op. Run `pnpm oracle:aggregates:testnet` and widen `oracleSource` to a superset. |
+| `LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token` | `'pyth_lazer_rule'` is listed but `pythApiKey` was not passed. The SDK never reads `process.env` for it — pass it at client creation. |
+| `EAccountNotFound` (Move abort in `account::borrow_account`) | The `accountId` does not exist on this network — usually a fixture from another deployment, or a Sui address used where a wxa account id belongs. Create one with `client.account.createAccount`. |
+| `EReplayedSignature` | One `waterx_rule` envelope was fed twice for the same symbol; a signed timestamp is single-use per symbol (audit F-014). Fetch per build — never share one across concurrent builds. |
+| CORS failure fetching the quote-center (browser only) | `waterx_rule` fetches from the page and your origin is not on the allowlist. Point `waterxEndpoint` at a same-origin proxy; its base path is preserved. Node and keeper consumers are unaffected. |
+| Ticker lookups return nothing | Wrong format. Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the config JSON's `markets` keys. |
+| Prices off by 10⁹, or an order fills far from the intended level | A human-readable number was passed where a raw 1e9-scaled `u64` belongs. Wrap in `rawPrice()`. Exception: view `basePriceUsd` args take a **whole-dollar** u64 — use `parseWholeDollarU64`. |
+| Loading `MAINNET` fails | Mainnet config is not published yet. Use `TESTNET` until the maintainers publish `mainnet.json`. |
 
 ## Documentation map
 

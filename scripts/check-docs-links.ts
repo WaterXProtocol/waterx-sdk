@@ -1,34 +1,36 @@
 /**
- * Resolve every relative link in the tracked markdown docs.
+ * Resolve every relative link in the repo's tracked markdown.
  *
  *   pnpm docs:check
  *
  * Guards the docs against the most common rot: a link to a file that was
  * renamed or deleted. Only RELATIVE targets are checked — external URLs are
  * left to a human (network checks make CI flaky), and bare `#anchor` links
- * carry no path to resolve.
+ * carry no path to resolve. Path fragments (`./src/perp/index.ts#L12`) are
+ * stripped before resolving: the file must exist, the anchor is not verified.
  *
- * A link may point at a path plus a line/heading fragment
- * (`./src/perp/index.ts#L12`, `./CHANGELOG.md#unreleased`); the fragment is
- * stripped before resolving, so only the file has to exist.
+ * Scope is `git ls-files '*.md'`, so a NEW doc is covered the moment it is
+ * tracked — an allowlist would silently default to no coverage. Exceptions are
+ * named in IGNORED below, never left implicit.
  *
  * Exits non-zero listing every unresolved link.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-/** Docs that are part of the published/integration surface. */
-const DOCS = [
-  "README.md",
-  "SKILLS.md",
-  "CLAUDE.md",
-  "PACKAGES.md",
-  "examples/README.md",
-  "scripts/README.md",
-  "test/perp/README.md",
-  "test/prediction/README.md",
-  ".claude/skills/waterx-sdk-integration/SKILL.md",
-];
+import { REPO_ROOT } from "./load-repo-env.ts";
+
+/**
+ * Docs deliberately excluded, each with a reason. Prefer fixing the doc over
+ * adding a line here.
+ */
+const IGNORED = new Map([
+  // 48 links stale since the prediction test/src reorg (`../src/prediction.ts`,
+  // `e2e/*.e2e.test.ts`). Repairing them needs per-link judgement — some
+  // `*.integration.test.ts` targets are real — so it is its own change.
+  ["test/prediction/COVERAGE.md", "stale since the prediction reorg; needs its own pass"],
+]);
 
 /** `[text](target)` — target captured up to the closing paren or a title. */
 const MARKDOWN_LINK = /\[[^\]]*\]\(\s*(<[^>]*>|[^)\s]+)/g;
@@ -40,50 +42,47 @@ interface BrokenLink {
   resolved: string;
 }
 
+/** Any scheme (`https:`, `mailto:`, …) or a same-page anchor is not ours to resolve. */
 function isRelative(target: string): boolean {
-  if (target.startsWith("#")) return false; // same-page anchor
-  if (target.startsWith("mailto:")) return false;
-  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(target);
+  return !target.startsWith("#") && !/^[a-z][a-z0-9+.-]*:/i.test(target);
 }
 
-/** Strip a trailing `#fragment` — the file is what must exist, not the anchor. */
-function stripFragment(target: string): string {
-  const hash = target.indexOf("#");
-  return hash === -1 ? target : target.slice(0, hash);
+function trackedDocs(): string[] {
+  const out = execFileSync("git", ["ls-files", "*.md"], { cwd: REPO_ROOT, encoding: "utf8" });
+  return out.split("\n").filter((line) => line !== "" && !IGNORED.has(line));
 }
 
-function checkDoc(doc: string, repoRoot: string): BrokenLink[] {
-  const abs = path.resolve(repoRoot, doc);
-  if (!existsSync(abs)) return []; // an optional doc that this checkout lacks
+function checkDoc(doc: string): BrokenLink[] {
+  const abs = path.resolve(REPO_ROOT, doc);
   const docDir = path.dirname(abs);
   const broken: BrokenLink[] = [];
 
-  const lines = readFileSync(abs, "utf8").split("\n");
-  lines.forEach((line, index) => {
-    for (const match of line.matchAll(MARKDOWN_LINK)) {
-      const raw = match[1]!.replace(/^<|>$/g, "");
-      if (!isRelative(raw)) continue;
-      const filePart = stripFragment(raw);
-      if (filePart === "") continue; // pure fragment after all
-      const resolved = path.resolve(docDir, decodeURIComponent(filePart));
-      if (!existsSync(resolved)) {
-        broken.push({
-          doc,
-          line: index + 1,
-          target: raw,
-          resolved: path.relative(repoRoot, resolved),
-        });
+  // readFileSync throws (naming the path) if a tracked doc vanished — a missing
+  // doc must fail the check, never silently shrink its coverage.
+  readFileSync(abs, "utf8")
+    .split("\n")
+    .forEach((line, index) => {
+      for (const match of line.matchAll(MARKDOWN_LINK)) {
+        const raw = match[1]!.replace(/^<|>$/g, "");
+        if (!isRelative(raw)) continue;
+        const resolved = path.resolve(docDir, raw.split("#")[0]!);
+        if (!existsSync(resolved)) {
+          broken.push({
+            doc,
+            line: index + 1,
+            target: raw,
+            resolved: path.relative(REPO_ROOT, resolved),
+          });
+        }
       }
-    }
-  });
+    });
 
   return broken;
 }
 
 function main(): void {
-  const repoRoot = process.cwd();
-  const broken = DOCS.flatMap((doc) => checkDoc(doc, repoRoot));
-  const checked = DOCS.filter((doc) => existsSync(path.resolve(repoRoot, doc)));
+  const docs = trackedDocs();
+  const broken = docs.flatMap(checkDoc);
 
   if (broken.length > 0) {
     console.error(`✗ ${broken.length} broken relative link(s):\n`);
@@ -94,7 +93,8 @@ function main(): void {
     process.exit(1);
   }
 
-  console.log(`✓ docs:check — all relative links resolve (${checked.length} docs)`);
+  const skipped = IGNORED.size > 0 ? ` (${IGNORED.size} ignored)` : "";
+  console.log(`✓ docs:check — all relative links resolve in ${docs.length} docs${skipped}`);
 }
 
 main();

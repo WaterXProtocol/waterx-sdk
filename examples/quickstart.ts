@@ -1,9 +1,9 @@
 /**
  * The README quickstart, runnable.
  *
- * This file is the SOURCE OF TRUTH for the "First integration" walkthrough in
- * `README.md` — it is covered by `pnpm lint` and `pnpm typecheck`, so the
- * documented snippet cannot drift away from the API. Edit them together.
+ * The runnable companion to the "First integration" walkthrough in `README.md`.
+ * Being a real file, it is covered by `pnpm lint` and `pnpm typecheck`, so the
+ * API it exercises cannot go stale unnoticed. Edit the two together.
  *
  * Walks the whole first-integration arc:
  *   1. build a client        (waterxConfigUrl + oracleSource are REQUIRED)
@@ -14,30 +14,33 @@
  * Simulate-only by default — nothing is signed or sent unless you opt in.
  *
  *   export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
+ *   export PYTH_API_KEY=...   # the default fed set includes pyth_lazer_rule
  *   pnpm exec tsx examples/quickstart.ts                       # simulate every step
  *   WATERX_EXECUTE=1 pnpm exec tsx examples/quickstart.ts      # sign + send
  *   WATERX_ACCOUNT_ID=0x... pnpm exec tsx examples/quickstart.ts   # use an existing account
  *
- * Preconditions for the order step: the account must already hold collateral
- * (see `examples/actions/action-request-deposit.ts`) and the market must be
- * deployed on the target network.
+ * Preconditions: a local Sui CLI keypair (`~/.sui/sui_config/`) — it is the
+ * simulate sender, not just the signer. For the order step the account must
+ * already hold collateral (see `actions/action-request-deposit.ts`) and the
+ * market must be deployed on the target network.
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { getAccountPositions } from "../src/perp/fetch.ts";
-import { createAccount } from "../src/perp/index.ts";
-import { buildPlaceOrderTx } from "../src/perp/tx-builders.ts";
-import { rawPrice } from "../src/utils/math.ts";
+import {
+  buildPlaceOrderTx,
+  createAccount,
+  getAccountPositions,
+  rawPrice,
+} from "../src/perp/index.ts";
 import { buildClient, dump, loadActiveKeypair, run, simThenMaybeExecute } from "./_shared.ts";
 
 const TICKER = process.env.WATERX_TICKER ?? "BTCUSD";
 
 run(async () => {
   // --- 1. client -----------------------------------------------------------
-  // buildClient() reads WATERX_CONFIG_URL + ORACLE_SOURCE from ITS env and calls
-  //   PerpClient.create(network, { waterxConfigUrl, oracleSource, pythApiKey })
-  // Both of the first two are REQUIRED — the SDK has no defaults, and it never
-  // reads env itself: every consumer wires them at its own boundary like this.
+  // buildClient() supplies the two REQUIRED create options (waterxConfigUrl,
+  // oracleSource) from its own env — the SDK never reads env itself, so every
+  // consumer wires them at its own boundary exactly like this.
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
 
@@ -50,10 +53,9 @@ run(async () => {
     createAccount(client, tx, { alias: process.env.WATERX_ALIAS ?? "quickstart" });
     await simThenMaybeExecute(client, tx, "createAccount", keypair);
     console.log(
-      "\n  No WATERX_ACCOUNT_ID set. Run with WATERX_EXECUTE=1 to create the account,\n" +
-        "  take `account_object_address` from the AccountCreated event, fund it\n" +
-        "  (examples/actions/action-request-deposit.ts), then re-run with\n" +
-        "  WATERX_ACCOUNT_ID=0x... to place an order.",
+      "\n  No WATERX_ACCOUNT_ID set. Take `account_object_address` from the\n" +
+        "  AccountCreated event, fund it (actions/action-request-deposit.ts),\n" +
+        "  then re-run with WATERX_ACCOUNT_ID=0x... to place an order.",
     );
     return;
   }
@@ -82,17 +84,13 @@ run(async () => {
   // --- 4. read -------------------------------------------------------------
   // Reads are gRPC simulateTransaction + BCS decode — no signer, no gas.
   // basePriceUsd is a WHOLE-DOLLAR u64, not a rawPrice(); 0n zero-bases PnL.
-  try {
-    const positions = await getAccountPositions(client, {
-      ticker: TICKER,
-      accountObjectAddress: accountId,
-      basePriceUsd: 0n,
-    });
-    dump(`getAccountPositions(${TICKER}) → (${positions.length})`, positions);
-  } catch (e) {
-    // `EAccountNotFound` here means the id is not a wxa account on THIS network
-    // — a fixture from another deployment, or a Sui address used in its place.
-    console.error(`  read failed for account ${accountId}: ${String(e)}`);
-    process.exitCode = 1;
-  }
+  // An `EAccountNotFound` abort here means the id is not a wxa account on THIS
+  // network — a fixture from another deployment, or a Sui address in its place.
+  // run() prints and exits 1 on the throw.
+  const positions = await getAccountPositions(client, {
+    ticker: TICKER,
+    accountObjectAddress: accountId,
+    basePriceUsd: 0n,
+  });
+  dump(`getAccountPositions(${TICKER}) → (${positions.length})`, positions);
 });

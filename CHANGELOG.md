@@ -23,26 +23,43 @@ number alone.
   - `.claude/skills/waterx-sdk-integration/SKILL.md` — the fixed integration flow
     (entry point → required options → account → funding → build/simulate/execute →
     reads), with a red-flags list and an abort/error table. Ships **inside the npm
-    package** (`files` now carries `.claude/skills` + `SKILLS.md`), so a consumer can
+    package** (`files` names the SKILL.md path explicitly, so a second skill is a
+    deliberate publish decision rather than a directory glob), so a consumer can
     `cp -r node_modules/@waterx/sdk/.claude/skills/… .claude/skills/`. Indexed by the
     new root `SKILLS.md`.
   - `examples/quickstart.ts` — the README's **First integration** walkthrough as one
     runnable file. It is the snippet's source of truth, so `pnpm lint` and
     `pnpm typecheck` keep the documented code from drifting.
   - `pnpm docs:check` (`scripts/check-docs-links.ts`) — resolves every relative link in
-    the tracked docs; wired into `pnpm check`. It found and fixed one already-broken
-    link in `test/perp/README.md`.
+    `git ls-files '*.md'`, so a new doc is covered the moment it is tracked; exclusions
+    are named in an `IGNORED` map, never implicit. Wired into `pnpm check` **and** the
+    CI `Lint` job (`pnpm check` is not the CI contract in this repo, so `check` alone
+    would never have run it). It found and fixed one already-broken link in
+    `test/perp/README.md`.
   - README gains consumer-oriented **Install** (peer deps, Node ≥ 22, ESM+CJS), **First
     integration**, **Troubleshooting**, and a **Documentation map**.
 
 ### Fixed
 
+- **`pnpm oracle:aggregates` now accepts a fed-set LIST** (WL-2022). The script kept a
+  local copy of the oracle-source list and validated with a single-value `includes()`,
+  so `ORACLE_SOURCE=pyth_rule,pyth_lazer_rule` — the value the README, the examples, and
+  the Skill all tell you to export before running this exact diagnostic — exited 1 with
+  "Unknown oracle source". The copy was also already stale, omitting `waterx_rule`. It
+  now uses the SDK's own `parseOracleSourceList` / `ORACLE_SOURCES`.
 - **`examples/` no longer hardcodes a single oracle source** (WL-2022). `buildClient()`
   pinned `oracleSource: "pyth_rule"`, but testnet weights majors such as `BTCUSD` for
   **both** `pyth_rule` and `pyth_lazer_rule` — so every oracle-backed example aborted
   `EMissingPriceSource` at simulate. It now reads `ORACLE_SOURCE` through
-  `parseOracleSourceList` (falling back to `pyth_rule`) and forwards `PYTH_API_KEY` as
-  `pythApiKey`, matching the env-driven wiring the README prescribes for real consumers.
+  `parseOracleSourceList` and forwards `PYTH_API_KEY` as `pythApiKey`, matching the
+  env-driven wiring the README prescribes for real consumers. The default is the pair,
+  because an absent Lazer key fails with `LazerApiKeyMissing` — which names what to set
+  — where the old default failed with an opaque on-chain abort. Only the 16 oracle-backed
+  examples reach either path; the other 34 need no oracle leg.
+- **`docs:check` no longer passes from the wrong directory.** It resolved paths against
+  `process.cwd()`, so running it from a subdirectory found zero docs and exited **0** —
+  a silent green. It now resolves against the repo root (`REPO_ROOT`) and lets a missing
+  tracked doc throw rather than skipping it.
 - **Stale paths in `CLAUDE.md`**: `account.ts`, `custody.ts`, `credit.ts`, and
   `referral.ts` were still listed under `perp/user/` after the move into the `account/`
   base. `perp/user/` has five files, none of them those.

@@ -12,20 +12,15 @@ has no default). e.g.
 export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
 ```
 
-**Oracle fed set:** `buildClient()` reads `ORACLE_SOURCE` (comma-separated; defaults to
-`pyth_rule`) and forwards `PYTH_API_KEY` as `pythApiKey`. The set must cover each
-ticker's on-chain weighted rules or the build aborts `EMissingPriceSource` — on testnet,
-majors such as `BTCUSD` currently need both:
-
-```
-export ORACLE_SOURCE=pyth_rule,pyth_lazer_rule
-export PYTH_API_KEY=...        # required whenever pyth_lazer_rule is listed
-```
-
-Check the weights with `pnpm oracle:aggregates:testnet`.
+**Oracle fed set:** `buildClient()` reads `ORACLE_SOURCE` (a comma-separated list) and
+forwards `PYTH_API_KEY` as `pythApiKey`; see its docstring in
+[`_shared.ts`](./_shared.ts) for the defaults. The set must cover each ticker's on-chain
+weighted rules or the build aborts `EMissingPriceSource` — check them with
+`pnpm oracle:aggregates:testnet`, and see
+[Oracle sources](../README.md#oracle-sources) for why.
 
 **New here?** Start with [`quickstart.ts`](./quickstart.ts) — client → account → order →
-read in one runnable file. It is the source of truth for the README's
+read in one runnable file. It is the runnable companion to the README's
 [First integration](../README.md#first-integration) walkthrough.
 
 ## Defaults
@@ -35,12 +30,6 @@ read in one runnable file. It is the source of truth for the README's
   `WATERX_EXECUTE=1` to actually sign + send via the local Sui CLI keypair
   (`~/.sui/sui_config/`). Examples that need an existing account take
   `WATERX_ACCOUNT_ID=0x...`.
-
-## Walkthrough
-
-| File                                | What it shows                                                  |
-| ----------------------------------- | -------------------------------------------------------------- |
-| [`quickstart.ts`](./quickstart.ts)  | client → account → market order → read positions, end to end   |
 
 ## View functions (`examples/views/`)
 
@@ -126,7 +115,8 @@ Higher-level smokes that chain multiple steps live under `scripts/`:
 
 `examples/_shared.ts` exports:
 
-- `buildClient(network?)` — async `PerpClient.create` wrapper (reads `WATERX_CONFIG_URL`)
+- `buildClient(network?)` — async `PerpClient.create` wrapper; its docstring in
+  [`_shared.ts`](./_shared.ts) is the authority on which env vars it reads
 - `loadActiveKeypair()` — read the local CLI's active ed25519 keypair
 - `sim(client, tx, label, sender?)` — dry-run, returns `true`/`false`
 - `execute(client, signer, tx, label)` — sign + dispatch

@@ -52,11 +52,11 @@ the SDK never does. Look up ids through the client (`client.perp.getMarket(ticke
 **`oracleSource`** is one source or a **list — the fed set**. Every listed source's data
 is fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrate.
 
-| Source             | Needs                          | Notes                                              |
-| ------------------ | ------------------------------ | -------------------------------------------------- |
-| `pyth_rule`        | nothing                        | Pyth Core; per-feed update fees                     |
-| `pyth_lazer_rule`  | `pythApiKey`                   | one signed verify per PTB, no per-feed fees         |
-| `waterx_rule`      | nothing                        | first-party TEE quote-center; browser needs CORS    |
+| Source            | Notes                                                                    |
+| ----------------- | ------------------------------------------------------------------------ |
+| `pyth_rule`       | Pyth Core; per-feed update fees; no credential                            |
+| `pyth_lazer_rule` | one signed verify per PTB, no per-feed fees; **requires `pythApiKey`**    |
+| `waterx_rule`     | first-party TEE quote-center; no credential; browser needs a CORS-allowed origin |
 
 The rule that decides the value: **the fed set must be a superset of every ticker's
 on-chain weighted rules.** Starving a weighted rule aborts `EMissingPriceSource`; feeding
@@ -166,15 +166,18 @@ Stop if you catch yourself doing any of these:
 
 ## Aborts and errors
 
-| Message                                                          | Meaning                                                                  |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `loadConfig: no config URL`                                      | Step 2 — `waterxConfigUrl` unset.                                        |
-| `oracleSource is REQUIRED and must name at least one of …`       | Step 2 — missing or retired value (`'core'`, `'pyth'`).                  |
-| `oracleSource [...] has no feed configured for ticker(s)`        | No listed source serves that ticker here. Raised at tx-build.            |
-| `EMissingPriceSource`                                            | Fed set does not cover the ticker's weighted rules. Widen it.            |
-| `LazerApiKeyMissing`                                             | `pyth_lazer_rule` listed without `pythApiKey`.                           |
-| `EAccountNotFound`                                               | Bad `accountId` — wrong network, or a Sui address used as an account id. |
-| `EReplayedSignature`                                             | A `waterx_rule` envelope was fed twice for one symbol.                   |
+Which step a failure sends you back to. The **full messages, causes, and fixes live in
+one place** — `README.md`'s Troubleshooting table — so that they stay accurate; do not
+re-derive them from here.
+
+| Error | Go back to |
+| ----- | ---------- |
+| `loadConfig: no config URL …` | Step 2 — `waterxConfigUrl` |
+| `oracleSource is REQUIRED …` / `… has no feed configured for ticker(s)` | Step 2 — `oracleSource` |
+| `EMissingPriceSource` | Step 2 — the fed set is too narrow for that ticker |
+| `LazerApiKeyMissing …` | Step 2 — `pythApiKey` |
+| `EAccountNotFound` | Step 3 — the account id is not on this network |
+| `EReplayedSignature` | Step 5 — an envelope was reused across builds |
 
 ## Verifying an integration
 

@@ -4,9 +4,9 @@ Agent Skills shipped with `@waterx/sdk`. A skill is a written procedure an AI co
 loads on demand — the same flow a developer would follow, in a form an agent can execute
 without being re-taught it each session.
 
-| Skill                                                                                     | Use when                                                                                                     |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| [`waterx-sdk-integration`](./.claude/skills/waterx-sdk-integration/SKILL.md)               | Integrating the SDK into an app, keeper, or bot — client wiring, accounts, funding, tx building, debugging aborts |
+[**`waterx-sdk-integration`**](./.claude/skills/waterx-sdk-integration/SKILL.md) is the one
+skill here: it covers integrating the SDK into an app, keeper, or bot. Its frontmatter
+`description` states exactly when it triggers.
 
 ## Using it in this repo
 
