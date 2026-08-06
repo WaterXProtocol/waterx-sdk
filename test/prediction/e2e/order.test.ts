@@ -20,7 +20,6 @@ import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import {
   E_FILL_ABOVE_PRICE_CAP,
   E_FILL_BELOW_MIN_PRICE,
-  E_MARKET_ALREADY_RESOLVED,
   E_ORDER_EXPIRED,
   E_ORDER_NOT_EXPIRED,
 } from "../helpers/prediction-protocol-constants.ts";
@@ -138,11 +137,9 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     fillOrder(client, txFill, { orderId, filledShares: 1n, filledCost: 1n });
     const fill = await simulateWithSender(client, txFill);
     // Stale-seed guard: a seeded open order drifts out of fillability as testnet state moves —
-    // expiry passes (EOrderExpired), the live market quote crosses the order's fixed price
-    // cap (EFillAbovePriceCap / EFillBelowMinPrice), or the order's market gets resolved out
-    // from under it (EMarketAlreadyResolved — a resolved market accepts no fill, and nothing
-    // re-opens it). All are testnet-state conditions, not code bugs — skip (re-seed to
-    // refresh) rather than fail.
+    // expiry passes (EOrderExpired) or the live market quote crosses the order's fixed price
+    // cap (EFillAbovePriceCap / EFillBelowMinPrice). All are testnet-state conditions, not code
+    // bugs — skip (re-seed to refresh) rather than fail.
     const fillAbortCode =
       fill.$kind === "FailedTransaction"
         ? parseMoveAbortCode(simulateErrorMessage(fill))
@@ -150,8 +147,7 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     if (
       fillAbortCode === E_ORDER_EXPIRED ||
       fillAbortCode === E_FILL_ABOVE_PRICE_CAP ||
-      fillAbortCode === E_FILL_BELOW_MIN_PRICE ||
-      fillAbortCode === E_MARKET_ALREADY_RESOLVED
+      fillAbortCode === E_FILL_BELOW_MIN_PRICE
     ) {
       guard.skipFixableBySeed(ctx, "a fillable open order (seeded order drifted out of range)", {
         stage: "place-open",
