@@ -16,6 +16,37 @@ number alone.
 
 ## [Unreleased]
 
+### Added
+
+- **Integration docs: a first-integration walkthrough, a shipped Skill, and a docs link
+  check** ([WL-2022](https://bucketprotocol.atlassian.net/browse/WL-2022)).
+  - `.claude/skills/waterx-sdk-integration/SKILL.md` — the fixed integration flow
+    (entry point → required options → account → funding → build/simulate/execute →
+    reads), with a red-flags list and an abort/error table. Ships **inside the npm
+    package** (`files` now carries `.claude/skills` + `SKILLS.md`), so a consumer can
+    `cp -r node_modules/@waterx/sdk/.claude/skills/… .claude/skills/`. Indexed by the
+    new root `SKILLS.md`.
+  - `examples/quickstart.ts` — the README's **First integration** walkthrough as one
+    runnable file. It is the snippet's source of truth, so `pnpm lint` and
+    `pnpm typecheck` keep the documented code from drifting.
+  - `pnpm docs:check` (`scripts/check-docs-links.ts`) — resolves every relative link in
+    the tracked docs; wired into `pnpm check`. It found and fixed one already-broken
+    link in `test/perp/README.md`.
+  - README gains consumer-oriented **Install** (peer deps, Node ≥ 22, ESM+CJS), **First
+    integration**, **Troubleshooting**, and a **Documentation map**.
+
+### Fixed
+
+- **`examples/` no longer hardcodes a single oracle source** (WL-2022). `buildClient()`
+  pinned `oracleSource: "pyth_rule"`, but testnet weights majors such as `BTCUSD` for
+  **both** `pyth_rule` and `pyth_lazer_rule` — so every oracle-backed example aborted
+  `EMissingPriceSource` at simulate. It now reads `ORACLE_SOURCE` through
+  `parseOracleSourceList` (falling back to `pyth_rule`) and forwards `PYTH_API_KEY` as
+  `pythApiKey`, matching the env-driven wiring the README prescribes for real consumers.
+- **Stale paths in `CLAUDE.md`**: `account.ts`, `custody.ts`, `credit.ts`, and
+  `referral.ts` were still listed under `perp/user/` after the move into the `account/`
+  base. `perp/user/` has five files, none of them those.
+
 ## [4.3.2] - 2026-08-05
 
 ### Changed

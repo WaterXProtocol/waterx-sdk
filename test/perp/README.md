@@ -10,7 +10,7 @@ Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.l
 
 Pyth **Hermes** sporadic **502/503/504/521**: SDK **`fetchPriceFeedsUpdateData`** goes through **`fetchWithPolicy`** (`src/oracle/update-fetch.ts`) — bounded retry with exponential backoff on network errors / 429 / 5xx (default: 2 retries; still no beta⇄prod failover) — and only throws once retries are exhausted. E2e simulate tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Integration tests do **not** skip pure Hermes HTTP failures (only on-chain **`::pyth_rule::feed`** transients via **`execIntegrationOrSkipOracleTransient`**).
 
-PRs to `main` run [`.github/workflows/ci.yml`](../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and a single **`test-e2e`** job running **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
+PRs to `main` run [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and a single **`test-e2e`** job running **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
 
 ## Vitest projects
 

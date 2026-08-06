@@ -157,6 +157,8 @@
   },
   "files": [
     "dist",
+    ".claude/skills",
+    "SKILLS.md",
     "LICENSE",
     "package.json"
   ],
@@ -174,7 +176,8 @@
     "oracle:aggregates:testnet": "tsx scripts/print-oracle-aggregates.ts --testnet",
     "oracle:aggregates:mainnet": "tsx scripts/print-oracle-aggregates.ts --mainnet",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm lint && pnpm typecheck && pnpm test:unit",
+    "docs:check": "tsx scripts/check-docs-links.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm docs:check && pnpm test:unit",
     "test": "vitest run --project unit --project predict-unit",
     "test:unit": "vitest run --project unit --project predict-unit",
     "test:unit:perp": "vitest run --project unit",

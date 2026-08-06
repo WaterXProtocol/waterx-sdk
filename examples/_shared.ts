@@ -3,6 +3,7 @@
  *
  *   - `buildClient(network?)` — async PerpClient constructor (testnet default);
  *     reads the config URL from `WATERX_CONFIG_URL` (required — the SDK has no default)
+ *     and the oracle fed set from `ORACLE_SOURCE` (comma list; defaults to `pyth_rule`)
  *   - `loadActiveKeypair()` — read the local Sui CLI's active ed25519 keypair
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain
@@ -19,6 +20,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { parseOracleSourceList } from "../src/oracle/source-list.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import type { Network } from "../src/perp/constants.ts";
@@ -34,7 +36,20 @@ export async function buildClient(network: Network = "TESTNET"): Promise<PerpCli
         "(e.g. https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json)",
     );
   }
-  return PerpClient.create(network, { cache: true, waterxConfigUrl, oracleSource: "pyth_rule" });
+  // The fed set must COVER each ticker's weighted rules on chain — starving a
+  // weighted rule aborts `EMissingPriceSource`, feeding an unweighted one is
+  // simply dropped. So this is env-driven, exactly as a real consumer wires it;
+  // `pyth_rule` alone is only the fallback for deployments still on one source.
+  // Diagnose a mismatch with `pnpm oracle:aggregates:testnet`.
+  const oracleSource = process.env.ORACLE_SOURCE
+    ? parseOracleSourceList(process.env.ORACLE_SOURCE)
+    : "pyth_rule";
+  return PerpClient.create(network, {
+    cache: true,
+    waterxConfigUrl,
+    oracleSource,
+    pythApiKey: process.env.PYTH_API_KEY, // required iff pyth_lazer_rule is listed
+  });
 }
 
 export function loadActiveKeypair(): { keypair: Ed25519Keypair; address: string } {
