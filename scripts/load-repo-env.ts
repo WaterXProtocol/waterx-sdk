@@ -47,3 +47,23 @@ export function waterxConfigUrlFromEnv(): string | undefined {
   const url = process.env.WATERX_CONFIG_URL?.trim();
   return url || undefined;
 }
+
+/**
+ * Swap a `WATERX_CONFIG_URL` ending in `testnet.json` ↔ `mainnet.json` when the
+ * CLI/harness network disagrees with the env URL (e.g. `.env.local` points at
+ * testnet but `run-e2e.ts --mainnet`).
+ */
+export function waterxConfigUrlForNetwork(
+  network: "testnet" | "mainnet" | "TESTNET" | "MAINNET",
+): string | undefined {
+  const raw = waterxConfigUrlFromEnv();
+  if (!raw) return undefined;
+  const n = network.toLowerCase();
+  if (n === "mainnet" && /\/testnet\.json$/i.test(raw)) {
+    return raw.replace(/\/testnet\.json$/i, "/mainnet.json");
+  }
+  if (n === "testnet" && /\/mainnet\.json$/i.test(raw)) {
+    return raw.replace(/\/mainnet\.json$/i, "/testnet.json");
+  }
+  return raw;
+}

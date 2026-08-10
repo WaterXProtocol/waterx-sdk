@@ -85,6 +85,10 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 ## Simulate / e2e: network + discovery
 
 - **Network:** `scripts/run-e2e.ts` / **`test/perp/helpers/e2e/e2e-client.ts`**: **`--testnet`** / **`--mainnet`** (CLI) → **`WATERX_E2E_NETWORK`** → **`testnet`** default when unspecified (`pnpm test` runs Vitest without `run-e2e.ts`, so it relies on this fallback).
+- **Config URL:** `run-e2e.ts` rewrites a `WATERX_CONFIG_URL` ending in `testnet.json` ↔ `mainnet.json` when the CLI network disagrees with the env URL.
+- **Mainnet wxa discovery:** there is **no** built-in canonical mainnet account. Behavior differs by path:
+  - **Custody/credit** (`resolveCustodyWxaRow`): env / owner hints only — no WLP/USDC all-market fallback after hints miss (that path exceeded the 180s `beforeAll` hookTimeout on public gRPC). Set **`WATERX_E2E_WXA_ACCOUNT_ID`** + **`WATERX_E2E_WXA_OWNER`** for stateful suites.
+  - **WLP stored-balance candidates** (`collectWxaAccountIdCandidates`): env hints **plus** redeem-queue recipients; still **skips** all-market position scan + funded probe. Testnet keeps canonical wxa + full market/probe fallback.
 - **Oracle:** Pyth Hermes + **`refreshOraclePrices`** / **`updatePythPrices`** (`src/utils/pyth.ts`, **`test/perp/helpers/e2e/e2e-oracle-context.ts`**). There is **no** legacy bucket-aggregator prime step.
 - **Oracle (Lazer):** `PythLazerRule` has **mock-only unit coverage** today (`test/perp/unit/pyth-lazer-rule.test.ts`) — the Lazer API is auth-first and feed responses need an **entitled** Pyth Pro key. A future real e2e should read **`WATERX_E2E_LAZER_API_KEY`** at the harness boundary and pass it as the **`pythApiKey`** create option (the SDK never reads env), skipping when unset. Never hardcode a key.
 - **gRPC:** optional **`WATERX_E2E_GRPC_URL`**; parallelism **`WATERX_E2E_MAX_FORKS=2`…`8`** if your RPC tolerates it.
@@ -104,8 +108,8 @@ Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/\*.ts`** a
 
 ## Related: oracle debug (not Vitest)
 
-| Command                  | Purpose                                                                                                                                                    |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                  | Purpose                                                                                                                                                                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes/Lazer refresh + oracle PTB **simulate** (`-- --format raw`). Wire `ORACLE_SOURCE` / `PYTH_API_KEY` (or `--oracle-source`); `pyth_rule` refresh miss → `WARN` / `OK (STALE)`; `pyth_lazer_rule` never falls back to Core |
 
 Admin-keystore flows live on branch **`integration/admin-e2e-parked`**.

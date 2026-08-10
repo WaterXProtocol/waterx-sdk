@@ -16,6 +16,24 @@ number alone.
 
 ## [Unreleased]
 
+### Fixed
+
+- E2E mainnet discovery no longer burns 180s+ `beforeAll` hooks when env/canonical
+  wxa hints miss (#87): `resolveCustodyWxaRow` skips the all-market WLP/USDC
+  fallback on mainnet (set `WATERX_E2E_WXA_ACCOUNT_ID` + `WATERX_E2E_WXA_OWNER`
+  instead); `collectWxaAccountIdCandidates` likewise skips market/probe scans on
+  mainnet and memos per client; `resolveCustodyWxaRow` is memoized across
+  credit/custody suites. `scripts/run-e2e.ts --mainnet` / `--testnet` rewrites
+  `WATERX_CONFIG_URL` `testnet.json` ↔ `mainnet.json` when the env URL disagrees
+  with the CLI network (shared `waterxConfigUrlForNetwork` in `load-repo-env.ts`;
+  `oracle:aggregates` uses the same helper).
+- Predict e2e fixtures: `openOrderId` / `openMarketId*` require an **unresolved**
+  market (#87); order PTBs no longer fall back to legacy `orderId` /
+  `marketIdBytes`. Keeper `fillOrder` does not skip on `EMarketAlreadyResolved`
+  (surfaces discovery/fixture bugs); seed markets that later resolve are dropped.
+  Market resolution lookup is tri-state (`true` / `false` / unknown) — RPC failures
+  no longer count as unresolved; env openOrder fallback ignores legacy `orderId`.
+
 ## [4.3.2] - 2026-08-05
 
 ### Changed
