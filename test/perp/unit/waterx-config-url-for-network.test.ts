@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { waterxConfigUrlForNetwork, waterxConfigUrlFromEnv } from "../../../scripts/load-repo-env.ts";
+import {
+  waterxConfigUrlForNetwork,
+  waterxConfigUrlFromEnv,
+} from "../../../scripts/load-repo-env.ts";
 
 describe("waterxConfigUrlForNetwork", () => {
   const prev = process.env.WATERX_CONFIG_URL;

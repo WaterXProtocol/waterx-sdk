@@ -51,9 +51,7 @@ let custodyWxaRowCacheClient: PerpClient | undefined;
  * market for WLP/USDC balances — that path routinely exceeds the 180s `beforeAll` hookTimeout.
  * Set `WATERX_E2E_WXA_ACCOUNT_ID` + `WATERX_E2E_WXA_OWNER` (mainnet ids) to exercise stateful paths.
  */
-export async function resolveCustodyWxaRow(
-  client: PerpClient,
-): Promise<CustodyWxaRow | null> {
+export async function resolveCustodyWxaRow(client: PerpClient): Promise<CustodyWxaRow | null> {
   if (custodyWxaRowCache && custodyWxaRowCacheClient === client) {
     return custodyWxaRowCache;
   }
@@ -62,9 +60,7 @@ export async function resolveCustodyWxaRow(
   return custodyWxaRowCache;
 }
 
-async function resolveCustodyWxaRowUncached(
-  client: PerpClient,
-): Promise<CustodyWxaRow | null> {
+async function resolveCustodyWxaRowUncached(client: PerpClient): Promise<CustodyWxaRow | null> {
   const network = resolveE2eNetwork();
   const canonicalOwner = e2eCanonicalWxaOwner(network);
   const canonicalIds = e2eCanonicalWxaAccountIds(network);
