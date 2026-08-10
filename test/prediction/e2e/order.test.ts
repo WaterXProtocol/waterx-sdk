@@ -20,7 +20,6 @@ import { fixtureGuards } from "../helpers/e2e-skip.ts";
 import {
   E_FILL_ABOVE_PRICE_CAP,
   E_FILL_BELOW_MIN_PRICE,
-  E_MARKET_ALREADY_RESOLVED,
   E_ORDER_EXPIRED,
   E_ORDER_NOT_EXPIRED,
 } from "../helpers/prediction-protocol-constants.ts";
@@ -58,9 +57,10 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
     guard.skipUnlessAccountReady(ctx);
     const owner = await guard.skipUnlessAccountOwner(ctx);
-    const marketBytes = fx.openMarketIdBytes ?? fx.marketIdBytes;
+    // Prefer openMarketIdBytes only — legacy marketIdBytes may be a resolved/claim market.
+    const marketBytes = fx.openMarketIdBytes;
     if (!marketBytes) {
-      guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
+      guard.skipFixableBySeed(ctx, "openMarketIdBytes (unresolved)", { stage: "place-open" });
     }
     const tx = new Transaction();
     placeOrder(client, tx, {
@@ -75,9 +75,9 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
     guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
     guard.skipUnlessAccountReady(ctx);
     const owner = await guard.skipUnlessAccountOwner(ctx);
-    const marketBytes = fx.openMarketIdBytes ?? fx.marketIdBytes;
+    const marketBytes = fx.openMarketIdBytes;
     if (!marketBytes) {
-      guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
+      guard.skipFixableBySeed(ctx, "openMarketIdBytes (unresolved)", { stage: "place-open" });
     }
     const tx = new Transaction();
     placeOrder(client, tx, {
@@ -130,24 +130,27 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
   });
 
   it("keeper fillOrder + cancelOrder on a seeded OPEN order", async (ctx) => {
-    const orderId = fx.openOrderId ?? fx.orderId;
+    // Require `openOrderId` only — never fall back to legacy `orderId`, which may be any
+    // OPEN order (including on a resolved market). Discovery must pin unresolved markets.
+    const orderId = fx.openOrderId;
     if (orderId === undefined) {
-      guard.skipFixableBySeed(ctx, "openOrderId", { stage: "place-open" });
+      guard.skipFixableBySeed(ctx, "openOrderId (OPEN on unresolved market)", {
+        stage: "place-open",
+      });
     }
     const txFill = new Transaction();
     fillOrder(client, txFill, { orderId, filledShares: 1n, filledCost: 1n });
     const fill = await simulateWithSender(client, txFill);
-    // Stale-seed guard: a seeded open order drifts out of fillability as testnet state moves —
-    // expiry passes (EOrderExpired), the market resolves (EMarketAlreadyResolved), or the live
-    // market quote crosses the order's fixed price cap (EFillAbovePriceCap / EFillBelowMinPrice).
-    // All are testnet-state conditions, not code bugs — skip (re-seed to refresh) rather than fail.
+    // Stale-seed guard: a valid openOrderId can still drift after discovery — expiry passes
+    // (EOrderExpired) or the live quote crosses the order's fixed price cap. Do **not** skip
+    // on EMarketAlreadyResolved: that means discovery selected a non-fillable fixture and
+    // should fail loudly (re-seed / fix discovery).
     const fillAbortCode =
       fill.$kind === "FailedTransaction"
         ? parseMoveAbortCode(simulateErrorMessage(fill))
         : undefined;
     if (
       fillAbortCode === E_ORDER_EXPIRED ||
-      fillAbortCode === E_MARKET_ALREADY_RESOLVED ||
       fillAbortCode === E_FILL_ABOVE_PRICE_CAP ||
       fillAbortCode === E_FILL_BELOW_MIN_PRICE
     ) {
@@ -166,9 +169,9 @@ describe(`order PTB simulate (${predictE2eNetwork})`, () => {
 
   it("adminPlaceOrderFor", async (ctx) => {
     guard.skipUnlessDefined(ctx, fx.accountId, "accountId");
-    const marketBytes = fx.openMarketIdBytes ?? fx.marketIdBytes;
+    const marketBytes = fx.openMarketIdBytes;
     if (!marketBytes) {
-      guard.skipFixableBySeed(ctx, "openMarketIdBytes", { stage: "place-open" });
+      guard.skipFixableBySeed(ctx, "openMarketIdBytes (unresolved)", { stage: "place-open" });
     }
     if (!fx.adminUsdCoinObjectId) {
       const hint =

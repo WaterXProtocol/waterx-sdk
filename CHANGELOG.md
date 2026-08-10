@@ -27,6 +27,10 @@ number alone.
   `WATERX_CONFIG_URL` `testnet.json` ↔ `mainnet.json` when the env URL disagrees
   with the CLI network (shared `waterxConfigUrlForNetwork` in `load-repo-env.ts`;
   `oracle:aggregates` uses the same helper).
+- Predict e2e fixtures: `openOrderId` / `openMarketId*` require an **unresolved**
+  market (#87); order PTBs no longer fall back to legacy `orderId` /
+  `marketIdBytes`. Keeper `fillOrder` does not skip on `EMarketAlreadyResolved`
+  (surfaces discovery/fixture bugs); seed markets that later resolve are dropped.
 
 ## [4.3.2] - 2026-08-05
 
