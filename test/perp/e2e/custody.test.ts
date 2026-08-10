@@ -12,7 +12,7 @@ import {
 } from "@waterx/sdk";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
+import { client, DUMMY_SENDER, e2eNetwork, resolveE2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
   creditPipelineSkipReason,
   CUSTODY_SIMULATE_AMOUNT,
@@ -140,7 +140,8 @@ describe.skipIf(!creditPipeline)(`custody negative simulate (${e2eNetwork})`, ()
 
   beforeAll(async () => {
     wxa = await resolveCustodyWxaRow(client);
-    if (!wxa) {
+    // Testnet-only: funded-probe fallback. Mainnet skips all-market scans (hookTimeout).
+    if (!wxa && resolveE2eNetwork() !== "mainnet") {
       const probe = await loadFundedProbe(client);
       if (probe) wxa = { accountId: probe.accountId, owner: probe.owner };
     }

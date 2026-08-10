@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 /**
  * Wrapper around `vitest run --project e2e` with `--testnet` / `--mainnet`.
- * Sets `WATERX_E2E_NETWORK` and strips network flags before forwarding to Vitest.
+ * Sets `WATERX_E2E_NETWORK` (and rewrites `WATERX_CONFIG_URL` `testnet.json` ↔
+ * `mainnet.json` when needed) and strips network flags before forwarding to Vitest.
  *
  * Forward all other argv to Vitest (paths, `-t`, `--coverage`, reporters, etc.).
  *
@@ -15,7 +16,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 loadRepoEnvFiles();
 
@@ -62,12 +63,14 @@ const vitestBin = path.resolve(
 
 const projects = predictOnly ? ["predict-e2e"] : predict ? ["e2e", "predict-e2e"] : ["e2e"];
 const vitestArgs = ["run", ...projects.flatMap((name) => ["--project", name]), ...forward];
+const configUrl = waterxConfigUrlForNetwork(network);
 
 const child = spawn(vitestBin, vitestArgs, {
   stdio: "inherit",
   env: {
     ...process.env,
     WATERX_E2E_NETWORK: network,
+    ...(configUrl ? { WATERX_CONFIG_URL: configUrl } : {}),
   },
 });
 

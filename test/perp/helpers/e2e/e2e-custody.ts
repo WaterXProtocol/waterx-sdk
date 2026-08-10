@@ -38,10 +38,33 @@ export function creditPipelineSkipReason(): string {
   return "waterx_credit / native_custody not in deployment config";
 }
 
-/** Prefer env wxa ids, then canonical owner mapping, then on-chain wxa discovery. */
+export type CustodyWxaRow = { accountId: string; owner: string };
+
+/** Process-lifetime memo — credit/custody suites call this from multiple `beforeAll`s. */
+let custodyWxaRowCache: Promise<CustodyWxaRow | null> | undefined;
+let custodyWxaRowCacheClient: PerpClient | undefined;
+
+/**
+ * Prefer env wxa ids, then canonical owner mapping, then (testnet only) on-chain wxa discovery.
+ *
+ * On **mainnet**, after env/canonical hints fail we return `null` instead of scanning every
+ * market for WLP/USDC balances — that path routinely exceeds the 180s `beforeAll` hookTimeout.
+ * Set `WATERX_E2E_WXA_ACCOUNT_ID` + `WATERX_E2E_WXA_OWNER` (mainnet ids) to exercise stateful paths.
+ */
 export async function resolveCustodyWxaRow(
   client: PerpClient,
-): Promise<{ accountId: string; owner: string } | null> {
+): Promise<CustodyWxaRow | null> {
+  if (custodyWxaRowCache && custodyWxaRowCacheClient === client) {
+    return custodyWxaRowCache;
+  }
+  custodyWxaRowCacheClient = client;
+  custodyWxaRowCache = resolveCustodyWxaRowUncached(client);
+  return custodyWxaRowCache;
+}
+
+async function resolveCustodyWxaRowUncached(
+  client: PerpClient,
+): Promise<CustodyWxaRow | null> {
   const network = resolveE2eNetwork();
   const canonicalOwner = e2eCanonicalWxaOwner(network);
   const canonicalIds = e2eCanonicalWxaAccountIds(network);
@@ -58,6 +81,11 @@ export async function resolveCustodyWxaRow(
     }
   }
 
+  // Mainnet: no built-in canonical wxa. Skip the multi-minute all-market WLP/USDC fallback.
+  if (network === "mainnet") {
+    return null;
+  }
+
   const wxa =
     (await discoverWxaAccountWithWlpBalance(client, 1n)) ??
     (await discoverWxaAccountWithUsdcForWlpMint(client, CUSTODY_SIMULATE_AMOUNT));
@@ -69,5 +97,9 @@ export async function resolveCustodyWxaRow(
 }
 
 export function custodyWxaSkipReason(): string {
+  const network = resolveE2eNetwork();
+  if (network === "mainnet") {
+    return "No mainnet wxa resolved — set WATERX_E2E_WXA_ACCOUNT_ID + WATERX_E2E_WXA_OWNER (mainnet has no canonical fallback / no all-market WXA scan)";
+  }
   return "No wxa account resolved (env WATERX_E2E_WXA_ACCOUNT_ID / WATERX_INTEGRATION_ACCOUNT_ID, canonical testnet account, or on-chain wxa discovery)";
 }
