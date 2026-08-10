@@ -31,6 +31,8 @@ number alone.
   market (#87); order PTBs no longer fall back to legacy `orderId` /
   `marketIdBytes`. Keeper `fillOrder` does not skip on `EMarketAlreadyResolved`
   (surfaces discovery/fixture bugs); seed markets that later resolve are dropped.
+  Market resolution lookup is tri-state (`true` / `false` / unknown) — RPC failures
+  no longer count as unresolved; env openOrder fallback ignores legacy `orderId`.
 
 ## [4.3.2] - 2026-08-05
 

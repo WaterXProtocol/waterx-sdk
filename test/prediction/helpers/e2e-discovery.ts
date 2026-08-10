@@ -167,15 +167,20 @@ async function accountHasData(client: PredictClient, accountId: string): Promise
   }
 }
 
-async function isMarketResolved(
+/**
+ * Market resolution lookup — **tri-state**, fail-closed for fixture selection:
+ * - `true` / `false` when `getMarketById` succeeds
+ * - `undefined` when RPC/lookup fails (unknown — do **not** treat as unresolved)
+ */
+async function marketResolvedState(
   client: PredictClient,
   marketIdBytes: Uint8Array,
-): Promise<boolean> {
+): Promise<boolean | undefined> {
   try {
     const m = await getMarketById(client, { marketId: marketIdBytes });
     return m.resolved;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -307,9 +312,10 @@ async function scanAccountPositions(
     }
     if (p.status === "PENDING_CLOSE") out.pendingClose.push(p);
     else if (p.status === "OPEN") {
-      const resolved = await isMarketResolved(client, p.marketId);
-      if (resolved) out.claimable.push(p);
-      else out.open.push(p);
+      const resolved = await marketResolvedState(client, p.marketId);
+      if (resolved === true) out.claimable.push(p);
+      else if (resolved === false) out.open.push(p);
+      // unknown (lookup failed) — skip; do not guess open vs claimable
     }
     if (id === 0n) break;
   }
@@ -336,7 +342,7 @@ async function scanAccountOpenOrders(
       o &&
       o.accountId === accountId &&
       o.kind === "OPEN" &&
-      !(await isMarketResolved(client, o.marketId))
+      (await marketResolvedState(client, o.marketId)) === false
     ) {
       out.push(o);
     }
@@ -409,15 +415,15 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
 
   if (seed?.openMarketIdHex) {
     const bytes = hexToBytes(seed.openMarketIdHex);
-    // Seed may lag testnet — drop if the market has since resolved.
-    if (!(await isMarketResolved(client, bytes))) {
+    // Seed may lag testnet — only accept when lookup confirms still unresolved.
+    if ((await marketResolvedState(client, bytes)) === false) {
       openMarketIdHex = seed.openMarketIdHex;
       openMarketIdBytes = bytes;
     }
   }
   if (seed?.claimMarketIdHex) {
     const bytes = hexToBytes(seed.claimMarketIdHex);
-    if (await isMarketResolved(client, bytes)) {
+    if ((await marketResolvedState(client, bytes)) === true) {
       claimMarketIdHex = seed.claimMarketIdHex;
       claimMarketIdBytes = bytes;
     }
@@ -467,7 +473,7 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
         o &&
         o.accountId === accountId &&
         o.kind === "OPEN" &&
-        !(await isMarketResolved(client, o.marketId))
+        (await marketResolvedState(client, o.marketId)) === false
       ) {
         openOrderId = o.orderId;
       }
@@ -484,7 +490,9 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
     if (seed?.claimPositionId) {
       const p = await loadPosition(client, BigInt(seed.claimPositionId));
       if (p && p.accountId === accountId && p.status === "OPEN") {
-        if (await isMarketResolved(client, p.marketId)) claimablePositionId = p.positionId;
+        if ((await marketResolvedState(client, p.marketId)) === true) {
+          claimablePositionId = p.positionId;
+        }
       }
     }
     const nowMs = BigInt(Date.now());
@@ -631,8 +639,9 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
 
   // ----- Fallback for accounts with pinned env but unscanned content --------
   // Only probe an *unresolved* market for openOrderId (never claimMarketIdBytes).
+  // Gate on `openOrderId` alone — legacy `orderId` must not block a valid open fixture.
   if (env.accountId && openMarketIdBytes) {
-    if (orderId === undefined && openOrderId === undefined) {
+    if (openOrderId === undefined) {
       try {
         const ids = await getAccountOrderIdsByMarketId(client, {
           accountId,
@@ -644,7 +653,7 @@ async function discoverFixturesUncached(client: PredictClient): Promise<E2eFixtu
             o &&
             o.accountId === accountId &&
             o.kind === "OPEN" &&
-            !(await isMarketResolved(client, o.marketId))
+            (await marketResolvedState(client, o.marketId)) === false
           ) {
             openOrderId = id;
             break;
