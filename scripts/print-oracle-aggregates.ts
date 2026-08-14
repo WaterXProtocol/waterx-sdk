@@ -17,7 +17,7 @@ import {
 } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import type { Network } from "../src/perp/constants.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 type OutputFormat = "pretty" | "raw";
 
@@ -112,19 +112,6 @@ function resolveOracleSource(cliValue: string | undefined): OracleSource[] | und
 function resolvePythApiKey(): string | undefined {
   const raw = process.env.PYTH_API_KEY?.trim();
   return raw || undefined;
-}
-
-/** Swap \`testnet.json\` ↔ \`mainnet.json\` when CLI network disagrees with the env URL. */
-function waterxConfigUrlForNetwork(network: Network): string | undefined {
-  const raw = waterxConfigUrlFromEnv();
-  if (!raw) return undefined;
-  if (network === "MAINNET" && /\/testnet\.json$/i.test(raw)) {
-    return raw.replace(/\/testnet\.json$/i, "/mainnet.json");
-  }
-  if (network === "TESTNET" && /\/mainnet\.json$/i.test(raw)) {
-    return raw.replace(/\/mainnet\.json$/i, "/testnet.json");
-  }
-  return raw;
 }
 
 function parseArgs(argv: string[]): {

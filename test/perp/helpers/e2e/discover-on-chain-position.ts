@@ -759,8 +759,27 @@ function envWxaAccountIdHints(): string[] {
 }
 
 /** Prefer integration-maintained wxa account, then redeem queue / market positions / funded probe. */
+let wxaCandidateCache: Promise<string[]> | undefined;
+let wxaCandidateCacheClient: PerpClient | undefined;
+
 export async function collectWxaAccountIdCandidates(client: PerpClient): Promise<string[]> {
+  if (wxaCandidateCache && wxaCandidateCacheClient === client) {
+    return wxaCandidateCache;
+  }
+  wxaCandidateCacheClient = client;
+  wxaCandidateCache = collectWxaAccountIdCandidatesUncached(client);
+  return wxaCandidateCache;
+}
+
+/**
+ * Build wxa account-id candidates for stored-balance discovery.
+ *
+ * On **mainnet**, skip all-market position scan + funded probe (multi-minute on public gRPC);
+ * keep env hints + redeem-queue recipients only. Testnet keeps the full fallback.
+ */
+async function collectWxaAccountIdCandidatesUncached(client: PerpClient): Promise<string[]> {
   const candidates: string[] = [...envWxaAccountIdHints()];
+  const network = resolveE2eNetwork();
 
   try {
     const { requests } = await getRedeemRequests(client, { cursor: 0n, pageSize: 50n });
@@ -771,21 +790,23 @@ export async function collectWxaAccountIdCandidates(client: PerpClient): Promise
     /* ignore */
   }
 
-  try {
-    const perMarket = await discoverPositionsForAllActiveMarkets(client);
-    for (const hit of perMarket.values()) {
-      if (hit?.accountObjectAddress) candidates.push(hit.accountObjectAddress);
-      if (candidates.length >= WXA_ACCOUNT_CANDIDATE_CAP) break;
+  if (network !== "mainnet") {
+    try {
+      const perMarket = await discoverPositionsForAllActiveMarkets(client);
+      for (const hit of perMarket.values()) {
+        if (hit?.accountObjectAddress) candidates.push(hit.accountObjectAddress);
+        if (candidates.length >= WXA_ACCOUNT_CANDIDATE_CAP) break;
+      }
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
-  }
 
-  try {
-    const probe = await discoverFundedProbe(client, { minAccountUsdcBalance: 20_000_000n });
-    if (probe) candidates.push(probe.accountObjectAddress);
-  } catch {
-    /* ignore */
+    try {
+      const probe = await discoverFundedProbe(client, { minAccountUsdcBalance: 20_000_000n });
+      if (probe) candidates.push(probe.accountObjectAddress);
+    } catch {
+      /* ignore */
+    }
   }
 
   const seen = new Set<string>();
