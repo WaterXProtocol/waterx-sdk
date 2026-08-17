@@ -43,8 +43,11 @@ import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
 import {
   feedWaterxRule,
+  feedWaterxRuleWithProof,
   waterxEnvelopeOf,
+  waterxLeavesOf,
   type WaterxSignedEnvelope,
+  type WaterxSignedLeaf,
 } from "./rules/waterx-rule.ts";
 
 /**
@@ -125,6 +128,9 @@ export function aggregateTicker(
     ticker: string;
     priceInfoObjectId?: string;
     lazerUpdate?: TransactionArgument;
+    /** This ticker's signed Merkle leaf — the default waterx shape. */
+    waterxLeaf?: WaterxSignedLeaf;
+    /** Batch envelope covering this ticker — the fallback waterx shape. */
     waterxEnvelope?: WaterxSignedEnvelope;
   },
 ): void {
@@ -146,17 +152,24 @@ export function aggregateTicker(
     fed = true;
   }
 
-  if (args.waterxEnvelope !== undefined) {
-    // waterx_rule::collect_batch_latest verifies the batch signature and feeds
-    // this collector's symbol from the batch. If the ticker's aggregator does
-    // not (yet) weight `WaterxRule`, the contribution is silently dropped
-    // on-chain — feeding ahead of the weight migration is safe for THIS tx.
-    // CAVEAT (unlike lazer): the feed call records a per-symbol signed-
-    // timestamp high-water mark REGARDLESS of weights, and a replayed
-    // timestamp ABORTS (`EReplayedSignature`, audit F-014) — so two PTBs
-    // carrying the same envelope for the same symbol cannot both land; the
-    // second aborts even where waterx is unweighted. See WaterxRule's module
-    // header.
+  // One waterx leg at most, and the leaf shape wins: both entries record the
+  // same per-symbol signed-timestamp high-water mark and feed the same rule
+  // witness into this collector, so emitting both would make the second one
+  // abstain on its own predecessor's mark for no gain. `refreshOraclePrices`
+  // only ever supplies one; a caller that passes both gets the cheaper leg.
+  if (args.waterxLeaf !== undefined) {
+    // waterx_rule::collect_single_with_proof re-derives the snapshot root from
+    // this leaf + its proof, verifies the enclave signature over that root, and
+    // feeds the price. If the ticker's aggregator does not (yet) weight
+    // `WaterxRule`, the contribution is silently dropped on-chain — feeding
+    // ahead of the weight migration is safe. See WaterxRule's module header for
+    // the abort-vs-abstain split.
+    feedWaterxRuleWithProof(tx, host, collector, args.waterxLeaf);
+    fed = true;
+  } else if (args.waterxEnvelope !== undefined) {
+    // Fallback shape: collect_batch_latest re-verifies the WHOLE batch
+    // signature (every item rebuilt in-PTB) and feeds this collector's symbol
+    // out of it. Only reached against a quote-center with no leaf route.
     feedWaterxRule(tx, host, collector, args.waterxEnvelope);
     fed = true;
   }
@@ -302,11 +315,11 @@ export async function refreshOraclePrices(
 ): Promise<void> {
   if (tickers.length === 0) return;
   // Dedupe the caller's list (order-preserving): a repeated ticker would
-  // otherwise aggregate TWICE in this one PTB — wasted gas for every rule,
-  // and a hard ABORT under waterx: the second `collect_batch_latest` carries
-  // the same envelope, and the on-chain per-symbol replay guard rejects an
-  // already-accepted signed timestamp (`EReplayedSignature`, F-014) even
-  // inside a single transaction.
+  // otherwise aggregate TWICE in this one PTB — wasted gas for every rule, and
+  // under waterx the second collect would be dead weight on top of that: the
+  // on-chain per-symbol replay guard (F-014) sees its own predecessor's
+  // high-water mark from earlier in this same transaction and abstains, so the
+  // repeat pays full verification cost to contribute nothing.
   tickers = [...new Set(tickers)];
 
   // price_info_object lookup for every ticker with a pyth_rule.feeds entry —
@@ -389,10 +402,12 @@ export async function refreshOraclePrices(
   // leg needs per-ticker data from its update leg must decide its carry here
   // — falling through silently would starve its weighted tickers on-chain.
   const lazerUpdateByTicker = new Map<string, TransactionArgument>();
-  // Signed batch envelope per waterx-served ticker. Unlike Lazer's shared PTB
-  // handle, waterx's verify+feed is bundled into `collect_batch_latest` in the
-  // per-ticker feed leg, so its `buildUpdateCalls` emits nothing and the
-  // envelope is carried straight from the group's fetched data.
+  // Signed waterx data per served ticker — a per-symbol Merkle leaf normally, a
+  // shared batch envelope on the fallback shape. Unlike Lazer's shared PTB
+  // handle, waterx's verify+feed is bundled into the per-ticker collect call, so
+  // its `buildUpdateCalls` emits nothing and the signed data is carried straight
+  // from the group's fetched data.
+  const waterxLeafByTicker = new Map<string, WaterxSignedLeaf>();
   const waterxEnvelopeByTicker = new Map<string, WaterxSignedEnvelope>();
   for (const [i, group] of groups.entries()) {
     const data = dataByGroup[i] ?? null;
@@ -416,8 +431,20 @@ export async function refreshOraclePrices(
         break;
       case "waterx_rule": {
         // waterx_rule emits no shared handle (verify+feed is bundled into the
-        // per-ticker `collect_batch_latest`), so the envelope is carried
-        // straight from this group's fetched data to the feed leg below.
+        // per-ticker collect call), so the signed data is carried straight from
+        // this group's fetched data to the feed leg below. Leaves are per-symbol
+        // and indexed BY symbol — never fanned out across the group like the
+        // envelope, since each leaf only verifies for its own symbol
+        // (`ECollectorSymbolMismatch`). A leaf for a symbol outside this group is
+        // dropped rather than carried: the feed leg is keyed by ticker anyway.
+        const leaves = waterxLeavesOf(data);
+        if (leaves) {
+          const served = new Set(group.tickers);
+          for (const leaf of leaves) {
+            if (served.has(leaf.symbol)) waterxLeafByTicker.set(leaf.symbol, leaf);
+          }
+          break;
+        }
         const envelope = waterxEnvelopeOf(data);
         if (envelope) {
           for (const ticker of group.tickers) waterxEnvelopeByTicker.set(ticker, envelope);
@@ -437,6 +464,7 @@ export async function refreshOraclePrices(
       ticker,
       priceInfoObjectId: priceInfoByTicker.get(ticker),
       lazerUpdate: lazerUpdateByTicker.get(ticker),
+      waterxLeaf: waterxLeafByTicker.get(ticker),
       waterxEnvelope: waterxEnvelopeByTicker.get(ticker),
     });
   }

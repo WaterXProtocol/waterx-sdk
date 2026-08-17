@@ -196,7 +196,7 @@ then one aggregate:
 collector = oracle::new_collector(ticker)
 [pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)]
 [pyth_lazer_rule::feed(collector, …, verifiedUpdate)]   // selected source produced one
-[waterx_rule::collect_batch_latest(collector, …, envelope)]  // verify + feed in ONE call
+[waterx_rule::collect_single_with_proof(collector, …, leaf, proof)]  // verify + feed in ONE call
 [supra_rule::feed / constant_rule::feed]
 oracle::aggregate(oracle, collector, clock)
 ```
@@ -209,9 +209,18 @@ aborts `EMissingPriceSource` when a weighted rule is absent from the collector
 selected source's off-chain fetch + on-chain update leg, then the per-ticker
 feeds + aggregate, in one call. Which source runs is `oracleSource`: Hermes
 fetch + Pyth update for `'pyth_rule'`, a signed Lazer update for
-`'pyth_lazer_rule'`, a quote-center batch envelope for `'waterx_rule'` (that one
-emits no separate update leg — verify and feed are bundled into
-`collect_batch_latest`).
+`'pyth_lazer_rule'`, a quote-center signed Merkle leaf per ticker for
+`'waterx_rule'` (that one emits no separate update leg — verify and feed are
+bundled into `collect_single_with_proof`).
+
+The waterx leg has TWO wire shapes and prefers the leaf: `GET
+/v1/quotes/leaves` gives one independently-verifiable leaf per symbol (leaf +
+proof + the enclave's signature over the snapshot root), so a PTB carries ONE
+`new_batch_item` whatever the snapshot's width. `GET /v1/quotes/update` gives one
+signature over a whole batch, which is indivisible — `collect_batch_latest` needs
+every item rebuilt in-PTB to re-verify it (29 mainnet feeds ⇒ 58 extra moveCalls
+per trade). The envelope path stays only as the fallback for a quote-center with
+no leaf route (404), and for whole-batch pushes.
 
 ### WLP pool
 

@@ -45,10 +45,11 @@ export interface CreateClientOptions extends LoadConfigOptions {
    *   and a `pythApiKey` (Lazer is auth-first); Lazer infra lives in the
    *   source's own `LAZER_INFRA` table.
    * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
-   *   ed25519-signed batches): ONE envelope covering the build's tickers,
-   *   verified AND fed by a single `collect_batch_latest` per collector. No
-   *   credential and no per-update fee; needs `packages.waterx_rule` with
-   *   feeds. Quote-center infra lives in the source's own `WATERX_INFRA`
+   *   ed25519-signed prices): one signed Merkle LEAF per ticker, verified AND
+   *   fed by a single `collect_single_with_proof` per collector (falling back to
+   *   one whole-batch envelope + `collect_batch_latest` against a quote-center
+   *   with no leaf route). No credential and no per-update fee; needs
+   *   `packages.waterx_rule` with feeds. Quote-center infra lives in the source's own `WATERX_INFRA`
    *   table; endpoint/transport overridable via
    *   {@link CreateClientOptions.waterxEndpoint} /
    *   {@link CreateClientOptions.waterxFetch} — the browser-CORS proxy hook,
@@ -85,15 +86,16 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * Quote-center base URL for `oracleSource: 'waterx_rule'` — overrides the
    * source's own per-network `WATERX_INFRA` default.
    *
-   * This is the one source a BROWSER fetches itself (the signed envelope is
-   * pulled from the page), so it is bound by the quote-center deployment's CORS
+   * This is the one source a BROWSER fetches itself (the signed price is pulled
+   * from the page), so it is bound by the quote-center deployment's CORS
    * allowlist. A front end whose origin is not allowed — or one that must route
    * egress through its own backend — points this at a same-origin proxy that
-   * forwards `GET /v1/quotes/update`. Unused by the Pyth sources.
+   * forwards `GET /v1/quotes/leaves` (and `GET /v1/quotes/update`, the fallback
+   * route). Unused by the Pyth sources.
    *
    * An absolute URL. Any base PATH is preserved (`joinEndpointPath`), so
    * `https://app.example/api/quote-center` fetches
-   * `https://app.example/api/quote-center/v1/quotes/update` — a proxy route
+   * `https://app.example/api/quote-center/v1/quotes/leaves` — a proxy route
    * survives instead of being rewritten to the origin root.
    */
   waterxEndpoint?: string;

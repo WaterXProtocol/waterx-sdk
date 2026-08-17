@@ -107,7 +107,8 @@ export interface WaterxRuleFeedEntry {
 /**
  * `waterx_rule` deployment entry — the first-party Nautilus-TEE oracle rule.
  * Read by `WaterxRule` (`rules/waterx-rule.ts`): `feeds` for ticker support,
- * `config`/`enclave_config`/`enclave` for the `collect_batch_latest` call,
+ * `config`/`enclave_config`/`enclave` for the collect call
+ * (`collect_single_with_proof`, or `collect_batch_latest` on the fallback shape),
  * `published_at` for the package address. The off-chain signed price is pulled
  * from the quote-center (endpoint from the rule-owned `WATERX_INFRA` table in
  * `rules/waterx-rule.ts`), not this JSON.
@@ -222,7 +223,7 @@ export interface WaterxAccessConfig {
    * Quote-center base URL override (`waterxEndpoint` create option). A base
    * PATH is preserved — the rule appends via `joinEndpointPath`, so
    * `https://app.example/api/quote-center` resolves to
-   * `…/api/quote-center/v1/quotes/update` and a proxy route is not rewritten
+   * `…/api/quote-center/v1/quotes/leaves` and a proxy route is not rewritten
    * away. A trailing slash is trimmed.
    */
   endpoint?: string;

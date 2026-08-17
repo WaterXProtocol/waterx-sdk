@@ -197,7 +197,7 @@ export interface ClientCreateOptions {
    * the quote-center deployment's CORS allowlist: a front end whose origin is
    * not allowed points this at its own same-origin proxy. An absolute URL whose
    * base PATH is preserved — `https://app.example/api/quote-center` fetches
-   * `…/api/quote-center/v1/quotes/update`. Unused by the Pyth sources.
+   * `…/api/quote-center/v1/quotes/leaves`. Unused by the Pyth sources.
    */
   waterxEndpoint?: string;
   /**
