@@ -203,17 +203,68 @@ function isWaterxLeafPayloadShape(payload: unknown): payload is WaterxLeafPayloa
   return Array.isArray(leaves) && leaves.every(isSignedLeafShape);
 }
 
+/** Every u64 field of a leaf — each one is signed, so each must be present and exact. */
+const LEAF_U64_FIELDS = [
+  "price_timestamp_ms",
+  "price_n",
+  "price_scale",
+  "confidence_n",
+  "confidence_scale",
+  "max_source_deviation_bps",
+  "signed_timestamp_ms",
+] as const;
+
+/**
+ * FULL structural check on a leaf, not just the fields the feed leg happens to
+ * touch first.
+ *
+ * Every field here is either part of the BCS bytes the enclave signed (so a
+ * missing one means the rebuilt item cannot match) or the signature/proof
+ * material itself. A partial guard let a 200 that omitted, say, `ticker` pass as
+ * a valid leaf and fail LATER, mid-PTB-build, as `Parameter ticker is required`
+ * — after `assertCoverage` had already declared the response good, and while the
+ * caller's `tx` was already being mutated. `parseSignedLeaves` promises to reject
+ * a malformed leaf before any PTB is touched; this is what makes that true.
+ */
+/** `true` iff `hex` (± `0x`) is exactly `bytes` bytes of hex. */
+function isHexOfBytes(hex: unknown, bytes: number): boolean {
+  if (typeof hex !== "string") return false;
+  const body = hex.startsWith("0x") ? hex.slice(2) : hex;
+  return new RegExp(`^[0-9a-fA-F]{${bytes * 2}}$`).test(body);
+}
+
 function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
-  const l = leaf as WaterxSignedLeaf | null;
-  return (
-    typeof l === "object" &&
-    l !== null &&
-    typeof l.symbol === "string" &&
-    typeof l.signature === "string" &&
-    typeof l.signed_timestamp_ms === "bigint" &&
-    Array.isArray(l.proof) &&
-    l.proof.every((p) => typeof p === "string")
-  );
+  const l = leaf as Record<string, unknown> | null;
+  if (typeof l !== "object" || l === null) return false;
+  if (typeof l.symbol !== "string" || l.symbol === "") return false;
+  if (typeof l.ticker !== "string" || l.ticker === "") return false;
+  if (typeof l.method !== "string" || l.method === "") return false;
+  // `num_sources` is a u8, and this guard runs at TWO stages: on the freshly
+  // revived object (where every JSON integer, including this one, is a bigint)
+  // and again on a normalized payload from `narrowUpdateData` / a consumer cache
+  // (where `parseSignedLeaves` has coerced it to a number). Both are valid here;
+  // only the domain matters.
+  const n = l.num_sources;
+  if (typeof n === "bigint") {
+    if (n < 0n || n > 255n) return false;
+  } else if (typeof n === "number") {
+    if (!Number.isInteger(n) || n < 0 || n > 255) return false;
+  } else {
+    return false;
+  }
+  // `sources` is a vector<u64>: exact bigints, like every other signed integer.
+  if (!Array.isArray(l.sources) || l.sources.length === 0) return false;
+  if (l.sources.some((s) => typeof s !== "bigint" || s < 0n)) return false;
+  for (const field of LEAF_U64_FIELDS) {
+    const v = l[field];
+    if (typeof v !== "bigint" || v < 0n) return false;
+  }
+  // ed25519 is always 64 bytes and the root is always a 32-byte keccak256; a
+  // wrong-length signature is an on-chain abort, so it is rejected here.
+  if (!isHexOfBytes(l.signature, 64)) return false;
+  if (!isHexOfBytes(l.root, 32)) return false;
+  if (!Array.isArray(l.proof) || l.proof.some((p) => typeof p !== "string")) return false;
+  return true;
 }
 
 /**
@@ -225,6 +276,9 @@ function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
 function isWaterxUpdatePayloadShape(payload: unknown): payload is WaterxUpdatePayload {
   return isWaterxLeafPayloadShape(payload) || isWaterxEnvelopePayloadShape(payload);
 }
+
+/** A JSON number token that is lexically an integer: no `.`, no `e`/`E`. */
+const INTEGER_TOKEN = /^-?\d+$/;
 
 /**
  * `JSON.parse` with every integer decoded as an exact `bigint`.
@@ -239,15 +293,29 @@ function isWaterxUpdatePayloadShape(payload: unknown): payload is WaterxUpdatePa
  * (`BigInt(number)`); a value ABOVE it throws loudly here rather than silently
  * corrupting the payload into an on-chain abort.
  *
- * Non-integer numbers (the display-only `price` / `confidence` floats) pass
- * through untouched — they are not part of any signed byte string.
+ * Integrality is decided from the SOURCE TOKEN, never from the parsed value: a
+ * display float can be lexically `0.0` while `JSON.parse` hands back the number
+ * `0`, which `Number.isInteger` accepts — and `BigInt("0.0")` throws
+ * `SyntaxError`. The leaf endpoint really does emit that (Rust `f64` serializes
+ * a whole number as `0.0`), so keying off the value crashed every fetch that
+ * included, say, a `confidence: 0.0` leaf. Exponent tokens (`1e3`) throw the
+ * same way. Only `-?\d+` becomes a `bigint`; every other numeric token stays a
+ * number, which is right for the display-only `price` / `confidence` fields —
+ * they are not part of any signed byte string.
  */
 function parseWithExactIntegers(text: string, what: string): unknown {
   return JSON.parse(
     text,
     (_key: string, value: unknown, context?: { source?: string }): unknown => {
-      if (typeof value !== "number" || !Number.isInteger(value)) return value;
-      if (context?.source !== undefined) return BigInt(context.source);
+      if (typeof value !== "number") return value;
+      const token = context?.source;
+      if (token !== undefined) {
+        return INTEGER_TOKEN.test(token) ? BigInt(token) : value;
+      }
+      // No JSON source access on this runtime: fall back to the parsed value.
+      // A display float that happens to be whole (`0.0` → `0`) becomes a bigint
+      // here, which is harmless — no signed field is read off those two.
+      if (!Number.isInteger(value)) return value;
       if (!Number.isSafeInteger(value)) {
         throw new Error(
           `waterx ${what} carries an integer above 2^53 and this runtime lacks JSON ` +
@@ -299,9 +367,7 @@ export function parseSignedEnvelope(text: string): WaterxSignedEnvelope {
  * here. Same reason the keeper's Rust builder checks the length.
  */
 function assertHash32(symbol: string, sibling: string): void {
-  // 32 bytes = 64 hex chars, optionally 0x-prefixed.
-  const hex = sibling.startsWith("0x") ? sibling.slice(2) : sibling;
-  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+  if (!isHexOfBytes(sibling, 32)) {
     throw new Error(
       `WaterX leaf for ${symbol} carries a proof element that is not a 32-byte hex hash: ` +
         `'${sibling}'`,
@@ -319,9 +385,13 @@ export function parseSignedLeaves(text: string): WaterxSignedLeaf[] {
   if (!Array.isArray(raw.leaves)) {
     throw new Error("WaterX quote-center returned a malformed leaf response (expected { leaves })");
   }
-  return raw.leaves.map((leaf) => {
+  return raw.leaves.map((leaf, i) => {
     if (!isSignedLeafShape(leaf)) {
-      throw new Error("WaterX quote-center returned a malformed signed leaf");
+      // Name the leaf when it carried a usable symbol — a coverage gap and a
+      // malformed field read very differently to whoever is paging through this.
+      const named = (leaf as { symbol?: unknown })?.symbol;
+      const which = typeof named === "string" && named !== "" ? `'${named}'` : `at index ${i}`;
+      throw new Error(`WaterX quote-center returned a malformed signed leaf ${which}`);
     }
     for (const sibling of leaf.proof) assertHash32(leaf.symbol, sibling);
     return { ...leaf, num_sources: Number(leaf.num_sources) };

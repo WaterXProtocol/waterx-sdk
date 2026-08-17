@@ -16,8 +16,49 @@ number alone.
 
 ## [Unreleased]
 
+### Changed
+
+- **`waterx_rule` now feeds prices through `collect_single_with_proof`, not
+  `collect_batch_latest` (#88).** `WaterxRule.fetchUpdateData` pulls one signed
+  Merkle leaf per ticker (`GET /v1/quotes/leaves`) instead of one batch envelope,
+  and the feed leg submits that single leaf with its proof. A batch envelope's
+  signature covers the WHOLE item vector, so the old path had to rebuild every
+  item in-PTB even to use one symbol's price — 29 items (58 moveCalls, ~320 pure
+  inputs) per trade against the mainnet registry, three short of the on-chain
+  `MAX_BATCH_SIZE` of 32. The leaf path costs one item plus ~log2(n) proof
+  hashes, whatever the snapshot's width.
+  - **Automatic fallback, no coordinated deploy needed:** a quote-center with no
+    leaf route (404) transparently gets the previous envelope +
+    `collect_batch_latest` behavior. Every other status throws instead of falling
+    back (a 5xx means the service is degraded and the envelope route would fail
+    the same way; note 501 cannot signal a missing route, since `fetchWithPolicy`
+    classifies all 5xx as retryable).
+  - `narrowUpdateData` now SUBSETS leaves per symbol (each verifies
+    independently), so a whole-universe prefetch cache yields one leaf per trade
+    instead of the entire basket. Envelopes stay indivisible.
+  - `aggregateTicker` takes a new optional `waterxLeaf`; `waterxEnvelope` still
+    works and is used for the fallback. Passing both prefers the leaf.
+  - Regenerated `src/generated/waterx_rule` — the committed bindings predated the
+    Merkle entrypoints, so `collectSingleWithProof` did not exist.
+
+### Added
+
+- `waterxLeavesOf`, `parseSignedLeaves`, `MERKLE_ROOT_INTENT`, and the
+  `WaterxSignedLeaf` / `WaterxLeafPayload` / `WaterxEnvelopePayload` /
+  `WaterxUpdatePayload` types on the root, `@waterx/sdk/perp`, and
+  `@waterx/sdk/oracle` surfaces (#88) — a prefetch cache implementing
+  `UpdateDataProvider` needs the leaf accessor next to `waterxEnvelopeOf`, since
+  leaves are now the default wire shape.
+
 ### Fixed
 
+- Signed-integer JSON parsing no longer crashes on a display float whose token is
+  lexically integral (#88). `parseWithExactIntegers` decided integrality from the
+  PARSED value, so a `"confidence": 0.0` (which Rust `f64` really does emit, and
+  `JSON.parse` hands back as the number `0`) reached `BigInt("0.0")` and threw
+  `SyntaxError` — failing every fetch that included such a leaf before a PTB was
+  built. Integrality is now decided from the source token (`-?\d+`), leaving
+  decimal and exponent tokens as numbers.
 - E2E mainnet discovery no longer burns 180s+ `beforeAll` hooks when env/canonical
   wxa hints miss (#87): `resolveCustodyWxaRow` skips the all-market WLP/USDC
   fallback on mainnet (set `WATERX_E2E_WXA_ACCOUNT_ID` + `WATERX_E2E_WXA_OWNER`

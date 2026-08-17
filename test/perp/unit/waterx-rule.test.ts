@@ -66,27 +66,42 @@ function rawEnvelope(symbols: string[] = ["BTCUSD"]): Record<string, unknown> {
 }
 
 /**
- * Server-shape `/v1/quotes/leaves` body. Carries the display-only `price` /
- * `confidence` floats the real endpoint emits, so the parser is exercised
- * against a body that mixes floats with the exact-integer fields.
+ * Server-shape `/v1/quotes/leaves` body as RAW TEXT — deliberately not an object
+ * run through `JSON.stringify`.
+ *
+ * The display-only `price` / `confidence` are Rust `f64`s, and serde emits a
+ * whole-numbered one as `0.0`. `JSON.stringify({ confidence: 0.0 })` emits `0`,
+ * so an OBJECT fixture cannot produce that token at all — which is precisely how
+ * a `BigInt("0.0")` crash in the reviver reached a deployed endpoint with a green
+ * test suite. Every leaf test now runs against text the service could actually
+ * have sent, including the `0.0` and exponent forms.
  */
+function rawLeavesText(symbols: string[] = ["BTCUSD"], proof: string[] = [HASH_HEX]): string {
+  const proofJson = JSON.stringify(proof);
+  const leaves = symbols.map(
+    (symbol) => `{
+      "symbol": "${symbol}", "ticker": "${symbol}T",
+      "price": 63700.0, "confidence": 0.0,
+      "price_n": 63700000000000, "price_scale": 1000000000,
+      "confidence_n": 10000000000, "confidence_scale": 1000000000,
+      "sources": [2, 3, 4], "method": "median",
+      "num_sources": 3, "max_source_deviation_bps": 0,
+      "price_timestamp_ms": 1784799999000,
+      "signed_timestamp_ms": 1784800000000,
+      "root": "${HASH_HEX}", "proof": ${proofJson},
+      "signature": "${SIG_HEX}",
+      "enclave_pubkey": "${"cd".repeat(32)}", "enclave_version": 1
+    }`,
+  );
+  return `{"leaves":[${leaves.join(",")}]}`;
+}
+
+/** The same body as a mutable object, for tests that tamper with a field. */
 function rawLeaves(
   symbols: string[] = ["BTCUSD"],
   proof: string[] = [HASH_HEX],
 ): Record<string, unknown> {
-  return {
-    leaves: symbols.map((symbol) => ({
-      ...rawItem(symbol),
-      price: 63_700.0,
-      confidence: 10.0,
-      signed_timestamp_ms: 1_784_800_000_000,
-      root: HASH_HEX,
-      proof,
-      signature: SIG_HEX,
-      enclave_pubkey: "cd".repeat(32),
-      enclave_version: 1,
-    })),
-  };
+  return JSON.parse(rawLeavesText(symbols, proof)) as Record<string, unknown>;
 }
 
 /** The parsed (bigint-typed) envelope, for direct feed / narrow tests. */
@@ -99,12 +114,15 @@ function sampleLeaves(
   symbols: string[] = ["BTCUSD"],
   proof: string[] = [HASH_HEX],
 ): WaterxSignedLeaf[] {
-  return parseSignedLeaves(JSON.stringify(rawLeaves(symbols, proof)));
+  return parseSignedLeaves(rawLeavesText(symbols, proof));
 }
 
 interface MockRoute {
   status?: number;
+  /** Object body — stringified. Use `text` when the exact token matters. */
   body?: unknown;
+  /** Verbatim response text (wire-faithful float tokens, malformed JSON, …). */
+  text?: string;
 }
 
 /**
@@ -120,7 +138,8 @@ function mockQuoteCenter(routes: {
 }): ReturnType<typeof vi.spyOn> {
   const respond = (route: MockRoute | undefined): Response => {
     const status = route?.status ?? (route ? 200 : 404);
-    const text = route?.body === undefined ? "Not Found" : JSON.stringify(route.body);
+    const text =
+      route?.text ?? (route?.body === undefined ? "Not Found" : JSON.stringify(route.body));
     return {
       ok: status >= 200 && status < 300,
       status,
@@ -135,9 +154,9 @@ function mockQuoteCenter(routes: {
   }) as ReturnType<typeof vi.spyOn>;
 }
 
-/** The happy default: the quote-center serves leaves. */
+/** The happy default: the quote-center serves leaves, as wire-faithful text. */
 function mockLeafRoute(symbols: string[] = ["BTCUSD"]): ReturnType<typeof vi.spyOn> {
-  return mockQuoteCenter({ leaves: { body: rawLeaves(symbols) } });
+  return mockQuoteCenter({ leaves: { text: rawLeavesText(symbols) } });
 }
 
 /** An older quote-center: no leaf route, envelope only. */
@@ -290,6 +309,79 @@ describe("WaterxRule — port", () => {
     expect(leaf.signed_timestamp_ms).toBe(1_784_800_000_000n);
     expect(leaf.num_sources).toBe(3); // u8 stays a number
     expect(leaf.proof).toEqual([HASH_HEX]);
+  });
+
+  it("survives a display float whose token is lexically integral (`0.0`)", () => {
+    // REGRESSION: the reviver used to decide integrality from the PARSED value, so
+    // `"confidence": 0.0` — which `JSON.parse` hands back as the number `0`,
+    // `Number.isInteger` accepts, and Rust's f64 serializer really does emit —
+    // reached `BigInt("0.0")` and threw `SyntaxError: Cannot convert 0.0 to a
+    // BigInt`. Every fetch containing such a leaf failed before a PTB was built;
+    // live SUIUSD and XAUUSD leaves carry exactly this shape.
+    const leaf = parseSignedLeaves(rawLeavesText(["SUIUSD"]))[0]!;
+    expect(leaf.confidence_n).toBe(10_000_000_000n); // the signed u64 is untouched
+    expect((leaf as unknown as { confidence: number }).confidence).toBe(0); // display float stays a number
+  });
+
+  it("leaves exponent-notation display floats as numbers too", () => {
+    // `BigInt("1e3")` throws the same way `BigInt("0.0")` does, and an exponent
+    // token is equally legal JSON — so integrality is decided by `-?\d+` alone.
+    const text = rawLeavesText(["BTCUSD"]).replace('"price": 63700.0', '"price": 6.37e4');
+    const leaf = parseSignedLeaves(text)[0]!;
+    expect((leaf as unknown as { price: number }).price).toBe(63_700);
+    expect(leaf.price_n).toBe(63_700_000_000_000n); // still exact, still bigint
+  });
+
+  it("a `0.0` leaf builds a PTB end to end through refreshOraclePrices", async () => {
+    // The live repro: `refreshOraclePrices(..., ["SUIUSD"])` against the deployed
+    // route died in the parser. This is that call path, wire-faithful.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockQuoteCenter({ leaves: { text: rawLeavesText(["ETHUSD"]) } });
+    const tx = new Transaction();
+    await refreshOraclePrices(tx, client, ["ETHUSD"]);
+    expect(moveTargets(tx)).toContain("waterx_rule::collect_single_with_proof");
+  });
+
+  it("rejects a leaf missing a signed field, before any PTB is touched", async () => {
+    // A 200 that omits `ticker` used to pass the shape guard (it only checked 4
+    // fields) and `assertCoverage`, then fail mid-build as `Parameter ticker is
+    // required` — with the caller's tx already being mutated.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    for (const drop of ["ticker", "method", "sources", "price_n", "num_sources", "root"]) {
+      const body = rawLeaves(["BTCUSD"]) as { leaves: Record<string, unknown>[] };
+      delete body.leaves[0]![drop];
+      mockQuoteCenter({ leaves: { body } });
+      await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+        /malformed signed leaf 'BTCUSD'/,
+      );
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("rejects a wrong-length signature or root (both are fixed-size)", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    for (const [field, bad] of [
+      ["signature", "ab".repeat(63)], // ed25519 is always 64 bytes
+      ["root", "cd".repeat(31)], // keccak256 is always 32
+    ] as const) {
+      const body = rawLeaves(["BTCUSD"]) as { leaves: Record<string, unknown>[] };
+      body.leaves[0]![field] = bad;
+      mockQuoteCenter({ leaves: { body } });
+      await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+        /malformed signed leaf/,
+      );
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("rejects an out-of-domain num_sources (u8)", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const body = rawLeaves(["BTCUSD"]) as { leaves: Record<string, unknown>[] };
+    body.leaves[0]!.num_sources = 256; // one past a u8
+    mockQuoteCenter({ leaves: { body } });
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+      /malformed signed leaf/,
+    );
   });
 
   it("parses ordinary envelope u64 fields to exact bigints", () => {
