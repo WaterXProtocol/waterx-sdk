@@ -155,8 +155,13 @@
     },
     "./package.json": "./package.json"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist",
+    ".claude/skills/waterx-sdk-integration/SKILL.md",
+    "SKILLS.md",
     "LICENSE",
     "package.json"
   ],
@@ -174,7 +179,8 @@
     "oracle:aggregates:testnet": "tsx scripts/print-oracle-aggregates.ts --testnet",
     "oracle:aggregates:mainnet": "tsx scripts/print-oracle-aggregates.ts --mainnet",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm lint && pnpm typecheck && pnpm test:unit",
+    "docs:check": "tsx scripts/check-docs-links.ts",
+    "check": "pnpm docs:check && pnpm typecheck && pnpm test:unit && pnpm lint",
     "test": "vitest run --project unit --project predict-unit",
     "test:unit": "vitest run --project unit --project predict-unit",
     "test:unit:perp": "vitest run --project unit",

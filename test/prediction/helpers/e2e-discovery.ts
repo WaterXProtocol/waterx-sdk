@@ -324,7 +324,8 @@ async function scanAccountPositions(
 
 /**
  * Scan up to `maxSamples` recent orders; return OPEN orders on **unresolved** markets
- * for the account (matches `E2eFixtures.openOrderId` — keeper fill / place targets).
+ * for the account (matches `E2eFixtures.openOrderId` — keeper fill / place targets;
+ * a resolved market rejects fills with EMarketAlreadyResolved (12)).
  */
 async function scanAccountOpenOrders(
   client: PredictClient,

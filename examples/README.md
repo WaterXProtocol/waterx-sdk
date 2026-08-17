@@ -12,6 +12,17 @@ has no default). e.g.
 export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
 ```
 
+**Oracle fed set:** `buildClient()` reads `ORACLE_SOURCE` (a comma-separated list) and
+forwards `PYTH_API_KEY` as `pythApiKey`; see its docstring in
+[`_shared.ts`](./_shared.ts) for the defaults. The set must cover each ticker's on-chain
+weighted rules or the build aborts `EMissingPriceSource` — check them with
+`pnpm oracle:aggregates:testnet`, and see
+[Oracle sources](../README.md#oracle-sources) for why.
+
+**New here?** Start with [`quickstart.ts`](./quickstart.ts) — client → account → order →
+read in one runnable file. It is the runnable companion to the README's
+[First integration](../README.md#first-integration) walkthrough.
+
 ## Defaults
 
 - **Views** (read-only): no signing, no gas. Sender is the zero address.
@@ -104,7 +115,8 @@ Higher-level smokes that chain multiple steps live under `scripts/`:
 
 `examples/_shared.ts` exports:
 
-- `buildClient(network?)` — async `PerpClient.create` wrapper (reads `WATERX_CONFIG_URL`)
+- `buildClient(network?)` — async `PerpClient.create` wrapper; its docstring in
+  [`_shared.ts`](./_shared.ts) is the authority on which env vars it reads
 - `loadActiveKeypair()` — read the local CLI's active ed25519 keypair
 - `sim(client, tx, label, sender?)` — dry-run, returns `true`/`false`
 - `execute(client, signer, tx, label)` — sign + dispatch

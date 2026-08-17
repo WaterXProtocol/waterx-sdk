@@ -8,7 +8,13 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { buildClient, loadActiveKeypair, run, simThenMaybeExecute } from "../_shared.ts";
+import {
+  accountIdFromDigest,
+  buildClient,
+  loadActiveKeypair,
+  run,
+  simThenMaybeExecute,
+} from "../_shared.ts";
 import { createAccount } from "../../src/perp/index.ts";
 
 run(async () => {
@@ -18,5 +24,15 @@ run(async () => {
 
   createAccount(client, tx, { alias: process.env.WATERX_ALIAS ?? "example" });
 
-  await simThenMaybeExecute(client, tx, "createAccount", keypair);
+  const { executed, digest } = await simThenMaybeExecute(client, tx, "createAccount", keypair);
+  // Only a real execute mints an id: a dry run emits the same event, but the
+  // address in it does not exist on chain.
+  if (!executed) return;
+  const accountId = await accountIdFromDigest(client, digest);
+  console.log(
+    accountId
+      ? `\n  export WATERX_ACCOUNT_ID=${accountId}`
+      : `\n  no AccountCreated event served for ${digest} — read ` +
+          "`account_object_address` off that digest in an explorer",
+  );
 });
