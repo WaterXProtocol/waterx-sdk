@@ -226,11 +226,20 @@ const LEAF_U64_FIELDS = [
  * caller's `tx` was already being mutated. `parseSignedLeaves` promises to reject
  * a malformed leaf before any PTB is touched; this is what makes that true.
  */
-/** `true` iff `hex` (± `0x`) is exactly `bytes` bytes of hex. */
+/** Hex characters only. Length is checked separately — see {@link isHexOfBytes}. */
+const HEX_ONLY = /^[0-9a-fA-F]*$/;
+
+/**
+ * `true` iff `hex` (± `0x`) is exactly `bytes` bytes of hex.
+ *
+ * A static pattern plus an explicit length compare, deliberately not a computed
+ * `new RegExp(`…{${bytes * 2}}`)`: that recompiles on every call and semgrep
+ * blocks it as `detect-non-literal-regexp`.
+ */
 function isHexOfBytes(hex: unknown, bytes: number): boolean {
   if (typeof hex !== "string") return false;
   const body = hex.startsWith("0x") ? hex.slice(2) : hex;
-  return new RegExp(`^[0-9a-fA-F]{${bytes * 2}}$`).test(body);
+  return body.length === bytes * 2 && HEX_ONLY.test(body);
 }
 
 function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
