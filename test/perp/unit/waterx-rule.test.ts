@@ -22,7 +22,11 @@ import { fromHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { aggregateTicker, refreshOraclePrices } from "../../../src/oracle/index.ts";
+import {
+  aggregateTicker,
+  refreshOraclePrices,
+  type PriceUpdateRule,
+} from "../../../src/oracle/index.ts";
 import {
   parseSignedEnvelope,
   parseSignedLeaves,
@@ -342,12 +346,32 @@ describe("WaterxRule — port", () => {
     expect(moveTargets(tx)).toContain("waterx_rule::collect_single_with_proof");
   });
 
-  it("rejects a leaf missing a signed field, before any PTB is touched", async () => {
+  it("rejects a leaf missing ANY signed field, before any PTB is touched", async () => {
     // A 200 that omits `ticker` used to pass the shape guard (it only checked 4
     // fields) and `assertCoverage`, then fail mid-build as `Parameter ticker is
     // required` — with the caller's tx already being mutated.
+    //
+    // Every field the guard checks is pinned here, not a sample of them: the
+    // guard's promise is that a malformed leaf dies at the parser, and a future
+    // edit dropping one field from it would otherwise go unnoticed. `symbol` is
+    // covered separately below (its absence changes how the error NAMES the
+    // leaf) and `signature` by the fixed-size test after that.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    for (const drop of ["ticker", "method", "sources", "price_n", "num_sources", "root"]) {
+    for (const drop of [
+      "ticker",
+      "method",
+      "sources",
+      "price_timestamp_ms",
+      "price_n",
+      "price_scale",
+      "confidence_n",
+      "confidence_scale",
+      "max_source_deviation_bps",
+      "num_sources",
+      "signed_timestamp_ms",
+      "root",
+      "proof",
+    ]) {
       const body = rawLeaves(["BTCUSD"]) as { leaves: Record<string, unknown>[] };
       delete body.leaves[0]![drop];
       mockQuoteCenter({ leaves: { body } });
@@ -356,6 +380,19 @@ describe("WaterxRule — port", () => {
       );
       vi.restoreAllMocks();
     }
+  });
+
+  it("names a leaf missing `symbol` by index — there is no name left to print", async () => {
+    // The one field whose absence changes the error's shape: a coverage gap and
+    // a malformed field read very differently to whoever is paging through this,
+    // so the message must still point at a specific leaf.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const body = rawLeaves(["BTCUSD"]) as { leaves: Record<string, unknown>[] };
+    delete body.leaves[0]!.symbol;
+    mockQuoteCenter({ leaves: { body } });
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+      /malformed signed leaf at index 0/,
+    );
   });
 
   it("rejects a wrong-length signature or root (both are fixed-size)", async () => {
@@ -492,6 +529,28 @@ describe("WaterxRule — batch-envelope fallback", () => {
       /leaf fetch failed: 501/,
     );
     expect(requestedPaths(fetchSpy)).not.toContain("/v1/quotes/update");
+  });
+
+  it("does NOT fall back on a non-404 4xx (403 from a proxy, 410 from a retired route)", async () => {
+    // 404 is the ONLY status that means "this route isn't here". A 4xx that is
+    // not 404 is the case most likely to be mistaken for a missing route later —
+    // an auth-rejecting proxy in front of the quote-center, or a route retired
+    // with 410 — and neither is a version skew the envelope path can paper over.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    // 403 and 410 are non-retryable, so they surface on the first attempt; a
+    // 429 would too, only after `fetchWithPolicy` has spent its retry budget —
+    // same disposition, covered by the 501 case above.
+    for (const status of [403, 410]) {
+      const fetchSpy = mockQuoteCenter({
+        leaves: { status, body: { error: "nope" } },
+        update: { body: rawEnvelope() },
+      });
+      await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
+        `leaf fetch failed: ${status}`,
+      );
+      expect(requestedPaths(fetchSpy)).not.toContain("/v1/quotes/update");
+      vi.restoreAllMocks();
+    }
   });
 
   it("names BOTH attempts when neither route serves the symbol", async () => {
@@ -677,5 +736,30 @@ describe("WaterxRule — routing", () => {
     expect(count("waterx_rule::new_batch_item")).toBe(2); // one per collector, not one per snapshot symbol
     expect(count("pyth_rule::feed")).toBe(2); // dual-rule: additive, one per ticker
     expect(count("oracle::aggregate")).toBe(2);
+  });
+
+  it("a leaf set covering none of the group's tickers fails the BUILD, not the chain", async () => {
+    // `{ leaves: [] }` is SHAPE-VALID — `[].every(...)` is `true` — so the carry
+    // step took the leaf branch, wrote nothing, and `break`ed past the envelope
+    // branch, leaving a collector with NO waterx leg. That surfaces only as an
+    // opaque on-chain `EMissingPriceSource` (or a silently thinner weighted set)
+    // long after the build.
+    //
+    // Both production suppliers of this data reject an uncovering payload
+    // first — the live fetch via `assertCoverage`, a cached one via
+    // `narrowUpdateData` returning `null` (a miss → live fetch) — so the guard
+    // is reached here through a rule override, which is exactly what it is for:
+    // an invariant break upstream must not be laundered into an on-chain abort.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const emptyLeaves: PriceUpdateRule = {
+      ...WaterxRule,
+      fetchUpdateData: async () => ({ kind: "waterx_rule", payload: { leaves: [] } }),
+    };
+    const tx = new Transaction();
+    await expect(
+      refreshOraclePrices(tx, client, ["BTCUSD"], {
+        ruleOverrides: { waterx_rule: emptyLeaves },
+      }),
+    ).rejects.toThrow(/carries no signed price for ticker\(s\): BTCUSD/);
   });
 });

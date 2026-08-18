@@ -438,16 +438,39 @@ export async function refreshOraclePrices(
         // (`ECollectorSymbolMismatch`). A leaf for a symbol outside this group is
         // dropped rather than carried: the feed leg is keyed by ticker anyway.
         const leaves = waterxLeavesOf(data);
-        if (leaves) {
+        // `length > 0` matters: `{ leaves: [] }` is shape-valid (`[].every(...)`
+        // is `true`), so a bare truthiness test would TAKE this branch, carry
+        // nothing, and `break` past the envelope branch below.
+        if (leaves && leaves.length > 0) {
           const served = new Set(group.tickers);
           for (const leaf of leaves) {
             if (served.has(leaf.symbol)) waterxLeafByTicker.set(leaf.symbol, leaf);
           }
-          break;
+        } else {
+          const envelope = waterxEnvelopeOf(data);
+          if (envelope) {
+            for (const ticker of group.tickers) waterxEnvelopeByTicker.set(ticker, envelope);
+          }
         }
-        const envelope = waterxEnvelopeOf(data);
-        if (envelope) {
-          for (const ticker of group.tickers) waterxEnvelopeByTicker.set(ticker, envelope);
+        // Fail the BUILD, not the chain. Both suppliers of `data` already
+        // guarantee full coverage — the live fetch through `assertCoverage`, a
+        // cached payload through `narrowUpdateData` (which returns `null`, i.e.
+        // "miss → live fetch", rather than a partial) — so reaching here with a
+        // ticker uncarried means one of those invariants broke. Left alone it
+        // emits a collector with no waterx leg, which surfaces MUCH later as an
+        // opaque on-chain `EMissingPriceSource` (or, if the rule is unweighted
+        // for that ticker, as a silently thinner weighted set). This names the
+        // tickers instead.
+        const uncarried = group.tickers.filter(
+          (t) => !waterxLeafByTicker.has(t) && !waterxEnvelopeByTicker.has(t),
+        );
+        if (uncarried.length > 0) {
+          throw new Error(
+            `waterx_rule update data carries no signed price for ticker(s): ${uncarried.join(", ")}. ` +
+              "Expected one signed leaf per ticker (or a batch envelope covering all of " +
+              "them) — a payload that serves none of a group's tickers must be reported " +
+              "as a miss, not fed.",
+          );
         }
         break;
       }

@@ -16,6 +16,15 @@ number alone.
 
 ## [Unreleased]
 
+### Added
+
+- `waterxLeavesOf`, `parseSignedLeaves`, `MERKLE_ROOT_INTENT`, and the
+  `WaterxSignedLeaf` / `WaterxLeafPayload` / `WaterxEnvelopePayload` /
+  `WaterxUpdatePayload` types on the root, `@waterx/sdk/perp`, and
+  `@waterx/sdk/oracle` surfaces (#88) — a prefetch cache implementing
+  `UpdateDataProvider` needs the leaf accessor next to `waterxEnvelopeOf`, since
+  leaves are now the default wire shape.
+
 ### Changed
 
 - **`waterx_rule` now feeds prices through `collect_single_with_proof`, not
@@ -40,15 +49,13 @@ number alone.
     works and is used for the fallback. Passing both prefers the leaf.
   - Regenerated `src/generated/waterx_rule` — the committed bindings predated the
     Merkle entrypoints, so `collectSingleWithProof` did not exist.
-
-### Added
-
-- `waterxLeavesOf`, `parseSignedLeaves`, `MERKLE_ROOT_INTENT`, and the
-  `WaterxSignedLeaf` / `WaterxLeafPayload` / `WaterxEnvelopePayload` /
-  `WaterxUpdatePayload` types on the root, `@waterx/sdk/perp`, and
-  `@waterx/sdk/oracle` surfaces (#88) — a prefetch cache implementing
-  `UpdateDataProvider` needs the leaf accessor next to `waterxEnvelopeOf`, since
-  leaves are now the default wire shape.
+- **BREAKING (types): `WaterxUpdatePayload` is now a union, not an object with an
+  `envelope` field (#88).** It went from `interface { envelope: WaterxSignedEnvelope }`
+  to `WaterxLeafPayload | WaterxEnvelopePayload`, so `payload.envelope` no longer
+  type-checks on it — a consumer holding one (e.g. an `UpdateDataProvider` cache)
+  must route through `waterxEnvelopeOf` / `waterxLeavesOf`, which narrow to the
+  variant actually present. Runtime shape of an ENVELOPE payload is unchanged; what
+  changed is that a payload may now carry leaves instead.
 
 ### Fixed
 
