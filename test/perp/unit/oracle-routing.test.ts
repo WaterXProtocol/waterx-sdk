@@ -623,9 +623,9 @@ describe("refreshOraclePrices — multi-source fed set", () => {
 
   it("dedupes the caller's ticker list — a repeated ticker must not double-aggregate in one PTB", async () => {
     // Pre-existing base hazard: a duplicated ticker aggregated TWICE in one
-    // tx — wasted gas everywhere, and under waterx a hard on-chain ABORT
-    // (the second collect_batch_latest replays the same envelope timestamp,
-    // EReplayedSignature/F-014).
+    // tx — wasted gas everywhere, and under waterx the repeat is pure waste:
+    // the second collect replays the same signed timestamp, so the per-symbol
+    // high-water mark (F-014) makes it abstain after paying full verification.
     const client = createUnitTestClient({ oracleSource: ["waterx_rule"] });
     attachPythGrpcMocks(client);
     const fakeWaterx = createFakeWaterxRule(["BTCUSD", "ETHUSD"]);

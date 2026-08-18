@@ -45,6 +45,9 @@ export const BatchPriceItem = new MoveStruct({ name: `${$moduleName}::BatchPrice
 export const BatchPricePayload = new MoveStruct({ name: `${$moduleName}::BatchPricePayload`, fields: {
         items: bcs.vector(BatchPriceItem)
     } });
+export const MerkleRoot = new MoveStruct({ name: `${$moduleName}::MerkleRoot`, fields: {
+        root: bcs.vector(bcs.u8())
+    } });
 export const FeedConfig = new MoveStruct({ name: `${$moduleName}::FeedConfig`, fields: {
         ticker: bcs.string(),
         sources: bcs.vector(bcs.u64()),
@@ -172,15 +175,17 @@ export interface CollectBatchLatestOptions {
  * and so aborts on any stale item, this path runs alongside Pyth/Supra. To let
  * those cover a lagging TEE — the blast-radius bound in the GCP ADR — a
  * _freshness_ miss ABSTAINS (records `none`, which `aggregator::remove_outliers`
- * drops before the `weight_threshold` fail-closed check). A _config/integrity_
- * mismatch (source / ticker / method / confidence / deviation) still ABORTS: an
- * enclave whose signed payload disagrees with the on-chain feed config is a red
- * flag, not a liveness blip. Bad signature, malformed batch, a future timestamp,
- * and replay always abort.
+ * drops before the `weight_threshold` fail-closed check), and so does a _replayed_
+ * signed timestamp (the chain already accepted that snapshot — the on-chain price
+ * is at least as fresh, and two concurrent keeper PTBs sharing one envelope must
+ * not kill each other). A _config/integrity_ mismatch (source / ticker / method /
+ * confidence / deviation) still ABORTS: an enclave whose signed payload disagrees
+ * with the on-chain feed config is a red flag, not a liveness blip. Bad signature,
+ * malformed batch, and a future timestamp always abort.
  *
  * Every gate is identical to `feed_batch_item_latest`; only the abort-vs-abstain
- * disposition of the two freshness gates differs, and the sink is the caller's
- * collector rather than a fresh single-rule one.
+ * disposition of the freshness + replay gates differs, and the sink is the
+ * caller's collector rather than a fresh single-rule one.
  */
 export function collectBatchLatest(options: CollectBatchLatestOptions) {
     const packageAddress = options.package ?? '@waterx/rule';
@@ -199,6 +204,109 @@ export function collectBatchLatest(options: CollectBatchLatestOptions) {
         package: packageAddress,
         module: 'waterx_rule',
         function: 'collect_batch_latest',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface FeedSingleWithProofArguments {
+    oracleObj: RawTransactionArgument<string>;
+    config: RawTransactionArgument<string>;
+    enclaveConfig: RawTransactionArgument<string>;
+    enclave: RawTransactionArgument<string>;
+    timestampMs: RawTransactionArgument<number | bigint>;
+    item: TransactionArgument;
+    proof: RawTransactionArgument<Array<Array<number>>>;
+    sig: RawTransactionArgument<Array<number>>;
+}
+export interface FeedSingleWithProofOptions {
+    package?: string;
+    arguments: FeedSingleWithProofArguments | [
+        oracleObj: RawTransactionArgument<string>,
+        config: RawTransactionArgument<string>,
+        enclaveConfig: RawTransactionArgument<string>,
+        enclave: RawTransactionArgument<string>,
+        timestampMs: RawTransactionArgument<number | bigint>,
+        item: TransactionArgument,
+        proof: RawTransactionArgument<Array<Array<number>>>,
+        sig: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Streaming per-symbol sibling of `feed_batch_latest`. Verifies ONE enclave
+ * signature over a Merkle `root`, checks `item` is a leaf of that root via
+ * `proof`, then runs the identical per-item gates + `oracle::aggregate`. Use for a
+ * WaterxRule-only aggregator; for a Pyth-coexisting aggregator use
+ * `collect_single_with_proof`.
+ */
+export function feedSingleWithProof(options: FeedSingleWithProofOptions) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::clock::Clock',
+        null,
+        null,
+        'u64',
+        null,
+        'vector<vector<u8>>',
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["oracleObj", "config", "enclaveConfig", "enclave", "timestampMs", "item", "proof", "sig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'feed_single_with_proof',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface CollectSingleWithProofArguments {
+    collector: TransactionArgument;
+    config: RawTransactionArgument<string>;
+    enclaveConfig: RawTransactionArgument<string>;
+    enclave: RawTransactionArgument<string>;
+    timestampMs: RawTransactionArgument<number | bigint>;
+    item: TransactionArgument;
+    proof: RawTransactionArgument<Array<Array<number>>>;
+    sig: RawTransactionArgument<Array<number>>;
+}
+export interface CollectSingleWithProofOptions {
+    package?: string;
+    arguments: CollectSingleWithProofArguments | [
+        collector: TransactionArgument,
+        config: RawTransactionArgument<string>,
+        enclaveConfig: RawTransactionArgument<string>,
+        enclave: RawTransactionArgument<string>,
+        timestampMs: RawTransactionArgument<number | bigint>,
+        item: TransactionArgument,
+        proof: RawTransactionArgument<Array<Array<number>>>,
+        sig: RawTransactionArgument<Array<number>>
+    ];
+}
+/**
+ * Collect-only sibling of `feed_single_with_proof` for the dual-rule latest path
+ * (WaterX alongside Pyth on one aggregator), mirroring `collect_batch_latest`:
+ * verifies root + proof, feeds the leaf into the caller's `PriceCollector` WITHOUT
+ * calling `oracle::aggregate`. Abort vs abstain matches `collect_batch_latest`
+ * exactly — a config/integrity mismatch aborts, a freshness miss abstains so Pyth
+ * can cover a lagging TEE.
+ */
+export function collectSingleWithProof(options: CollectSingleWithProofOptions) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::clock::Clock',
+        null,
+        null,
+        'u64',
+        null,
+        'vector<vector<u8>>',
+        'vector<u8>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["collector", "config", "enclaveConfig", "enclave", "timestampMs", "item", "proof", "sig"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'collect_single_with_proof',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
@@ -556,6 +664,46 @@ export function batchPriceIntent(options: BatchPriceIntentOptions = {}) {
         package: packageAddress,
         module: 'waterx_rule',
         function: 'batch_price_intent',
+    });
+}
+export interface MerkleRootIntentOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function merkleRootIntent(options: MerkleRootIntentOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'merkle_root_intent',
+    });
+}
+export interface LeafHashOfArguments {
+    item: TransactionArgument;
+}
+export interface LeafHashOfOptions {
+    package?: string;
+    arguments: LeafHashOfArguments | [
+        item: TransactionArgument
+    ];
+}
+/**
+ * The keccak256 leaf hash for `item` — `keccak256(0x00 || BCS(item))`. Exposed so
+ * the off-chain builder / SDK can be pinned against the on-chain encoding in a
+ * cross-implementation golden test.
+ */
+export function leafHashOf(options: LeafHashOfOptions) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["item"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'leaf_hash_of',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
 export interface MaxBatchSizeOptions {
@@ -1206,6 +1354,97 @@ export function sourceGataUsdtPerpWs(options: SourceGataUsdtPerpWsOptions = {}) 
         package: packageAddress,
         module: 'waterx_rule',
         function: 'source_gata_usdt_perp_ws',
+    });
+}
+export interface SourceBybitSpotWsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourceBybitSpotWs(options: SourceBybitSpotWsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_bybit_spot_ws',
+    });
+}
+export interface SourceXstockEquityRestOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourceXstockEquityRest(options: SourceXstockEquityRestOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_xstock_equity_rest',
+    });
+}
+export interface SourceOkxSpotWsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourceOkxSpotWs(options: SourceOkxSpotWsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_okx_spot_ws',
+    });
+}
+export interface SourceHyperliquidPerpWsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourceHyperliquidPerpWs(options: SourceHyperliquidPerpWsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_hyperliquid_perp_ws',
+    });
+}
+export interface SourceGateioSpotWsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourceGateioSpotWs(options: SourceGateioSpotWsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_gateio_spot_ws',
+    });
+}
+export interface SourceKrakenSpotWsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourceKrakenSpotWs(options: SourceKrakenSpotWsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_kraken_spot_ws',
+    });
+}
+export interface SourcePythLazerWsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function sourcePythLazerWs(options: SourcePythLazerWsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/rule';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_rule',
+        function: 'source_pyth_lazer_ws',
     });
 }
 export interface MethodDirectOptions {

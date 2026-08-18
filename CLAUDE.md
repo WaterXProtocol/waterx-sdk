@@ -196,7 +196,7 @@ then one aggregate:
 collector = oracle::new_collector(ticker)
 [pyth_rule::feed(collector, pythRuleConfig, clock, pythState, priceInfoObj)]
 [pyth_lazer_rule::feed(collector, …, verifiedUpdate)]   // selected source produced one
-[waterx_rule::collect_batch_latest(collector, …, envelope)]  // verify + feed in ONE call
+[waterx_rule::collect_single_with_proof(collector, …, leaf, proof)]  // verify + feed in ONE call
 [supra_rule::feed / constant_rule::feed]
 oracle::aggregate(oracle, collector, clock)
 ```
@@ -209,9 +209,18 @@ aborts `EMissingPriceSource` when a weighted rule is absent from the collector
 selected source's off-chain fetch + on-chain update leg, then the per-ticker
 feeds + aggregate, in one call. Which source runs is `oracleSource`: Hermes
 fetch + Pyth update for `'pyth_rule'`, a signed Lazer update for
-`'pyth_lazer_rule'`, a quote-center batch envelope for `'waterx_rule'` (that one
-emits no separate update leg — verify and feed are bundled into
-`collect_batch_latest`).
+`'pyth_lazer_rule'`, a quote-center signed Merkle leaf per ticker for
+`'waterx_rule'` (that one emits no separate update leg — verify and feed are
+bundled into `collect_single_with_proof`).
+
+The waterx leg has TWO wire shapes and prefers the leaf: `GET
+/v1/quotes/leaves` gives one independently-verifiable leaf per symbol (leaf +
+proof + the enclave's signature over the snapshot root), so a PTB carries ONE
+`new_batch_item` whatever the snapshot's width. `GET /v1/quotes/update` gives one
+signature over a whole batch, which is indivisible — `collect_batch_latest` needs
+every item rebuilt in-PTB to re-verify it (29 mainnet feeds ⇒ 58 extra moveCalls
+per trade). The envelope path stays only as the fallback for a quote-center with
+no leaf route (404), and for whole-batch pushes.
 
 ### WLP pool
 
@@ -305,5 +314,5 @@ src/
 - Cancel-order wildcard: pass `orderTypeTag: ORDER_TAG_WILDCARD` (255) and `triggerPrice: 0n` to scan all 4 books by `orderId`.
 - Price scaling: human-readable USD (`50000`) → raw 1e9-scaled bigint via `rawPrice(usd)`. Pass the raw form to `acceptablePrice` / `triggerPrice` / size args.
 - Mainnet config **is** published (`mainnet.json` in the config repo) and `MAINNET` loads. Note the fed set differs by network: mainnet configures `pyth_rule` + `constant_rule` only — no `pyth_lazer_rule` / `waterx_rule` block — so an `oracleSource` copied from testnet that names only those fails at tx-build there.
-- `waterx_rule` (Nautilus enclave Binance/Bybit/Gate.io rule) ships as an `oracleSource` list entry (`'waterx_rule'`) — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls ONE enclave-signed batch envelope covering the build's tickers from the quote-center (`GET /v1/quotes/update`, public read) and then verifies AND feeds in a single `collect_batch_latest` per collector, so its `buildUpdateCalls` emits nothing. The quote-center host comes from the rule-owned `WATERX_INFRA[network]` table (in `rules/waterx-rule.ts`; accessor `waterxQuoteCenterEndpoint(network)`), overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy precedence `waterxFetch` → defaults — deliberately NO `pythFetch` fallback; sources never share config) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live envelope that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain. CONCURRENCY CAVEAT: on-chain, a replayed per-symbol signed timestamp ABORTS `EReplayedSignature` (audit F-014, weight-independent) — never hand one fetched envelope to two concurrent builds for the same symbol.
+- `waterx_rule` (Nautilus enclave CEX-price rule) ships as an `oracleSource` list entry (`'waterx_rule'`) — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls one signed Merkle LEAF per ticker from the quote-center (`GET /v1/quotes/leaves`, public read) and then verifies AND feeds in a single `collect_single_with_proof` per collector, so its `buildUpdateCalls` emits nothing. Against a quote-center with no leaf route (404) it falls back to the older shape: ONE indivisible batch envelope (`GET /v1/quotes/update`) fed through `collect_batch_latest`, which has to rebuild every item in the batch in-PTB just to use one symbol's price. Every other status throws rather than falling back — see `fetchWaterxSignedLeaves` for why (and note 501 can NOT signal a missing route, since `fetchWithPolicy` retries all 5xx). The quote-center host comes from the rule-owned `WATERX_INFRA[network]` table (in `rules/waterx-rule.ts`; accessor `waterxQuoteCenterEndpoint(network)`), overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy precedence `waterxFetch` → defaults — deliberately NO `pythFetch` fallback; sources never share config) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live response that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain. REPLAY DISPOSITION: on the `collect_*` paths a replayed per-symbol signed timestamp ABSTAINS, it does not abort (audit F-014's high-water mark means the chain already holds a price at least this fresh), so two concurrent builds may share one snapshot; only the single-rule `feed_*` entries abort `EReplayedSignature`.
 - Legacy oracle knobs are GONE: no `client.pyth.hermes_endpoint` / `PythInfraConfig` / `PYTH_DEFAULTS` (Core infra lives in the rule-owned `PYTH_CORE_INFRA` in `src/oracle/pyth.ts`; read-plane accessor `pythCoreHermesEndpoint(network)`), no `LAZER_DEFAULTS` (now `LAZER_INFRA` inside `rules/pyth-lazer-rule.ts`), no `WATERX_DEFAULTS` / `WaterxInfraConfig` (now `WATERX_INFRA` / `WaterxAccessConfig`). `client.pyth` is `PythAccessConfig` (caller `api_key` + `fetch` only); `client.waterx` is `WaterxAccessConfig` (caller overrides only). `oracleSource` is REQUIRED at client creation and accepts a list (the fed set) — there is no default source and no cross-source fallback anywhere.

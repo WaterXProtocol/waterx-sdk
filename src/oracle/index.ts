@@ -96,21 +96,29 @@ export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
 // `WATERX_INFRA` / `waterxQuoteCenterEndpoint` are the source's own infra table +
 // read-plane accessor (mirrors `pythCoreHermesEndpoint`).
-// WaterX quote-center rule (first-party ed25519 signed batches; `feedWaterxRule`
-// stays internal to `aggregate.ts`).
+// WaterX quote-center rule (first-party ed25519 signed prices; the `feedWaterxRule*`
+// legs stay internal to `aggregate.ts`). Both wire shapes are exported because a
+// BE prefetch cache holds whichever one its quote-center serves: per-symbol
+// Merkle leaves (default) or one indivisible batch envelope (fallback).
 export {
   WaterxRule,
   parseSignedEnvelope,
+  parseSignedLeaves,
   BATCH_PRICE_INTENT,
+  MERKLE_ROOT_INTENT,
   WATERX_INFRA,
   waterxQuoteCenterEndpoint,
-  // Rule-owned payload accessor (kind-check + unwrap in one place) — never
-  // hand-cast the payload shape.
+  // Rule-owned payload accessors (kind-check + unwrap in one place) — never
+  // hand-cast the payload shape, and never assume which variant it is.
+  waterxLeavesOf,
   waterxEnvelopeOf,
 } from "./rules/waterx-rule.ts";
 export type {
   WaterxUpdatePayload,
+  WaterxLeafPayload,
+  WaterxEnvelopePayload,
   WaterxSignedEnvelope,
+  WaterxSignedLeaf,
   WaterxBatchItem,
 } from "./rules/waterx-rule.ts";
 

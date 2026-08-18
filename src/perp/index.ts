@@ -146,6 +146,14 @@ export {
   resolveHermesReadEndpoint,
   updatePythPrices,
   waterxEnvelopeOf,
+  // Leaves are the DEFAULT waterx wire shape, so their accessor + parser belong
+  // on the same surface as `waterxEnvelopeOf` (and on the root, which re-exports
+  // this file). A prefetch cache written against the envelope-only surface would
+  // otherwise get `null` from its only accessor on the normal path and have to
+  // discover `@waterx/sdk/oracle` to fix it.
+  waterxLeavesOf,
+  parseSignedLeaves,
+  MERKLE_ROOT_INTENT,
   waterxQuoteCenterEndpoint,
 } from "../oracle/index.ts";
 export type {
@@ -153,6 +161,14 @@ export type {
   OracleFeeSource,
   OracleSource,
   UpdateDataProvider,
+  // Payload types for the update-data cache seam: a consumer implementing
+  // `UpdateDataProvider` has to name what it caches, in either shape.
+  WaterxBatchItem,
+  WaterxEnvelopePayload,
+  WaterxLeafPayload,
+  WaterxSignedEnvelope,
+  WaterxSignedLeaf,
+  WaterxUpdatePayload,
 } from "../oracle/index.ts";
 
 // ======== Wormhole / Wormholescan utilities (credit bridge) ========

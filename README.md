@@ -266,7 +266,9 @@ Every source plugs in the same way — routing is driven **only** by the client'
 4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a **rule-owned** per-network table inside the rule's own file, mirroring `LAZER_INFRA` / `WATERX_INFRA` (never on the shared client, never in `oracle/config.ts`). Wire its read-plane served-set/ids into `resolveOracleReadPlan` (`src/oracle/read-plane.ts`).
 5. **Consumers flip `oracleSource`** per environment — no consumer code change, no SDK re-release.
 
-The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one enclave-signed batch envelope covering the requested tickers from the quote-center (`GET /v1/quotes/update?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_batch_latest` call per collector, so it emits no shared verify step. On-chain a **freshness** miss abstains (the other weighted rules cover); a config mismatch or bad signature aborts — and so does a **replayed** signed timestamp (`EReplayedSignature`, audit F-014: a signed tuple is single-use per symbol, weight-independent). Consequence: two PTBs carrying the same envelope for the same symbol cannot both land — never share one fetched envelope across concurrent builds for the same symbol.
+The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one signed Merkle **leaf** per requested ticker from the quote-center (`GET /v1/quotes/leaves?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_single_with_proof` call per collector, so it emits no shared verify step. Each leaf carries its own membership proof and the enclave's signature over the snapshot root, so a PTB rebuilds exactly ONE price item however wide the snapshot was. Against a quote-center with no leaf route (404) it falls back to the older shape — one signature over a whole batch (`GET /v1/quotes/update`) fed through `collect_batch_latest`, which is indivisible and therefore has to rebuild *every* item in the batch in-PTB just to use one symbol's price.
+
+On-chain, both entries dispose of failures identically: a **freshness** miss abstains (the other weighted rules cover), and so does a **replayed** signed timestamp (the per-symbol high-water mark of audit F-014 — already recorded means the chain already holds a price at least this fresh, so concurrent builds sharing one snapshot no longer kill each other; only the single-rule `feed_*` entries abort on a replay). A config mismatch, a bad signature, or a signed timestamp **ahead of the on-chain `Clock`** aborts.
 
 > **Browser consumers:** this source fetches the quote-center directly from the page, so the quote-center deployment must return `Access-Control-Allow-Origin` for the app's origin. For an origin that is not on that allowlist, point the SDK at your own proxy instead of the default host — the endpoint and the transport are both overridable at client init:
 >
@@ -275,7 +277,7 @@ The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules
 >   waterxConfigUrl,
 >   oracleSource: "waterx_rule",
 >   // absolute URL on your own origin; its base path is PRESERVED, so this
->   // fetches https://app.example/api/quote-center/v1/quotes/update
+>   // fetches https://app.example/api/quote-center/v1/quotes/leaves
 >   waterxEndpoint: "https://app.example/api/quote-center",
 >   waterxFetch: { fetchImpl: myFetch, timeoutMs: 8_000 }, // optional custom transport / policy
 > });
