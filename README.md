@@ -17,7 +17,8 @@ const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl:
     "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
-  oracleSource: "pyth_rule",
+  oracleSource: ["pyth_rule", "pyth_lazer_rule"],
+  pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed
 });
 client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
 client.perp.buildPlaceOrderTx(params); // perpetuals
@@ -41,11 +42,20 @@ Import surfaces:
 ## Install
 
 ```bash
-pnpm install
-pnpm build
+pnpm add @waterx/sdk @mysten/sui @mysten/bcs
 ```
 
-Consumers: `pnpm add @waterx/sdk @mysten/sui`
+`@mysten/sui` (`^2.9.0`) and `@mysten/bcs` (`^1.9.0`) are **peer** dependencies — the SDK
+does not bundle them, so your app and the SDK share one Sui client and one BCS registry.
+
+- **Node ≥ 22** (declared in `engines`; CI builds and tests on 24).
+- **ESM and CJS** both resolve, including on every subpath export.
+- **One runtime dependency** (`@noble/hashes`), plus the two peers above.
+- **Browser supported** — see the CORS note under [Oracle sources](#oracle-sources) if you
+  use `waterx_rule`.
+
+Contributor setup (building this repo rather than consuming it) is under
+[Development](#development).
 
 ## Quickstart (unified client)
 
@@ -58,15 +68,20 @@ import { Transaction } from "@mysten/sui/transactions";
 const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl: "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
-  oracleSource: "pyth_rule", // REQUIRED — single source or a list (the fed set); see "Oracle sources"
+  // REQUIRED — single source or a list (the fed set). The set must COVER each
+  // ticker's on-chain weighted rules; testnet majors need both of these today.
+  // Verify with `pnpm oracle:aggregates:testnet`. See "Oracle sources".
+  oracleSource: ["pyth_rule", "pyth_lazer_rule"],
+  pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed
 });
 const signer = /* your Ed25519Keypair or wallet Signer */;
+const accountId = "0x..."; // wxa account object id — see "First integration"
 
 // --- Perp: place a market order ---
 const tx = await client.perp.buildPlaceOrderTx({
   ticker: "BTCUSD",
   collateralType: client.perp.creditType(),
-  accountId: "0x...", // UserAccount object id (hex)
+  accountId,
   main: {
     isLong: true,
     isStopOrder: false,
@@ -80,12 +95,115 @@ const tx = await client.perp.buildPlaceOrderTx({
 await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
 
 // --- Prediction: same pattern under client.predict ---
+// Preconditions: `accountId` is a wxa account registered with the prediction
+// protocol and holding settlement collateral; `marketId` is an OPEN market.
+// Object ids (globalConfig / marketRegistry / accountRegistry / settlement coin
+// type) are resolved from config — pass them only to override.
 const ptx = new Transaction();
-client.predict.placeOrder(ptx, params);
+client.predict.placeOrder(ptx, {
+  accountId, // payer; `receiverAccountId` defaults to this
+  marketId: "0x...", // market id bytes or 0x-hex
+  selection: "YES", // "YES" | "NO"
+  maxSpend: 1_000_000n, // cap in settlement-coin base units
+  minShares: 1n, // fill floor — chain asserts filled_shares >= this; 0 accepts any fill
+  priceCapBps: 5_000n, // max price per share, bps of the 1-unit payout; MUST be <= 10_000
+  expiryTs: BigInt(Date.now() + 60_000), // ms epoch
+});
 await client.predict.signAndExecuteTransaction({ transaction: ptx, signer });
 ```
 
 > Account creation is shared: `client.account.*` builds accounts via the one on-chain `waterx_account` system (perp-backed), so an account created through `client.account.createAccount` is usable by both `client.perp.*` and `client.predict.*`. (On split-network setups `client.account` follows the perp line — reach the predict line's generic account builders via the `prediction` namespace.)
+
+## First integration
+
+The quickstart above starts from an `accountId` you already have. If you have none yet,
+this is the whole arc. **[`examples/quickstart.ts`](./examples/quickstart.ts) is this
+walkthrough as one runnable file** — being real code, it is covered by `pnpm lint` and
+`pnpm typecheck`, so the API it exercises cannot go stale unnoticed:
+
+```bash
+export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
+export ORACLE_SOURCE=pyth_rule,pyth_lazer_rule   # step 2 — must cover the ticker's weighted rules
+export PYTH_API_KEY=...                          # required whenever pyth_lazer_rule is listed
+pnpm exec tsx examples/quickstart.ts             # simulate-only; WATERX_EXECUTE=1 to sign + send
+```
+
+**1 — Get a config URL.** Every chain-specific id comes from the canonical
+[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) JSON. There is no
+built-in default and the SDK never reads `process.env`: your app reads the URL and passes
+it in. Hardcoding object ids instead is the single most common integration mistake.
+
+**2 — Pick your oracle source(s).** `oracleSource` is required, and the fed set must
+**cover every ticker's on-chain weighted rules** — starving a weighted rule aborts
+`EMissingPriceSource` at simulate. Check what a network actually weights before you wire
+it up:
+
+```bash
+pnpm oracle:aggregates:testnet    # per-ticker aggregator sources + weights
+```
+
+Weights are on-chain state that changes without an SDK release, so read them rather than
+trusting any list written here. [Oracle sources](#oracle-sources) has the full model.
+
+**3 — Create a wxa account.** One account serves both product lines; every trading call
+needs one. The id is **not** a builder return value — it lands in the `AccountCreated`
+event, so read it back off the digest, then treat it as the user's durable handle. (A
+simulate emits the same event but creates nothing; only read an id back after a real
+execute.)
+
+```ts
+import { Transaction } from "@mysten/sui/transactions";
+import { AccountCreated } from "@waterx/sdk/generated/waterx_account/events";
+
+const tx = new Transaction();
+client.account.createAccount(tx, { alias: "alice" });
+const exec = await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
+const digest = exec.Transaction?.digest ?? "";
+
+// Decode the event's `bcs`, never its `json` — only the BCS layout is the Move
+// struct. (`as const` is load-bearing: it is what types `events` as present.)
+const res = await client.perp.grpcClient.getTransaction({
+  digest,
+  include: { events: true } as const,
+});
+const ev = res.Transaction?.events?.find((e) => e.eventType.endsWith("::events::AccountCreated"));
+const accountId = ev ? AccountCreated.parse(ev.bcs).account_object_address : undefined;
+```
+
+→ [`examples/actions/action-create-account.ts`](./examples/actions/action-create-account.ts)
+
+**4 — Fund it.** Collateral must sit *inside* the account before an order will fill.
+Deposit is two calls in one PTB — `requestDeposit(coin)` then
+`direct_rule::consume_deposit_direct(req)`.
+
+→ [`examples/actions/action-request-deposit.ts`](./examples/actions/action-request-deposit.ts)
+· cross-chain CREDIT and the native PSM are in
+[`src/account/funding/credit.ts`](./src/account/funding/credit.ts) and
+[`src/account/funding/custody.ts`](./src/account/funding/custody.ts)
+
+**5 — Build, simulate, then execute.** Builders are **build-only**: they return or mutate
+a `Transaction` and never sign. Always simulate first — that is where a bad fed set, an
+unfunded account, or a stale id surfaces, for free.
+
+```ts
+const tx = await client.perp.buildPlaceOrderTx({ ... });   // async: prepends oracle legs
+tx.setSender(address);
+const result = await client.perp.simulate(tx);             // no signer, no gas
+await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
+```
+
+**6 — Read state back.** Reads are `simulateTransaction` + BCS decode — no signer, no gas,
+zero-address sender.
+
+```ts
+const positions = await client.perp.getAccountPositions({
+  ticker: "BTCUSD",
+  accountObjectAddress: accountId,
+  basePriceUsd: 0n, // WHOLE-DOLLAR u64 (not rawPrice); 0n zero-bases the PnL fields
+});
+```
+
+→ [`examples/views/`](./examples/views) for every read path
 
 ## Per-line clients
 
@@ -97,7 +215,12 @@ import { PredictClient } from "@waterx/sdk/prediction";
 
 const waterxConfigUrl =
   "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json";
-const perp = await PerpClient.create("TESTNET", { waterxConfigUrl, oracleSource: "pyth_rule" }); // or PerpClient.testnet({ ... })
+// oracleSource must cover each ticker's weighted rules — see "Oracle sources".
+const perp = await PerpClient.create("TESTNET", {
+  waterxConfigUrl,
+  oracleSource: ["pyth_rule", "pyth_lazer_rule"],
+  pythApiKey: process.env.PYTH_API_KEY, // required iff 'pyth_lazer_rule' is listed
+}); // or PerpClient.testnet({ ... })
 const predict = await PredictClient.create("TESTNET", { waterxConfigUrl }); // predict line needs no oracle source
 ```
 
@@ -166,22 +289,64 @@ On-chain, both entries dispose of failures identically: a **freshness** miss abs
 
 To avoid doc drift, per-action usage lives in maintained, lint-checked code rather than this README:
 
+- **Start here:** [`examples/quickstart.ts`](./examples/quickstart.ts) — the [First integration](#first-integration) walkthrough as one runnable file.
 - **Perp recipes:** [`examples/`](./examples) — ~30 runnable scripts (place orders, WLP mint/redeem, account/delegates, reads). Each uses `buildClient()` + a builder + `simThenMaybeExecute`.
 - **Prediction recipes:** [`test/prediction/e2e/`](./test/prediction/e2e) — the live reference for `client.predict.*` flows.
 - **Authoritative export list:** [`src/perp/index.ts`](./src/perp/index.ts) (perp) and [`src/prediction/index.ts`](./src/prediction/index.ts) — clients, builders, view helpers, BCS types, and `*Calls` generated namespaces. The package root (`.`) is [`src/sdk.ts`](./src/sdk.ts) (umbrella + flat-perp re-export); the shared base is published at `@waterx/sdk/account` and `@waterx/sdk/oracle`.
 
 Perp `build*Tx` helpers are oracle-backed (`async`; they refresh prices before the call) — through whichever source `oracleSource` selects, not Pyth specifically. The oracle layer (sources, rules, refresh) lives in [`src/oracle/`](./src/oracle).
 
+## Troubleshooting
+
+Every row below is a message the SDK or the chain actually emits. Simulate first — all of
+these surface at simulate, before you spend gas.
+
+| Message | What it means, and what to do |
+| ------- | ------------------------------ |
+| `loadConfig: no config URL — pass opts.waterxConfigUrl` | `waterxConfigUrl` is unset; there is no default and no env fallback. Read the URL in your app and pass it to `create()`. |
+| `oracleSource is REQUIRED and must name at least one of …` | Missing, empty, or a retired value (`'core'`, `'pyth'`). Parse env with `parseOracleSourceList`, not a bare `split`. |
+| `oracleSource [...] has no feed configured for ticker(s): …` | No listed source serves that ticker in this deployment. Raised at **tx-build**, not at client creation. Add the feed under a listed source, or list a source that serves it. Constant-only tickers are exempt. |
+| `EMissingPriceSource` (Move abort in `aggregator::remove_outliers`) | The fed set does not cover that ticker's on-chain weighted rules — starving a weighted rule aborts, feeding an unweighted one is a no-op. Run `pnpm oracle:aggregates:testnet` and widen `oracleSource` to a superset. |
+| `LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token` | `'pyth_lazer_rule'` is listed but `pythApiKey` was not passed. The SDK never reads `process.env` for it — pass it at client creation. |
+| `EAccountNotFound` (Move abort in `account::borrow_account`) | The `accountId` does not exist on this network — usually a fixture from another deployment, or a Sui address used where a wxa account id belongs. Create one with `client.account.createAccount`. |
+| `EReplayedSignature` | One `waterx_rule` envelope was fed twice for the same symbol; a signed timestamp is single-use per symbol (audit F-014). Fetch per build — never share one across concurrent builds. |
+| CORS failure fetching the quote-center (browser only) | `waterx_rule` fetches from the page and your origin is not on the allowlist. Point `waterxEndpoint` at a same-origin proxy; its base path is preserved. Node and keeper consumers are unaffected. |
+| Ticker lookups return nothing | Wrong format. Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the config JSON's `markets` keys. |
+| Prices off by 10⁹, or an order fills far from the intended level | A human-readable number was passed where a raw 1e9-scaled `u64` belongs. Wrap in `rawPrice()`. Exception: view `basePriceUsd` args take a **whole-dollar** u64 — use `parseWholeDollarU64`. |
+| `… has no feed configured for ticker(s)` on `MAINNET` with a fed set copied from testnet | The two networks configure **different sources**. Today's `mainnet.json` carries `pyth_rule` (plus `constant_rule` for `USDCUSD`) and **no** `pyth_lazer_rule` / `waterx_rule` block, so an `ORACLE_SOURCE` naming only those serves nothing there. Listing an unconfigured source *alongside* `pyth_rule` is harmless — it contributes no tickers. Confirm per network with `pnpm oracle:aggregates:mainnet`. |
+
+## Documentation map
+
+| Document                                                     | What it answers                                                            |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| [`SKILLS.md`](./SKILLS.md)                                   | The fixed integration flow, for an agent or a developer                    |
+| [`examples/README.md`](./examples/README.md)                 | Every runnable perp recipe, one file per entry point                       |
+| [`CHANGELOG.md`](./CHANGELOG.md)                             | What changed per release — **read before upgrading** (see versioning note) |
+| [`PACKAGES.md`](./PACKAGES.md)                               | The Move packages behind the SDK                                           |
+| [`CLAUDE.md`](./CLAUDE.md)                                   | Architecture and contract surface, for people hacking on the SDK           |
+| [`test/perp/README.md`](./test/perp/README.md)               | Perp test tiers, fixtures, and known skips                                 |
+| [`test/prediction/README.md`](./test/prediction/README.md)   | Prediction test tiers and the live `client.predict.*` reference            |
+| [`waterx-config`](https://github.com/WaterXProtocol/waterx-config) | The canonical deployment JSON schema                                  |
+
 ## Development
+
+Working on the SDK itself (rather than consuming it):
+
+```bash
+pnpm install
+pnpm build
+```
 
 | Command                        | Use                                                        |
 | ------------------------------ | ---------------------------------------------------------- |
 | `pnpm typecheck`               | Typecheck the whole tree                                   |
+| `pnpm docs:check`              | Resolve every relative link in the docs                    |
 | `pnpm test` / `pnpm test:unit` | Unit tests (perp + prediction)                             |
 | `pnpm test:e2e`                | Testnet simulate e2e (perp + prediction)                   |
 | `pnpm test:integration`        | On-chain integration (needs `SUI_PRIVATE_KEY`; local-only) |
 | `pnpm lint` / `pnpm format`    | ESLint + Prettier                                          |
 | `pnpm codegen`                 | Regenerate `src/generated` from Move                       |
+| `pnpm oracle:aggregates:testnet` | Per-ticker aggregator sources + weights (diagnose `EMissingPriceSource`) |
 | `pnpm seed:testnet`            | Seed prediction testnet fixtures (needs `SUI_PRIVATE_KEY`) |
 
 Tests are split per line under `test/perp/` and `test/prediction/`, each with `unit` / `e2e` / `integration` tiers. See the per-line `README.md` in each.

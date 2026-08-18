@@ -9,6 +9,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import {
   aggregateTicker,
+  ORACLE_SOURCES,
+  parseOracleSourceList,
   PythCache,
   refreshOraclePrices,
   type OracleSource,
@@ -18,12 +20,6 @@ import type { Network } from "../src/perp/constants.ts";
 import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 type OutputFormat = "pretty" | "raw";
-
-const ORACLE_SOURCES = ["pyth_rule", "pyth_lazer_rule"] as const;
-
-function isOracleSource(v: string): v is OracleSource {
-  return (ORACLE_SOURCES as readonly string[]).includes(v);
-}
 
 type TickerFeed = {
   label: string;
@@ -90,17 +86,26 @@ function resolveNetwork(argv: string[]): Network {
   return "MAINNET";
 }
 
-/** CLI `--oracle-source` → `ORACLE_SOURCE` env → default `pyth_rule`. */
-function resolveOracleSource(cliValue: string | undefined): OracleSource | undefined {
+/**
+ * CLI `--oracle-source` → `ORACLE_SOURCE` env → undefined (caller defaults).
+ *
+ * Accepts a comma-separated LIST — the fed set — via the SDK's own
+ * `parseOracleSourceList`, so the value documented for consumers (and exported
+ * for `pnpm oracle:aggregates`) works here verbatim. A local copy of the source
+ * list would drift; this one already had, omitting `waterx_rule`.
+ */
+function resolveOracleSource(cliValue: string | undefined): OracleSource[] | undefined {
   const raw = (cliValue ?? process.env.ORACLE_SOURCE)?.trim();
   if (!raw) return undefined;
-  if (!isOracleSource(raw)) {
+  try {
+    return parseOracleSourceList(raw);
+  } catch {
     console.error(
-      `Unknown oracle source ${JSON.stringify(raw)} (use ${ORACLE_SOURCES.join(" | ")})`,
+      `Unknown oracle source ${JSON.stringify(raw)} ` +
+        `(comma-separated list of ${ORACLE_SOURCES.join(" | ")})`,
     );
     process.exit(1);
   }
-  return raw;
 }
 
 /** Lazer Bearer token from harness env — SDK never reads process.env itself. */
@@ -112,7 +117,7 @@ function resolvePythApiKey(): string | undefined {
 function parseArgs(argv: string[]): {
   format: OutputFormat;
   network: Network;
-  oracleSource: OracleSource | undefined;
+  oracleSource: OracleSource[] | undefined;
   tickers: string[];
 } {
   const tail = argv.slice(2);
@@ -139,10 +144,11 @@ function parseArgs(argv: string[]): {
                     Default (omitted): every configured aggregator.
   --testnet         Use TESTNET (pnpm oracle:aggregates:testnet).
   --mainnet         Use MAINNET (default when no network flag).
-  --oracle-source   Price-update source (default pyth_rule). Overrides ORACLE_SOURCE.
+  --oracle-source   Price-update source(s) — comma-separated list = the fed set
+                    (default pyth_rule). Overrides ORACLE_SOURCE.
 
   Network precedence: --testnet / --mainnet → WATERX_E2E_NETWORK → mainnet.
-  Oracle source: --oracle-source → ORACLE_SOURCE → pyth_rule.
+  Oracle source: --oracle-source → ORACLE_SOURCE → pyth_rule. Both accept a comma list.
   Lazer token: PYTH_API_KEY (required when source is pyth_lazer_rule).
 
   Dry-runs each ticker via gRPC simulateTransaction (no private key, no on-chain execution).
