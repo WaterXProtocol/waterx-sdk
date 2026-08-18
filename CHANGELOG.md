@@ -9,12 +9,21 @@ reference the PR that introduced them.
 numbers are [Semantic Versioning](https://semver.org/spec/v2.0.0.html)-shaped, and this
 package MAY ship a breaking change in a PATCH or MINOR release. Every consumer is
 first-party and pins the SDK **exact**, so no consumer takes a break implicitly; a
-`^`-range consumer would, and none exists. `4.0.1` shipped breaking as a patch; `4.1.0`
-and `4.3.0` as minors. Each such release NAMES its breaking changes at the top of its
-section — read that note before upgrading, and do not infer compatibility from the version
-number alone.
+`^`-range consumer would, and none exists. `4.0.1` and `4.3.3` shipped breaking as
+patches; `4.1.0` and `4.3.0` as minors. Each such release NAMES its breaking changes at
+the top of its section — read that note before upgrading, and do not infer compatibility
+from the version number alone.
 
 ## [Unreleased]
+
+## [4.3.3] - 2026-08-18
+
+_Released as a PATCH carrying one **BREAKING** type change: `WaterxUpdatePayload` is now
+a union (`WaterxLeafPayload | WaterxEnvelopePayload`), so `payload.envelope` no longer
+type-checks on it — route through `waterxEnvelopeOf` / `waterxLeavesOf` instead. Only
+code that HOLDS a `WaterxUpdatePayload` (an `UpdateDataProvider` prefetch cache) is
+affected; the runtime shape of an envelope payload is unchanged. Both first-party
+consumers pin exact and adapt in the same change set._
 
 ### Added
 
