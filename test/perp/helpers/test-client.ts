@@ -18,7 +18,7 @@ export function createUnitTestClient(
   // Clone so tests that mutate `client.config` (e.g. delete wlp) do not poison the shared fixture.
   return new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
     grpcUrl: "https://fullnode.test.invalid:443",
-    oracleSource: opts.oracleSource ?? "pyth_rule",
+    oracleSource: opts.oracleSource ?? "waterx_rule",
     pythApiKey: opts.pythApiKey,
     pythFetch: opts.pythFetch,
     waterxEndpoint: opts.waterxEndpoint,

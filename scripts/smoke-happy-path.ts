@@ -3,7 +3,7 @@
  *   1. Deposit USD into the wxa account (request_deposit + consume_deposit_direct)
  *   2. Mint WLP into the WLP pool from the wxa account's USD balance — this
  *      seeds the pool with LP liquidity so positions have reserve room.
- *   3. Place a limit buy via buildPlaceOrderTx (auto-wires pyth_sponsor_rule).
+ *   3. Place a limit buy via buildPlaceOrderTx.
  *   4. Cancel the order via buildCancelOrderTx.
  *
  * Required env:
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   console.log(`AccountId: ${accountId}`);
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
+    oracleSource: "waterx_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
@@ -207,9 +207,6 @@ async function main(): Promise<void> {
       depositTicker: "USDCUSD",
       depositAmount: mintAmount,
       minLpAmount: 0n,
-      // mint_wlp produces no TradingRequest to reimburse a sponsor fund
-      // against — standalone smoke script pays its own gas.
-      allowGasFee: true,
     });
     if (!(await sim(client, keypair, mintTx, "mintWlp (sim)"))) process.exit(2);
     const r = await execute(client, keypair, mintTx, "mintWlp (execute)");
@@ -222,7 +219,7 @@ async function main(): Promise<void> {
   }
 
   // ============================================================================
-  // 3. Place limit BTC LONG (auto-wires pyth_sponsor_rule)
+  // 3. Place limit BTC LONG
   // ============================================================================
   const orderSize = BigInt(process.env.WATERX_ORDER_SIZE ?? rawPrice(0.0001).toString());
   const orderPrice = BigInt(process.env.WATERX_ORDER_PRICE ?? rawPrice(60000).toString());

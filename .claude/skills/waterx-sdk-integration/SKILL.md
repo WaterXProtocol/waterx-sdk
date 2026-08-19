@@ -58,9 +58,11 @@ is fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrat
 
 | Source            | Notes                                                                    |
 | ----------------- | ------------------------------------------------------------------------ |
-| `pyth_rule`       | Pyth Core; per-feed update fees; no credential                            |
 | `pyth_lazer_rule` | one signed verify per PTB, no per-feed fees; **requires `pythApiKey`**    |
 | `waterx_rule`     | first-party TEE quote-center; no credential; browser needs a CORS-allowed origin |
+
+(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0; `parseOracleSourceList`
+rejects it with a retired-value hint.)
 
 The rule that decides the value: **the fed set must be a superset of every ticker's
 on-chain weighted rules.** Starving a weighted rule aborts `EMissingPriceSource`; feeding

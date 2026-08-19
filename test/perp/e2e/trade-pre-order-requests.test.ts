@@ -27,7 +27,6 @@ describe(`trade pre-order requests (${e2eNetwork})`, () => {
         preOrderId: 999_999_998n,
         collateralTicker: "USDCUSD",
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;
@@ -59,7 +58,6 @@ describe(`trade pre-order requests (${e2eNetwork})`, () => {
         },
         collateralTicker: "USDCUSD",
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;

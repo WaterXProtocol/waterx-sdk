@@ -6,6 +6,7 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
+import { parseOracleSourceList, type OracleSource } from "../../../../src/oracle/index.ts";
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
 import { resolveE2eNetwork, type E2eNetwork } from "./e2e-network.ts";
@@ -84,18 +85,29 @@ let clientInitPromise: Promise<PerpClient> | undefined;
  * Lazily build (once) the shared e2e client and resolve when it is ready
  * (Vitest e2e setup awaits this). Kept lazy — as a function, not an eager
  * top-level IIFE — so that merely importing this module has NO side effects:
- * pure helpers can pull in `resolveE2eGrpcUrlOverride` / `pythFeedIdsForE2e`
+ * pure helpers can pull in `resolveE2eGrpcUrlOverride`
  * etc. without triggering a `PerpClient.create` (and its `loadConfig`, which
  * now requires a config URL). The config load happens only on first call.
  */
+/**
+ * The e2e fed set, from `ORACLE_SOURCE` at this harness boundary (the SDK
+ * never reads env). Default `waterx_rule` — keyless, live on both networks.
+ */
+function resolveE2eOracleSources(): OracleSource[] {
+  const raw = process.env.ORACLE_SOURCE?.trim();
+  return raw ? parseOracleSourceList(raw) : ["waterx_rule"];
+}
+
 export function clientInit(): Promise<PerpClient> {
   if (!clientInitPromise) {
     clientInitPromise = (async () => {
       const grpcUrl = resolveE2eGrpcUrlOverride();
+      const pythApiKey = process.env.PYTH_API_KEY?.trim() || undefined;
       const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
-        oracleSource: "pyth_rule",
+        oracleSource: resolveE2eOracleSources(),
         cache: true,
         waterxConfigUrl: resolveE2eWaterxConfigUrl(),
+        ...(pythApiKey ? { pythApiKey } : {}),
         ...(grpcUrl ? { grpcUrl } : {}),
       });
       c.grpcClient = wrapGrpcClientForE2eRetry(c.grpcClient);
@@ -109,15 +121,6 @@ export function clientInit(): Promise<PerpClient> {
 
 export async function getE2eClient(): Promise<PerpClient> {
   return client ?? clientInit();
-}
-
-export function pythFeedIdsForE2e(c = client): Record<string, string> {
-  const feeds = c.config.packages.pyth_rule?.feeds ?? {};
-  const out: Record<string, string> = {};
-  for (const [ticker, row] of Object.entries(feeds)) {
-    if (row?.feed_id) out[ticker] = row.feed_id;
-  }
-  return out;
 }
 
 /**

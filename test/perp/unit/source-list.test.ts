@@ -31,8 +31,30 @@ describe("parseOracleSourceList", () => {
   });
 
   it("drops empty entries (trailing/doubled commas) — the most common env typo, never a boot failure", () => {
-    expect(parseOracleSourceList("pyth_rule,")).toEqual(["pyth_rule"]);
-    expect(parseOracleSourceList("pyth_rule,,waterx_rule")).toEqual(["pyth_rule", "waterx_rule"]);
+    expect(parseOracleSourceList("waterx_rule,")).toEqual(["waterx_rule"]);
+    expect(parseOracleSourceList("pyth_lazer_rule,,waterx_rule")).toEqual([
+      "pyth_lazer_rule",
+      "waterx_rule",
+    ]);
+  });
+
+  it("names the 5.0.0 retirement when the list still carries 'pyth_rule'", () => {
+    // The operator fix (delete one list entry) is different in kind from a
+    // typo'd source — the error says so, verbatim, for both consumers' boot
+    // messages to surface.
+    for (const raw of ["pyth_rule", "waterx_rule,pyth_rule"]) {
+      expect(() => parseOracleSourceList(raw)).toThrow(
+        /pyth_rule retired — remove it from ORACLE_SOURCE/,
+      );
+    }
+    // A list without the retired value gets the plain membership error only.
+    let plain: Error | undefined;
+    try {
+      parseOracleSourceList("chainlink");
+    } catch (e) {
+      plain = e as Error;
+    }
+    expect(plain?.message).not.toMatch(/retired/);
   });
 
   it("every canonical value resolves to a REGISTERED rule — the parser may never bless a value the registry cannot serve", () => {
@@ -64,14 +86,14 @@ describe("parseOracleSourceList", () => {
     // the FE/BE Record guards passed these and died deep in the stack; the
     // Set-based check must never regress to that.
     for (const proto of ["toString", "constructor", "hasOwnProperty", "__proto__"]) {
-      expect(() => parseOracleSourceList(`pyth_rule,${proto}`)).toThrow(
+      expect(() => parseOracleSourceList(`waterx_rule,${proto}`)).toThrow(
         /ORACLE_SOURCE must be a comma-separated list/,
       );
     }
   });
 
   it("throws when ANY entry is not an SDK rule value (legacy core/pro included)", () => {
-    for (const bad of ["core", "pro", "pyth", "waterx", "pyth_rule,chainlink"]) {
+    for (const bad of ["core", "pro", "pyth", "waterx", "waterx_rule,chainlink"]) {
       expect(() => parseOracleSourceList(bad)).toThrow(
         /ORACLE_SOURCE must be a comma-separated list/,
       );
@@ -82,7 +104,7 @@ describe("parseOracleSourceList", () => {
 describe("isOracleSource", () => {
   it("accepts exactly the ORACLE_SOURCES values, rejecting legacy names and prototype keys", () => {
     for (const source of ORACLE_SOURCES) expect(isOracleSource(source)).toBe(true);
-    for (const bad of ["core", "pyth", "supra_rule", "toString", "constructor", ""]) {
+    for (const bad of ["core", "pyth", "pyth_rule", "supra_rule", "toString", "constructor", ""]) {
       expect(isOracleSource(bad)).toBe(false);
     }
   });

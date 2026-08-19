@@ -36,9 +36,8 @@ const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
 /**
  * Every source THIS deployment configures feeds for — read off the config
- * rather than hardcoded, because the right fed set differs per network: today
- * testnet carries `pyth_rule` + `pyth_lazer_rule` while mainnet carries only
- * `pyth_rule`, and that changes without an SDK release.
+ * rather than hardcoded, because the right fed set differs per network and
+ * changes without an SDK release.
  *
  * A superset is the safe side of the asymmetry: feeding a rule the chain does
  * not weight is dropped on-chain, whereas starving a weighted rule aborts

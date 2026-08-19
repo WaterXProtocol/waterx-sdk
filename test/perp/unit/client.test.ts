@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PYTH_CORE_INFRA } from "../../../src/oracle/pyth.ts";
+import { WATERX_INFRA } from "../../../src/oracle/rules/waterx-rule.ts";
 import { PerpClient, type CreateClientOptions } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
 import type { WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
@@ -13,10 +13,10 @@ import { createUnitTestClient } from "../helpers/test-client.ts";
 describe("PerpClient (offline)", () => {
   const client = createUnitTestClient();
 
-  it("exposes testnet config; Core infra is rule-owned, not on the client", () => {
+  it("exposes testnet config; source infra is rule-owned, not on the client", () => {
     expect(client.network).toBe("TESTNET");
     expect(client.config.network).toBe("testnet");
-    expect(PYTH_CORE_INFRA.TESTNET.state_id).toMatch(/^0x/);
+    expect(WATERX_INFRA.TESTNET.endpoint).toMatch(/^https:/);
     expect(client.config.packages.waterx_perp.global_config).toMatch(/^0x/);
   });
 
@@ -30,8 +30,7 @@ describe("PerpClient (offline)", () => {
     expect(() => client.getMarket("NOPE")).toThrow(/Unknown market ticker/);
   });
 
-  it("getPythFeed / getAggregator / getPoolTokenType / wlpType", () => {
-    expect(client.getPythFeed("BTCUSD").feed_id).toMatch(/^0x/);
+  it("getAggregator / getPoolTokenType / wlpType", () => {
     expect(client.getAggregator("BTCUSD")).toMatch(/^0x/);
     expect(client.getPoolTokenType("USDCUSD")).toContain("::");
     expect(client.wlpType()).toContain("::wlp::WLP");
@@ -66,9 +65,8 @@ describe("PerpClient (offline)", () => {
     expect(noPkgId.isConstantTicker("USDCUSD")).toBe(false);
   });
 
-  it("throws for unknown aggregator, pyth feed, and pool token", () => {
+  it("throws for unknown aggregator and pool token", () => {
     expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
-    expect(() => client.getPythFeed("NOPE")).toThrow(/No pyth feed listed/);
     expect(() => client.getPoolTokenType("NOPE")).toThrow(/No pool token registered/);
   });
 
@@ -245,7 +243,7 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {
     const client = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       pythFetch: { timeoutMs: 8_000, retries: 1 },
     });
 
@@ -260,8 +258,11 @@ describe("PerpClient.create", () => {
 
   it("returns async client with loaded config", async () => {
     const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", { cache: true, oracleSource: "pyth_rule" });
-    expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true, oracleSource: "pyth_rule" });
+    const client = await PerpClient.create("TESTNET", { cache: true, oracleSource: "waterx_rule" });
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", {
+      cache: true,
+      oracleSource: "waterx_rule",
+    });
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
     expect(client.network).toBe("TESTNET");
   });
@@ -292,8 +293,8 @@ describe("PerpClient.create", () => {
       ...MOCK_TESTNET_CONFIG,
       network: network === "MAINNET" ? "mainnet" : "testnet",
     }));
-    const testnet = await PerpClient.testnet({ oracleSource: "pyth_rule" });
-    const mainnet = await PerpClient.mainnet({ oracleSource: "pyth_rule" });
+    const testnet = await PerpClient.testnet({ oracleSource: "waterx_rule" });
+    const mainnet = await PerpClient.mainnet({ oracleSource: "waterx_rule" });
     expect(testnet.network).toBe("TESTNET");
     expect(mainnet.network).toBe("MAINNET");
     expect(loadConfig).toHaveBeenCalledTimes(2);

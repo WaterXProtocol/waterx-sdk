@@ -16,6 +16,97 @@ from the version number alone.
 
 ## [Unreleased]
 
+_The next release is **5.0.0** (MAJOR): the `pyth_rule` (Pyth Core / Hermes) source is
+RETIRED and the WL-2345 consumer seams are built directly on the post-retirement
+surface. `package.json` already carries `5.0.0` so the packed tarball consumers build
+against during the gated window identifies itself correctly; release tagging dates this
+section. All of it lands in one gated PR (#89).
+[WL-2345](https://bucketprotocol.atlassian.net/browse/WL-2345) ·
+[WL-2355](https://bucketprotocol.atlassian.net/browse/WL-2355)._
+
+### BREAKING — removal ledger (WL-2355: `pyth_rule` / Pyth Core retirement)
+
+Consumers must not import any of these; every removal is listed so the FE/BE fold PRs
+can grep against it:
+
+- **Whole source**: `PythCoreRule`, `PythCoreUpdatePayload`, `feedPythRule`, and the
+  generated `waterx_pyth_rule` / `pyth_sponsor_rule` bindings (`pythRuleCalls`,
+  `pythSponsorRuleCalls` namespaces).
+- **Hermes plumbing** (`src/oracle/pyth.ts` deleted whole): `PythCache`,
+  `fetchPriceFeedsUpdateData`, `endpointSupportedFeedIds`, `probeMissingFeeds`,
+  `HermesEndpointRejectedAllFeedsError`, `MISSING_FEED_MEMO_TTL_MS`,
+  `buildPythPriceUpdateCalls`, `updatePythPrices`, `pythCoreHermesEndpoint`,
+  `pythProHermesEndpoint`, `PYTH_PRO_HERMES_ENDPOINT`.
+- **Fee/sponsor machinery**: `OracleFeeSource`, `OracleFeeSourceUnavailableError`,
+  `openPythSponsorFund`, `reimbursePythSponsor`, `BuildUpdateOpts.cache`/`feeSource`,
+  `CommonBuildOpts.useSponsor`/`allowGasFee` (and `pythCache`), the WLP builders' fee
+  params, and `refreshOraclePrices`' `cache`/`feeSource` opts. All remaining update
+  legs are fee-free, so `build*Tx` composes into Enoki-sponsored transactions with no
+  fee flag.
+- **Read plane**: the hermes plane and `resolveHermesReadEndpoint` are gone (never
+  released — superseded in-flight); `OracleReadPlan` is the two-arm
+  `lazer | quote_center` union and the `unreadable` diagnostic no longer exists
+  (write set == read set by construction).
+- **Aggregation**: `aggregateTickerWithPyth` and `aggregateTicker`'s
+  `priceInfoObjectId` arg; constant-only detection is `host.isConstantTicker(t)` alone
+  (the dual-feed carve-out is moot without a Pyth leg).
+- **Client/host surface**: `OracleHost.getPythFeed`, `PerpClient.getPythFeed`,
+  `PerpConfigView.getPythFeed`.
+- **Config**: `ORACLE_SOURCES` is `["pyth_lazer_rule", "waterx_rule"]`;
+  `parseOracleSourceList` rejects `pyth_rule` with a retired-value hint
+  ("pyth_rule retired — remove it from ORACLE_SOURCE"); `OraclePackages.pyth_rule` is
+  now OPTIONAL (a config JSON may still carry the block; the SDK never reads it) and
+  `validateConfig`'s perp required-package list drops `"pyth_rule"`.
+- **Scripts**: `scripts/set-pyth-tolerance.ts` / `scripts/pyth-tolerance-show.ts`
+  deleted; smoke/dev scripts default to `waterx_rule` (env-overridable via
+  `ORACLE_SOURCE` where they already read env).
+- `getCollateralAssets` now filters WLP pool-token keys by the LIVE rule feeds
+  (`constant_rule` / `pyth_lazer_rule` / `waterx_rule`) instead of `pyth_rule.feeds`.
+
+### Added — consumer seams (WL-2345)
+
+All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + the root:
+
+- **Read planes + executors**: `readPlanTickers(plan)`; `readLazerPrices` (Lazer
+  `POST /v1/latest_price` parsed read — pinned to the live-probed wire shape, `403` →
+  `LazerNotEntitledError` with the verbatim entitlement body) and
+  `readQuoteCenterPrices` (quote-center envelope read) returning
+  `Map<id|ticker, OraclePriceEntry>` (`{ price, publishTimeMs, conf }`).
+- **Boot-time validation** (`validate.ts`): `assertOracleWriteCoverage(host)` (throws
+  `OracleFedSetError` for a listed source with no feeds; write set == read set, so the
+  old read-coverage assert is resolved-by-design) and
+  `missingOracleCredentials(sources, { pythApiKey })` (`OracleCredentialKind`).
+- **Rule port additions**: `PriceUpdateRule.requiredCredential`
+  (`PythLazerRule` declares `"pyth_api_key"`) and
+  `PriceUpdateRule.updateIdentityBySymbol` — the rule-owned on-chain F-014 single-use
+  replay key (`WaterxRule`: leaves → `symbol → signed_timestamp_ms`; envelope →
+  `symbol → timestamp_ms`). `refreshOraclePrices` gains a hoisted credential
+  pre-check: a keyless build whose fed set includes an auth-first source throws
+  `LazerApiKeyMissingError` BEFORE any fetch or PTB mutation.
+- **Waterx seams**: `fetchWaterxSignedUpdate` / `fetchWaterxSignedLeaves` (the raw
+  quote-center fetchers, now public), `fetchWaterxUpdateData(host, tickers,
+  { coverage: "strict" | "partial" })` (strict == the rule's own trade-path fetch;
+  partial reports unlisted/uncovered tickers in `missing` for universe prefetch),
+  `WATERX_MAX_PRICE_AGE_MS` (90s on-chain `max_age` mirror), `isFreshWaterxEntry`,
+  and the `LeafPull` type.
+- **Market hours** (`schedule.ts`): `parsePythSchedule` / `PythScheduleParseError`
+  (the reconciled superset of the FE/BE parsers — `Open`/`O`/`open`,
+  `Closed`/`C`/`closed`, `&`- and comma-joined multi-session days, `MMDD` and
+  `MMDD/C` holidays) and the pure `getMarketStatus` walker (BE signature verbatim),
+  with the `TradingSession` / `TradingHours` / `HolidayDate` / `ParsedPythSchedule` /
+  `MarketStatusResult` types.
+- **Pyth Pro read surfaces**: `fetchPythSymbolCatalog` (`GET /v1/symbols`, keyless —
+  replaces the Hermes `/v2/price_feeds` catalog for schedules AND the hex↔integer
+  feed-id map; `PythSymbolRecord`) and `fetchPythProHistory`
+  (`GET /v1/{channel}/history`, Bearer — TradingView-UDF chart bars).
+
+### Changed
+
+- `CommonBuildOpts.skipOraclePriceRefresh` now documents the shared-refresh
+  composition (`newTx` → `refreshOraclePrices(allTickers)` → N builders with
+  `skipOraclePriceRefresh: true`) and why per-builder refreshes must not repeat a
+  waterx symbol in one PTB (F-014 high-water mark).
+
 ## [4.3.3] - 2026-08-18
 
 _Released as a PATCH carrying one **BREAKING** type change: `WaterxUpdatePayload` is now

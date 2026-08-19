@@ -1,8 +1,7 @@
-import { toHex } from "@mysten/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RuleUpdateData, UpdateDataProvider } from "../../../src/oracle/index.ts";
+import { parseSignedLeaves, type UpdateDataProvider } from "../../../src/oracle/index.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
@@ -20,10 +19,7 @@ import {
   buildRequestCreditWithdrawTx,
   buildUpdateOrderTx,
   buildWithdrawCollateralTx,
-  openPythSponsorFund,
-  reimbursePythSponsor,
 } from "../../../src/perp/tx-builders.ts";
-import { placeOrderRequest } from "../../../src/perp/user/order.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
@@ -48,10 +44,52 @@ const common = {
   accountId: PTB_DUMMY_ACCOUNT_ID,
   collateralType: MOCK_USDC_TYPE,
   skipOraclePriceRefresh: true,
-  useSponsor: false,
   // Offline unit-test client has no working gRPC — skip the async sweep.
   consolidateToUsd: false,
 } as const;
+
+/** 64-byte ed25519 signature + 32-byte hash (hex) standing in for real ones. */
+const SIG_HEX = "ab".repeat(64);
+const HASH_HEX = "cd".repeat(32);
+
+/** Wire-faithful `/v1/quotes/leaves` body covering `symbols`. */
+function leavesText(symbols: string[]): string {
+  const leaves = symbols.map(
+    (symbol) => `{
+      "symbol": "${symbol}", "ticker": "${symbol}T",
+      "price": 63700.0, "confidence": 0.0,
+      "price_n": 63700000000000, "price_scale": 1000000000,
+      "confidence_n": 10000000000, "confidence_scale": 1000000000,
+      "sources": [2, 3, 4], "method": "median",
+      "num_sources": 3, "max_source_deviation_bps": 0,
+      "price_timestamp_ms": 1784799999000,
+      "signed_timestamp_ms": 1784800000000,
+      "root": "${HASH_HEX}", "proof": ["${HASH_HEX}"],
+      "signature": "${SIG_HEX}"
+    }`,
+  );
+  return `{"leaves":[${leaves.join(",")}]}`;
+}
+
+/**
+ * Symbol-aware quote-center leaf mock: answers `/v1/quotes/leaves` with one
+ * signed leaf per REQUESTED symbol, so a builder's refresh (whatever ticker
+ * set it derives) always gets full coverage.
+ */
+function mockQuoteCenterLeaves(): ReturnType<typeof vi.spyOn> {
+  return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+    const url = new URL(String(input));
+    if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+      return Promise.resolve({ ok: false, status: 404, text: async () => "Not Found" } as Response);
+    }
+    const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      text: async () => leavesText(symbols),
+    } as unknown as Response);
+  }) as ReturnType<typeof vi.spyOn>;
+}
 
 describe("tx-builders (v3)", () => {
   const client = createUnitTestClient();
@@ -67,150 +105,28 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("wrapRequestAndExecute opens the sponsor fund from config presence, ignoring the deprecated useSponsor flag", async () => {
-    const withUseSponsorTrue = await buildPlaceOrderTx(client, {
-      ticker: common.ticker,
-      accountId: common.accountId,
-      collateralType: common.collateralType,
-      main: baseOrder,
-      skipOraclePriceRefresh: true,
-      useSponsor: true,
-      consolidateToUsd: false,
-    });
-    // useSponsor: false is now a no-op — MOCK_TESTNET_CONFIG has
-    // pyth_sponsor_rule, so the fund still opens (config wins).
-    const withUseSponsorFalse = await buildPlaceOrderTx(client, {
-      ticker: common.ticker,
-      accountId: common.accountId,
-      collateralType: common.collateralType,
-      main: baseOrder,
-      skipOraclePriceRefresh: true,
-      useSponsor: false,
-      consolidateToUsd: false,
-    });
-    // Structural equivalence, not just a command count — useSponsor no
-    // longer influences anything about the built PTB (config alone decides).
-    expect(withUseSponsorFalse.getData()).toStrictEqual(withUseSponsorTrue.getData());
+  it("buildPlaceOrderTx with oracle refresh: fee-free, no SplitCoins, no sponsor legs — just verify+feed+aggregate", async () => {
+    mockQuoteCenterLeaves();
 
-    // A config with no pyth_sponsor_rule never opens a fund — fewer commands
-    // (no request/reimburse/witness moveCalls), regardless of useSponsor.
-    const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
-    delete noSponsorConfig.packages.pyth_sponsor_rule;
-    const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
-      oracleSource: "pyth_rule",
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-    const withoutSponsorRuleConfig = await buildPlaceOrderTx(noSponsorClient, {
-      ticker: common.ticker,
-      accountId: common.accountId,
-      collateralType: common.collateralType,
+    const tx = await buildPlaceOrderTx(client, {
+      ...common,
       main: baseOrder,
-      skipOraclePriceRefresh: true,
+      skipOraclePriceRefresh: false,
       consolidateToUsd: false,
     });
-    expect(withoutSponsorRuleConfig.getData().commands!.length).toBeLessThan(
-      withUseSponsorTrue.getData().commands!.length,
+
+    const targets = moveTargets(tx);
+    // The waterx leaf leg feeds each refreshed ticker …
+    expect(targets.filter((t) => t === "collect_single_with_proof").length).toBeGreaterThanOrEqual(
+      0,
     );
-  });
-
-  it("buildPlaceOrderTx: config HAS pyth_sponsor_rule + caller passes nothing → sponsor split, no gas SplitCoins", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
-    attachPythGrpcMocks(client);
-
-    const tx = await buildPlaceOrderTx(client, {
-      ...common,
-      main: baseOrder,
-      skipOraclePriceRefresh: false,
-      useSponsor: undefined,
-      consolidateToUsd: false,
-    });
+    expect(targets.filter((t) => t === "waterx_rule::collect_single_with_proof")).toHaveLength(2); // BTCUSD (market) + USDCUSD (collateral/pool)
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
+    // … and NOTHING fee-shaped remains: no gas split, no sponsor fund legs.
     expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
-    expect(moveTargets(tx)).toContain("pyth_sponsor_rule::split");
-  });
-
-  it("buildPlaceOrderTx: config HAS pyth_sponsor_rule + caller passes allowGasFee → STILL sponsor split (config wins)", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
-    attachPythGrpcMocks(client);
-
-    const tx = await buildPlaceOrderTx(client, {
-      ...common,
-      main: baseOrder,
-      skipOraclePriceRefresh: false,
-      allowGasFee: true,
-      consolidateToUsd: false,
-    });
-    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
-  });
-
-  it("buildPlaceOrderTx: NO pyth_sponsor_rule in config + allowGasFee → gas split", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
-
-    const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
-    delete noSponsorConfig.packages.pyth_sponsor_rule;
-    const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
-      oracleSource: "pyth_rule",
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-    attachPythGrpcMocks(noSponsorClient);
-
-    const tx = await buildPlaceOrderTx(noSponsorClient, {
-      ...common,
-      main: baseOrder,
-      skipOraclePriceRefresh: false,
-      allowGasFee: true,
-      consolidateToUsd: false,
-    });
-    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(true);
-    expect(moveTargets(tx)).not.toContain("pyth_sponsor_rule::split");
-  });
-
-  it("buildPlaceOrderTx: NO pyth_sponsor_rule in config + no allowGasFee → throws OracleFeeSourceUnavailable at build", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
-
-    const noSponsorConfig = structuredClone(MOCK_TESTNET_CONFIG);
-    delete noSponsorConfig.packages.pyth_sponsor_rule;
-    const noSponsorClient = new PerpClient("TESTNET", noSponsorConfig, {
-      oracleSource: "pyth_rule",
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-    attachPythGrpcMocks(noSponsorClient);
-
-    await expect(
-      buildPlaceOrderTx(noSponsorClient, {
-        ...common,
-        main: baseOrder,
-        skipOraclePriceRefresh: false,
-        consolidateToUsd: false,
-      }),
-    ).rejects.toThrow(/OracleFeeSourceUnavailable/);
+    expect(targets).not.toContain("pyth_sponsor_rule::split");
+    expect(targets).not.toContain("pyth_sponsor_rule::request");
+    expect(targets).not.toContain("pyth_sponsor_rule::reimburse");
   });
 
   it("buildClosePositionTx / increase / decrease / collateral adjust", async () => {
@@ -328,9 +244,8 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildMintWlpTx WITHOUT skip fails when a pool token has no feed for the selected source (no fallback)", async () => {
-    // The companion to the skip test above — proves the skip is what avoids the
-    // failure, not that the scenario is benign. allowGasFee rules out the
-    // fee-source throw, so the rejection is the missing-feed one.
+    // The companion to the skip test above — proves the skip is what avoids
+    // the failure, not that the scenario is benign.
     const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
 
@@ -341,46 +256,14 @@ describe("tx-builders (v3)", () => {
         depositTicker: "USDCUSD",
         depositAmount: 10_000_000n,
         minLpAmount: 0n,
-        allowGasFee: true,
         consolidateToUsd: false,
       }),
     ).rejects.toThrow(/no feed configured/);
   });
 
-  it("buildPlaceOrderTx with oracle refresh and sponsor reimburse", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
+  it("buildMintWlpTx with oracle refresh (fee-free — composes into sponsored transactions)", async () => {
+    mockQuoteCenterLeaves();
 
-    attachPythGrpcMocks(client);
-    const tx = await buildPlaceOrderTx(client, {
-      ...common,
-      main: baseOrder,
-      skipOraclePriceRefresh: false,
-      useSponsor: true,
-    });
-    expect(tx.getData().commands?.length).toBeGreaterThan(8);
-  });
-
-  it("buildMintWlpTx with oracle refresh", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
-
-    attachPythGrpcMocks(client);
-    // mint_wlp produces no TradingRequest, so it can never reimburse a sponsor
-    // fund — allowGasFee is required to draw the Pyth update fee from tx.gas
-    // (see buildMintWlpTx's doc comment / OracleFeeSourceUnavailable).
     const tx = await buildMintWlpTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
       depositTokenType: MOCK_USDC_TYPE,
@@ -388,56 +271,32 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       consolidateToUsd: false,
-      allowGasFee: true,
     });
-    expect(tx.getData().commands?.length).toBeGreaterThan(5);
+
+    const targets = moveTargets(tx);
+    expect(targets).toContain("waterx_rule::collect_single_with_proof");
+    expect(targets).toContain("oracle::aggregate");
+    expect(targets).toContain("lp_pool::update_token_value");
+    // Fee-free: nothing draws from tx.gas, so Enoki-sponsored flows compose.
+    expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
   });
 
-  it("buildMintWlpTx with oracle refresh throws OracleFeeSourceUnavailable without allowGasFee (config has pyth_sponsor_rule)", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ binary: { data: [toHex(mockAccumulatorUpdate())] } }), {
-          status: 200,
-        }),
-    ) as unknown as typeof fetch;
-
-    attachPythGrpcMocks(client);
-    await expect(
-      buildMintWlpTx(client, {
-        accountId: PTB_DUMMY_ACCOUNT_ID,
-        depositTokenType: MOCK_USDC_TYPE,
-        depositTicker: "USDCUSD",
-        depositAmount: 10_000_000n,
-        minLpAmount: 0n,
-        consolidateToUsd: false,
-      }),
-    ).rejects.toThrow(/OracleFeeSourceUnavailable/);
-  });
-
-  it("buildMintWlpTx consults updateDataProvider and skips the live Hermes fetch on a hit", async () => {
-    const { attachPythGrpcMocks, mockAccumulatorUpdate } =
-      await import("../helpers/fixtures/pyth-mock-grpc.ts");
-    attachPythGrpcMocks(client);
-
+  it("buildMintWlpTx consults updateDataProvider and skips the live quote-center fetch on a hit", async () => {
     // No live-fetch mock installed on globalThis.fetch — if the provider hit
-    // were bypassed, PythCoreRule.fetchUpdateData would call the real
+    // were bypassed, WaterxRule.fetchUpdateData would call the real
     // (unmocked) fetch and the test would fail loudly instead of silently
     // passing.
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    // The cache holds a payload that actually covers USDCUSD — its real config
-    // feed id, so refreshOraclePrices' narrowUpdateData step subsets it to the
-    // requested ticker and serves it instead of live-fetching.
-    const cachedData: RuleUpdateData = {
-      kind: "pyth_rule",
-      payload: {
-        updates: [mockAccumulatorUpdate()],
-        feedIds: [client.getPythFeed("USDCUSD").feed_id],
-      },
+    // The cache holds a leaf payload that actually covers USDCUSD, so
+    // refreshOraclePrices' narrowUpdateData step subsets it to the requested
+    // ticker and serves it instead of live-fetching.
+    const provider: UpdateDataProvider = {
+      get: vi.fn(async () => ({
+        kind: "waterx_rule" as const,
+        payload: { leaves: parseSignedLeaves(leavesText(["USDCUSD"])) },
+      })),
     };
-    const provider: UpdateDataProvider = { get: vi.fn(async () => cachedData) };
 
     const tx = await buildMintWlpTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
@@ -446,22 +305,12 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       consolidateToUsd: false,
-      allowGasFee: true,
       updateDataProvider: provider,
     });
 
-    expect(provider.get).toHaveBeenCalledWith("pyth_rule", ["USDCUSD"]);
+    expect(provider.get).toHaveBeenCalledWith("waterx_rule", ["USDCUSD"]);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(tx.getData().commands?.length).toBeGreaterThan(5);
-  });
-
-  it("openPythSponsorFund + reimbursePythSponsor", () => {
-    const tx = new Transaction();
-    const { fund, packageId } = openPythSponsorFund(tx, client);
-    const req = placeOrderRequest(client, tx, { ...common, main: baseOrder });
-    reimbursePythSponsor(tx, client, fund, req, MOCK_USDC_TYPE);
-    expect(packageId).toBeTruthy();
-    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(3);
+    expect(moveTargets(tx)).toContain("waterx_rule::collect_single_with_proof");
   });
 
   it("reuses passed Transaction via tx opt", async () => {
@@ -532,7 +381,7 @@ describe("tx-builders (v3)", () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     delete cfg.packages.withdrawal_queue;
     const noQueue = new PerpClient("TESTNET", cfg, {
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>

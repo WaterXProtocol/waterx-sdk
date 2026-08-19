@@ -50,9 +50,16 @@ export function parseOracleSourceList(raw: string | null | undefined): OracleSou
   const sources = parts.filter(isOracleSource);
   if (parts.length === 0 || sources.length !== parts.length) {
     const got = raw == null || raw.trim() === "" ? "unset" : `'${raw}'`;
+    // A deployment still carrying the 5.0.0-retired value gets told exactly
+    // what happened rather than the generic "not a member" — the operator fix
+    // (delete one list entry) is different in kind from a typo'd source name.
+    const retiredHint = parts.includes("pyth_rule")
+      ? " (pyth_rule retired — remove it from ORACLE_SOURCE)"
+      : "";
     throw new Error(
       `ORACLE_SOURCE must be a comma-separated list of ${ORACLE_SOURCES.join(" | ")} ` +
-        `(got ${got}) — there is NO default oracle source; set it in the deployment's env.`,
+        `(got ${got}) — there is NO default oracle source; set it in the deployment's env.` +
+        retiredHint,
     );
   }
 

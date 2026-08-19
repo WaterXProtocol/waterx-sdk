@@ -30,7 +30,7 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { aggregateTickerWithPyth } from "../src/oracle/index.ts";
+import { aggregateTickerWithConstant } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const doExecute = process.env.EXECUTE === "1";
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
+    oracleSource: "waterx_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
@@ -80,23 +80,14 @@ async function main(): Promise<void> {
 
   const tx = new Transaction();
   if (skipPriceUpdate) {
-    // Re-aggregate the on-chain USDCUSD price (no Hermes / no Pyth push) so
-    // mint_wlp's oracle::get_price sees a same-PTB aggregate. Only works while
-    // that on-chain price is within pyth_rule tolerance.
-    const feed = client.getPythFeed(TICKER);
-    aggregateTickerWithPyth(tx, client, {
-      ticker: TICKER,
-      priceInfoObjectId: feed.price_info_object,
-    });
+    // Re-aggregate USDCUSD off its on-chain constant_rule pin (no off-chain
+    // data needed) so mint_wlp's oracle::get_price sees a same-PTB aggregate.
+    aggregateTickerWithConstant(tx, client, { ticker: TICKER });
   }
 
   await buildMintAndStakeWlpTx(client, {
     tx,
     skipOraclePriceRefresh: skipPriceUpdate,
-    // mint_wlp produces no TradingRequest to reimburse a sponsor fund
-    // against — standalone smoke script pays its own gas. No-op when
-    // skipPriceUpdate is true (no refresh to pay a fee for).
-    allowGasFee: true,
     accountId,
     depositTokenType: usdType,
     depositTicker: TICKER,

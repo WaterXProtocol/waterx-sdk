@@ -65,7 +65,6 @@ export async function ensureIntegrationMinWlpBalance(args: {
         skipOraclePriceRefresh: false,
         // mint_wlp produces no TradingRequest to reimburse a sponsor fund
         // against — integration test pays its own gas (real signed execution).
-        allowGasFee: true,
       }),
     args.trader,
     { gasBudget: integrationGasBudget("wlp") },

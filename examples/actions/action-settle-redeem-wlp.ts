@@ -27,10 +27,7 @@ run(async () => {
   // last_price_refresh_timestamp so `assert_prices_fresh` inside
   // `settle_redeem` passes.
   const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
-  // Standalone keeper script, no TradingRequest to reimburse a sponsor fund
-  // against — pay the Pyth update fee from tx.gas (see
-  // `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
-  await refreshOraclePrices(tx, client, poolTickers, { feeSource: { kind: "gas" } });
+  await refreshOraclePrices(tx, client, poolTickers);
   for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType });
   }

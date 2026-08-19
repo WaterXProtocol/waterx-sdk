@@ -37,9 +37,6 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * self-contained (own infra, own endpoints, own config) with NO cross-source
    * fallback:
    *
-   * - `'pyth_rule'` — Pyth Core `pyth_rule` updates (Hermes VAA + per-feed
-   *   update fees); Core state + Hermes endpoint live in the source's own
-   *   `PYTH_CORE_INFRA` table.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
    *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
    *   and a `pythApiKey` (Lazer is auth-first); Lazer infra lives in the
@@ -72,13 +69,13 @@ export interface CreateClientOptions extends LoadConfigOptions {
   /**
    * Pyth Lazer access token (`Authorization: Bearer …`). Required under
    * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
-   * `'pyth_rule'` (keyless Core Hermes). This is a SECRET and never belongs in
-   * the canonical `waterx-config` JSON — pass it at client init from your own
-   * env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
+   * `'waterx_rule'` (public quote-center). This is a SECRET and never belongs
+   * in the canonical `waterx-config` JSON — pass it at client init from your
+   * own env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
    */
   pythApiKey?: string;
   /**
-   * Retry/timeout policy for the off-chain Hermes / Lazer update fetches (see
+   * Retry/timeout policy for the off-chain Lazer update fetch (see
    * `fetchWithPolicy`). Optional — defaults to 15s timeout, 2 retries.
    */
   pythFetch?: PythFetchPolicy;
@@ -201,11 +198,6 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   /** @see PerpConfigView.getAggregator */
   getAggregator(ticker: string): string {
     return this.view.getAggregator(ticker);
-  }
-
-  /** @see PerpConfigView.getPythFeed */
-  getPythFeed(ticker: string) {
-    return this.view.getPythFeed(ticker);
   }
 
   /** @see PerpConfigView.isConstantTicker */

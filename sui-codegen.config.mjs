@@ -62,22 +62,6 @@ const config = {
       },
     },
     {
-      package: "@waterx/pyth-rule",
-      path: resolve(contracts, "waterx_oracle_rule/pyth_rule"),
-      generate: {
-        types: true,
-        functions: true,
-      },
-    },
-    {
-      package: "@waterx/pyth-sponsor-rule",
-      path: resolve(contracts, "waterx_oracle_rule/pyth_sponsor_rule"),
-      generate: {
-        types: true,
-        functions: true,
-      },
-    },
-    {
       package: "@waterx/constant-rule",
       path: resolve(contracts, "waterx_oracle_rule/constant_rule"),
       generate: {

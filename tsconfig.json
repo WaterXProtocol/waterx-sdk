@@ -34,7 +34,6 @@
     // call sites against removed/renamed APIs (bucketOraclePackageId, getMarketSummary,
     // BaseAsset/CollateralAsset, depositCoin). Leave excluded until someone revives them;
     // fixing dead code with no caller is out of scope of the tsconfig-include hygiene fix.
-    "test/perp/helpers/e2e/build-oracle-feed-simulate.ts",
     "test/perp/helpers/e2e/e2e-open-sizing-expect.ts",
     "test/perp/helpers/e2e/wlp-mint-simulate-tx.ts"
   ]

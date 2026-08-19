@@ -14,10 +14,7 @@ export async function refreshOraclePricesForTradingEdge(
 ): Promise<void> {
   const pool = Object.keys(client.config.packages.wlp.pool_tokens);
   const uniq = [...new Set([...tickers, ...pool])];
-  // Trading-edge test helper builds requests directly (no wrapRequestAndExecute),
-  // so there's no sponsor fund to open+reimburse here — pay the Pyth update
-  // fee from tx.gas.
-  await refreshOraclePrices(tx, client, uniq, { feeSource: { kind: "gas" } });
+  await refreshOraclePrices(tx, client, uniq);
   for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType });
   }

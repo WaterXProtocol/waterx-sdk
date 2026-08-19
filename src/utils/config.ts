@@ -7,15 +7,18 @@ export function getMarketTickers(config: WaterXConfig): string[] {
 }
 
 /**
- * Returns WLP pool-token tickers that also have a registered pyth_rule feed —
- * the canonical testnet config keys `pool_tokens` by coin symbol (e.g. `"USD"`)
- * while `pyth_rule.feeds` is keyed by oracle ticker (e.g. `"USDCUSD"`), so a
+ * Returns WLP pool-token tickers that some live oracle rule can actually
+ * price — i.e. keys with a feeds entry under `constant_rule`,
+ * `pyth_lazer_rule`, or `waterx_rule`. Some configs key `pool_tokens` by coin
+ * symbol (e.g. `"USD"`) rather than oracle ticker (e.g. `"USDCUSD"`), so a
  * naive `Object.keys(pool_tokens)` blows up at `refreshOraclePrices` for any
- * key without a feed. Filter so the auto-refresh path stays tolerant.
+ * key no rule serves. Filter so the auto-refresh path stays tolerant.
  */
 export function getCollateralAssets(config: WaterXConfig): string[] {
-  const feeds = config.packages.pyth_rule?.feeds ?? {};
-  return Object.keys(config.packages.wlp.pool_tokens).filter(
-    (t) => ownEntry(feeds, t) !== undefined,
-  );
+  const packages = config.packages;
+  const served = (ticker: string): boolean =>
+    ownEntry(packages.constant_rule?.feeds, ticker) !== undefined ||
+    ownEntry(packages.pyth_lazer_rule?.feeds, ticker) !== undefined ||
+    ownEntry(packages.waterx_rule?.feeds, ticker) !== undefined;
+  return Object.keys(packages.wlp.pool_tokens).filter(served);
 }

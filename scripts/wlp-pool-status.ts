@@ -24,7 +24,7 @@ function shortType(t: string): string {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
+    oracleSource: "waterx_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

@@ -16,12 +16,29 @@ describe("config utils", () => {
     expect(collaterals).toEqual(["USDCUSD"]);
   });
 
-  it("getCollateralAssets returns empty when pyth_rule feeds are absent", () => {
+  it("getCollateralAssets returns empty when NO live rule lists a pool-token feed", () => {
+    // A pool-token key counts iff SOME live rule's feeds block lists it
+    // (constant / lazer / waterx). Strip all three → nothing is servable.
     const noFeeds = {
       ...MOCK_TESTNET_CONFIG,
-      packages: { ...MOCK_TESTNET_CONFIG.packages, pyth_rule: undefined },
+      packages: {
+        ...MOCK_TESTNET_CONFIG.packages,
+        constant_rule: undefined,
+        pyth_lazer_rule: undefined,
+        waterx_rule: undefined,
+      },
     } as unknown as WaterXConfig;
     expect(getCollateralAssets(noFeeds)).toEqual([]);
+  });
+
+  it("getCollateralAssets counts a pool token served by ANY single live rule", () => {
+    // constant_rule alone is enough — the shared fixture's constant feeds are
+    // empty, so pin USDCUSD there and strip the other two rule blocks.
+    const constantOnly = structuredClone(MOCK_TESTNET_CONFIG);
+    constantOnly.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    delete constantOnly.packages.pyth_lazer_rule;
+    delete constantOnly.packages.waterx_rule;
+    expect(getCollateralAssets(constantOnly)).toEqual(["USDCUSD"]);
   });
 
   it("returns empty arrays when maps are empty", () => {
