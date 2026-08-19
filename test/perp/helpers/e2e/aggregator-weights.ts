@@ -9,9 +9,9 @@
  *   1. an SDK regression that stopped feeding a rule it should feed — a REAL
  *      integration break the e2e suites exist to catch; and
  *   2. a deployment whose aggregator weights a rule this build never feeds
- *      (testnet, 2026-07-29: `pyth_lazer_rule` + `waterx_rule` were added at
- *      weight 1.0 alongside `pyth_rule`, so a default `oracleSource: 'pyth_rule'`
- *      build cannot satisfy the set at all).
+ *      (e.g. an aggregator still weighting the retired `pyth_rule`, or
+ *      weighting `waterx_rule` under a lazer-only `oracleSource` — neither is
+ *      satisfiable by any 5.0.0 build).
  *
  * So the abort text alone must never gate a skip. {@link unfedWeightedRules}
  * names exactly which weighted rules this client cannot feed for a ticker,
@@ -36,7 +36,6 @@ function normalizeTypeName(typeName: string): string {
 
 /** Collector witness type per rule package — `original_id` is what a TypeName carries. */
 const RULE_WITNESS: Record<string, string> = {
-  pyth_rule: "pyth_rule::PythRule",
   pyth_lazer_rule: "pyth_lazer_rule::PythLazerRule",
   waterx_rule: "waterx_rule::WaterxRule",
   constant_rule: "constant_rule::ConstantRule",
@@ -84,10 +83,11 @@ export async function readAggregatorWeightRules(
 }
 
 /**
- * The rule witnesses a `refreshOraclePrices` build feeds for `ticker`: the
- * unconditional Pyth leg (any ticker with a `pyth_rule` feed), constant, supra
- * when wired, plus whichever rule `oracleSource` selects. Mirrors
- * `aggregate.ts::aggregateTicker` — keep the two in step.
+ * The rule witnesses a `refreshOraclePrices` build feeds for `ticker`:
+ * constant, supra when wired, plus whichever sources `oracleSource` selects.
+ * Mirrors `aggregate.ts::aggregateTicker` — keep the two in step. (A weighted
+ * `pyth_rule` has no witness here at all: the source is retired, so such an
+ * aggregator is unsatisfiable and correctly reported as unfed.)
  */
 function fedWitnesses(client: PerpClient, ticker: string): Set<string> {
   const fed = new Set<string>();
@@ -95,7 +95,6 @@ function fedWitnesses(client: PerpClient, ticker: string): Set<string> {
     const t = witnessTypeName(client, pkg);
     if (t) fed.add(t);
   };
-  if (client.config.packages.pyth_rule?.feeds?.[ticker] !== undefined) add("pyth_rule");
   if (client.isConstantTicker(ticker)) add("constant_rule");
   if (client.getSupraRule()) add("supra_rule");
   if (client.oracleSources.includes("pyth_lazer_rule")) add("pyth_lazer_rule");

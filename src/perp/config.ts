@@ -43,8 +43,6 @@ export type {
   PythAccessConfig,
   PythFetchPolicy,
   PythLazerRulePackage,
-  PythRulePackage,
-  PythSponsorRulePackage,
   SupraFeedEntry,
   SupraRulePackage,
   WaterxConstantRulePackage,

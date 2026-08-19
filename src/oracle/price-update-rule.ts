@@ -136,17 +136,6 @@ export type RuleUpdateHandle = {
 };
 
 /**
- * Options for {@link PriceUpdateRule.buildUpdateCalls}. Currently EMPTY — the
- * Pyth-Core-specific `cache` / `feeSource` fields died with the `pyth_rule`
- * retirement (5.0.0): neither remaining rule reads any on-chain state before
- * building nor charges an update fee. The parameter (and this named type)
- * stay on the port so a future rule that needs per-build options has a seam
- * to grow into without re-touching every implementation's signature.
- */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- deliberate empty extension point (see doc above)
-export interface BuildUpdateOpts {}
-
-/**
  * Injectable update-data cache seam for `refreshOraclePrices` (`aggregate.ts`).
  * A BE consumer (e.g. a prefetch cache that polls Lazer/quote-center
  * out-of-band and keeps a hot in-memory/Redis entry per source) implements
@@ -169,7 +158,7 @@ export interface UpdateDataProvider {
   get(source: OracleSource, tickers: string[]): Promise<RuleUpdateData | null>;
 }
 
-/** The credential kinds a rule can declare via {@link PriceUpdateRule.requiredCredential}. */
+/** The credential kinds a rule can declare via {@link PriceUpdateRule.credential}. */
 export type OracleCredentialKind = "pyth_api_key";
 
 /**
@@ -188,6 +177,27 @@ export function oracleCredentialsFromHost(host: OracleHost): OracleCredentials {
   return { pyth_api_key: host.pyth.api_key };
 }
 
+/**
+ * A rule's off-chain credential requirement — the KIND it needs plus the error
+ * it wants raised when that credential is absent, as ONE object so the two can
+ * never drift apart.
+ *
+ * Both enforcement points are fully generic over this: neither names a kind,
+ * and neither constructs another rule's error. `refreshOraclePrices`'s hoisted
+ * pre-check (`aggregate.ts`) throws `missing()` before any fetch or PTB
+ * mutation; `missingOracleCredentials` (`validate.ts`) reports `kind` for a
+ * consumer's boot-time env audit.
+ */
+export interface OracleCredentialRequirement {
+  readonly kind: OracleCredentialKind;
+  /**
+   * The rule's OWN error for "declared credential absent". Owning it here is
+   * what keeps the orchestrator from importing (and mis-attributing) one
+   * rule's error type on behalf of every rule that shares a kind.
+   */
+  missing(): Error;
+}
+
 export interface PriceUpdateRule {
   /**
    * `OracleSource`, not the wider `PriceUpdateRuleKind`: only selectable
@@ -199,19 +209,18 @@ export interface PriceUpdateRule {
   readonly kind: OracleSource;
 
   /**
-   * The caller-supplied credential this rule's `fetchUpdateData` cannot run
-   * without, or absent for a credential-free rule. `PythLazerRule` sets
-   * `"pyth_api_key"` (Lazer is auth-first: `host.pyth.api_key` Bearer);
-   * `WaterxRule` sets nothing (the quote-center read surface is public).
+   * The credential this rule's `fetchUpdateData` cannot run without, or absent
+   * for a credential-free rule. `PythLazerRule` declares `"pyth_api_key"`
+   * (Lazer is auth-first: `host.pyth.api_key` Bearer) with its own
+   * `LazerApiKeyMissingError`; `WaterxRule` declares nothing (the quote-center
+   * read surface is public).
    *
-   * Two consumers key off this instead of hardcoding per-rule knowledge:
-   * `refreshOraclePrices`'s credential pre-check (`aggregate.ts` — a
-   * non-empty group whose rule requires a key the host doesn't carry throws
-   * BEFORE any fetch or PTB mutation) and `missingOracleCredentials`
-   * (`validate.ts` — consumers' boot-time env asserts). Neither branches on
-   * the kind: both resolve it through {@link OracleCredentials}.
+   * Two consumers key off this instead of hardcoding per-rule knowledge —
+   * `refreshOraclePrices`'s hoisted pre-check and `missingOracleCredentials` —
+   * and neither branches on the kind or names an error type. See
+   * {@link OracleCredentialRequirement}.
    */
-  readonly requiredCredential?: OracleCredentialKind;
+  readonly credential?: OracleCredentialRequirement;
 
   /** Tickers this rule can serve in this environment (from config feeds + enabled). */
   supportedTickers(host: OracleHost): string[];
@@ -274,12 +283,12 @@ export interface PriceUpdateRule {
    * needs nothing from it return `void`. Takes no `tickers` param —
    * every implementation derives everything it needs from `data.payload`
    * (the tickers a group covers were already fixed when `fetchUpdateData`
-   * built that payload).
+   * built that payload) — and no options: nothing a rule needs at build time
+   * is caller-tunable, so there is no bag to thread.
    */
   buildUpdateCalls(
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    opts?: BuildUpdateOpts,
   ): Promise<RuleUpdateHandle | void> | RuleUpdateHandle | void;
 }

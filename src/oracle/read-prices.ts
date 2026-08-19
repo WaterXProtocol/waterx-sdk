@@ -76,11 +76,15 @@ interface LazerParsedFeed {
  * Read parsed prices for `feedIds` (integer Lazer ids — the `"lazer"` arm of
  * `resolveOracleReadPlan`) via `POST /v1/latest_price`.
  *
+ * - `network` is REQUIRED: it selects the Lazer endpoint AND the channel, and
+ *   the integer feed ids in a plan are network-specific, so defaulting it
+ *   would silently read mainnet infra with testnet ids. Every caller already
+ *   holds one (`resolveOracleReadPlan` takes the same host).
  * - `channel` defaults to `LAZER_INFRA[network].channel` (the same channel
  *   the write leg uses — bounded by the feeds' `min_channel` AND the key's
- *   grant); `network` defaults to `"MAINNET"`. A `400` naming an
- *   unsupported/rate-limited channel propagates as a plain error with the
- *   body attached — that is an operator misconfiguration, not a retry case.
+ *   grant). A `400` naming an unsupported/rate-limited channel propagates as
+ *   a plain error with the body attached — that is an operator
+ *   misconfiguration, not a retry case.
  * - Decoding: `price = Number(price) * 10 ** exponent` (the wire `price` is a
  *   decimal STRING), `conf = Number(confidence) * 10 ** exponent`,
  *   `publishTimeMs = feedUpdateTimestamp / 1000` (the wire value is µs). An
@@ -94,13 +98,13 @@ interface LazerParsedFeed {
 export async function readLazerPrices(opts: {
   apiKey: string;
   feedIds: number[];
-  network?: Network;
+  network: Network;
   channel?: string;
   fetch?: PythFetchPolicy;
 }): Promise<Map<number, OraclePriceEntry>> {
   const out = new Map<number, OraclePriceEntry>();
   if (opts.feedIds.length === 0) return out;
-  const infra = LAZER_INFRA[opts.network ?? "MAINNET"];
+  const infra = LAZER_INFRA[opts.network];
   // Same POST transport the rule's write leg uses (URL join, method, headers,
   // Bearer + retry policy) — only the request pins and the decoding below are
   // read-specific.

@@ -53,7 +53,6 @@ import type { WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
-  type BuildUpdateOpts,
   type PriceUpdateRule,
   type RuleUpdateData,
 } from "../price-update-rule.ts";
@@ -833,8 +832,8 @@ async function pullWaterxData(
 export const WaterxRule: PriceUpdateRule = {
   kind: "waterx_rule",
 
-  // No credential: the quote-center read surface is public (no
-  // `requiredCredential` declared — see `PriceUpdateRule.requiredCredential`).
+  // No credential: the quote-center read surface is public (no `credential`
+  // declared — see `PriceUpdateRule.credential`).
 
   /** Tickers with a `waterx_rule.feeds` entry (keyed by oracle ticker). */
   supportedTickers(host: OracleHost): string[] {
@@ -921,12 +920,7 @@ export const WaterxRule: PriceUpdateRule = {
    * reaches the feed leg via `aggregate.ts`'s per-ticker map (built from the
    * group's fetched data), not a `RuleUpdateHandle`.
    */
-  buildUpdateCalls(
-    _tx: Transaction,
-    _host: OracleHost,
-    _data: RuleUpdateData,
-    _opts?: BuildUpdateOpts,
-  ): void {
+  buildUpdateCalls(_tx: Transaction, _host: OracleHost, _data: RuleUpdateData): void {
     return;
   },
 };

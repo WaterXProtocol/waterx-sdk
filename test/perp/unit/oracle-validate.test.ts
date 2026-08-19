@@ -2,7 +2,7 @@
  * `validate.ts` — the boot-time asserts consumers (FE `assertServerOracleEnv`,
  * BE `sdk.module` feeds assert / config superRefine) fold onto. Coverage is a
  * single write-plane assert (write set == read set by design); credentials are
- * an env-shaped audit keyed off each rule's own `requiredCredential`.
+ * an env-shaped audit keyed off each rule's own `credential` declaration.
  */
 import { describe, expect, it } from "vitest";
 

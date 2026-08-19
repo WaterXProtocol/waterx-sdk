@@ -11,7 +11,10 @@ import {
   ORACLE_SOURCES,
   parseOracleSourceList,
   refreshOraclePrices,
+  resolveOracleRule,
   type OracleSource,
+  type RuleUpdateData,
+  type UpdateDataProvider,
 } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import type { Network } from "../src/perp/constants.ts";
@@ -401,10 +404,45 @@ function eventsFromSimulateResult(result: unknown): SuiEventRecord[] {
   return [];
 }
 
+/**
+ * Warm ONE payload per listed source covering every ticker this run will
+ * aggregate, and serve it to all of them through the SDK's own
+ * `UpdateDataProvider` seam — `narrowUpdateData` subsets it per ticker.
+ *
+ * Without this the script paid one network round trip PER TICKER (~30 on
+ * mainnet), sequentially, for data one batched pull already covers. Safe here
+ * precisely because these are dry-run simulates: the F-014 replay guard that
+ * forbids reusing one signed payload across EXECUTED transactions never
+ * applies. A source whose warm pull fails is simply absent from the cache and
+ * falls back to per-ticker live fetches (a miss is `null`).
+ */
+async function prefetchUpdateData(
+  client: PerpClient,
+  tickers: string[],
+): Promise<UpdateDataProvider> {
+  const warmed = new Map<OracleSource, RuleUpdateData>();
+  await Promise.all(
+    client.oracleSources.map(async (source) => {
+      const rule = resolveOracleRule(source);
+      const served = tickers.filter((t) => new Set(rule.supportedTickers(client)).has(t));
+      if (served.length === 0) return;
+      try {
+        warmed.set(source, await rule.fetchUpdateData(client, served));
+      } catch (e) {
+        console.warn(
+          `[prefetch] ${source}: ${e instanceof Error ? e.message : String(e)} — falling back to per-ticker fetches`,
+        );
+      }
+    }),
+  );
+  return { get: async (source) => warmed.get(source) ?? null };
+}
+
 async function runOne(
   client: PerpClient,
   feed: TickerFeed,
   format: OutputFormat,
+  updateDataProvider: UpdateDataProvider,
 ): Promise<boolean> {
   const tx = new Transaction();
   tx.setSender(DRY_RUN_SENDER);
@@ -415,7 +453,7 @@ async function runOne(
   try {
     // No cross-source fallback and no stale-continue: a refresh failure for
     // the fed set fails the ticker (the retired Hermes stale path is gone).
-    await refreshOraclePrices(tx, client, [feed.ticker]);
+    await refreshOraclePrices(tx, client, [feed.ticker], { updateDataProvider });
 
     const res = await client.grpcClient.simulateTransaction({
       transaction: tx,
@@ -540,9 +578,13 @@ async function main() {
     `printing oracle aggregates for ${feeds.length} feeds (${modeLabel}, ${client.network}, oracleSource=${client.oracleSources.join(",")})...`,
   );
 
+  const updateDataProvider = await prefetchUpdateData(
+    client,
+    feeds.map((feed) => feed.ticker),
+  );
   let failed = 0;
   for (const feed of feeds) {
-    if (!(await runOne(client, feed, format))) failed += 1;
+    if (!(await runOne(client, feed, format, updateDataProvider))) failed += 1;
   }
   if (failed > 0) {
     console.error(`\n${failed} feed(s) FAILED`);

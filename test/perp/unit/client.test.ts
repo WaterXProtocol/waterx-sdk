@@ -36,6 +36,34 @@ describe("PerpClient (offline)", () => {
     expect(client.wlpType()).toContain("::wlp::WLP");
   });
 
+  it("pricedPoolTickers returns pool tokens the FED SET can price", () => {
+    // The shared fixture's pool token is USDCUSD, served by waterx + lazer.
+    expect(createUnitTestClient({ oracleSource: "waterx_rule" }).pricedPoolTickers()).toEqual([
+      "USDCUSD",
+    ]);
+    expect(createUnitTestClient({ oracleSource: "pyth_lazer_rule" }).pricedPoolTickers()).toEqual([
+      "USDCUSD",
+    ]);
+  });
+
+  it("pricedPoolTickers drops a pool token NO listed source serves", () => {
+    // The regression the old config-only helper could not catch: a token some
+    // OTHER rule serves is still unpriceable to this client, and handing it to
+    // refreshOraclePrices would throw "no feed configured" mid-build.
+    const lazerOnly = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    delete lazerOnly.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    expect(lazerOnly.pricedPoolTickers()).toEqual([]);
+  });
+
+  it("pricedPoolTickers keeps a constant-pinned pool token with no source feed", () => {
+    // Constant tickers need no update leg at all, so they stay servable even
+    // when the fed set carries no feed for them.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    expect(client.pricedPoolTickers()).toEqual(["USDCUSD"]);
+  });
+
   it("isConstantTicker reflects constant_rule.feeds", () => {
     // Shared fixture has the package but an empty feeds map → all Pyth.
     expect(client.isConstantTicker("USDCUSD")).toBe(false);

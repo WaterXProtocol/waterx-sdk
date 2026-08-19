@@ -11,7 +11,7 @@
  *   listed sources cannot run with the credentials this deployment supplied.
  *   Boot-time mirror of `refreshOraclePrices`'s own per-build credential
  *   pre-check (`aggregate.ts`), keyed off the same rule-owned
- *   `requiredCredential` so the two can never disagree.
+ *   `credential` declaration so the two can never disagree.
  *
  * Deliberately NOT called by `PerpClient` itself: client creation stays
  * guard-free (a source with absent feeds surfaces at tx-build for exactly the
@@ -24,7 +24,7 @@ import type { OracleCredentialKind, OracleCredentials, OracleSource } from "./pr
 import { resolveOracleRule } from "./rule-registry.ts";
 
 // The credential-kind union is the PORT's (`price-update-rule.ts`, next to
-// `requiredCredential`); re-exported here so consumers keep importing it off
+// `credential`); re-exported here so consumers keep importing it off
 // the validation surface they already use.
 export type { OracleCredentialKind };
 
@@ -68,13 +68,32 @@ export function assertOracleWriteCoverage(host: OracleHost): void {
 }
 
 /**
+ * The subset of `tickers` this deployment's fed set can actually price — the
+ * SAME acceptance rule `refreshOraclePrices` enforces, so a caller that
+ * pre-filters with this can never hand it a ticker it will reject: a ticker is
+ * servable when some LISTED source's feeds carry it, or when `constant_rule`
+ * pins it (a constant ticker needs no update leg from any source).
+ *
+ * Order-preserving, and keyed off `host.oracleSources` rather than "any rule
+ * that exists" — a pool token only `waterx_rule` serves is NOT servable to a
+ * lazer-only client, and pretending otherwise is exactly how a refresh throws
+ * mid-build.
+ */
+export function servableTickers(host: OracleHost, tickers: readonly string[]): string[] {
+  const fedSet = new Set(
+    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host)),
+  );
+  return tickers.filter((ticker) => fedSet.has(ticker) || host.isConstantTicker(ticker));
+}
+
+/**
  * Which of `sources` cannot run with the supplied credentials — one row per
  * (source, missing credential). Empty array ⇒ the fed set is fully
  * credentialed. Pure and env-shaped on purpose: consumers call it from their
  * boot-time env asserts (zod superRefine, config validators) BEFORE any
  * client exists, passing the raw values their env resolved. The per-build
  * enforcement twin — `refreshOraclePrices`'s credential pre-check — reads the
- * same rule-owned `requiredCredential`, so a deployment this function passes
+ * same rule-owned `credential` declaration, so a deployment this function passes
  * cannot later trip that check for a listed source.
  */
 export function missingOracleCredentials(
@@ -86,7 +105,7 @@ export function missingOracleCredentials(
   const supplied: OracleCredentials = { pyth_api_key: creds.pythApiKey };
   const missing: { source: OracleSource; credential: OracleCredentialKind }[] = [];
   for (const source of sources) {
-    const required = resolveOracleRule(source).requiredCredential;
+    const required = resolveOracleRule(source).credential?.kind;
     if (required !== undefined && !supplied[required]) {
       missing.push({ source, credential: required });
     }

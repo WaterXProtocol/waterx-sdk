@@ -16,8 +16,16 @@ export const SIG_HEX = "ab".repeat(64);
 /** A 32-byte keccak256 hash (hex) — the only shape a proof element may take. */
 export const HASH_HEX = "cd".repeat(32);
 
-/** The price fields shared by both wire shapes (u64s as plain JSON numbers, as the quote-center emits them). */
-export function rawItem(symbol: string): Record<string, unknown> {
+/**
+ * The price fields shared by both wire shapes (u64s as plain JSON numbers, as
+ * the quote-center emits them). `overrides` lets a case pin one field — e.g.
+ * `{ confidence_scale: 0 }` for the zero-divisor decode guard — without
+ * hand-rolling a rival body.
+ */
+export function rawItem(
+  symbol: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     symbol,
     ticker: `${symbol}T`,
@@ -30,22 +38,32 @@ export function rawItem(symbol: string): Record<string, unknown> {
     confidence_scale: 1_000_000_000,
     max_source_deviation_bps: 0,
     num_sources: 3,
+    ...overrides,
   };
 }
 
-/** Server-shape `/v1/quotes/update` body. */
-export function rawEnvelope(symbols: string[] = ["BTCUSD"]): Record<string, unknown> {
+/**
+ * Server-shape `/v1/quotes/update` body. `overridesBySymbol` reaches a single
+ * item's fields (see {@link rawItem}).
+ */
+export function rawEnvelope(
+  symbols: string[] = ["BTCUSD"],
+  overridesBySymbol: Record<string, Record<string, unknown>> = {},
+): Record<string, unknown> {
   return {
     intent: 1,
     timestamp_ms: 1_784_800_000_000,
-    payload: { items: symbols.map(rawItem) },
+    payload: { items: symbols.map((s) => rawItem(s, overridesBySymbol[s] ?? {})) },
     signature: SIG_HEX,
   };
 }
 
 /** Server-shape `/v1/quotes/update` body as raw text (exact numeric tokens preserved). */
-export function rawEnvelopeText(symbols: string[] = ["BTCUSD"]): string {
-  return JSON.stringify(rawEnvelope(symbols));
+export function rawEnvelopeText(
+  symbols: string[] = ["BTCUSD"],
+  overridesBySymbol: Record<string, Record<string, unknown>> = {},
+): string {
+  return JSON.stringify(rawEnvelope(symbols, overridesBySymbol));
 }
 
 /**

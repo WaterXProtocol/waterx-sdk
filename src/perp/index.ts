@@ -12,8 +12,6 @@ export type {
   PythAccessConfig,
   PythFetchPolicy,
   PythLazerRulePackage,
-  PythRulePackage,
-  PythSponsorRulePackage,
   SupraFeedEntry,
   SupraRulePackage,
   TestnetFaucetPackage,
@@ -81,7 +79,7 @@ export {
 export type { Network } from "./constants.ts";
 
 // ======== Utilities ========
-export { getMarketTickers, getCollateralAssets } from "../utils/config.ts";
+export { getMarketTickers } from "../utils/config.ts";
 export {
   annualizedApyFromRatio,
   annualizeFundingRate,

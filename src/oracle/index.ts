@@ -36,7 +36,7 @@ export type {
   PriceUpdateRuleKind,
   RuleUpdateData,
   RuleUpdateHandle,
-  BuildUpdateOpts,
+  OracleCredentialRequirement,
   OracleCredentials,
   OracleSource,
   UpdateDataProvider,

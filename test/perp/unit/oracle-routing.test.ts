@@ -11,7 +11,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OracleHost } from "../../../src/oracle/host.ts";
 import { refreshOraclePrices } from "../../../src/oracle/index.ts";
 import type {
-  BuildUpdateOpts,
   OracleSource,
   PriceUpdateRule,
   RuleUpdateData,
@@ -69,7 +68,6 @@ function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRul
         tx: Transaction,
         _host: OracleHost,
         _data: RuleUpdateData,
-        _opts?: BuildUpdateOpts,
       ): Promise<RuleUpdateHandle | void> =>
         kind === "pyth_lazer_rule"
           ? { kind: "pyth_lazer_rule", update: tx.pure.u64(0) }

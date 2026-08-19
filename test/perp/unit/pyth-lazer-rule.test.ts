@@ -149,8 +149,11 @@ describe("PythLazerRule.kind", () => {
     expect(PythLazerRule.kind).toBe("pyth_lazer_rule");
   });
 
-  it("declares the pyth_api_key credential — the hoisted pre-check and boot asserts key off it", () => {
-    expect(PythLazerRule.requiredCredential).toBe("pyth_api_key");
+  it("declares the pyth_api_key credential — kind AND its own error, so no consumer builds it", () => {
+    expect(PythLazerRule.credential?.kind).toBe("pyth_api_key");
+    // The rule owns the error identity: the orchestrator's generic pre-check
+    // throws whatever `missing()` returns rather than importing this class.
+    expect(PythLazerRule.credential?.missing()).toBeInstanceOf(LazerApiKeyMissingError);
   });
 });
 

@@ -32,7 +32,6 @@ import {
   requestRedeemWlp,
   setReferralCode,
 } from "../src/perp/index.ts";
-import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 
@@ -346,7 +345,7 @@ async function main(): Promise<void> {
   // 7. mintWlp — exercises WlpAum object + oracle refresh of every pool token.
   await runCase(client, "mintWlp(USDC)", async () => {
     const tx = new Transaction();
-    const poolTickers = getCollateralAssets(client.config);
+    const poolTickers = client.pricedPoolTickers();
     await refreshOraclePrices(tx, client, poolTickers);
     mintWlp(client, tx, {
       accountId: FAKE_ACCOUNT_ID,

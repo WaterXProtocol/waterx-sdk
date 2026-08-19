@@ -73,8 +73,8 @@ describe("WaterxRule — port", () => {
     expect(WaterxRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
   });
 
-  it("declares no required credential (public quote-center read surface)", () => {
-    expect(WaterxRule.requiredCredential).toBeUndefined();
+  it("declares no credential (public quote-center read surface)", () => {
+    expect(WaterxRule.credential).toBeUndefined();
   });
 
   it("fetchUpdateData pulls per-symbol LEAVES, not the batch envelope", async () => {

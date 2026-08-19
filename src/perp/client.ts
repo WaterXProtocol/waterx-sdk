@@ -15,6 +15,7 @@ import { BaseLineClient } from "../base-client.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../oracle/price-update-rule.ts";
 import { isOracleSource } from "../oracle/source-list.ts";
 import type { FetchPolicy } from "../oracle/update-fetch.ts";
+import { servableTickers } from "../oracle/validate.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
@@ -198,6 +199,21 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   /** @see PerpConfigView.getAggregator */
   getAggregator(ticker: string): string {
     return this.view.getAggregator(ticker);
+  }
+
+  /**
+   * WLP pool-token tickers THIS client's fed set can actually price — the
+   * ticker set the WLP builders refresh before `assert_prices_fresh`.
+   *
+   * Filtered, not raw `Object.keys(pool_tokens)`, for two reasons: some
+   * deployments key `pool_tokens` by coin symbol (`"USD"`) rather than oracle
+   * ticker (`"USDCUSD"`), and a token only an UNLISTED source serves is not
+   * priceable by this client. The predicate is `refreshOraclePrices`'s own
+   * (`servableTickers`), so a refresh over this list can never throw
+   * "no feed configured".
+   */
+  pricedPoolTickers(): string[] {
+    return servableTickers(this, Object.keys(this.config.packages.wlp?.pool_tokens ?? {}));
   }
 
   /** @see PerpConfigView.isConstantTicker */

@@ -8,7 +8,6 @@ import { Transaction, type TransactionArgument } from "@mysten/sui/transactions"
 
 import { appendConsolidateForSpend } from "../../account/funding/consolidate.ts";
 import { refreshOraclePrices, type UpdateDataProvider } from "../../oracle/index.ts";
-import { getCollateralAssets } from "../../utils/config.ts";
 import type { PerpClient } from "../client.ts";
 import { executeTrading } from "../user/trading.ts";
 import { updateTokenValue } from "../user/wlp.ts";
@@ -93,7 +92,7 @@ export async function refreshWlpPoolOracles(
     updateDataProvider?: UpdateDataProvider;
   },
 ): Promise<void> {
-  const poolTickers = getCollateralAssets(client.config);
+  const poolTickers = client.pricedPoolTickers();
   const oracleTickers = Array.from(new Set([...extraTickers, ...poolTickers]));
   await refreshOraclePrices(tx, client, oracleTickers, {
     updateDataProvider: opts.updateDataProvider,

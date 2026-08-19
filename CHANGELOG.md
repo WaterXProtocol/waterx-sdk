@@ -54,9 +54,16 @@ can grep against it:
   `PerpConfigView.getPythFeed`.
 - **Config**: `ORACLE_SOURCES` is `["pyth_lazer_rule", "waterx_rule"]`;
   `parseOracleSourceList` rejects `pyth_rule` with a retired-value hint
-  ("pyth_rule retired — remove it from ORACLE_SOURCE"); `OraclePackages.pyth_rule` is
-  now OPTIONAL (a config JSON may still carry the block; the SDK never reads it) and
-  `validateConfig`'s perp required-package list drops `"pyth_rule"`.
+  ("pyth_rule retired — remove it from ORACLE_SOURCE"); the `PythRulePackage` /
+  `PythSponsorRulePackage` schema types AND their `OraclePackages` slots are DELETED
+  (these types describe what the SDK reads, and it reads neither — a deployed config
+  JSON may still carry the blocks, since extra keys are ignored, so no republish is
+  needed); `validateConfig`'s perp required-package list drops `"pyth_rule"`.
+- **Port**: `BuildUpdateOpts` and `buildUpdateCalls`'s `opts` parameter are gone —
+  nothing a rule needs at build time is caller-tunable, so there is no bag to thread.
+- **`getCollateralAssets` is removed** in favour of `PerpClient.pricedPoolTickers()`
+  (see Changed) — it answered an oracle-coverage question from `utils/`, where the
+  rule registry cannot be reached.
 - **Scripts**: `scripts/set-pyth-tolerance.ts` / `scripts/pyth-tolerance-show.ts`
   deleted; smoke/dev scripts default to `waterx_rule` (env-overridable via
   `ORACLE_SOURCE` where they already read env).
@@ -76,13 +83,18 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
   `OracleFedSetError` for a listed source with no feeds; write set == read set, so the
   old read-coverage assert is resolved-by-design) and
   `missingOracleCredentials(sources, { pythApiKey })` (`OracleCredentialKind`).
-- **Rule port additions**: `PriceUpdateRule.requiredCredential`
-  (`PythLazerRule` declares `"pyth_api_key"`) and
-  `PriceUpdateRule.updateIdentityBySymbol` — the rule-owned on-chain F-014 single-use
+- **Rule port additions**: `PriceUpdateRule.credential` — ONE
+  `OracleCredentialRequirement` carrying both the `kind` a rule needs and the error it
+  raises when that credential is absent, so the two can never drift and the
+  orchestrator never constructs another rule's error (`PythLazerRule` declares
+  `pyth_api_key` + its own `LazerApiKeyMissingError`) — and
+  `PriceUpdateRule.updateIdentityBySymbol`, the rule-owned on-chain F-014 single-use
   replay key (`WaterxRule`: leaves → `symbol → signed_timestamp_ms`; envelope →
   `symbol → timestamp_ms`). `refreshOraclePrices` gains a hoisted credential
-  pre-check: a keyless build whose fed set includes an auth-first source throws
-  `LazerApiKeyMissingError` BEFORE any fetch or PTB mutation.
+  pre-check: a keyless build whose fed set includes an auth-first source throws that
+  rule's error BEFORE any fetch or PTB mutation. `OracleCredentialKind` /
+  `OracleCredentials` / `oracleCredentialsFromHost` map a kind to its value in one
+  place, so neither enforcement point branches on a kind.
 - **Waterx seams**: `fetchWaterxSignedUpdate` / `fetchWaterxSignedLeaves` (the raw
   quote-center fetchers, now public), `fetchWaterxUpdateData(host, tickers,
   { coverage: "strict" | "partial" })` (strict == the rule's own trade-path fetch;
@@ -102,6 +114,15 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
 
 ### Changed
 
+- **`PerpClient.pricedPoolTickers()`** replaces the `getCollateralAssets(config)`
+  utility: it filters WLP pool tokens by `servableTickers` — `refreshOraclePrices`'s
+  OWN acceptance predicate (some LISTED source's feeds carry the ticker, or
+  `constant_rule` pins it). The old helper keyed off "any rule's feeds block exists",
+  so a pool token that only an UNLISTED source served was handed to a refresh that
+  then threw `no feed configured` mid-build.
+- **`readLazerPrices`'s `network` is now REQUIRED.** It selects the Lazer endpoint AND
+  the channel, and a plan's integer feed ids are network-specific, so the previous
+  silent `"MAINNET"` default could read mainnet infra with testnet ids and no error.
 - `CommonBuildOpts.skipOraclePriceRefresh` now documents the shared-refresh
   composition (`newTx` → `refreshOraclePrices(allTickers)` → N builders with
   `skipOraclePriceRefresh: true`) and why per-builder refreshes must not repeat a

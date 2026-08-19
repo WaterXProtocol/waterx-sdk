@@ -348,6 +348,31 @@ interface LocalParts {
 // timezone so per-request hot paths (a markets list endpoint) don't
 // re-allocate it.
 const fmtCache = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Per-`TradingHours` derived state — the sorted/merged weekly event list and
+ * the holiday lookup set. Both are pure functions of the schedule object, and
+ * `getMarketStatus` is called per market per request against the SAME objects
+ * (a service refreshes its schedule map on an interval, not per call), so
+ * re-parsing every `"HH:MM"` and re-sorting on each call is pure rework —
+ * exactly the cost `fmtCache` above already avoids for the formatter.
+ *
+ * A `WeakMap` keeps this leak-free: an entry dies with the schedule object it
+ * describes, so a refreshed map's old entries are collectable.
+ */
+const derivedCache = new WeakMap<TradingHours, { events: WeeklyEvent[]; holidays: Set<number> }>();
+
+function derive(tradingHours: TradingHours): { events: WeeklyEvent[]; holidays: Set<number> } {
+  let derived = derivedCache.get(tradingHours);
+  if (!derived) {
+    derived = {
+      events: buildWeeklyEvents(tradingHours.sessions),
+      holidays: buildHolidaySet(tradingHours.holidays),
+    };
+    derivedCache.set(tradingHours, derived);
+  }
+  return derived;
+}
 function getFmt(timezone: string): Intl.DateTimeFormat {
   let fmt = fmtCache.get(timezone);
   if (!fmt) {
@@ -471,14 +496,13 @@ function mergeAdjacentEvents(events: WeeklyEvent[]): WeeklyEvent[] {
 }
 
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
-  const events = buildWeeklyEvents(tradingHours.sessions);
+  const { events, holidays: holidaySet } = derive(tradingHours);
   if (events.length === 0) {
     // No events → always open (shouldn't happen in practice)
     return { status: "open", nextStatusChangeIn: null };
   }
 
   const local = toLocalParts(now, tradingHours.timezone);
-  const holidaySet = buildHolidaySet(tradingHours.holidays);
   const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
 
   if (isHoliday(holidaySet, local)) {

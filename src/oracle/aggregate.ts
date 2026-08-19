@@ -37,7 +37,7 @@ import {
 } from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
-import { feedLazerRule, LazerApiKeyMissingError } from "./rules/pyth-lazer-rule.ts";
+import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
 import {
   feedWaterxRule,
@@ -220,7 +220,7 @@ export function aggregateTickerWithConstant(
  *
  * Each source's fetch + build runs against its own infra, guaranteeing
  * per-rule PTB atomicity. A credential pre-check runs first: any non-empty
- * group whose rule declares `requiredCredential: "pyth_api_key"` while
+ * group whose rule declares a `credential` the host does not carry while
  * `host.pyth.api_key` is unset throws `LazerApiKeyMissing` BEFORE any
  * off-chain fetch or PTB mutation — zero wasted network calls, zero stray
  * moveCalls. Only once that check passes do the off-chain fetches run — in
@@ -312,19 +312,17 @@ export async function refreshOraclePrices(
 
   // Credential pre-check, hoisted ABOVE the off-chain fetches and PTB build
   // below (the position the retired fee-source pre-check held). It consults
-  // only `rule.requiredCredential` — known before any fetch or PTB mutation —
-  // so a keyless build against an auth-first source (Lazer) in the fed set
-  // throws with ZERO wasted network calls and zero PTB commands, rather than
-  // waiting for that group's own fetch guard to fire after sibling groups'
-  // fetches already ran. The kind→value mapping is the port's
-  // (`oracleCredentialsFromHost`), so this never branches on a kind; only the
-  // ERROR is kind-specific, and `pyth_api_key` is the only kind today — a
-  // second one must bring its own error here rather than inherit Lazer's.
+  // only `rule.credential` — known before any fetch or PTB mutation — so a
+  // keyless build against an auth-first source (Lazer) in the fed set throws
+  // with ZERO wasted network calls and zero PTB commands, rather than waiting
+  // for that group's own fetch guard to fire after sibling groups' fetches
+  // already ran. Fully generic: the kind→value mapping is the port's
+  // (`oracleCredentialsFromHost`) and the ERROR is the rule's own, so this
+  // loop names neither a credential kind nor a rule.
   const credentials = oracleCredentialsFromHost(host);
-  for (const group of groups) {
-    const required = group.rule.requiredCredential;
-    if (required !== undefined && !credentials[required]) {
-      throw new LazerApiKeyMissingError();
+  for (const { rule } of groups) {
+    if (rule.credential && !credentials[rule.credential.kind]) {
+      throw rule.credential.missing();
     }
   }
 

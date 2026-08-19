@@ -18,7 +18,6 @@ import type { PythFetchPolicy, PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
-  type BuildUpdateOpts,
   type PriceUpdateRule,
   type RuleUpdateData,
   type RuleUpdateHandle,
@@ -138,7 +137,7 @@ function isPythLazerUpdatePayloadShape(payload: unknown): payload is PythLazerUp
  * Lazer HTTP API requires a Bearer token and the SDK never reads
  * `process.env` to find one. Also thrown by `refreshOraclePrices`'s hoisted
  * credential pre-check (`aggregate.ts`) BEFORE any fetch, keyed off this
- * rule's `requiredCredential`. `instanceof`-able (mirrors `FetchPolicyError`
+ * rule's `credential` declaration. `instanceof`-able (mirrors `FetchPolicyError`
  * in `../update-fetch.ts`) so a consumer can branch on the failure type
  * directly instead of string-matching `error.message`.
  */
@@ -261,10 +260,11 @@ export const PythLazerRule: PriceUpdateRule = {
   kind: "pyth_lazer_rule",
 
   // Lazer is auth-first: the signed-update fetch cannot run without the
-  // caller's `pythApiKey` Bearer. Declared on the port so
-  // `refreshOraclePrices`'s credential pre-check and consumers'
-  // `missingOracleCredentials` boot asserts key off the rule itself.
-  requiredCredential: "pyth_api_key",
+  // caller's `pythApiKey` Bearer. Declared on the port — kind AND error
+  // together — so `refreshOraclePrices`'s hoisted pre-check and consumers'
+  // `missingOracleCredentials` boot asserts both key off the rule itself, and
+  // the orchestrator never constructs this error on the rule's behalf.
+  credential: { kind: "pyth_api_key", missing: () => new LazerApiKeyMissingError() },
 
   /** Tickers with a `pyth_lazer_rule.feeds` entry (integer Lazer feed ids). */
   supportedTickers(host: OracleHost): string[] {
@@ -339,7 +339,6 @@ export const PythLazerRule: PriceUpdateRule = {
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    _opts?: BuildUpdateOpts,
   ): RuleUpdateHandle | undefined {
     const payload = assertRuleUpdateData(
       data,

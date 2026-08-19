@@ -18,21 +18,10 @@ import type { FetchPolicy } from "./update-fetch.ts";
 // Per-package entries (canonical shape, snake_case to match the JSON)
 // ============================================================================
 
-/**
- * `pyth_rule` deployment entry — RETIRED as a source in SDK 5.0.0 (the Pyth
- * Core / Hermes update path is gone). The type survives, and the package slot
- * is OPTIONAL below, because deployed config JSONs may still carry the block
- * for a while; the SDK itself never reads it anymore.
- */
-export interface PythRulePackage extends BasePackageEntry {
-  config: string;
-  feeds: Record<string, { feed_id: string; price_info_object: string }>;
-}
-
-/** RETIRED alongside `pyth_rule` (5.0.0) — typed only; the SDK never reads it. */
-export interface PythSponsorRulePackage extends BasePackageEntry {
-  pyth_sponsor: string;
-}
+// `pyth_rule` / `pyth_sponsor_rule` (Pyth Core + its sponsor) were RETIRED in
+// 5.0.0 and their schema entries deleted with them: these types describe what
+// the SDK READS, and it reads neither. A deployed config JSON may still carry
+// the blocks — extra keys are simply ignored — so no republish is required.
 
 /**
  * `pyth_lazer_rule` deployment entry — present in the deployed testnet
@@ -148,9 +137,6 @@ export interface WaterxOraclePackage extends BasePackageEntry {
  * structurally an oracle config.
  */
 export interface OraclePackages {
-  /** RETIRED source (5.0.0) — optional because deployed config JSONs may still carry the block; never read. */
-  pyth_rule?: PythRulePackage;
-  pyth_sponsor_rule?: PythSponsorRulePackage;
   /** See {@link PythLazerRulePackage} — typed only, not read for routing. */
   pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;

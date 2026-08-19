@@ -13,7 +13,7 @@ import {
   readQuoteCenterPrices,
 } from "../../../src/oracle/read-prices.ts";
 import { LAZER_INFRA } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
-import { mockFetchResponse } from "../helpers/fixtures/quote-center.ts";
+import { mockFetchResponse, rawEnvelopeText } from "../helpers/fixtures/quote-center.ts";
 
 /** The live-probed `/v1/latest_price` parsed response, verbatim shape. */
 const LIVE_PROBED_RESPONSE = {
@@ -65,7 +65,7 @@ describe("readLazerPrices", () => {
   it("decodes the live-probed shape: string price × 10^exponent, numeric confidence, µs → ms", async () => {
     mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
 
-    const out = await readLazerPrices({ apiKey: "k", feedIds: [1] });
+    const out = await readLazerPrices({ apiKey: "k", feedIds: [1], network: "MAINNET" });
 
     const entry = out.get(1)!;
     expect(entry.price).toBeCloseTo(64279.83315951, 6);
@@ -73,9 +73,9 @@ describe("readLazerPrices", () => {
     expect(entry.publishTimeMs).toBe(1787112945000);
   });
 
-  it("channel defaults per network (mainnet 1000ms / testnet 200ms) and accepts an override", async () => {
+  it("channel follows the REQUIRED network (mainnet 1000ms / testnet 200ms) and accepts an override", async () => {
     const spy = mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
-    await readLazerPrices({ apiKey: "k", feedIds: [1] }); // network defaults MAINNET
+    await readLazerPrices({ apiKey: "k", feedIds: [1], network: "MAINNET" });
     expect(JSON.parse(String((spy.mock.calls[0]![1] as RequestInit).body)).channel).toBe(
       "fixed_rate@1000ms",
     );
@@ -89,7 +89,12 @@ describe("readLazerPrices", () => {
 
     vi.restoreAllMocks();
     const spy3 = mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
-    await readLazerPrices({ apiKey: "k", feedIds: [1], channel: "fixed_rate@200ms" });
+    await readLazerPrices({
+      apiKey: "k",
+      feedIds: [1],
+      network: "MAINNET",
+      channel: "fixed_rate@200ms",
+    });
     expect(JSON.parse(String((spy3.mock.calls[0]![1] as RequestInit).body)).channel).toBe(
       "fixed_rate@200ms",
     );
@@ -110,7 +115,7 @@ describe("readLazerPrices", () => {
       },
     });
 
-    const out = await readLazerPrices({ apiKey: "k", feedIds: [9, 1] });
+    const out = await readLazerPrices({ apiKey: "k", feedIds: [9, 1], network: "MAINNET" });
 
     expect(out.has(9)).toBe(false); // skipped, not batch-stamped
     expect(out.has(1)).toBe(true);
@@ -128,7 +133,7 @@ describe("readLazerPrices", () => {
       },
     });
 
-    const out = await readLazerPrices({ apiKey: "k", feedIds: [3] });
+    const out = await readLazerPrices({ apiKey: "k", feedIds: [3], network: "MAINNET" });
 
     expect(out.get(3)).toEqual({ price: 5, conf: 0, publishTimeMs: 1000 });
   });
@@ -136,12 +141,14 @@ describe("readLazerPrices", () => {
   it("403 → LazerNotEntitledError carrying the verbatim plain-text body and the requested feed ids", async () => {
     mockFetchResponse({ status: 403, text: NOT_ENTITLED_BODY });
 
-    const rejection = expect(readLazerPrices({ apiKey: "k", feedIds: [327, 1] })).rejects;
+    const rejection = expect(
+      readLazerPrices({ apiKey: "k", feedIds: [327, 1], network: "MAINNET" }),
+    ).rejects;
     await rejection.toBeInstanceOf(LazerNotEntitledError);
     await rejection.toThrow(NOT_ENTITLED_BODY);
     try {
       mockFetchResponse({ status: 403, text: NOT_ENTITLED_BODY });
-      await readLazerPrices({ apiKey: "k", feedIds: [327, 1] });
+      await readLazerPrices({ apiKey: "k", feedIds: [327, 1], network: "MAINNET" });
     } catch (e) {
       expect((e as LazerNotEntitledError).feedIds).toEqual([327, 1]);
     }
@@ -153,50 +160,32 @@ describe("readLazerPrices", () => {
       text: "Channel fixed_rate@200ms violates rate limit. Minimum allowed channel is 1000ms",
     });
 
-    await expect(readLazerPrices({ apiKey: "k", feedIds: [1] })).rejects.toThrow(
-      /Lazer price read failed: 400 Channel fixed_rate@200ms violates rate limit/,
-    );
+    await expect(
+      readLazerPrices({ apiKey: "k", feedIds: [1], network: "MAINNET" }),
+    ).rejects.toThrow(/Lazer price read failed: 400 Channel fixed_rate@200ms violates rate limit/);
   });
 
   it("returns an empty map without fetching for an empty feed-id list", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
-    expect((await readLazerPrices({ apiKey: "k", feedIds: [] })).size).toBe(0);
+    expect((await readLazerPrices({ apiKey: "k", feedIds: [], network: "MAINNET" })).size).toBe(0);
     expect(spy).not.toHaveBeenCalled();
   });
 });
 
 describe("readQuoteCenterPrices", () => {
-  /** Wire-faithful `/v1/quotes/update` body (u64s as JSON integers). */
-  const ENVELOPE_BODY = `{
-    "intent": 1,
-    "timestamp_ms": 1784800000000,
-    "signature": "${"ab".repeat(64)}",
-    "payload": { "items": [
-      {
-        "symbol": "BTCUSD", "ticker": "BTCUSDT",
-        "sources": [2, 3], "method": "median",
-        "price_timestamp_ms": 1784799999000,
-        "price_n": 63700000000000, "price_scale": 1000000000,
-        "confidence_n": 10000000000, "confidence_scale": 1000000000,
-        "max_source_deviation_bps": 0, "num_sources": 2
-      },
-      {
-        "symbol": "XAUUSD", "ticker": "XAUUSD",
-        "sources": [2], "method": "median",
-        "price_timestamp_ms": 1784799998000,
-        "price_n": 2400000000000, "price_scale": 1000000000,
-        "confidence_n": 0, "confidence_scale": 0,
-        "max_source_deviation_bps": 0, "num_sources": 1
-      }
-    ] }
-  }`;
+  // The shared wire fixture, with XAUUSD pinned to the zero-divisor case the
+  // decode guard exists for (`confidence_scale: 0`).
+  const ENVELOPE_BODY = rawEnvelopeText(["BTCUSD", "XAUUSD"], {
+    XAUUSD: {
+      price_timestamp_ms: 1_784_799_998_000,
+      price_n: 2_400_000_000_000,
+      confidence_n: 0,
+      confidence_scale: 0,
+    },
+  });
 
   function mockEnvelopeFetch(): ReturnType<typeof vi.spyOn> {
-    return vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => ENVELOPE_BODY,
-    } as unknown as Response);
+    return mockFetchResponse({ text: ENVELOPE_BODY });
   }
 
   it("reads via GET /v1/quotes/update and decodes price_n/price_scale per item", async () => {
