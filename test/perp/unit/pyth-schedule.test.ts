@@ -169,6 +169,43 @@ describe("parsePythSchedule", () => {
     expect(tradingHours.holidays).toBeUndefined();
   });
 
+  it("folds a surplus comma-joined session into the LATEST day, not the first", () => {
+    // Mon–Fri 09:30–16:00, Sat closed, Sun 00:00-12:00 + 13:00-24:00 — eight
+    // tokens for seven days. Leftmost-greedy folding gave Monday two sessions,
+    // dropped Friday, reported Saturday open, and emitted a duplicate weekday.
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,0000-1200,1300-2400;",
+    );
+
+    const weekday = tradingHours.sessions.find((s) => s.open === "09:30" && s.close === "16:00");
+    expect(weekday?.days).toEqual([1, 2, 3, 4, 5]); // Friday intact, no duplicates
+    // Both Sunday sessions land on day 0; Saturday appears nowhere.
+    expect(tradingHours.sessions.find((s) => s.open === "00:00")?.days).toEqual([0]);
+    expect(tradingHours.sessions.find((s) => s.open === "13:00")?.days).toEqual([0]);
+    for (const session of tradingHours.sessions) {
+      expect(session.days).not.toContain(6);
+      expect(new Set(session.days).size).toBe(session.days.length);
+    }
+  });
+
+  it("still folds the lunch-break shape into MONDAY (the only adjacent range run)", () => {
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1200,1330-1600,Closed,Closed,Closed,Closed,Closed,Closed;",
+    );
+    expect(tradingHours.sessions.find((s) => s.open === "09:30")?.days).toEqual([1]);
+    expect(tradingHours.sessions.find((s) => s.open === "13:30")?.days).toEqual([1]);
+  });
+
+  it("rejects a shape-valid but non-existent IANA zone AT PARSE, as a typed error", () => {
+    // It used to parse fine and then throw an untyped `RangeError` from `Intl`
+    // deep inside `getMarketStatus` — past the try/catch this parser's contract
+    // tells callers to use, taking down a whole markets response instead of
+    // degrading one feed.
+    expect(() => parsePythSchedule("Not/AReal_Zone;O,O,O,O,O,C,C;0101/C")).toThrow(
+      PythScheduleParseError,
+    );
+  });
+
   // ---------------------------------------------------------------------------
   // FE-era lowercase tokens (the reconciled superset accepts both spellings)
   // ---------------------------------------------------------------------------

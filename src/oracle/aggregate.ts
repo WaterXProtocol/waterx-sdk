@@ -319,10 +319,19 @@ export async function refreshOraclePrices(
   // already ran. Fully generic: the kind→value mapping is the port's
   // (`oracleCredentialsFromHost`) and the ERROR is the rule's own, so this
   // loop names neither a credential kind nor a rule.
-  const credentials = oracleCredentialsFromHost(host);
-  for (const { rule } of groups) {
-    if (rule.credential && !credentials[rule.credential.kind]) {
-      throw rule.credential.missing();
+  //
+  // SKIPPED when an `updateDataProvider` is configured: that consumer holds
+  // the credential out-of-band and polls the source itself, so a cache HIT
+  // makes no authenticated call and must not be pre-emptively failed (the
+  // documented BE prefetch shape). A cache MISS still falls through to the
+  // rule's own fetch guard, which raises the same error — later, but only
+  // when a live fetch is genuinely required.
+  if (!opts.updateDataProvider) {
+    const credentials = oracleCredentialsFromHost(host);
+    for (const { rule } of groups) {
+      if (rule.credential && !credentials[rule.credential.kind]) {
+        throw rule.credential.missing();
+      }
     }
   }
 

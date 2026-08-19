@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { MS_PER_HOUR } from "../../../src/constants.ts";
 import {
   getMarketStatus,
+  parsePythSchedule,
   type MarketStatusResult,
   type TradingHours,
 } from "../../../src/oracle/schedule.ts";
@@ -57,6 +58,64 @@ const FOREX_HOURS: TradingHours = {
 // ---------------------------------------------------------------------------
 // Test Suite
 // ---------------------------------------------------------------------------
+
+describe("getMarketStatus — degenerate event lists", () => {
+  it("a venue with NO sessions is closed, not open", () => {
+    // An empty derived event list means BOTH \"never opens\" and \"never closes\";
+    // collapsing it to `open` reported a delisted/permanently-halted feed as
+    // tradable.
+    const closed = parsePythSchedule("America/New_York;C,C,C,C,C,C,C;");
+    expect(closed.tradingHours.sessions).toEqual([]);
+    expect(getMarketStatus(closed.tradingHours, false, new Date())).toEqual<MarketStatusResult>({
+      status: "closed",
+      nextStatusChangeIn: null,
+    });
+  });
+
+  it("a 24/7 venue still observes its holidays", () => {
+    // Every open/close cancels in the continuous-session merge, so the event
+    // list is empty — but the holiday must still mask the day, which the old
+    // early return skipped by leaving before the holiday check.
+    const always = parsePythSchedule("UTC;O,O,O,O,O,O,O;1225/C");
+    expect(always.tradingHours.holidays).toEqual([{ month: 12, day: 25 }]);
+
+    const onXmas = getMarketStatus(always.tradingHours, false, new Date("2026-12-25T12:00:00Z"));
+    expect(onXmas.status).toBe("closed");
+    // Reopens at the next local midnight (12h later).
+    expect(onXmas.nextStatusChangeIn).toBe(12 * MS_PER_HOUR);
+
+    const offXmas = getMarketStatus(always.tradingHours, false, new Date("2026-12-24T12:00:00Z"));
+    expect(offXmas.status).toBe("open");
+    expect(offXmas.nextStatusChangeIn).toBe(12 * MS_PER_HOUR); // until the holiday starts
+  });
+
+  it("a 24/7 venue with no holidays never changes status", () => {
+    const always = parsePythSchedule("UTC;O,O,O,O,O,O,O;");
+    expect(getMarketStatus(always.tradingHours, false, new Date())).toEqual<MarketStatusResult>({
+      status: "open",
+      nextStatusChangeIn: null,
+    });
+  });
+});
+
+describe("getMarketStatus — DST", () => {
+  it("a countdown spanning a spring-forward lands on the real open instant", () => {
+    // Minute-of-week arithmetic is LOCAL; multiplying the delta by 60_000
+    // assumes a fixed UTC offset and came out an hour late across the
+    // 2026-03-08 transition.
+    const nyse = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;",
+    ).tradingHours;
+    const friClose = new Date("2026-03-06T21:00:00Z"); // Fri 16:00 EST
+    const { status, nextStatusChangeIn } = getMarketStatus(nyse, false, friClose);
+
+    expect(status).toBe("closed");
+    // Monday 09:30 EDT === 13:30Z, NOT 14:30Z.
+    expect(new Date(friClose.getTime() + nextStatusChangeIn!).toISOString()).toBe(
+      "2026-03-09T13:30:00.000Z",
+    );
+  });
+});
 
 describe("getMarketStatus", () => {
   // =====================================================================

@@ -67,8 +67,9 @@ can grep against it:
 - **Scripts**: `scripts/set-pyth-tolerance.ts` / `scripts/pyth-tolerance-show.ts`
   deleted; smoke/dev scripts default to `waterx_rule` (env-overridable via
   `ORACLE_SOURCE` where they already read env).
-- `getCollateralAssets` now filters WLP pool-token keys by the LIVE rule feeds
-  (`constant_rule` / `pyth_lazer_rule` / `waterx_rule`) instead of `pyth_rule.feeds`.
+- `getMarketTickers` stays in `utils/config.ts`; the WLP pool-token question moved to
+  `PerpClient.pricedPoolTickers()` (see Changed) — nothing named `getCollateralAssets`
+  survives, so a consumer grepping the ledger finds one answer, not two.
 
 ### Added — consumer seams (WL-2345)
 

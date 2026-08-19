@@ -99,9 +99,7 @@ export function parsePythSchedule(input: string): ParsedPythSchedule {
   const weeklyStr = (segments[1] ?? "").trim();
   const holidaysStr = (segments[2] ?? "").trim();
 
-  if (!isLikelyTimezone(timezone)) {
-    throw new PythScheduleParseError(`invalid timezone: ${timezone}`);
-  }
+  assertUsableTimezone(timezone);
 
   const weeklySlots = parseWeeklySlots(weeklyStr);
   const holidays = parseHolidays(holidaysStr);
@@ -130,53 +128,104 @@ interface RawWindow {
   close: number;
 }
 
-function isLikelyTimezone(s: string): boolean {
-  // Surface-level shape check; `Intl.DateTimeFormat` rejects genuinely
-  // invalid IANA names at use-time inside `getMarketStatus`.
-  return /^[A-Za-z_]+(\/[A-Za-z_+\-0-9]+){0,2}$/.test(s);
+/**
+ * Reject a timezone the runtime cannot actually resolve, AT PARSE TIME.
+ *
+ * A shape check alone let `"Not/AReal_Zone"` through the parser and then blew
+ * up much later inside `getMarketStatus` as an untyped `RangeError` — past the
+ * try/catch this module's docs tell callers to put around `parsePythSchedule`,
+ * so one malformed record in the ~3.6k-entry catalog took down a whole markets
+ * response instead of degrading that one feed to 24/7. Constructing the
+ * formatter here is also what keeps `fmtCache` bounded to REAL zones: a bogus
+ * name throws before it can be cached.
+ */
+function assertUsableTimezone(tz: string): void {
+  // Cheap shape gate first — it rejects the obvious junk without paying for an
+  // `Intl` construction, and keeps the error identical for both failure modes.
+  if (!/^[A-Za-z_]+(\/[A-Za-z_+\-0-9]+){0,2}$/.test(tz)) {
+    throw new PythScheduleParseError(`invalid timezone: ${tz}`);
+  }
+  try {
+    getFmt(tz);
+  } catch {
+    throw new PythScheduleParseError(`invalid timezone: ${tz}`);
+  }
 }
 
+/** `Open`/`O`/`open` → a full day; `Closed`/`C`/`closed` → an empty day; else `null`. */
+function keywordDay(token: string): RawWindow[] | null {
+  if (token === "Open" || token === "O" || token === "open") return [{ open: 0, close: 1440 }];
+  if (token === "Closed" || token === "C" || token === "closed") return [];
+  return null;
+}
+
+/**
+ * Split the weekly segment into exactly 7 day slots.
+ *
+ * Pyth uses `,` both BETWEEN weekdays and (in the legacy encoding) between two
+ * sessions of the SAME weekday, so a token list longer than 7 has to be folded
+ * — and which day owns the extra token is not recoverable from the flat list
+ * alone. (`&` exists precisely to remove that ambiguity and is handled as one
+ * self-contained day token.)
+ *
+ * The fold is therefore anchored and applied from the RIGHT: keyword tokens
+ * pin their own day, and surplus range tokens merge into the LATEST day that
+ * can take them. Leftmost-greedy — what both consumer copies shipped — is
+ * wrong whenever the multi-session day is not the first one: for
+ * `R,R,R,R,R,C,R,R` it silently gave Monday two sessions, dropped Friday,
+ * reported Saturday open, and emitted a duplicate weekday. Right-anchored
+ * folding assigns the pair to Sunday, and still yields Monday for the
+ * lunch-break shape `0930-1200,1330-1600,C,C,C,C,C,C`, where the pair is the
+ * only adjacent range run.
+ */
 function parseWeeklySlots(input: string): RawWindow[][] {
   const tokens = input
     .split(",")
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
-  const slots: RawWindow[][] = [];
-  let i = 0;
-  // Pyth uses `,` both between weekdays AND (in the old encoding) between
-  // sessions on the same weekday, so we walk tokens and greedily merge
-  // adjacent HHMM-HHMM ranges until pulling more would leave too few tokens
-  // for the remaining weekday slots.
-  while (i < tokens.length) {
-    const sessions: RawWindow[] = [];
-    const token = tokens[i];
-    if (token === undefined) break;
-    if (token === "Open" || token === "O" || token === "open") {
-      sessions.push({ open: 0, close: 1440 });
-      i += 1;
-    } else if (token === "Closed" || token === "C" || token === "closed") {
-      i += 1;
-    } else if (token.includes("&")) {
-      // New format: '&' separates multiple sessions within one day.
-      for (const part of token.split("&")) {
-        sessions.push(parseRange(part.trim()));
-      }
-      i += 1;
-    } else {
-      sessions.push(parseRange(token));
-      i += 1;
-      const slotsRemaining = 7 - (slots.length + 1);
-      while (i < tokens.length && tokens.length - i > slotsRemaining) {
-        const tok = tokens[i];
-        if (tok === undefined) break;
-        const next = tryParseRange(tok);
-        if (next === null) break;
-        sessions.push(next);
-        i += 1;
-      }
-    }
-    slots.push(sessions);
+
+  // How many surplus range tokens must be folded into a neighbouring day. A
+  // shortfall is unparseable up front; a surplus the fold cannot actually
+  // absorb (keyword tokens pin their own day and never merge) simply leaves
+  // too many slots, which the count check after the walk rejects.
+  const surplus = tokens.length - 7;
+  if (surplus < 0) {
+    throw new PythScheduleParseError(
+      `expected 7 weekday slots, got ${String(tokens.length)}: ${input}`,
+    );
   }
+
+  const slots: RawWindow[][] = [];
+  let merges = surplus;
+  for (let i = tokens.length - 1; i >= 0; ) {
+    const token = tokens[i]!;
+    const keyword = keywordDay(token);
+    if (keyword !== null) {
+      slots.unshift(keyword);
+      i -= 1;
+      continue;
+    }
+    if (token.includes("&")) {
+      // Explicit multi-session day — already one complete slot, never folded.
+      slots.unshift(token.split("&").map((part) => parseRange(part.trim())));
+      i -= 1;
+      continue;
+    }
+    const sessions = [parseRange(token)];
+    i -= 1;
+    // Absorb preceding plain ranges while folds remain — latest day first.
+    while (merges > 0 && i >= 0) {
+      const prev = tokens[i]!;
+      if (keywordDay(prev) !== null || prev.includes("&")) break;
+      const window = tryParseRange(prev);
+      if (window === null) break;
+      sessions.unshift(window);
+      i -= 1;
+      merges -= 1;
+    }
+    slots.unshift(sessions);
+  }
+
   if (slots.length !== 7) {
     throw new PythScheduleParseError(
       `expected 7 weekday slots, got ${String(slots.length)}: ${input}`,
@@ -422,6 +471,64 @@ function minuteOfWeek(day: number, hour: number, minute: number): number {
 }
 
 /**
+ * Milliseconds from `now` until the local clock next reads `targetMow`
+ * (minutes from Sunday 00:00 in `timezone`).
+ *
+ * A minute-of-week delta is LOCAL time; multiplying it by 60_000 assumes the
+ * UTC offset never moves, which is wrong across a DST boundary — a Friday-close
+ * → Monday-open countdown over a spring-forward came out a full hour late, and
+ * that skew then fed the holiday walk's date arithmetic. So the naive delta is
+ * only a seed: we re-read the local clock at the guessed instant and fold the
+ * residual back in. One correction converges for any standard ≤2h shift; the
+ * loop is bounded for exotic zones.
+ */
+function msUntilLocalMinuteOfWeek(now: Date, timezone: string, targetMow: number): number {
+  const local = toLocalParts(now, timezone);
+  let delta = targetMow - minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
+  if (delta <= 0) delta += MINUTES_PER_WEEK;
+
+  let ms = delta * MS_PER_MINUTE;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const at = toLocalParts(new Date(now.getTime() + ms), timezone);
+    let residual = targetMow - minuteOfWeek(at.dayOfWeek, at.hour, at.minute);
+    // Fold into (−½ week, +½ week] so a week-boundary wrap isn't read as a
+    // week-long correction.
+    if (residual > MINUTES_PER_WEEK / 2) residual -= MINUTES_PER_WEEK;
+    if (residual < -MINUTES_PER_WEEK / 2) residual += MINUTES_PER_WEEK;
+    if (residual === 0) break;
+    ms += residual * MS_PER_MINUTE;
+  }
+  return ms;
+}
+
+/**
+ * Milliseconds until the next local midnight that STARTS a day matching
+ * `wantHoliday` — the status-change clock for a 24/7 venue that observes
+ * holidays (its weekly event list is empty, so the event walker has nothing to
+ * measure). Re-derives the local time each step, so it stays anchored to real
+ * midnights across DST. `null` when no such day falls inside the lookahead.
+ */
+function msUntilLocalDayStart(
+  now: Date,
+  timezone: string,
+  holidaySet: Set<number>,
+  wantHoliday: boolean,
+): number | null {
+  const local = toLocalParts(now, timezone);
+  let cursor = new Date(
+    now.getTime() + (24 * 60 - (local.hour * 60 + local.minute)) * MS_PER_MINUTE,
+  );
+  for (let day = 0; day < 21; day++) {
+    const parts = toLocalParts(cursor, timezone);
+    if (isHoliday(holidaySet, parts) === wantHoliday) return cursor.getTime() - now.getTime();
+    cursor = new Date(
+      cursor.getTime() + (24 * 60 - (parts.hour * 60 + parts.minute)) * MS_PER_MINUTE,
+    );
+  }
+  return null;
+}
+
+/**
  * Build sorted weekly open/close events from sessions.
  * Handles cross-day sessions (close < open means next day).
  * Handles forex continuous (open === close means 24h session that merges with adjacent).
@@ -497,12 +604,29 @@ function mergeAdjacentEvents(events: WeeklyEvent[]): WeeklyEvent[] {
 
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
   const { events, holidays: holidaySet } = derive(tradingHours);
+  const local = toLocalParts(now, tradingHours.timezone);
+
+  // An EMPTY event list has two opposite meanings, and collapsing them to
+  // "open" reported a permanently-closed venue as tradable:
+  //   - no sessions at all  ⇒ the venue never opens;
+  //   - sessions that fully cancel in `mergeAdjacentEvents` (a 24/7 schedule)
+  //     ⇒ the venue never closes — but its HOLIDAYS still mask it, which the
+  //     old early return skipped by leaving before the holiday check.
   if (events.length === 0) {
-    // No events → always open (shouldn't happen in practice)
-    return { status: "open", nextStatusChangeIn: null };
+    if (tradingHours.sessions.length === 0) {
+      return { status: "closed", nextStatusChangeIn: null };
+    }
+    // Continuous 24/7: only a holiday can change the status.
+    const onHoliday = isHoliday(holidaySet, local);
+    return {
+      status: onHoliday ? "closed" : "open",
+      nextStatusChangeIn:
+        holidaySet.size === 0
+          ? null
+          : msUntilLocalDayStart(now, tradingHours.timezone, holidaySet, !onHoliday),
+    };
   }
 
-  const local = toLocalParts(now, tradingHours.timezone);
   const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
 
   if (isHoliday(holidaySet, local)) {
@@ -584,13 +708,12 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
     return { status: currentStatus, nextStatusChangeIn: null };
   }
 
-  // Calculate ms until next change event
-  let deltaMow = nextChangeEvent.minuteOfWeek - nowMow;
-  if (deltaMow <= 0) {
-    // Wraps around to next week
-    deltaMow += MINUTES_PER_WEEK;
-  }
-  let nextStatusChangeIn = deltaMow * MS_PER_MINUTE;
+  // Local minute-of-week → a real instant (DST-correct; see the helper).
+  let nextStatusChangeIn = msUntilLocalMinuteOfWeek(
+    now,
+    tradingHours.timezone,
+    nextChangeEvent.minuteOfWeek,
+  );
 
   // Holidays only mask `open` events; today-is-a-holiday already returned
   // above. If the upcoming open lands on a holiday, walk forward.
@@ -649,9 +772,8 @@ function findNextNonHolidayOpen(
   const opens = events.filter((e) => e.type === "open");
   if (opens.length === 0) return null;
 
-  // Sort opens by their distance forward from `startMow` so a single
-  // outer-week / inner-open walk yields candidates in chronological order
-  // without an extra array allocation + sort.
+  // Sorted by distance forward from `startMow`, so one outer-week / inner-open
+  // walk yields candidates in chronological order.
   const opensByDelta = opens
     .map((ev) => {
       let delta = ev.minuteOfWeek - startMow;
@@ -662,9 +784,14 @@ function findNextNonHolidayOpen(
 
   for (let weekOffset = 0; weekOffset < 3; weekOffset++) {
     for (const baseDelta of opensByDelta) {
-      const delta = baseDelta + weekOffset * MINUTES_PER_WEEK;
-      const targetLocal = toLocalParts(new Date(now.getTime() + delta * MS_PER_MINUTE), timezone);
-      if (!isHoliday(holidaySet, targetLocal)) return delta * MS_PER_MINUTE;
+      // Convert through the local clock so a candidate spanning a DST change
+      // lands on the real open instant, not one an hour out.
+      const targetMow = (startMow + baseDelta) % MINUTES_PER_WEEK;
+      const ms =
+        msUntilLocalMinuteOfWeek(now, timezone, targetMow) +
+        weekOffset * MINUTES_PER_WEEK * MS_PER_MINUTE;
+      const targetLocal = toLocalParts(new Date(now.getTime() + ms), timezone);
+      if (!isHoliday(holidaySet, targetLocal)) return ms;
     }
   }
   return null;

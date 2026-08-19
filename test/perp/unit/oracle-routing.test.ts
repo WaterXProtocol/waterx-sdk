@@ -201,6 +201,39 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
     expect(moveTargets(tx)).toContain("constant_rule::feed");
   });
 
+  it("USDCUSD constant-only is exempt under EVERY fed set, and aggregates a constant-only collector", async () => {
+    // THE config-drop regression (WL-2355): after `pyth_rule` leaves the config,
+    // USDCUSD exists ONLY in `constant_rule.feeds`. Every fed set must exempt it
+    // from the no-feed throw and still emit a collector fed by constant_rule
+    // alone — the SDK-side mirror of the keeper's `aggregate_constant_only`.
+    for (const oracleSource of [
+      ["pyth_lazer_rule"],
+      ["waterx_rule"],
+      ["pyth_lazer_rule", "waterx_rule"],
+    ] as const) {
+      const client = createUnitTestClient({ oracleSource: [...oracleSource] });
+      client.pyth = { ...client.pyth, api_key: "unit-test-token" };
+      // Constant-pinned, and served by NO source's feeds block.
+      client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+      delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+      delete client.config.packages.waterx_rule!.feeds.USDCUSD;
+      // There is no `pyth_rule` block in the schema at all any more.
+      expect("pyth_rule" in client.config.packages).toBe(false);
+
+      const tx = new Transaction();
+      await expect(refreshOraclePrices(tx, client, ["USDCUSD"])).resolves.toBeUndefined();
+
+      const targets = moveTargets(tx);
+      expect(targets).toContain("oracle::new_collector");
+      expect(targets).toContain("constant_rule::feed");
+      expect(targets).toContain("oracle::aggregate");
+      // Constant-ONLY: no source leg of any kind on this collector.
+      expect(targets).not.toContain("pyth_lazer_rule::feed");
+      expect(targets).not.toContain("waterx_rule::collect_single_with_proof");
+      expect(targets).not.toContain("waterx_rule::collect_batch_latest");
+    }
+  });
+
   it("a non-constant ticker with no feed for the selected source throws (no reroute to any other source)", async () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
@@ -452,6 +485,42 @@ describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", 
 
     expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
     expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["BTCUSD"]);
+  });
+
+  it("a KEYLESS client with a provider still builds — the pre-check must not pre-empt a cache hit", async () => {
+    // The documented BE shape: the prefetch cache holds the credential and polls
+    // the source out-of-band, so the client itself needs none. A hoisted
+    // credential throw would break every build for that consumer even though no
+    // authenticated call is ever made.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    expect(client.pyth.api_key).toBeUndefined();
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD"]);
+    const cached: RuleUpdateData = { kind: "pyth_lazer_rule", payload: { cached: true } };
+    const provider: UpdateDataProvider = { get: vi.fn(async () => cached) };
+
+    const tx = new Transaction();
+    await expect(
+      refreshOraclePrices(tx, client, ["BTCUSD"], {
+        ruleOverrides: { pyth_lazer_rule: fakeLazer },
+        updateDataProvider: provider,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
+    expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cached);
+  });
+
+  it("a KEYLESS client whose provider MISSES still surfaces the rule's own credential error", async () => {
+    // The cache-miss path falls through to a live fetch, which is exactly when
+    // the credential is genuinely required — the real rule's guard fires there.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    const provider: UpdateDataProvider = { get: vi.fn(async () => null) };
+
+    await expect(
+      refreshOraclePrices(new Transaction(), client, ["BTCUSD"], {
+        updateDataProvider: provider,
+      }),
+    ).rejects.toThrow(/LazerApiKeyMissing/);
   });
 
   it("is never consulted when no updateDataProvider is passed (default behavior unchanged)", async () => {

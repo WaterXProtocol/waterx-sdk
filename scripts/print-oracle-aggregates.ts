@@ -424,7 +424,8 @@ async function prefetchUpdateData(
   await Promise.all(
     client.oracleSources.map(async (source) => {
       const rule = resolveOracleRule(source);
-      const served = tickers.filter((t) => new Set(rule.supportedTickers(client)).has(t));
+      const supported = new Set(rule.supportedTickers(client));
+      const served = tickers.filter((t) => supported.has(t));
       if (served.length === 0) return;
       try {
         warmed.set(source, await rule.fetchUpdateData(client, served));

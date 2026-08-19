@@ -16,7 +16,11 @@
 import type { Network } from "../constants.ts";
 import type { PythFetchPolicy } from "./config.ts";
 import { LAZER_INFRA, postLazerLatestPrice } from "./rules/pyth-lazer-rule.ts";
-import { fetchWaterxSignedUpdate } from "./rules/waterx-rule.ts";
+import {
+  fetchWaterxSignedLeaves,
+  fetchWaterxSignedUpdate,
+  type WaterxBatchItem,
+} from "./rules/waterx-rule.ts";
 import type { FetchPolicy } from "./update-fetch.ts";
 
 /**
@@ -153,12 +157,19 @@ export async function readLazerPrices(opts: {
  * {@link fetchWaterxSignedUpdate} (`GET /v1/quotes/update`; public read, no
  * auth; same retry/timeout policy as every oracle fetch).
  *
+ * Takes the per-symbol LEAF route first, exactly as the write path does, and
+ * falls back to the batch envelope only against a quote-center with no leaf
+ * route (404). The leaf route is why that route exists: an envelope is one
+ * signature over the WHOLE registry, so a read plane polling a handful of
+ * symbols would otherwise pull — and bigint-revive — every item it did not ask
+ * for on every tick.
+ *
  * Decoding per item: `price = Number(price_n) / Number(price_scale)` and
  * `conf = Number(confidence_n) / Number(confidence_scale)`, each `0` when its
  * scale is `0` (a zero divisor is "no value", not `Infinity`);
  * `publishTimeMs = Number(price_timestamp_ms)`. Reads share the write path's
  * fetch — a mispointed endpoint fails the same intent/shape checks tx-builds
- * fail — but this NEVER hands its envelope to a tx-build: the on-chain
+ * fail — but this NEVER hands its signed data to a tx-build: the on-chain
  * per-symbol replay guard (F-014) burns one submission per signed timestamp,
  * and reads must not race trades for it.
  */
@@ -169,9 +180,16 @@ export async function readQuoteCenterPrices(opts: {
 }): Promise<Map<string, OraclePriceEntry>> {
   const out = new Map<string, OraclePriceEntry>();
   if (opts.symbols.length === 0) return out;
-  const envelope = await fetchWaterxSignedUpdate(opts.endpoint, opts.symbols, opts.fetch);
+
+  const pulled = await fetchWaterxSignedLeaves(opts.endpoint, opts.symbols, opts.fetch);
+  const items: readonly WaterxBatchItem[] =
+    "leaves" in pulled
+      ? pulled.leaves
+      : (await fetchWaterxSignedUpdate(opts.endpoint, opts.symbols, opts.fetch, pulled.unavailable))
+          .payload.items;
+
   const requested = new Set(opts.symbols);
-  for (const item of envelope.payload.items) {
+  for (const item of items) {
     if (!requested.has(item.symbol)) continue;
     out.set(item.symbol, {
       price: item.price_scale === 0n ? 0 : Number(item.price_n) / Number(item.price_scale),
