@@ -28,6 +28,10 @@ import {
 } from "../helpers/fixtures/mock-testnet-config.ts";
 import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
+import {
+  rawLeavesText as leavesText,
+  mockLeafRouteEchoingSymbols,
+} from "../helpers/fixtures/quote-center.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const baseOrder = {
@@ -48,49 +52,6 @@ const common = {
   consolidateToUsd: false,
 } as const;
 
-/** 64-byte ed25519 signature + 32-byte hash (hex) standing in for real ones. */
-const SIG_HEX = "ab".repeat(64);
-const HASH_HEX = "cd".repeat(32);
-
-/** Wire-faithful `/v1/quotes/leaves` body covering `symbols`. */
-function leavesText(symbols: string[]): string {
-  const leaves = symbols.map(
-    (symbol) => `{
-      "symbol": "${symbol}", "ticker": "${symbol}T",
-      "price": 63700.0, "confidence": 0.0,
-      "price_n": 63700000000000, "price_scale": 1000000000,
-      "confidence_n": 10000000000, "confidence_scale": 1000000000,
-      "sources": [2, 3, 4], "method": "median",
-      "num_sources": 3, "max_source_deviation_bps": 0,
-      "price_timestamp_ms": 1784799999000,
-      "signed_timestamp_ms": 1784800000000,
-      "root": "${HASH_HEX}", "proof": ["${HASH_HEX}"],
-      "signature": "${SIG_HEX}"
-    }`,
-  );
-  return `{"leaves":[${leaves.join(",")}]}`;
-}
-
-/**
- * Symbol-aware quote-center leaf mock: answers `/v1/quotes/leaves` with one
- * signed leaf per REQUESTED symbol, so a builder's refresh (whatever ticker
- * set it derives) always gets full coverage.
- */
-function mockQuoteCenterLeaves(): ReturnType<typeof vi.spyOn> {
-  return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
-    const url = new URL(String(input));
-    if (!url.pathname.endsWith("/v1/quotes/leaves")) {
-      return Promise.resolve({ ok: false, status: 404, text: async () => "Not Found" } as Response);
-    }
-    const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
-    return Promise.resolve({
-      ok: true,
-      status: 200,
-      text: async () => leavesText(symbols),
-    } as unknown as Response);
-  }) as ReturnType<typeof vi.spyOn>;
-}
-
 describe("tx-builders (v3)", () => {
   const client = createUnitTestClient();
   const originalFetch = globalThis.fetch;
@@ -106,7 +67,7 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildPlaceOrderTx with oracle refresh: fee-free, no SplitCoins, no sponsor legs — just verify+feed+aggregate", async () => {
-    mockQuoteCenterLeaves();
+    mockLeafRouteEchoingSymbols();
 
     const tx = await buildPlaceOrderTx(client, {
       ...common,
@@ -117,9 +78,6 @@ describe("tx-builders (v3)", () => {
 
     const targets = moveTargets(tx);
     // The waterx leaf leg feeds each refreshed ticker …
-    expect(targets.filter((t) => t === "collect_single_with_proof").length).toBeGreaterThanOrEqual(
-      0,
-    );
     expect(targets.filter((t) => t === "waterx_rule::collect_single_with_proof")).toHaveLength(2); // BTCUSD (market) + USDCUSD (collateral/pool)
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
     // … and NOTHING fee-shaped remains: no gas split, no sponsor fund legs.
@@ -262,7 +220,7 @@ describe("tx-builders (v3)", () => {
   });
 
   it("buildMintWlpTx with oracle refresh (fee-free — composes into sponsored transactions)", async () => {
-    mockQuoteCenterLeaves();
+    mockLeafRouteEchoingSymbols();
 
     const tx = await buildMintWlpTx(client, {
       accountId: PTB_DUMMY_ACCOUNT_ID,

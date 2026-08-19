@@ -10,20 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchPythProHistory } from "../../../src/oracle/pyth-pro-history.ts";
 import { fetchPythSymbolCatalog } from "../../../src/oracle/symbol-catalog.ts";
-
-function mockFetch(response: {
-  status?: number;
-  json?: unknown;
-  text?: string;
-}): ReturnType<typeof vi.spyOn> {
-  const status = response.status ?? 200;
-  return vi.spyOn(globalThis, "fetch").mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => response.json,
-    text: async () => response.text ?? JSON.stringify(response.json ?? ""),
-  } as unknown as Response);
-}
+import { mockFetchResponse } from "../helpers/fixtures/quote-center.ts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -49,7 +36,7 @@ describe("fetchPythSymbolCatalog", () => {
   ];
 
   it("GETs the keyless catalog endpoint — no Authorization header attached", async () => {
-    const spy = mockFetch({ json: PROBED_RECORDS });
+    const spy = mockFetchResponse({ json: PROBED_RECORDS });
 
     await fetchPythSymbolCatalog();
 
@@ -60,7 +47,7 @@ describe("fetchPythSymbolCatalog", () => {
   });
 
   it("returns the probed record shape: integer lazer id, hermes hex or null, schedule string", async () => {
-    mockFetch({ json: PROBED_RECORDS });
+    mockFetchResponse({ json: PROBED_RECORDS });
 
     const records = await fetchPythSymbolCatalog();
 
@@ -78,7 +65,7 @@ describe("fetchPythSymbolCatalog", () => {
   });
 
   it("skips a malformed row instead of sinking the ~3.6k others", async () => {
-    mockFetch({ json: [{ symbol: "no-lazer-id" }, PROBED_RECORDS[0]] });
+    mockFetchResponse({ json: [{ symbol: "no-lazer-id" }, PROBED_RECORDS[0]] });
 
     const records = await fetchPythSymbolCatalog();
 
@@ -89,11 +76,11 @@ describe("fetchPythSymbolCatalog", () => {
   it("throws on a non-2xx response and on a non-array body", async () => {
     // 404 — a DETERMINISTIC failure fetchWithPolicy hands back un-retried
     // (5xx/429 instead exhaust the retry budget into a FetchPolicyError).
-    mockFetch({ status: 404, text: "gone" });
+    mockFetchResponse({ status: 404, text: "gone" });
     await expect(fetchPythSymbolCatalog()).rejects.toThrow(/Pyth symbol catalog fetch failed: 404/);
 
     vi.restoreAllMocks();
-    mockFetch({ json: { not: "an array" } });
+    mockFetchResponse({ json: { not: "an array" } });
     await expect(fetchPythSymbolCatalog()).rejects.toThrow(/non-array body/);
   });
 });
@@ -102,7 +89,7 @@ describe("fetchPythProHistory", () => {
   const UDF_BODY = { s: "ok", t: [1], o: [1], h: [1], l: [1], c: [1], v: [0] };
 
   it("GETs /v1/{channel}/history with the UDF params and the Bearer key", async () => {
-    const spy = mockFetch({ json: UDF_BODY });
+    const spy = mockFetchResponse({ json: UDF_BODY });
 
     const out = await fetchPythProHistory({
       channel: "fixed_rate@1000ms",
@@ -128,7 +115,7 @@ describe("fetchPythProHistory", () => {
   });
 
   it("throws with status + body on non-2xx (the caller's Benchmarks-fallback trigger)", async () => {
-    mockFetch({ status: 403, text: "Not entitled: history" });
+    mockFetchResponse({ status: 403, text: "Not entitled: history" });
 
     await expect(
       fetchPythProHistory({

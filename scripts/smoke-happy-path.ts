@@ -35,7 +35,7 @@ import {
   requestDeposit,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 interface SimResult {
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   console.log(`AccountId: ${accountId}`);
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "waterx_rule",
+    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

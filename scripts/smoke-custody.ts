@@ -38,7 +38,7 @@ import {
   requestDepositFromReceivings,
   transferToAccount,
 } from "../src/perp/index.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 /** Raw units split off a discovered coin for the write-builder dry-runs. */
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
   loadRepoEnvFiles();
   const address = resolveActiveAddress();
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "waterx_rule",
+    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

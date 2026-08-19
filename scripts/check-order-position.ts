@@ -4,7 +4,7 @@
  */
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountOrders, getAccountPositions } from "../src/perp/fetch.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 
 function j(v: unknown): string {
   return JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2);
@@ -13,7 +13,7 @@ function j(v: unknown): string {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "waterx_rule",
+    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

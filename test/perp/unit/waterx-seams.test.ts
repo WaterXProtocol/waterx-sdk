@@ -19,63 +19,13 @@ import {
   waterxLeavesOf,
   WaterxRule,
 } from "../../../src/oracle/rules/waterx-rule.ts";
+import {
+  rawEnvelopeText as envelopeText,
+  rawLeavesText as leavesText,
+  mockQuoteCenter,
+  rawEnvelope,
+} from "../helpers/fixtures/quote-center.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
-
-const SIG_HEX = "ab".repeat(64);
-const HASH_HEX = "cd".repeat(32);
-
-function leavesText(symbols: string[]): string {
-  const leaves = symbols.map(
-    (symbol) => `{
-      "symbol": "${symbol}", "ticker": "${symbol}T",
-      "price_n": 63700000000000, "price_scale": 1000000000,
-      "confidence_n": 10000000000, "confidence_scale": 1000000000,
-      "sources": [2, 3], "method": "median",
-      "num_sources": 2, "max_source_deviation_bps": 0,
-      "price_timestamp_ms": 1784799999000,
-      "signed_timestamp_ms": 1784800000000,
-      "root": "${HASH_HEX}", "proof": ["${HASH_HEX}"],
-      "signature": "${SIG_HEX}"
-    }`,
-  );
-  return `{"leaves":[${leaves.join(",")}]}`;
-}
-
-function envelopeText(symbols: string[]): string {
-  const items = symbols.map(
-    (symbol) => `{
-      "symbol": "${symbol}", "ticker": "${symbol}T",
-      "sources": [2, 3], "method": "median",
-      "price_timestamp_ms": 1784799999000,
-      "price_n": 63700000000000, "price_scale": 1000000000,
-      "confidence_n": 10000000000, "confidence_scale": 1000000000,
-      "max_source_deviation_bps": 0, "num_sources": 2
-    }`,
-  );
-  return `{"intent": 1, "timestamp_ms": 1784800000000, "signature": "${SIG_HEX}", "payload": {"items": [${items.join(",")}]}}`;
-}
-
-/** Route-aware quote-center mock (leaves route + envelope route). */
-function mockQuoteCenter(routes: {
-  leaves?: { status?: number; text: string } | { status: 404 };
-  update?: { status?: number; text: string };
-}): ReturnType<typeof vi.spyOn> {
-  return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
-    const { pathname } = new URL(String(input));
-    const route = pathname.endsWith("/v1/quotes/leaves")
-      ? routes.leaves
-      : pathname.endsWith("/v1/quotes/update")
-        ? routes.update
-        : undefined;
-    const status = route?.status ?? (route ? 200 : 404);
-    const text = route && "text" in route ? route.text : "Not Found";
-    return Promise.resolve({
-      ok: status >= 200 && status < 300,
-      status,
-      text: async () => text,
-    } as unknown as Response);
-  }) as ReturnType<typeof vi.spyOn>;
-}
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -102,9 +52,10 @@ describe("fetchWaterxSignedLeaves / fetchWaterxSignedUpdate (public seams)", () 
   });
 
   it("fetchWaterxSignedUpdate rejects a wrong-intent envelope (mispointed endpoint)", async () => {
-    mockQuoteCenter({
-      update: { text: envelopeText(["BTCUSD"]).replace('"intent": 1', '"intent": 2') },
-    });
+    // Tampered on the OBJECT, not the serialized text: the intent gate is what
+    // is under test, and a string-replace would silently stop matching if the
+    // shared fixture's spacing ever changed.
+    mockQuoteCenter({ update: { body: { ...rawEnvelope(["BTCUSD"]), intent: 2 } } });
 
     await expect(fetchWaterxSignedUpdate("https://qc.example", ["BTCUSD"])).rejects.toThrow(
       /intent 2, expected BATCH_PRICE_INTENT 1/,

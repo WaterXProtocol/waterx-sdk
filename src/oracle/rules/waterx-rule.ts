@@ -753,6 +753,83 @@ export function feedWaterxRule(
   })(tx);
 }
 
+/**
+ * THE quote-center pull — the one pipeline both coverage policies share:
+ * package guard → own-key feeds partition → leaf route (default) → batch
+ * envelope only when this quote-center has no leaf route (see
+ * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
+ * why nothing else falls back).
+ *
+ * `coverage` decides only what a GAP means, never how the pull runs:
+ *
+ * - `"strict"` — every requested ticker must be config-listed AND served, or
+ *   this THROWS (the per-ticker unlisted message, before any network call;
+ *   then {@link assertCoverage} naming the route). `missing` is always `[]`.
+ * - `"partial"` — an unlisted or unserved ticker lands in `missing` and the
+ *   payload covers the rest, narrowed through the rule's own
+ *   {@link WaterxRule.narrowUpdateData} so leaf-vs-envelope divisibility has
+ *   exactly one definition.
+ */
+async function pullWaterxData(
+  host: OracleHost,
+  tickers: string[],
+  coverage: "strict" | "partial",
+): Promise<{ data: RuleUpdateData; missing: string[] }> {
+  // Package-level check first: a config without the deployment must say so,
+  // not fail per ticker as if only that feed were missing.
+  const { feeds } = requireWaterxPackage(host);
+  // One partition pass, own-keys-only: a prototype-key ticker ("toString")
+  // must read as unlisted, not pass as an inherited Function and reach the
+  // network.
+  const missing: string[] = [];
+  const listed: string[] = [];
+  for (const ticker of tickers) {
+    (ownEntry(feeds, ticker) === undefined ? missing : listed).push(ticker);
+  }
+  // Unlisted tickers never reach the network on EITHER policy — the
+  // quote-center 404s a whole batch on one unknown symbol. Strict surfaces
+  // the per-ticker message; partial just records the gap and pulls the rest.
+  if (coverage === "strict" && missing.length > 0) {
+    throw new Error(`No waterx_rule feed listed for ticker: ${missing[0]}`);
+  }
+  if (listed.length === 0) return { data: null, missing };
+
+  const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
+  const pulled = await fetchWaterxSignedLeaves(endpoint, listed, fetchOpts);
+
+  let route: "leaves" | "envelope";
+  let payload: WaterxUpdatePayload;
+  let served: Set<string>;
+  if ("leaves" in pulled) {
+    route = "leaves";
+    payload = { leaves: pulled.leaves };
+    served = new Set(pulled.leaves.map((leaf) => leaf.symbol));
+  } else {
+    const envelope = await fetchWaterxSignedUpdate(endpoint, listed, fetchOpts, pulled.unavailable);
+    route = "envelope";
+    payload = { envelope };
+    served = new Set(envelope.payload.items.map((item) => item.symbol));
+  }
+
+  if (coverage === "strict") {
+    assertCoverage(route, listed, served);
+    return { data: { kind: "waterx_rule", payload }, missing };
+  }
+
+  const covered: string[] = [];
+  for (const ticker of listed) (served.has(ticker) ? covered : missing).push(ticker);
+  // Divisibility is the rule's own knowledge, so the subset decision is
+  // delegated rather than re-encoded here: leaves subset per symbol, an
+  // envelope is indivisible and passes whole (or `null` when it covers none).
+  return {
+    data:
+      covered.length > 0
+        ? WaterxRule.narrowUpdateData(host, { kind: "waterx_rule", payload }, covered)
+        : null,
+    missing,
+  };
+}
+
 export const WaterxRule: PriceUpdateRule = {
   kind: "waterx_rule",
 
@@ -766,45 +843,12 @@ export const WaterxRule: PriceUpdateRule = {
 
   /**
    * Pulls per-symbol Merkle leaves for `tickers`, falling back to one batch
-   * envelope only when this quote-center has no leaf route (see
-   * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
-   * why nothing else falls back). Either way, returns only what covers ALL of
-   * `tickers` — see {@link assertCoverage}.
+   * envelope only when this quote-center has no leaf route. Returns only what
+   * covers ALL of `tickers` — the strict arm of {@link pullWaterxData}.
    */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
-    // Package-level check first: a config without the deployment must say so,
-    // not fail per ticker as if only that feed were missing.
-    const { feeds } = requireWaterxPackage(host);
-    for (const ticker of tickers) {
-      // ownEntry: a prototype-key ticker ("toString") must throw here as
-      // unlisted, not pass as an inherited Function and reach the network.
-      if (ownEntry(feeds, ticker) === undefined) {
-        throw new Error(`No waterx_rule feed listed for ticker: ${ticker}`);
-      }
-    }
-    const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
-    const pulled = await fetchWaterxSignedLeaves(endpoint, tickers, fetchOpts);
-    if ("leaves" in pulled) {
-      assertCoverage(
-        "leaves",
-        tickers,
-        pulled.leaves.map((l) => l.symbol),
-      );
-      return { kind: "waterx_rule", payload: { leaves: pulled.leaves } };
-    }
-    const envelope = await fetchWaterxSignedUpdate(
-      endpoint,
-      tickers,
-      fetchOpts,
-      pulled.unavailable,
-    );
-    assertCoverage(
-      "envelope",
-      tickers,
-      envelope.payload.items.map((i) => i.symbol),
-    );
-    return { kind: "waterx_rule", payload: { envelope } };
+    return (await pullWaterxData(host, tickers, "strict")).data;
   },
 
   /**
@@ -855,15 +899,18 @@ export const WaterxRule: PriceUpdateRule = {
    * default an envelope-only identity check would miss.
    */
   updateIdentityBySymbol(data: RuleUpdateData): Map<string, bigint> | null {
-    const leaves = waterxLeavesOf(data);
-    if (leaves) {
-      return new Map(leaves.map((leaf) => [leaf.symbol, leaf.signed_timestamp_ms]));
-    }
-    const envelope = waterxEnvelopeOf(data);
-    if (envelope) {
-      return new Map(envelope.payload.items.map((item) => [item.symbol, envelope.timestamp_ms]));
-    }
-    return null;
+    // Narrowed ONCE: a serve-at-most-once cache calls this per serve, and the
+    // accessors each re-run the full structural payload validation.
+    const payload = waterxPayloadOf(data);
+    if (!payload) return null;
+    return "leaves" in payload
+      ? new Map(payload.leaves.map((leaf) => [leaf.symbol, leaf.signed_timestamp_ms]))
+      : new Map(
+          payload.envelope.payload.items.map((item) => [
+            item.symbol,
+            payload.envelope.timestamp_ms,
+          ]),
+        );
   },
 
   /**
@@ -913,39 +960,6 @@ export async function fetchWaterxUpdateData(
   tickers: string[],
   opts?: { coverage?: "strict" | "partial" },
 ): Promise<{ data: RuleUpdateData; missing: string[] }> {
-  if ((opts?.coverage ?? "strict") === "strict") {
-    return { data: await WaterxRule.fetchUpdateData(host, tickers), missing: [] };
-  }
-
   if (tickers.length === 0) return { data: null, missing: [] };
-  const { feeds } = requireWaterxPackage(host);
-  // Config-unlisted tickers are a KNOWN gap — recorded, never sent: the
-  // quote-center 404s whole batches on unknown symbols, so one unlisted
-  // ticker must not take down the listed ones' pull.
-  const missing = tickers.filter((ticker) => ownEntry(feeds, ticker) === undefined);
-  const listed = tickers.filter((ticker) => ownEntry(feeds, ticker) !== undefined);
-  if (listed.length === 0) return { data: null, missing };
-
-  const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
-  const pulled = await fetchWaterxSignedLeaves(endpoint, listed, fetchOpts);
-  if ("leaves" in pulled) {
-    const requested = new Set(listed);
-    const subset = pulled.leaves.filter((leaf) => requested.has(leaf.symbol));
-    const served = new Set(subset.map((leaf) => leaf.symbol));
-    missing.push(...listed.filter((ticker) => !served.has(ticker)));
-    return {
-      data: subset.length > 0 ? { kind: "waterx_rule", payload: { leaves: subset } } : null,
-      missing,
-    };
-  }
-  const envelope = await fetchWaterxSignedUpdate(endpoint, listed, fetchOpts, pulled.unavailable);
-  const served = new Set(envelope.payload.items.map((item) => item.symbol));
-  const covered = listed.filter((ticker) => served.has(ticker));
-  missing.push(...listed.filter((ticker) => !served.has(ticker)));
-  // Indivisible: keep the whole envelope iff it serves at least one requested
-  // ticker; a consumer narrows per build via `narrowUpdateData`.
-  return {
-    data: covered.length > 0 ? { kind: "waterx_rule", payload: { envelope } } : null,
-    missing,
-  };
+  return pullWaterxData(host, tickers, opts?.coverage ?? "strict");
 }

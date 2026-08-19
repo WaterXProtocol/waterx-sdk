@@ -34,7 +34,7 @@ import {
 } from "../src/perp/index.ts";
 import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 
 const CONFIG_PATH = resolve(import.meta.dirname, "..", "..", "waterx-config", "testnet.json");
 
@@ -179,11 +179,11 @@ async function main(): Promise<void> {
   if (existsSync(CONFIG_PATH)) {
     console.log(`Loading config from ${CONFIG_PATH}`);
     config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
-    client = new PerpClient("TESTNET", config, { oracleSource: "waterx_rule" });
+    client = new PerpClient("TESTNET", config, { oracleSource: oracleSourceFromEnv() });
   } else {
     console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
     client = await PerpClient.create("TESTNET", {
-      oracleSource: "waterx_rule",
+      oracleSource: oracleSourceFromEnv(),
       cache: true,
       waterxConfigUrl: waterxConfigUrlFromEnv(),
     });

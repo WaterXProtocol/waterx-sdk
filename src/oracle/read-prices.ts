@@ -15,9 +15,9 @@
 
 import type { Network } from "../constants.ts";
 import type { PythFetchPolicy } from "./config.ts";
-import { LAZER_INFRA } from "./rules/pyth-lazer-rule.ts";
+import { LAZER_INFRA, postLazerLatestPrice } from "./rules/pyth-lazer-rule.ts";
 import { fetchWaterxSignedUpdate } from "./rules/waterx-rule.ts";
-import { fetchWithPolicy, joinEndpointPath, type FetchPolicy } from "./update-fetch.ts";
+import type { FetchPolicy } from "./update-fetch.ts";
 
 /**
  * One decoded read-plane price. `price` / `conf` are display-grade floats in
@@ -101,19 +101,16 @@ export async function readLazerPrices(opts: {
   const out = new Map<number, OraclePriceEntry>();
   if (opts.feedIds.length === 0) return out;
   const infra = LAZER_INFRA[opts.network ?? "MAINNET"];
-  const url = joinEndpointPath(infra.endpoint, "v1/latest_price");
-  const res = await fetchWithPolicy(
-    url.toString(),
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        priceFeedIds: opts.feedIds,
-        ...LAZER_PARSED_READ_REQUEST,
-        channel: opts.channel ?? infra.channel,
-      }),
-    },
-    { apiKey: opts.apiKey, ...opts.fetch },
+  // Same POST transport the rule's write leg uses (URL join, method, headers,
+  // Bearer + retry policy) — only the request pins and the decoding below are
+  // read-specific.
+  const res = await postLazerLatestPrice(
+    infra.endpoint,
+    opts.channel ?? infra.channel,
+    opts.apiKey,
+    opts.feedIds,
+    LAZER_PARSED_READ_REQUEST,
+    opts.fetch,
   );
   if (res.status === 403) {
     // Plain-text body naming the unentitled feed + grant reason — verbatim.

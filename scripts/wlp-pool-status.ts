@@ -6,7 +6,7 @@
  */
 import { PerpClient } from "../src/perp/client.ts";
 import { getPoolData, getTokenPoolData } from "../src/perp/fetch.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 
 const FLOAT_SCALE = 1_000_000_000n; // 1e9 Float scale (src/constants.ts)
 
@@ -24,7 +24,7 @@ function shortType(t: string): string {
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "waterx_rule",
+    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

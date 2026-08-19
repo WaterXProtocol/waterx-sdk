@@ -169,6 +169,25 @@ export interface UpdateDataProvider {
   get(source: OracleSource, tickers: string[]): Promise<RuleUpdateData | null>;
 }
 
+/** The credential kinds a rule can declare via {@link PriceUpdateRule.requiredCredential}. */
+export type OracleCredentialKind = "pyth_api_key";
+
+/**
+ * Caller-supplied credential values keyed BY {@link OracleCredentialKind} —
+ * the one shape both enforcement points check against, so neither has to
+ * branch on the kind. `refreshOraclePrices` builds it from a live
+ * `OracleHost` ({@link oracleCredentialsFromHost}); `missingOracleCredentials`
+ * builds it from a consumer's raw env values. Adding a kind means extending
+ * the union above plus those two adapters — never an `if` chain at a check
+ * site.
+ */
+export type OracleCredentials = Partial<Record<OracleCredentialKind, string>>;
+
+/** The credentials a live client carries, in {@link OracleCredentials} shape. */
+export function oracleCredentialsFromHost(host: OracleHost): OracleCredentials {
+  return { pyth_api_key: host.pyth.api_key };
+}
+
 export interface PriceUpdateRule {
   /**
    * `OracleSource`, not the wider `PriceUpdateRuleKind`: only selectable
@@ -189,9 +208,10 @@ export interface PriceUpdateRule {
    * `refreshOraclePrices`'s credential pre-check (`aggregate.ts` — a
    * non-empty group whose rule requires a key the host doesn't carry throws
    * BEFORE any fetch or PTB mutation) and `missingOracleCredentials`
-   * (`validate.ts` — consumers' boot-time env asserts).
+   * (`validate.ts` — consumers' boot-time env asserts). Neither branches on
+   * the kind: both resolve it through {@link OracleCredentials}.
    */
-  readonly requiredCredential?: "pyth_api_key";
+  readonly requiredCredential?: OracleCredentialKind;
 
   /** Tickers this rule can serve in this environment (from config feeds + enabled). */
   supportedTickers(host: OracleHost): string[];

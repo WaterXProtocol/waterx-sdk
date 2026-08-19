@@ -198,12 +198,14 @@ function parseRange(input: string): RawWindow {
   };
 }
 
+/**
+ * {@link parseRange}, but a non-range token (a weekday keyword, a malformed
+ * window) answers `null` instead of throwing — the lookahead in
+ * {@link parseWeeklySlots} uses it to decide whether the NEXT comma-separated
+ * token is another session for this day. Every format rule lives in
+ * `parseRange`/`parseHHMMCompact`; this only changes the failure disposition.
+ */
 function tryParseRange(input: string): RawWindow | null {
-  const parts = input.split("-");
-  const p0 = parts[0];
-  const p1 = parts[1];
-  if (parts.length !== 2 || p0 === undefined || p1 === undefined) return null;
-  if (!/^\d{4}$/.test(p0) || !/^\d{4}$/.test(p1)) return null;
   try {
     return parseRange(input);
   } catch {
@@ -477,15 +479,20 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
 
   const local = toLocalParts(now, tradingHours.timezone);
   const holidaySet = buildHolidaySet(tradingHours.holidays);
+  const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
 
   if (isHoliday(holidaySet, local)) {
     return {
       status: "closed",
-      nextStatusChangeIn: findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone),
+      nextStatusChangeIn: findNextNonHolidayOpen(
+        events,
+        holidaySet,
+        now,
+        tradingHours.timezone,
+        nowMow,
+      ),
     };
   }
-
-  const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
 
   // Determine current status and find next event.
   // Walk through events to find where `nowMow` falls.
@@ -569,7 +576,13 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
       tradingHours.timezone,
     );
     if (isHoliday(holidaySet, targetLocal)) {
-      const skipped = findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone);
+      const skipped = findNextNonHolidayOpen(
+        events,
+        holidaySet,
+        now,
+        tradingHours.timezone,
+        nowMow,
+      );
       if (skipped !== null) nextStatusChangeIn = skipped;
     }
   }
@@ -604,9 +617,11 @@ function findNextNonHolidayOpen(
   holidaySet: Set<number>,
   now: Date,
   timezone: string,
+  /** `now`'s minute-of-week, already derived by the caller — `toLocalParts` is
+   *  the heavy `Intl` path this module caches formatters for, so it is not
+   *  re-run here. */
+  startMow: number,
 ): number | null {
-  const local = toLocalParts(now, timezone);
-  const startMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
   const opens = events.filter((e) => e.type === "open");
   if (opens.length === 0) return null;
 

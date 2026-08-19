@@ -27,12 +27,13 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import type { OracleHost } from "./host.ts";
-import type {
-  OracleSource,
-  PriceUpdateRule,
-  RuleUpdateData,
-  RuleUpdateHandle,
-  UpdateDataProvider,
+import {
+  oracleCredentialsFromHost,
+  type OracleSource,
+  type PriceUpdateRule,
+  type RuleUpdateData,
+  type RuleUpdateHandle,
+  type UpdateDataProvider,
 } from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
@@ -315,9 +316,14 @@ export async function refreshOraclePrices(
   // so a keyless build against an auth-first source (Lazer) in the fed set
   // throws with ZERO wasted network calls and zero PTB commands, rather than
   // waiting for that group's own fetch guard to fire after sibling groups'
-  // fetches already ran.
+  // fetches already ran. The kind→value mapping is the port's
+  // (`oracleCredentialsFromHost`), so this never branches on a kind; only the
+  // ERROR is kind-specific, and `pyth_api_key` is the only kind today — a
+  // second one must bring its own error here rather than inherit Lazer's.
+  const credentials = oracleCredentialsFromHost(host);
   for (const group of groups) {
-    if (group.rule.requiredCredential === "pyth_api_key" && !host.pyth.api_key) {
+    const required = group.rule.requiredCredential;
+    if (required !== undefined && !credentials[required]) {
       throw new LazerApiKeyMissingError();
     }
   }

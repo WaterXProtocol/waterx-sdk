@@ -16,8 +16,13 @@
 
 import { fetchWithPolicy, joinEndpointPath, type FetchPolicy } from "./update-fetch.ts";
 
-/** The Pyth Pro API base the catalog (and history) endpoints live under. */
-const PYTH_PRO_API_ENDPOINT = "https://pyth.dourolabs.app";
+/**
+ * The Pyth Pro API base every Pro read surface hangs off — the catalog here
+ * and the chart history in `pyth-pro-history.ts`, which imports this. ONE
+ * declaration, mirroring the rule-owned `LAZER_INFRA` / `WATERX_INFRA`
+ * pattern: a Pro host change is a single edit.
+ */
+export const PYTH_PRO_API_ENDPOINT = "https://pyth.dourolabs.app";
 
 /** ~4.6MB body — a money-path 15s budget is too tight on slow links. */
 const CATALOG_TIMEOUT_MS = 60_000;

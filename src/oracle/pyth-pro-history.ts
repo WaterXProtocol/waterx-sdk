@@ -12,10 +12,8 @@
  * `fixed_rate@1000ms`).
  */
 
+import { PYTH_PRO_API_ENDPOINT } from "./symbol-catalog.ts";
 import { fetchWithPolicy, joinEndpointPath, type FetchPolicy } from "./update-fetch.ts";
-
-/** Same Pyth Pro API base the symbol catalog lives under. */
-const PYTH_PRO_API_ENDPOINT = "https://pyth.dourolabs.app";
 
 /**
  * Fetch one history window. Returns the endpoint's TradingView-UDF-style JSON

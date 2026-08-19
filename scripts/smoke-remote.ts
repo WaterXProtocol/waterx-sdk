@@ -9,7 +9,7 @@
  */
 import { waterxQuoteCenterEndpoint } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, oracleSourceFromEnv } from "./load-repo-env.ts";
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
   const t0 = Date.now();
   console.log(`fetching config: ${configUrl}`);
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "waterx_rule",
+    oracleSource: oracleSourceFromEnv(),
     waterxConfigUrl: configUrl,
     cache: true,
   });
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   console.log("\n=== Cache hit check (2nd create) ===");
   const t1 = Date.now();
   const client2 = await PerpClient.create("TESTNET", {
-    oracleSource: "waterx_rule",
+    oracleSource: oracleSourceFromEnv(),
     waterxConfigUrl: configUrl,
     cache: true,
   });

@@ -13,6 +13,7 @@ import {
   readQuoteCenterPrices,
 } from "../../../src/oracle/read-prices.ts";
 import { LAZER_INFRA } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
+import { mockFetchResponse } from "../helpers/fixtures/quote-center.ts";
 
 /** The live-probed `/v1/latest_price` parsed response, verbatim shape. */
 const LIVE_PROBED_RESPONSE = {
@@ -35,25 +36,11 @@ const LIVE_PROBED_RESPONSE = {
 const NOT_ENTITLED_BODY =
   "Not entitled: feed 327 (no grant accepts this feed (asset type 'fx', instrument type 'spot'))";
 
-function mockFetchOnce(response: {
-  status?: number;
-  json?: unknown;
-  text?: string;
-}): ReturnType<typeof vi.spyOn> {
-  const status = response.status ?? 200;
-  return vi.spyOn(globalThis, "fetch").mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => response.json,
-    text: async () => response.text ?? JSON.stringify(response.json ?? ""),
-  } as unknown as Response);
-}
-
 afterEach(() => vi.restoreAllMocks());
 
 describe("readLazerPrices", () => {
   it("POSTs the pinned parsed-read request — formats: [] REQUIRED, per-feed timestamp property, Bearer key", async () => {
-    const spy = mockFetchOnce({ json: LIVE_PROBED_RESPONSE });
+    const spy = mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
 
     await readLazerPrices({ apiKey: "k", feedIds: [1, 2], network: "MAINNET" });
 
@@ -76,7 +63,7 @@ describe("readLazerPrices", () => {
   });
 
   it("decodes the live-probed shape: string price × 10^exponent, numeric confidence, µs → ms", async () => {
-    mockFetchOnce({ json: LIVE_PROBED_RESPONSE });
+    mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
 
     const out = await readLazerPrices({ apiKey: "k", feedIds: [1] });
 
@@ -87,21 +74,21 @@ describe("readLazerPrices", () => {
   });
 
   it("channel defaults per network (mainnet 1000ms / testnet 200ms) and accepts an override", async () => {
-    const spy = mockFetchOnce({ json: LIVE_PROBED_RESPONSE });
+    const spy = mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
     await readLazerPrices({ apiKey: "k", feedIds: [1] }); // network defaults MAINNET
     expect(JSON.parse(String((spy.mock.calls[0]![1] as RequestInit).body)).channel).toBe(
       "fixed_rate@1000ms",
     );
 
     vi.restoreAllMocks();
-    const spy2 = mockFetchOnce({ json: LIVE_PROBED_RESPONSE });
+    const spy2 = mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
     await readLazerPrices({ apiKey: "k", feedIds: [1], network: "TESTNET" });
     expect(JSON.parse(String((spy2.mock.calls[0]![1] as RequestInit).body)).channel).toBe(
       "fixed_rate@200ms",
     );
 
     vi.restoreAllMocks();
-    const spy3 = mockFetchOnce({ json: LIVE_PROBED_RESPONSE });
+    const spy3 = mockFetchResponse({ json: LIVE_PROBED_RESPONSE });
     await readLazerPrices({ apiKey: "k", feedIds: [1], channel: "fixed_rate@200ms" });
     expect(JSON.parse(String((spy3.mock.calls[0]![1] as RequestInit).body)).channel).toBe(
       "fixed_rate@200ms",
@@ -111,7 +98,7 @@ describe("readLazerPrices", () => {
   it("SKIPS an entry with no feedUpdateTimestamp — never timestamps it off the batch timestampUs", async () => {
     // A closed-market feed answers with no per-feed timestamp; stamping it
     // with the batch's answer time would masquerade a stale print as fresh.
-    mockFetchOnce({
+    mockFetchResponse({
       json: {
         parsed: {
           timestampUs: "1787112945000000",
@@ -131,7 +118,7 @@ describe("readLazerPrices", () => {
   });
 
   it("missing confidence decodes as conf 0, not NaN", async () => {
-    mockFetchOnce({
+    mockFetchResponse({
       json: {
         parsed: {
           priceFeeds: [
@@ -147,13 +134,13 @@ describe("readLazerPrices", () => {
   });
 
   it("403 → LazerNotEntitledError carrying the verbatim plain-text body and the requested feed ids", async () => {
-    mockFetchOnce({ status: 403, text: NOT_ENTITLED_BODY });
+    mockFetchResponse({ status: 403, text: NOT_ENTITLED_BODY });
 
     const rejection = expect(readLazerPrices({ apiKey: "k", feedIds: [327, 1] })).rejects;
     await rejection.toBeInstanceOf(LazerNotEntitledError);
     await rejection.toThrow(NOT_ENTITLED_BODY);
     try {
-      mockFetchOnce({ status: 403, text: NOT_ENTITLED_BODY });
+      mockFetchResponse({ status: 403, text: NOT_ENTITLED_BODY });
       await readLazerPrices({ apiKey: "k", feedIds: [327, 1] });
     } catch (e) {
       expect((e as LazerNotEntitledError).feedIds).toEqual([327, 1]);
@@ -161,7 +148,7 @@ describe("readLazerPrices", () => {
   });
 
   it("propagates a 400 channel rejection with the endpoint's own wording", async () => {
-    mockFetchOnce({
+    mockFetchResponse({
       status: 400,
       text: "Channel fixed_rate@200ms violates rate limit. Minimum allowed channel is 1000ms",
     });

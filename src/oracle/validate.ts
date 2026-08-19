@@ -20,8 +20,13 @@
  */
 
 import type { OracleHost } from "./host.ts";
-import type { OracleSource } from "./price-update-rule.ts";
+import type { OracleCredentialKind, OracleCredentials, OracleSource } from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
+
+// The credential-kind union is the PORT's (`price-update-rule.ts`, next to
+// `requiredCredential`); re-exported here so consumers keep importing it off
+// the validation surface they already use.
+export type { OracleCredentialKind };
 
 /**
  * Thrown by {@link assertOracleWriteCoverage} for a listed source whose
@@ -62,9 +67,6 @@ export function assertOracleWriteCoverage(host: OracleHost): void {
   }
 }
 
-/** The credential kinds a rule can declare via `PriceUpdateRule.requiredCredential`. */
-export type OracleCredentialKind = "pyth_api_key";
-
 /**
  * Which of `sources` cannot run with the supplied credentials — one row per
  * (source, missing credential). Empty array ⇒ the fed set is fully
@@ -79,10 +81,13 @@ export function missingOracleCredentials(
   sources: readonly OracleSource[],
   creds: { pythApiKey?: string },
 ): { source: OracleSource; credential: OracleCredentialKind }[] {
+  // The env-shaped bag, normalized to the kind-keyed shape ONCE — the check
+  // below then never mentions a specific kind.
+  const supplied: OracleCredentials = { pyth_api_key: creds.pythApiKey };
   const missing: { source: OracleSource; credential: OracleCredentialKind }[] = [];
   for (const source of sources) {
     const required = resolveOracleRule(source).requiredCredential;
-    if (required === "pyth_api_key" && !creds.pythApiKey) {
+    if (required !== undefined && !supplied[required]) {
       missing.push({ source, credential: required });
     }
   }

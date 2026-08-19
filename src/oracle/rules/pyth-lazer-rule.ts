@@ -162,11 +162,47 @@ function requireLazerPackage(host: OracleHost): PythLazerRulePackage {
 }
 
 /**
- * Fetch one signed `leEcdsa` update for `feedIds` from the Lazer HTTP API.
+ * THE `POST {endpoint}/v1/latest_price` transport — shared by BOTH legs of
+ * this endpoint: the signed-update WRITE fetch below and the parsed-price READ
+ * executor (`readLazerPrices` in `../read-prices.ts`). They differ only in the
+ * request pins they send and how they decode/blame the response, so keeping
+ * one transport stops the URL, method, headers, and auth/retry policy drifting
+ * between them.
+ *
+ * `requestPins` is spread into the body alongside `priceFeedIds` + `channel`;
+ * the raw `Response` comes back undecoded so each caller owns its own error
+ * framing (the write leg reframes an exhausted retry, the read leg maps 403 to
+ * an entitlement error).
+ *
  * Goes through the shared `fetchWithPolicy` (`../update-fetch.ts`) — the one
  * retry/timeout/Bearer policy every oracle fetch shares, so all sources fail
  * the same way under upstream degradation.
  */
+export function postLazerLatestPrice(
+  endpoint: string,
+  channel: string,
+  apiKey: string,
+  feedIds: number[],
+  requestPins: Record<string, unknown>,
+  fetchOpts?: PythFetchPolicy,
+): Promise<Response> {
+  // joinEndpointPath preserves any base path on the endpoint — the same
+  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
+  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
+  // Lazer endpoint has no base path, but a config override may.
+  const url = joinEndpointPath(endpoint, "v1/latest_price");
+  return fetchWithPolicy(
+    url.toString(),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priceFeedIds: feedIds, ...requestPins, channel }),
+    },
+    { apiKey, ...fetchOpts },
+  );
+}
+
+/** Fetch one signed `leEcdsa` update for `feedIds` from the Lazer HTTP API. */
 async function fetchLazerSignedUpdate(
   endpoint: string,
   channel: string,
@@ -174,21 +210,15 @@ async function fetchLazerSignedUpdate(
   feedIds: number[],
   fetchOpts?: PythFetchPolicy,
 ): Promise<Uint8Array> {
-  // joinEndpointPath preserves any base path on the endpoint — the same
-  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
-  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
-  // Lazer endpoint has no base path, but a config override may.
-  const url = joinEndpointPath(endpoint, "v1/latest_price");
   let res: Response;
   try {
-    res = await fetchWithPolicy(
-      url.toString(),
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceFeedIds: feedIds, ...LAZER_LATEST_PRICE_REQUEST, channel }),
-      },
-      { apiKey, ...fetchOpts },
+    res = await postLazerLatestPrice(
+      endpoint,
+      channel,
+      apiKey,
+      feedIds,
+      LAZER_LATEST_PRICE_REQUEST,
+      fetchOpts,
     );
   } catch (err) {
     rethrowExhaustedFetch(
