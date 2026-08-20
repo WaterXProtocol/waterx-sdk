@@ -66,6 +66,7 @@ export {
   OracleFedSetError,
   assertOracleWriteCoverage,
   missingOracleCredentials,
+  servableTickers,
 } from "./validate.ts";
 export type { OracleCredentialKind } from "./validate.ts";
 

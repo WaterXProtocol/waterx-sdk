@@ -146,12 +146,20 @@ export {
   parseOracleSourceList,
   parsePythSchedule,
   PythScheduleParseError,
+  // THE quote-center route ladder (leaves-first, envelope only where there is
+  // no leaf route). Both SDK planes go through it, so a consumer running its
+  // own prefetch reaches for the same one rather than re-deriving the ladder.
+  pullWaterxQuotes,
   readLazerPrices,
   readPlanTickers,
   readQuoteCenterPrices,
   refreshOraclePrices,
   resolveOracleReadPlan,
   resolveOracleRule,
+  // `refreshOraclePrices`' OWN acceptance predicate. Consumers filtering a
+  // ticker list before a build must use this rather than re-deriving "some
+  // listed source carries it", or they drift from what the build accepts.
+  servableTickers,
   WATERX_MAX_PRICE_AGE_MS,
   waterxEnvelopeOf,
   // Leaves are the DEFAULT waterx wire shape, so their accessor + parser belong
