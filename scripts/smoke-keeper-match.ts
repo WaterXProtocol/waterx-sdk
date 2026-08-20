@@ -300,10 +300,12 @@ async function main(): Promise<void> {
     // Pool freshness: refresh every pool token's oracle + base ticker, then
     // bump each pool token's last_price_refresh_timestamp so the in-call
     // `assert_prices_fresh` passes.
-    const poolTickers = client.pricedPoolTickers();
-    const oracleTickers = Array.from(new Set([BTC, "USDCUSD", ...poolTickers]));
+    const pricedTokens = client.pricedPoolTokens();
+    const oracleTickers = Array.from(
+      new Set([BTC, "USDCUSD", ...pricedTokens.map((token) => token.ticker)]),
+    );
     await refreshOraclePrices(matchTx, client, oracleTickers);
-    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
+    for (const { tokenType } of pricedTokens) {
       updateTokenValue(client, matchTx, { tokenType });
     }
 

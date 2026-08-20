@@ -176,31 +176,6 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
     vi.restoreAllMocks();
   });
 
-  it("a constant ticker is EXEMPT from the no-feed throw (needs no price-update source)", async () => {
-    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-
-    // USDCUSD: constant — priced by constant_rule; the fake lazer rule below
-    // doesn't cover it. It needs no update leg from any source, so it must
-    // NOT trip the missing-feed throw. With every source reading and writing
-    // its own namespace, `isConstantTicker` ALONE decides the exemption —
-    // there is no dual-feed carve-out anymore.
-    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
-
-    const fakeLazer = createFakeRule("pyth_lazer_rule", []); // supports nothing
-    const waterxSpy = vi.spyOn(WaterxRule, "fetchUpdateData");
-
-    const tx = new Transaction();
-    await refreshOraclePrices(tx, client, ["USDCUSD"], {
-      ruleOverrides: { pyth_lazer_rule: fakeLazer },
-    });
-
-    // No update-leg fetch of any kind …
-    expect(fakeLazer.fetchUpdateData).not.toHaveBeenCalled();
-    expect(waterxSpy).not.toHaveBeenCalled();
-    // … yet it is still fed via constant_rule at the (unchanged) aggregate step.
-    expect(moveTargets(tx)).toContain("constant_rule::feed");
-  });
-
   it("USDCUSD constant-only is exempt under EVERY fed set, and aggregates a constant-only collector", async () => {
     // THE config-drop regression (WL-2355): after `pyth_rule` leaves the config,
     // USDCUSD exists ONLY in `constant_rule.feeds`. Every fed set must exempt it
@@ -508,6 +483,43 @@ describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", 
 
     expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
     expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cached);
+  });
+
+  it("a per-SOURCE cache does not exempt the fed set's OTHER groups from the credential check", async () => {
+    // A provider is keyed by source. With a waterx-only cache and a keyless
+    // Lazer group, exempting the whole fed set would let the quote-center
+    // fetch fire before the Lazer group failed — so the check is scoped to
+    // the groups that still need to fetch, after cache lookups resolve.
+    // The REAL PythLazerRule serves the lazer group here, so this exercises
+    // its actual `credential` declaration rather than a fake's.
+    const client = createUnitTestClient({ oracleSource: ["waterx_rule", "pyth_lazer_rule"] });
+    expect(client.pyth.api_key).toBeUndefined();
+    const fakeWaterx = createFakeWaterxRule(["BTCUSD"]);
+    const provider: UpdateDataProvider = {
+      // Serves waterx only; the lazer group misses and must be checked.
+      get: vi.fn(async (source: OracleSource) =>
+        source === "waterx_rule"
+          ? {
+              kind: "waterx_rule" as const,
+              payload: {
+                envelope: { intent: 1, timestamp_ms: 0n, signature: "", payload: { items: [] } },
+              },
+            }
+          : null,
+      ),
+    };
+
+    const tx = new Transaction();
+    await expect(
+      refreshOraclePrices(tx, client, ["BTCUSD"], {
+        ruleOverrides: { waterx_rule: fakeWaterx },
+        updateDataProvider: provider,
+      }),
+    ).rejects.toThrow(/LazerApiKeyMissing/);
+
+    // The cached group never live-fetched, and no PTB command was appended.
+    expect(fakeWaterx.fetchUpdateData).not.toHaveBeenCalled();
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 
   it("a KEYLESS client whose provider MISSES still surfaces the rule's own credential error", async () => {

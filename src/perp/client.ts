@@ -216,6 +216,22 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
     return servableTickers(this, Object.keys(this.config.packages.wlp?.pool_tokens ?? {}));
   }
 
+  /**
+   * {@link pricedPoolTickers} already joined to each token's Move type — the
+   * ONE list a WLP flow needs, because the set it refreshes and the set it
+   * bumps `update_token_value` for must be identical. `update_token_value`
+   * reads `oracle::get_price`, which aborts `EStalePrice` without a same-PTB
+   * aggregate, so a bump for a token the refresh skipped is an abort; deriving
+   * both from one list makes that divergence unrepresentable rather than a
+   * rule each call site has to remember.
+   */
+  pricedPoolTokens(): { ticker: string; tokenType: string }[] {
+    return this.pricedPoolTickers().map((ticker) => ({
+      ticker,
+      tokenType: this.getPoolTokenType(ticker),
+    }));
+  }
+
   /** @see PerpConfigView.isConstantTicker */
   isConstantTicker(ticker: string): boolean {
     return this.view.isConstantTicker(ticker);

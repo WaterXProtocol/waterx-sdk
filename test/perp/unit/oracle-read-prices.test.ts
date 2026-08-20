@@ -14,16 +14,12 @@ import {
 } from "../../../src/oracle/read-prices.ts";
 import { LAZER_INFRA } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
 import {
+  mockEnvelopeOnly,
   mockFetchResponse,
-  mockQuoteCenter,
-  rawEnvelopeText,
-  rawLeavesText,
+  mockLeafRoute,
+  rawEnvelope,
+  requestedPaths,
 } from "../helpers/fixtures/quote-center.ts";
-
-/** Pathnames the reader actually requested, in order. */
-function requestedPaths(spy: ReturnType<typeof vi.spyOn>): string[] {
-  return spy.mock.calls.map((call) => new URL(String(call[0])).pathname);
-}
 
 /** The live-probed `/v1/latest_price` parsed response, verbatim shape. */
 const LIVE_PROBED_RESPONSE = {
@@ -185,7 +181,7 @@ describe("readLazerPrices", () => {
 describe("readQuoteCenterPrices", () => {
   // The shared wire fixture, with XAUUSD pinned to the zero-divisor case the
   // decode guard exists for (`confidence_scale: 0`).
-  const ENVELOPE_BODY = rawEnvelopeText(["BTCUSD", "XAUUSD"], {
+  const ENVELOPE = rawEnvelope(["BTCUSD", "XAUUSD"], {
     XAUUSD: {
       price_timestamp_ms: 1_784_799_998_000,
       price_n: 2_400_000_000_000,
@@ -193,12 +189,13 @@ describe("readQuoteCenterPrices", () => {
       confidence_scale: 0,
     },
   });
+  const envelopeOnly = () => mockEnvelopeOnly(["BTCUSD", "XAUUSD"], ENVELOPE);
 
   it("takes the per-symbol LEAF route and never pulls the whole batch envelope", async () => {
     // The envelope is ONE signature over the entire registry, so a read plane
     // polling a few symbols would otherwise transfer and bigint-revive every
     // item it did not ask for, every tick.
-    const spy = mockQuoteCenter({ leaves: { text: rawLeavesText(["BTCUSD"]) } });
+    const spy = mockLeafRoute(["BTCUSD"]);
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
@@ -218,7 +215,7 @@ describe("readQuoteCenterPrices", () => {
   });
 
   it("falls back to the batch envelope against a quote-center with no leaf route", async () => {
-    const spy = mockQuoteCenter({ leaves: { status: 404 }, update: { text: ENVELOPE_BODY } });
+    const spy = envelopeOnly();
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
@@ -234,7 +231,7 @@ describe("readQuoteCenterPrices", () => {
   });
 
   it("a 0 scale decodes as 0 (no value), never Infinity", async () => {
-    mockQuoteCenter({ leaves: { status: 404 }, update: { text: ENVELOPE_BODY } });
+    envelopeOnly();
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
@@ -249,7 +246,7 @@ describe("readQuoteCenterPrices", () => {
   });
 
   it("drops served-but-unrequested symbols instead of leaking the whole envelope", async () => {
-    mockQuoteCenter({ leaves: { status: 404 }, update: { text: ENVELOPE_BODY } });
+    envelopeOnly();
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
@@ -268,7 +265,7 @@ describe("readQuoteCenterPrices", () => {
   });
 
   it("preserves a proxy endpoint's base path (joinEndpointPath, not new URL)", async () => {
-    const spy = mockQuoteCenter({ leaves: { text: rawLeavesText(["BTCUSD"]) } });
+    const spy = mockLeafRoute(["BTCUSD"]);
 
     await readQuoteCenterPrices({
       endpoint: "https://app.example/api/quote-center",

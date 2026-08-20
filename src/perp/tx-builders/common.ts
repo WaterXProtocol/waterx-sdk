@@ -92,19 +92,17 @@ export async function refreshWlpPoolOracles(
     updateDataProvider?: UpdateDataProvider;
   },
 ): Promise<void> {
-  const poolTickers = client.pricedPoolTickers();
-  const oracleTickers = Array.from(new Set([...extraTickers, ...poolTickers]));
+  // ONE list drives both halves: what gets refreshed and what gets bumped
+  // cannot diverge (see `pricedPoolTokens`).
+  const pricedTokens = client.pricedPoolTokens();
+  const oracleTickers = Array.from(
+    new Set([...extraTickers, ...pricedTokens.map((token) => token.ticker)]),
+  );
   await refreshOraclePrices(tx, client, oracleTickers, {
     updateDataProvider: opts.updateDataProvider,
   });
-  // Bump ONLY the tokens the refresh above actually aggregated. `update_token_value`
-  // reads `oracle::get_price`, which aborts `EStalePrice` without a same-PTB
-  // aggregate — so iterating every `pool_tokens` entry would abort for any token
-  // this client's fed set cannot price (exactly the ones `pricedPoolTickers`
-  // filters out).
-  const priced = new Set(poolTickers);
-  for (const [ticker, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
-    if (priced.has(ticker)) updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
+  for (const { tokenType } of pricedTokens) {
+    updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
   }
 }
 

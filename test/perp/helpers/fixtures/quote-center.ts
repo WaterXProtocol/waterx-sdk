@@ -145,6 +145,11 @@ export function mockQuoteCenter(routes: {
   }) as ReturnType<typeof vi.spyOn>;
 }
 
+/** Pathnames a routed mock actually received, in order. */
+export function requestedPaths(spy: ReturnType<typeof vi.spyOn>): string[] {
+  return spy.mock.calls.map((call) => new URL(String(call[0])).pathname);
+}
+
 /** The happy default: the quote-center serves leaves, as wire-faithful text. */
 export function mockLeafRoute(symbols: string[] = ["BTCUSD"]): ReturnType<typeof vi.spyOn> {
   return mockQuoteCenter({ leaves: { text: rawLeavesText(symbols) } });

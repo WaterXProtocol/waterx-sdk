@@ -69,27 +69,24 @@ import {
  * different rule's payload), so that throws — via `narrowUpdateData`'s own
  * `assertRuleUpdateData` guard — instead of silently falling back.
  */
-async function resolveGroupUpdateData(
+async function resolveCachedUpdateData(
   host: OracleHost,
   group: { source: OracleSource; rule: PriceUpdateRule; tickers: string[] },
   provider: UpdateDataProvider | undefined,
 ): Promise<RuleUpdateData> {
-  if (provider) {
-    let cached: RuleUpdateData | null = null;
-    try {
-      cached = await provider.get(group.source, group.tickers);
-    } catch {
-      // Provider errors must never break the money path — fall through to
-      // the live fetch below exactly as a cache miss (`null`) would.
-    }
-    if (cached !== null) {
-      // Wrong-kind hit throws inside narrowUpdateData (assertRuleUpdateData);
-      // a hit that can't cover the group narrows to null → live-fetch below.
-      const narrowed = group.rule.narrowUpdateData(host, cached, group.tickers);
-      if (narrowed !== null) return narrowed;
-    }
+  if (!provider) return null;
+  let cached: RuleUpdateData | null;
+  try {
+    cached = await provider.get(group.source, group.tickers);
+  } catch {
+    // Provider errors must never break the money path — report a miss and let
+    // the caller live-fetch, exactly as a `null` return would.
+    return null;
   }
-  return group.rule.fetchUpdateData(host, group.tickers);
+  if (cached === null) return null;
+  // Wrong-kind hit throws inside narrowUpdateData (assertRuleUpdateData); a
+  // hit that can't cover the group narrows to null, i.e. a miss.
+  return group.rule.narrowUpdateData(host, cached, group.tickers);
 }
 
 /**
@@ -320,31 +317,43 @@ export async function refreshOraclePrices(
   // (`oracleCredentialsFromHost`) and the ERROR is the rule's own, so this
   // loop names neither a credential kind nor a rule.
   //
-  // SKIPPED when an `updateDataProvider` is configured: that consumer holds
-  // the credential out-of-band and polls the source itself, so a cache HIT
-  // makes no authenticated call and must not be pre-emptively failed (the
-  // documented BE prefetch shape). A cache MISS still falls through to the
-  // rule's own fetch guard, which raises the same error — later, but only
-  // when a live fetch is genuinely required.
-  if (!opts.updateDataProvider) {
-    const credentials = oracleCredentialsFromHost(host);
-    for (const { rule } of groups) {
-      if (rule.credential && !credentials[rule.credential.kind]) {
-        throw rule.credential.missing();
-      }
+  // The check is scoped to the groups that will actually FETCH. An
+  // `updateDataProvider` is a per-SOURCE cache (`get(source, tickers)`), so a
+  // consumer holding the credential out-of-band for one source must not
+  // exempt the whole fed set — with a waterx-only cache and a keyless Lazer
+  // group, a blanket skip would let the quote-center GET fire before the
+  // Lazer group failed. So cache lookups (no network) run first, and only the
+  // groups that missed are credential-checked.
+  //
+  // Phase 0 — resolve cache hits. Cheap and network-free by contract.
+  const cachedByGroup = await Promise.all(
+    groups.map((group) => resolveCachedUpdateData(host, group, opts.updateDataProvider)),
+  );
+  const needsFetch = groups.filter((_, i) => cachedByGroup[i] === null);
+
+  const credentials = oracleCredentialsFromHost(host);
+  for (const { rule } of needsFetch) {
+    if (rule.credential && !credentials[rule.credential.kind]) {
+      throw rule.credential.missing();
     }
   }
 
-  // Phase 1 — resolve every group's update data IN PARALLEL: the per-source
-  // fetches (Lazer POST / quote-center GET) are independent network calls on
-  // the tx-build money path, so a multi-source fed set must not pay one RTT
-  // per source sequentially. ALL fetches settle before the first PTB mutation
-  // below, so a fetch failure never strands moveCalls in a caller-owned tx —
-  // and a failure in ANY group fails the whole build (a listed source is
-  // load-bearing; silently building without it would starve its weighted
-  // tickers on-chain).
-  const dataByGroup = await Promise.all(
-    groups.map((group) => resolveGroupUpdateData(host, group, opts.updateDataProvider)),
+  // Phase 1 — live-fetch whatever the cache did not serve, IN PARALLEL: the
+  // per-source fetches (Lazer POST / quote-center GET) are independent network
+  // calls on the tx-build money path, so a multi-source fed set must not pay
+  // one RTT per source sequentially. ALL of them settle before the first PTB
+  // mutation below, so a fetch failure never strands moveCalls in a
+  // caller-owned tx — and a failure in ANY group fails the whole build (a
+  // listed source is load-bearing; silently building without it would starve
+  // its weighted tickers on-chain).
+  const fetched = new Map<OracleSource, RuleUpdateData>();
+  await Promise.all(
+    needsFetch.map(async (group) => {
+      fetched.set(group.source, await group.rule.fetchUpdateData(host, group.tickers));
+    }),
+  );
+  const dataByGroup = groups.map(
+    (group, i) => cachedByGroup[i] ?? fetched.get(group.source) ?? null,
   );
 
   // Phase 2 — build each group's update leg sequentially, in list order, so

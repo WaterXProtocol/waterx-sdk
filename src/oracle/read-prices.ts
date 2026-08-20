@@ -16,11 +16,7 @@
 import type { Network } from "../constants.ts";
 import type { PythFetchPolicy } from "./config.ts";
 import { LAZER_INFRA, postLazerLatestPrice } from "./rules/pyth-lazer-rule.ts";
-import {
-  fetchWaterxSignedLeaves,
-  fetchWaterxSignedUpdate,
-  type WaterxBatchItem,
-} from "./rules/waterx-rule.ts";
+import { pullWaterxQuotes } from "./rules/waterx-rule.ts";
 import type { FetchPolicy } from "./update-fetch.ts";
 
 /**
@@ -153,16 +149,15 @@ export async function readLazerPrices(opts: {
 
 /**
  * Read prices for `symbols` (oracle tickers — the `"quote_center"` arm of
- * `resolveOracleReadPlan`) off ONE enclave-signed batch envelope, via
- * {@link fetchWaterxSignedUpdate} (`GET /v1/quotes/update`; public read, no
- * auth; same retry/timeout policy as every oracle fetch).
+ * `resolveOracleReadPlan`) through {@link pullWaterxQuotes}, the rule-owned
+ * route ladder the write path uses: per-symbol Merkle leaves by default, the
+ * batch envelope only against a quote-center with no leaf route. Public read,
+ * no auth, same retry/timeout policy as every oracle fetch.
  *
- * Takes the per-symbol LEAF route first, exactly as the write path does, and
- * falls back to the batch envelope only against a quote-center with no leaf
- * route (404). The leaf route is why that route exists: an envelope is one
- * signature over the WHOLE registry, so a read plane polling a handful of
- * symbols would otherwise pull — and bigint-revive — every item it did not ask
- * for on every tick.
+ * Going through the shared ladder is what keeps the read plane from drifting
+ * off the write plane, and it is why reads do not pull a whole-registry
+ * envelope: that is one signature over every symbol, so a plane polling a
+ * handful of them would transfer and bigint-revive the lot on every tick.
  *
  * Decoding per item: `price = Number(price_n) / Number(price_scale)` and
  * `conf = Number(confidence_n) / Number(confidence_scale)`, each `0` when its
@@ -181,12 +176,7 @@ export async function readQuoteCenterPrices(opts: {
   const out = new Map<string, OraclePriceEntry>();
   if (opts.symbols.length === 0) return out;
 
-  const pulled = await fetchWaterxSignedLeaves(opts.endpoint, opts.symbols, opts.fetch);
-  const items: readonly WaterxBatchItem[] =
-    "leaves" in pulled
-      ? pulled.leaves
-      : (await fetchWaterxSignedUpdate(opts.endpoint, opts.symbols, opts.fetch, pulled.unavailable))
-          .payload.items;
+  const { items } = await pullWaterxQuotes(opts.endpoint, opts.symbols, opts.fetch);
 
   const requested = new Set(opts.symbols);
   for (const item of items) {

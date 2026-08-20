@@ -753,6 +753,38 @@ export function feedWaterxRule(
 }
 
 /**
+ * THE quote-center route ladder, owned by the rule that owns the protocol:
+ * pull per-symbol Merkle leaves (the default), and fall back to one batch
+ * envelope only when this quote-center has no leaf route (see
+ * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
+ * why nothing else falls back).
+ *
+ * Both the write path ({@link pullWaterxData}, which layers coverage policy on
+ * top) and the READ executor (`readQuoteCenterPrices` in `../read-prices.ts`,
+ * which only decodes prices) go through here, so which route wins, which
+ * status falls back, and how the fallback context is threaded are stated once.
+ * `items` is the flat symbol-bearing view both callers actually want —
+ * `WaterxSignedLeaf extends WaterxBatchItem`, so leaves widen to it for free —
+ * while `payload` keeps the shape-specific form the on-chain feed leg needs.
+ */
+export async function pullWaterxQuotes(
+  endpoint: string,
+  symbols: string[],
+  fetchOpts?: FetchPolicy,
+): Promise<{
+  route: "leaves" | "envelope";
+  payload: WaterxUpdatePayload;
+  items: readonly WaterxBatchItem[];
+}> {
+  const pulled = await fetchWaterxSignedLeaves(endpoint, symbols, fetchOpts);
+  if ("leaves" in pulled) {
+    return { route: "leaves", payload: { leaves: pulled.leaves }, items: pulled.leaves };
+  }
+  const envelope = await fetchWaterxSignedUpdate(endpoint, symbols, fetchOpts, pulled.unavailable);
+  return { route: "envelope", payload: { envelope }, items: envelope.payload.items };
+}
+
+/**
  * THE quote-center pull — the one pipeline both coverage policies share:
  * package guard → own-key feeds partition → leaf route (default) → batch
  * envelope only when this quote-center has no leaf route (see
@@ -794,21 +826,8 @@ async function pullWaterxData(
   if (listed.length === 0) return { data: null, missing };
 
   const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
-  const pulled = await fetchWaterxSignedLeaves(endpoint, listed, fetchOpts);
-
-  let route: "leaves" | "envelope";
-  let payload: WaterxUpdatePayload;
-  let served: Set<string>;
-  if ("leaves" in pulled) {
-    route = "leaves";
-    payload = { leaves: pulled.leaves };
-    served = new Set(pulled.leaves.map((leaf) => leaf.symbol));
-  } else {
-    const envelope = await fetchWaterxSignedUpdate(endpoint, listed, fetchOpts, pulled.unavailable);
-    route = "envelope";
-    payload = { envelope };
-    served = new Set(envelope.payload.items.map((item) => item.symbol));
-  }
+  const { route, payload, items } = await pullWaterxQuotes(endpoint, listed, fetchOpts);
+  const served = new Set(items.map((item) => item.symbol));
 
   if (coverage === "strict") {
     assertCoverage(route, listed, served);

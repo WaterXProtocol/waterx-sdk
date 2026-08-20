@@ -96,6 +96,7 @@ export {
   fetchWaterxSignedUpdate,
   fetchWaterxSignedLeaves,
   fetchWaterxUpdateData,
+  pullWaterxQuotes,
   WATERX_MAX_PRICE_AGE_MS,
   isFreshWaterxEntry,
   // Rule-owned payload accessors (kind-check + unwrap in one place) — never

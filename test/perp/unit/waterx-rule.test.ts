@@ -43,6 +43,7 @@ import {
   rawEnvelope,
   rawLeaves,
   rawLeavesText,
+  requestedPaths,
   SIG_HEX,
 } from "../helpers/fixtures/quote-center.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
@@ -58,11 +59,6 @@ function sampleLeaves(
   proof: string[] = [HASH_HEX],
 ): WaterxSignedLeaf[] {
   return parseSignedLeaves(rawLeavesText(symbols, proof));
-}
-
-/** Pathnames the rule actually requested, in order. */
-function requestedPaths(spy: ReturnType<typeof vi.spyOn>): string[] {
-  return spy.mock.calls.map((call) => new URL(String(call[0])).pathname);
 }
 
 afterEach(() => vi.restoreAllMocks());

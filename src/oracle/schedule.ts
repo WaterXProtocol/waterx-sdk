@@ -188,15 +188,14 @@ function parseWeeklySlots(input: string): RawWindow[][] {
   // shortfall is unparseable up front; a surplus the fold cannot actually
   // absorb (keyword tokens pin their own day and never merge) simply leaves
   // too many slots, which the count check after the walk rejects.
-  const surplus = tokens.length - 7;
-  if (surplus < 0) {
+  let merges = tokens.length - 7;
+  if (merges < 0) {
     throw new PythScheduleParseError(
       `expected 7 weekday slots, got ${String(tokens.length)}: ${input}`,
     );
   }
 
   const slots: RawWindow[][] = [];
-  let merges = surplus;
   for (let i = tokens.length - 1; i >= 0; ) {
     const token = tokens[i]!;
     const keyword = keywordDay(token);
@@ -213,13 +212,14 @@ function parseWeeklySlots(input: string): RawWindow[][] {
     }
     const sessions = [parseRange(token)];
     i -= 1;
-    // Absorb preceding plain ranges while folds remain — latest day first.
+    // Absorb preceding plain ranges while folds remain — latest day first. A
+    // malformed neighbour throws here rather than deferring: breaking out
+    // would only hand the same token to the next outer iteration, which calls
+    // the same parser and raises the same error.
     while (merges > 0 && i >= 0) {
       const prev = tokens[i]!;
       if (keywordDay(prev) !== null || prev.includes("&")) break;
-      const window = tryParseRange(prev);
-      if (window === null) break;
-      sessions.unshift(window);
+      sessions.unshift(parseRange(prev));
       i -= 1;
       merges -= 1;
     }
@@ -245,21 +245,6 @@ function parseRange(input: string): RawWindow {
     open: parseHHMMCompact(p0),
     close: parseHHMMCompact(p1),
   };
-}
-
-/**
- * {@link parseRange}, but a non-range token (a weekday keyword, a malformed
- * window) answers `null` instead of throwing — the lookahead in
- * {@link parseWeeklySlots} uses it to decide whether the NEXT comma-separated
- * token is another session for this day. Every format rule lives in
- * `parseRange`/`parseHHMMCompact`; this only changes the failure disposition.
- */
-function tryParseRange(input: string): RawWindow | null {
-  try {
-    return parseRange(input);
-  } catch {
-    return null;
-  }
 }
 
 function parseHHMMCompact(input: string): number {
@@ -346,6 +331,9 @@ function minutesToHHMM(minutes: number): string {
 // ============================================================================
 
 const MINUTES_PER_WEEK = 7 * 24 * 60;
+/** How far the holiday walks look ahead — covers any plausible cluster of consecutive closures. */
+const LOOKAHEAD_DAYS = 21;
+const LOOKAHEAD_WEEKS = 3;
 
 export interface MarketStatusResult {
   status: "open" | "closed" | "paused";
@@ -391,6 +379,8 @@ interface LocalParts {
   minute: number;
   month: number;
   day: number;
+  /** Needed to step a real calendar when scanning ahead for a holiday. */
+  year: number;
 }
 
 // `Intl.DateTimeFormat` construction is heavy; cache one formatter per
@@ -432,6 +422,7 @@ function getFmt(timezone: string): Intl.DateTimeFormat {
       minute: "2-digit",
       month: "2-digit",
       day: "2-digit",
+      year: "numeric",
       hour12: false,
     });
     fmtCache.set(timezone, fmt);
@@ -446,6 +437,7 @@ function toLocalParts(date: Date, timezone: string): LocalParts {
   const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
   const month = Number(parts.find((p) => p.type === "month")?.value ?? "1");
   const day = Number(parts.find((p) => p.type === "day")?.value ?? "1");
+  const year = Number(parts.find((p) => p.type === "year")?.value ?? "1970");
 
   const dayMap: Record<string, number> = {
     Sun: 0,
@@ -456,7 +448,7 @@ function toLocalParts(date: Date, timezone: string): LocalParts {
     Fri: 5,
     Sat: 6,
   };
-  return { dayOfWeek: dayMap[weekdayStr] ?? 0, hour, minute, month, day };
+  return { dayOfWeek: dayMap[weekdayStr] ?? 0, hour, minute, month, day, year };
 }
 
 /** Parse "HH:MM" to { hour, minute } */
@@ -471,25 +463,42 @@ function minuteOfWeek(day: number, hour: number, minute: number): number {
 }
 
 /**
- * Milliseconds from `now` until the local clock next reads `targetMow`
- * (minutes from Sunday 00:00 in `timezone`).
+ * The instant at which the local clock next reads `targetMow` (minutes from
+ * Sunday 00:00 in `timezone`), plus that instant's local reading.
  *
  * A minute-of-week delta is LOCAL time; multiplying it by 60_000 assumes the
- * UTC offset never moves, which is wrong across a DST boundary — a Friday-close
- * → Monday-open countdown over a spring-forward came out a full hour late, and
- * that skew then fed the holiday walk's date arithmetic. So the naive delta is
- * only a seed: we re-read the local clock at the guessed instant and fold the
- * residual back in. One correction converges for any standard ≤2h shift; the
- * loop is bounded for exotic zones.
+ * UTC offset never moves, which is wrong across a DST boundary — a
+ * Friday-close → Monday-open countdown over a spring-forward came out a full
+ * hour late. So the naive delta is only a seed: we re-read the local clock at
+ * the guessed instant and fold the residual back in.
+ *
+ * `occurrence` selects a LATER repeat of the same weekly slot (0 = the next
+ * one, 1 = a week after that, …). It is applied to the seed, NOT added to the
+ * result, so every occurrence gets its own correction — adding
+ * `week × 604_800_000` afterwards would reintroduce the very fixed-offset
+ * assumption this function exists to remove.
+ *
+ * `from` lets a caller pass the local reading of `now` it already computed;
+ * `toLocalParts` is the heavy `Intl` path this module caches formatters for.
+ * The converged reading is returned for the same reason — callers that test
+ * the target date (the holiday walks) would otherwise recompute it.
  */
-function msUntilLocalMinuteOfWeek(now: Date, timezone: string, targetMow: number): number {
-  const local = toLocalParts(now, timezone);
+function nextLocalMinuteOfWeek(
+  now: Date,
+  timezone: string,
+  targetMow: number,
+  occurrence = 0,
+  from?: LocalParts,
+): { ms: number; at: LocalParts } {
+  const local = from ?? toLocalParts(now, timezone);
   let delta = targetMow - minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
   if (delta <= 0) delta += MINUTES_PER_WEEK;
 
-  let ms = delta * MS_PER_MINUTE;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const at = toLocalParts(new Date(now.getTime() + ms), timezone);
+  let ms = (delta + occurrence * MINUTES_PER_WEEK) * MS_PER_MINUTE;
+  // One correction, then one verifying read — a single fold settles any
+  // standard ≤2h shift, and no IANA zone shifts twice inside that window.
+  let at = toLocalParts(new Date(now.getTime() + ms), timezone);
+  for (let attempt = 0; attempt < 2; attempt++) {
     let residual = targetMow - minuteOfWeek(at.dayOfWeek, at.hour, at.minute);
     // Fold into (−½ week, +½ week] so a week-boundary wrap isn't read as a
     // week-long correction.
@@ -497,6 +506,35 @@ function msUntilLocalMinuteOfWeek(now: Date, timezone: string, targetMow: number
     if (residual < -MINUTES_PER_WEEK / 2) residual += MINUTES_PER_WEEK;
     if (residual === 0) break;
     ms += residual * MS_PER_MINUTE;
+    at = toLocalParts(new Date(now.getTime() + ms), timezone);
+  }
+  return { ms, at };
+}
+
+/** Minutes elapsed since local midnight. */
+function minutesIntoLocalDay(parts: LocalParts): number {
+  return parts.hour * 60 + parts.minute;
+}
+
+/**
+ * Milliseconds until the local midnight `daysAhead` days from now (1 = the
+ * next one). Same seed-then-correct shape as
+ * {@link nextLocalMinuteOfWeek} — a day is not a fixed number of
+ * milliseconds across a DST change either.
+ */
+function msUntilLocalMidnight(
+  now: Date,
+  timezone: string,
+  daysAhead: number,
+  from: LocalParts,
+): number {
+  let ms = (24 * 60 - minutesIntoLocalDay(from) + (daysAhead - 1) * 24 * 60) * MS_PER_MINUTE;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const intoDay = minutesIntoLocalDay(toLocalParts(new Date(now.getTime() + ms), timezone));
+    if (intoDay === 0) break;
+    // Landed after midnight → pull back; landed before it (23:00 the previous
+    // day, a fall-back artefact) → push forward.
+    ms += (intoDay > 12 * 60 ? 24 * 60 - intoDay : -intoDay) * MS_PER_MINUTE;
   }
   return ms;
 }
@@ -505,25 +543,30 @@ function msUntilLocalMinuteOfWeek(now: Date, timezone: string, targetMow: number
  * Milliseconds until the next local midnight that STARTS a day matching
  * `wantHoliday` — the status-change clock for a 24/7 venue that observes
  * holidays (its weekly event list is empty, so the event walker has nothing to
- * measure). Re-derives the local time each step, so it stays anchored to real
- * midnights across DST. `null` when no such day falls inside the lookahead.
+ * measure). `null` when no such day falls inside the lookahead.
+ *
+ * The SEARCH is pure integer calendar arithmetic on `(month, day)` keys, and
+ * only the winning day is converted to an instant. Walking instants instead
+ * would spend an `Intl.formatToParts` per candidate day — and the dominant
+ * call is "when does the next holiday start", which on an ordinary day scans
+ * the whole window and finds nothing, so that cost is paid in full every time.
  */
 function msUntilLocalDayStart(
   now: Date,
   timezone: string,
   holidaySet: Set<number>,
   wantHoliday: boolean,
+  from: LocalParts,
 ): number | null {
-  const local = toLocalParts(now, timezone);
-  let cursor = new Date(
-    now.getTime() + (24 * 60 - (local.hour * 60 + local.minute)) * MS_PER_MINUTE,
-  );
-  for (let day = 0; day < 21; day++) {
-    const parts = toLocalParts(cursor, timezone);
-    if (isHoliday(holidaySet, parts) === wantHoliday) return cursor.getTime() - now.getTime();
-    cursor = new Date(
-      cursor.getTime() + (24 * 60 - (parts.hour * 60 + parts.minute)) * MS_PER_MINUTE,
-    );
+  // A UTC date is used purely as a calendar counter over the LOCAL date, so
+  // month lengths and leap years come out right without touching `Intl`.
+  const probe = new Date(Date.UTC(from.year, from.month - 1, from.day));
+  for (let daysAhead = 1; daysAhead <= LOOKAHEAD_DAYS; daysAhead++) {
+    probe.setUTCDate(probe.getUTCDate() + 1);
+    const candidate = { month: probe.getUTCMonth() + 1, day: probe.getUTCDate() };
+    if (isHoliday(holidaySet, candidate) === wantHoliday) {
+      return msUntilLocalMidnight(now, timezone, daysAhead, from);
+    }
   }
   return null;
 }
@@ -604,7 +647,6 @@ function mergeAdjacentEvents(events: WeeklyEvent[]): WeeklyEvent[] {
 
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
   const { events, holidays: holidaySet } = derive(tradingHours);
-  const local = toLocalParts(now, tradingHours.timezone);
 
   // An EMPTY event list has two opposite meanings, and collapsing them to
   // "open" reported a permanently-closed venue as tradable:
@@ -612,10 +654,14 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
   //   - sessions that fully cancel in `mergeAdjacentEvents` (a 24/7 schedule)
   //     ⇒ the venue never closes — but its HOLIDAYS still mask it, which the
   //     old early return skipped by leaving before the holiday check.
+  // The no-sessions arm reads no clock at all, so `local` is derived below it.
+  if (events.length === 0 && tradingHours.sessions.length === 0) {
+    return { status: "closed", nextStatusChangeIn: null };
+  }
+
+  const local = toLocalParts(now, tradingHours.timezone);
+
   if (events.length === 0) {
-    if (tradingHours.sessions.length === 0) {
-      return { status: "closed", nextStatusChangeIn: null };
-    }
     // Continuous 24/7: only a holiday can change the status.
     const onHoliday = isHoliday(holidaySet, local);
     return {
@@ -623,7 +669,7 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
       nextStatusChangeIn:
         holidaySet.size === 0
           ? null
-          : msUntilLocalDayStart(now, tradingHours.timezone, holidaySet, !onHoliday),
+          : msUntilLocalDayStart(now, tradingHours.timezone, holidaySet, !onHoliday, local),
     };
   }
 
@@ -637,7 +683,7 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
         holidaySet,
         now,
         tradingHours.timezone,
-        nowMow,
+        local,
       ),
     };
   }
@@ -680,58 +726,36 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
     currentStatus = prevEvent?.type === "open" ? "open" : "closed";
   }
 
-  // Find the next event that represents a STATUS CHANGE
-  // (i.e., if we're open, find next 'close'; if closed, find next 'open')
+  // Find the next event that represents a STATUS CHANGE — if we're open, the
+  // next 'close'; if closed, the next 'open' — scanning forward from `nextIdx`
+  // and wrapping into next week.
   const targetType = currentStatus === "open" ? "close" : "open";
-
-  // Scan forward from the next event position
-  let nextChangeEvent: WeeklyEvent | undefined;
-
-  for (let i = 0; i < events.length; i++) {
-    const idx = (nextIdx + i) % events.length;
-    const candidate = events[idx];
-    if (candidate === undefined) continue;
-
-    // For exact boundary cases, skip the event we're sitting on
-    if (candidate.minuteOfWeek === nowMow && candidate.type !== targetType) {
-      continue;
-    }
-
-    if (candidate.type === targetType) {
-      nextChangeEvent = candidate;
-      break;
-    }
-  }
+  const nextChangeEvent = [...events.slice(nextIdx), ...events.slice(0, nextIdx)].find(
+    (candidate) => candidate.type === targetType,
+  );
 
   if (nextChangeEvent === undefined) {
     // Should not happen with valid schedules
     return { status: currentStatus, nextStatusChangeIn: null };
   }
 
-  // Local minute-of-week → a real instant (DST-correct; see the helper).
-  let nextStatusChangeIn = msUntilLocalMinuteOfWeek(
+  // Local minute-of-week → a real instant (DST-correct; see the helper). The
+  // converged local reading comes back with it, so the holiday test below
+  // needs no second `Intl` pass.
+  const next = nextLocalMinuteOfWeek(
     now,
     tradingHours.timezone,
     nextChangeEvent.minuteOfWeek,
+    0,
+    local,
   );
+  let nextStatusChangeIn = next.ms;
 
   // Holidays only mask `open` events; today-is-a-holiday already returned
   // above. If the upcoming open lands on a holiday, walk forward.
-  if (nextChangeEvent.type === "open" && holidaySet.size > 0) {
-    const targetLocal = toLocalParts(
-      new Date(now.getTime() + nextStatusChangeIn),
-      tradingHours.timezone,
-    );
-    if (isHoliday(holidaySet, targetLocal)) {
-      const skipped = findNextNonHolidayOpen(
-        events,
-        holidaySet,
-        now,
-        tradingHours.timezone,
-        nowMow,
-      );
-      if (skipped !== null) nextStatusChangeIn = skipped;
-    }
+  if (nextChangeEvent.type === "open" && holidaySet.size > 0 && isHoliday(holidaySet, next.at)) {
+    const skipped = findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
+    if (skipped !== null) nextStatusChangeIn = skipped;
   }
 
   return { status: currentStatus, nextStatusChangeIn };
@@ -764,34 +788,23 @@ function findNextNonHolidayOpen(
   holidaySet: Set<number>,
   now: Date,
   timezone: string,
-  /** `now`'s minute-of-week, already derived by the caller — `toLocalParts` is
-   *  the heavy `Intl` path this module caches formatters for, so it is not
-   *  re-run here. */
-  startMow: number,
+  /** `now`'s local reading, already derived by the caller. */
+  local: LocalParts,
 ): number | null {
   const opens = events.filter((e) => e.type === "open");
   if (opens.length === 0) return null;
 
-  // Sorted by distance forward from `startMow`, so one outer-week / inner-open
-  // walk yields candidates in chronological order.
-  const opensByDelta = opens
-    .map((ev) => {
-      let delta = ev.minuteOfWeek - startMow;
-      if (delta <= 0) delta += MINUTES_PER_WEEK;
-      return delta;
-    })
-    .sort((a, b) => a - b);
-
-  for (let weekOffset = 0; weekOffset < 3; weekOffset++) {
-    for (const baseDelta of opensByDelta) {
-      // Convert through the local clock so a candidate spanning a DST change
-      // lands on the real open instant, not one an hour out.
-      const targetMow = (startMow + baseDelta) % MINUTES_PER_WEEK;
-      const ms =
-        msUntilLocalMinuteOfWeek(now, timezone, targetMow) +
-        weekOffset * MINUTES_PER_WEEK * MS_PER_MINUTE;
-      const targetLocal = toLocalParts(new Date(now.getTime() + ms), timezone);
-      if (!isHoliday(holidaySet, targetLocal)) return ms;
+  // Each open resolved to a real instant ONCE, then walked in chronological
+  // order. Later weeks re-resolve through `occurrence` rather than adding a
+  // fixed week of milliseconds — a calendar week spanning a DST change is not
+  // 604_800_000 ms, and the resulting instant is fed straight back into the
+  // holiday test, where an hour's drift can land on the wrong local date.
+  for (let week = 0; week < LOOKAHEAD_WEEKS; week++) {
+    const candidates = opens
+      .map((ev) => nextLocalMinuteOfWeek(now, timezone, ev.minuteOfWeek, week, local))
+      .sort((a, b) => a.ms - b.ms);
+    for (const candidate of candidates) {
+      if (!isHoliday(holidaySet, candidate.at)) return candidate.ms;
     }
   }
   return null;
