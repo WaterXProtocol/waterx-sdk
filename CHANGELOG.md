@@ -98,7 +98,7 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
   place, so neither enforcement point branches on a kind.
 - **Waterx seams**: `fetchWaterxSignedUpdate` / `fetchWaterxSignedLeaves` (the raw
   quote-center fetchers, now public), `fetchWaterxUpdateData(host, tickers,
-  { coverage: "strict" | "partial" })` (strict == the rule's own trade-path fetch;
+{ coverage: "strict" | "partial" })` (strict == the rule's own trade-path fetch;
   partial reports unlisted/uncovered tickers in `missing` for universe prefetch),
   `WATERX_MAX_PRICE_AGE_MS` (90s on-chain `max_age` mirror), `isFreshWaterxEntry`,
   and the `LeafPull` type.
@@ -112,6 +112,26 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
   replaces the Hermes `/v2/price_feeds` catalog for schedules AND the hex↔integer
   feed-id map; `PythSymbolRecord`) and `fetchPythProHistory`
   (`GET /v1/{channel}/history`, Bearer — TradingView-UDF chart bars).
+
+- **`PerpClient.pricedPoolTokens()`** — {@link pricedPoolTickers} already joined to
+  each token's Move type. The set a WLP flow refreshes and the set it bumps
+  `update_token_value` for MUST be identical (`update_token_value` reads
+  `oracle::get_price`, which aborts `EStalePrice` without a same-PTB aggregate), so
+  deriving both from one list makes that divergence unrepresentable.
+- **`pullWaterxQuotes(endpoint, symbols, fetch?)`** — the quote-center route ladder
+  (per-symbol Merkle leaves by default, one batch envelope only against a
+  quote-center with no leaf route) as a single rule-owned export. The write path
+  and `readQuoteCenterPrices` both go through it, so the read plane cannot drift
+  off the write plane.
+
+### Fixed
+
+- **`refreshOraclePrices` skipped the credential check for the WHOLE fed set** when
+  an `updateDataProvider` was configured. A provider is keyed by SOURCE
+  (`get(source, tickers)`), so a consumer caching one source and holding no
+  credential for another got the second source's live fetch fired before the
+  missing-credential error surfaced. Cache lookups (network-free by contract) now
+  resolve first, and only the groups that MISSED are credential-checked.
 
 ### Changed
 
@@ -290,11 +310,11 @@ consumers pin exact and adapt in the same change set._
     v2 package `0xefbfd064…` and requests `fixed_rate@1000ms`. The rule was
     republished v2-bound (waterx-contract) after a 2026-08-05 mainnet probe
     found the v1 path dead twice over: the ORIGINAL package `0x7b502c…` aborts
-    `EDifferentVersion` in `state::current_cap` for *any* payload — the shared
+    `EDifferentVersion` in `state::current_cap` for _any_ payload — the shared
     `State` has been migrated past that code — and the v1 entry aborts
     `EInvalidChannel` in `channel::from_v2` on `fixed_rate@1000ms`, which is
     the only channel WaterX's Pyth Pro grant still permits (200ms →
-    *"violates rate limit. Minimum allowed channel is 1000ms"*).
+    _"violates rate limit. Minimum allowed channel is 1000ms"_).
   - **testnet** is unchanged (`parse_and_verify_le_ecdsa_update`,
     `fixed_rate@200ms`): its Lazer package is still the v1-only publish with no
     `update_v2` module, and its rule is v1-bound, so the v1 entry is the only
