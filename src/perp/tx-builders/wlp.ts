@@ -16,7 +16,13 @@ import {
   type MintWlpParams,
   type RequestRedeemWlpParams,
 } from "../user/wlp.ts";
-import { maybeConsolidate, newTx, refreshWlpPoolOracles, type CommonBuildOpts } from "./common.ts";
+import {
+  assertTickersRefreshed,
+  maybeConsolidate,
+  newTx,
+  refreshWlpPoolOracles,
+  type CommonBuildOpts,
+} from "./common.ts";
 
 // ============================================================================
 // WLP mint
@@ -46,10 +52,13 @@ export async function buildMintWlpTx(
   await maybeConsolidate(client, tx, params.accountId, params);
 
   if (!params.skipOraclePriceRefresh) {
-    await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
+    const summary = await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
     });
+    // `mint_wlp` values the deposit at this ticker's oracle price — minting
+    // against an unrefreshed one mis-sizes the LP payout.
+    assertTickersRefreshed(client, summary, [params.depositTicker], params);
   }
 
   mintWlp(client, tx, params);
@@ -91,10 +100,13 @@ export async function buildMintAndStakeWlpTx(
   await maybeConsolidate(client, tx, params.accountId, params);
 
   if (!params.skipOraclePriceRefresh) {
-    await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
+    const summary = await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
     });
+    // `mint_wlp` values the deposit at this ticker's oracle price — minting
+    // against an unrefreshed one mis-sizes the LP payout.
+    assertTickersRefreshed(client, summary, [params.depositTicker], params);
   }
 
   const stakeAlias = params.stakeAlias ?? "WLP";
@@ -148,6 +160,9 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
   await maybeConsolidate(client, tx, params.accountId, params);
 
   if (!params.skipOraclePriceRefresh) {
+    // No caller-named ticker here: the redeem prices the whole pool, and every
+    // pool token is covered on chain by `assert_prices_fresh`. Nothing extra to
+    // assert — a skipped pool token surfaces there, not silently.
     await refreshWlpPoolOracles(tx, client, [], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,

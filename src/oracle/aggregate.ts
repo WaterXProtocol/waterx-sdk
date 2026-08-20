@@ -204,6 +204,41 @@ export function aggregateTickerWithConstant(
 }
 
 /**
+ * Thrown by a high-level `build*Tx` composer when a ticker the transaction
+ * DEPENDS ON received no oracle leg — {@link refreshOraclePrices} reported it
+ * in {@link OracleRefreshSummary.skipped} because no listed source could price
+ * it.
+ *
+ * `refreshOraclePrices` itself never throws this: skipping is the right
+ * behaviour for a broad refresh (a caller sweeping every market must not lose
+ * 29 tickers because the 30th is unconfigured). But a builder that goes on to
+ * append a trade / mint / redeem against that exact ticker is a different
+ * case — the price already on chain may still sit inside the freshness window,
+ * so the action would silently execute against a stale price instead of
+ * failing. Composers therefore fail CLOSED, and a caller who genuinely wants
+ * the pre-existing on-chain price uses `allowUnrefreshedPrices: true`
+ * (or `skipOraclePriceRefresh: true` to bypass the refresh entirely).
+ *
+ * `instanceof`-able so a consumer can branch on it rather than string-match.
+ */
+export class OracleTickerUnservedError extends Error {
+  /** The action-critical tickers that received no oracle leg. */
+  readonly tickers: string[];
+
+  constructor(tickers: string[], sources: readonly string[]) {
+    super(
+      `no listed oracle source [${sources.join(", ")}] served ticker(s): ${tickers.join(", ")}. ` +
+        "This build appends an action that depends on them, so it would execute against " +
+        "whatever price the Oracle already holds. Add feeds under a listed source, list a " +
+        "source that serves them, or pass allowUnrefreshedPrices: true to accept the " +
+        "on-chain price deliberately.",
+    );
+    this.name = "OracleTickerUnservedError";
+    this.tickers = tickers;
+  }
+}
+
+/**
  * What {@link refreshOraclePrices} actually put in the PTB.
  *
  * - `refreshed` — tickers that got a collector + `oracle::aggregate` (deduped,

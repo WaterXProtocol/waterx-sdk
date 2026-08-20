@@ -90,6 +90,14 @@ Both consumers pin exact, so nothing breaks until they bump. What each has to ch
   tx-build.
 - `refreshOraclePrices` returns `OracleRefreshSummary` (`{ refreshed, skipped }`)
   instead of `void`, so a caller can log/alert on tickers that went unpriced.
+  The high-level `build*Tx` composers **fail closed** on it: if a ticker the
+  appended action depends on (the traded market + its collateral, a WLP deposit
+  ticker) was skipped, the build throws `OracleTickerUnservedError` rather than
+  execute against whatever price the `Oracle` already holds — which can still
+  sit inside the on-chain freshness window, so the action would succeed at a
+  stale price instead of failing. `allowUnrefreshedPrices: true` is the explicit
+  opt-in; the check stays scoped to action-critical tickers, so an unrelated WLP
+  pool token going unpriced does not take down every trade.
   Purely additive for callers that ignore the result. Servability is deliberately
   narrow: a ticker needs no update leg only when `constant_rule` is the ONLY rule the
   config wires for it — a dual-feed ticker whose price source did not run is skipped
@@ -101,10 +109,14 @@ Both consumers pin exact, so nothing breaks until they bump. What each has to ch
 
 ### Added
 
+- `OracleTickerUnservedError` + the `allowUnrefreshedPrices` build option (see above).
 - `oracle/feeds.ts` — `configuredOracleRules(config, ticker)` /
   `hasConfiguredOracleFeed(config, ticker)`, the config-only "which rules is this ticker
   wired for" read (exported from `@waterx/sdk`). Consumers doing boot checks or
   market/collateral filters use this instead of reaching into a specific rule block.
+  Every rule is checked **all-or-nothing** (package + shared objects, not just a
+  `feeds` entry), since `loadConfig` validates no optional rule block and a rollout
+  JSON can list feeds before the object ids land.
 - `OracleRefreshSummary` is exported from `@waterx/sdk` and `@waterx/sdk/perp`.
 
 ## [4.3.3] - 2026-08-18

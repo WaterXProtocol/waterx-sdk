@@ -31,12 +31,23 @@ import type { OracleConfig } from "./config.ts";
 export type ConfiguredOracleRule = "pyth_lazer_rule" | "waterx_rule" | "constant_rule";
 
 /**
- * Every rule `ticker` has a `feeds` entry for, in PTB-leg order. Empty ⇒ the
- * config wires no price for this ticker at all.
+ * Every rule `ticker` has a **usable** `feeds` entry for, in PTB-leg order.
+ * Empty ⇒ the config wires no price for this ticker at all.
  *
- * `constant_rule` is all-or-nothing, mirroring `PerpConfigView.isConstantTicker`:
- * a `feeds` entry listed before the rule is deployed (`published_at` + `config`)
- * would otherwise claim a leg `feedConstantRule` cannot build.
+ * Every rule is checked ALL-OR-NOTHING: a `feeds` entry only counts when that
+ * rule's package + shared objects are also present, because `loadConfig`
+ * deliberately validates no optional rule block. A realistic rollout JSON
+ * lists feeds before every object id lands, and a feeds-only check would call
+ * the ticker usable right up until the builder died on a missing
+ * `published_at` / `config` / `state` / `enclave_*`. The required fields per
+ * rule are exactly what each rule's PTB leg dereferences:
+ *
+ * - `pyth_lazer_rule` → `published_at`, `config`, `state` (`feedLazerRule` +
+ *   the network's verify entry).
+ * - `waterx_rule` → `published_at`, `config`, `enclave_config`, `enclave`
+ *   (`collect_single_with_proof` / `collect_batch_latest`).
+ * - `constant_rule` → `published_at`, `config` (`feedConstantRule`), the
+ *   guard `PerpConfigView.isConstantTicker` already applied.
  */
 export function configuredOracleRules(
   config: OracleConfig,
@@ -47,10 +58,25 @@ export function configuredOracleRules(
   // `ownEntry` (own-keys-only) everywhere: a ticker named like an
   // Object.prototype key ("toString", "constructor", …) must read as
   // not-listed, never as an inherited Function.
-  if (ownEntry(packages.pyth_lazer_rule?.feeds, ticker) !== undefined) {
+  const lazer = packages.pyth_lazer_rule;
+  if (
+    lazer?.published_at &&
+    lazer.config &&
+    lazer.state &&
+    ownEntry(lazer.feeds, ticker) !== undefined
+  ) {
     rules.push("pyth_lazer_rule");
   }
-  if (ownEntry(packages.waterx_rule?.feeds, ticker) !== undefined) rules.push("waterx_rule");
+  const waterx = packages.waterx_rule;
+  if (
+    waterx?.published_at &&
+    waterx.config &&
+    waterx.enclave_config &&
+    waterx.enclave &&
+    ownEntry(waterx.feeds, ticker) !== undefined
+  ) {
+    rules.push("waterx_rule");
+  }
   const constant = packages.constant_rule;
   if (constant?.published_at && constant.config && ownEntry(constant.feeds, ticker) !== undefined) {
     rules.push("constant_rule");

@@ -66,7 +66,10 @@ to push; the loaded config decides what it CAN. **Every** oracle-rule package
 block is optional, so listing a source the
 deployment doesn't carry is not an error — it contributes nothing. A ticker no
 listed source serves is **skipped**, not thrown on: `refreshOraclePrices`
-returns `{ refreshed, skipped }` and the PTB gets the legs that exist
+returns `{ refreshed, skipped }` and the PTB gets the legs that exist. The
+high-level `build*Tx` composers then FAIL CLOSED on an action-critical skipped
+ticker (`OracleTickerUnservedError`, opt out with `allowUnrefreshedPrices`) —
+skipping is right for a broad refresh, never for the ticker being traded
 (a ticker is servable without an update leg only when `constant_rule` is the
 ONLY rule wired for it; a dual-feed constant+source ticker is NOT, since
 feeding just the constant leg would starve the other weighted rule). A

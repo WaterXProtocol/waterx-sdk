@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { configuredOracleRules } from "../../../src/oracle/feeds.ts";
 import type { WaterXConfig } from "../../../src/perp/config.ts";
 import { getCollateralAssets, getMarketTickers } from "../../../src/utils/config.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
@@ -35,6 +36,35 @@ describe("config utils", () => {
     delete noRules.packages.waterx_rule;
     delete noRules.packages.constant_rule;
     expect(getCollateralAssets(noRules as unknown as WaterXConfig)).toEqual([]);
+  });
+
+  it("a HALF-WIRED rule block does not count as wiring the ticker", () => {
+    // Rollout hazard: `loadConfig` deliberately validates no optional rule
+    // block, so a JSON can list feeds before every object id lands. A
+    // feeds-only check would report the pool token usable right up until the
+    // builder died on the missing ids — each rule must be all-or-nothing.
+    const partial = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
+      packages: Record<string, Record<string, unknown>>;
+    };
+    delete partial.packages.constant_rule;
+    // lazer keeps its feeds but loses `state` (the verify entry's object);
+    // waterx keeps its feeds but loses `enclave` (the signature check's).
+    delete partial.packages.pyth_lazer_rule.state;
+    delete partial.packages.waterx_rule.enclave;
+
+    const cfg = partial as unknown as WaterXConfig;
+    expect(configuredOracleRules(cfg, "USDCUSD")).toEqual([]);
+    expect(getCollateralAssets(cfg)).toEqual([]);
+  });
+
+  it("a fully-wired rule block still counts", () => {
+    // The other half of the guard: the readiness check must not reject a
+    // complete block. USDCUSD is wired under both lazer and waterx in the
+    // fixture.
+    expect(configuredOracleRules(MOCK_TESTNET_CONFIG, "USDCUSD")).toEqual([
+      "pyth_lazer_rule",
+      "waterx_rule",
+    ]);
   });
 
   it("returns empty arrays when maps are empty", () => {

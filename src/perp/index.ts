@@ -128,6 +128,10 @@ export {
   FetchPolicyError,
   LazerApiKeyMissingError,
   OracleSourceNotImplementedError,
+  // On the root surface because it is thrown by the high-level `build*Tx`
+  // composers themselves — a consumer catching it is on the money path and
+  // should not have to reach for `@waterx/sdk/oracle` to name it.
+  OracleTickerUnservedError,
   aggregateTicker,
   aggregateTickerWithConstant,
   ORACLE_SOURCES,

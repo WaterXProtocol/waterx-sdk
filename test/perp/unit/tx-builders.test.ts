@@ -3,7 +3,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuleUpdateData, UpdateDataProvider } from "../../../src/oracle/index.ts";
-import { parseSignedLeaves } from "../../../src/oracle/index.ts";
+import { OracleTickerUnservedError, parseSignedLeaves } from "../../../src/oracle/index.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
@@ -181,14 +181,33 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("buildMintWlpTx WITHOUT skip still builds when a pool token has no feed for the selected source (no fallback, no throw)", async () => {
-    // The companion to the skip test above. A pool token no listed source
-    // serves used to fail the whole mint; it is now skipped inside
-    // refreshOraclePrices, so the mint builds with zero oracle legs and the
-    // pool's own `assert_prices_fresh` is what decides on chain. allowGasFee
-    // rules out the (unrelated) fee-source throw.
+  it("buildMintWlpTx WITHOUT skip FAILS CLOSED when the deposit ticker goes unpriced", async () => {
+    // The companion to the skip test above, and the money-path invariant:
+    // `refreshOraclePrices` skipping a ticker is fine for a broad refresh, but
+    // `mint_wlp` VALUES the deposit at this ticker's price. Proceeding would
+    // size the LP payout off whatever the Oracle already holds — which can
+    // still be inside the on-chain freshness window, so it succeeds at a stale
+    // price rather than failing. The build must refuse.
     const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
+
+    await expect(
+      buildMintWlpTx(lazerClient, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        depositTokenType: MOCK_USDC_TYPE,
+        depositTicker: "USDCUSD",
+        depositAmount: 10_000_000n,
+        minLpAmount: 0n,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toBeInstanceOf(OracleTickerUnservedError);
+  });
+
+  it("buildMintWlpTx proceeds on an unpriced deposit ticker only under allowUnrefreshedPrices", async () => {
+    // The deliberate escape hatch: same setup, explicit opt-in, mint is built
+    // with zero oracle legs against the price already on chain.
+    const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    lazerClient.config.packages.pyth_lazer_rule!.feeds = {};
 
     const tx = await buildMintWlpTx(lazerClient, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
@@ -197,13 +216,52 @@ describe("tx-builders (v3)", () => {
       depositAmount: 10_000_000n,
       minLpAmount: 0n,
       consolidateToUsd: false,
+      allowUnrefreshedPrices: true,
     });
 
     const targets = moveTargets(tx);
     expect(targets).not.toContain("oracle::aggregate");
-    expect(targets).not.toContain("oracle::new_collector");
-    // …but the mint itself is fully built.
     expect(targets).toContain("lp_pool::mint_wlp");
+  });
+
+  it("buildPlaceOrderTx FAILS CLOSED when the traded ticker goes unpriced", async () => {
+    // Same invariant on the trading path: `execute` prices the position at
+    // this ticker, so a silently-unrefreshed BTCUSD is a mis-priced trade.
+    const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    lazerClient.config.packages.pyth_lazer_rule!.feeds = {};
+
+    await expect(
+      buildPlaceOrderTx(lazerClient, {
+        ...common,
+        main: baseOrder,
+        skipOraclePriceRefresh: false,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toBeInstanceOf(OracleTickerUnservedError);
+  });
+
+  it("a pool token that goes unpriced does NOT fail an unrelated trade (only action-critical tickers do)", async () => {
+    // The fail-closed check must stay scoped to the traded market + collateral.
+    // A WLP pool token no source prices is the pool's own
+    // `assert_prices_fresh` problem on chain — failing the build on it would
+    // take down every unrelated trade in the deployment.
+    //
+    // SUIUSD is wired ONLY under lazer while the fed set is waterx, so it
+    // reaches the refresh (getCollateralAssets keeps it — a rule IS
+    // configured) and comes back skipped, while the traded BTCUSD and its
+    // USDCUSD collateral are both served.
+    const client2 = createUnitTestClient({ oracleSource: "waterx_rule" });
+    client2.config.packages.wlp!.pool_tokens.SUIUSD = "0x2::sui::SUI";
+    client2.config.packages.pyth_lazer_rule!.feeds.SUIUSD = 9;
+    mockQuoteCenterLeaves(["BTCUSD", "USDCUSD"]);
+
+    const tx = await buildPlaceOrderTx(client2, {
+      ...common,
+      main: baseOrder,
+      skipOraclePriceRefresh: false,
+      consolidateToUsd: false,
+    });
+    expect(moveTargets(tx)).toContain("oracle::aggregate");
   });
 
   it("buildPlaceOrderTx with oracle refresh", async () => {

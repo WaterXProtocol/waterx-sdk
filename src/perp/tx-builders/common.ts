@@ -7,7 +7,12 @@
 import { Transaction, type TransactionArgument } from "@mysten/sui/transactions";
 
 import { appendConsolidateForSpend } from "../../account/funding/consolidate.ts";
-import { refreshOraclePrices, type UpdateDataProvider } from "../../oracle/index.ts";
+import {
+  OracleTickerUnservedError,
+  refreshOraclePrices,
+  type OracleRefreshSummary,
+  type UpdateDataProvider,
+} from "../../oracle/index.ts";
 import { getCollateralAssets } from "../../utils/config.ts";
 import type { PerpClient } from "../client.ts";
 import { executeTrading } from "../user/trading.ts";
@@ -18,6 +23,20 @@ export interface CommonBuildOpts {
   tx?: Transaction;
   /** Skip oracle refresh entirely (caller manages freshness). Default: false. */
   skipOraclePriceRefresh?: boolean;
+  /**
+   * Proceed even when a ticker this transaction DEPENDS ON received no oracle
+   * leg — i.e. `refreshOraclePrices` reported it as `skipped` because no
+   * listed source could price it. Default `false`: the build throws
+   * {@link OracleTickerUnservedError} rather than append a trade / mint /
+   * redeem that would execute against whatever price the `Oracle` already
+   * holds (which can still be inside the on-chain freshness window, so the
+   * action succeeds at a stale price instead of failing).
+   *
+   * Set `true` only to deliberately accept the pre-existing on-chain price.
+   * Unrelated to `skipOraclePriceRefresh`, which bypasses the refresh
+   * entirely and implies the same acceptance.
+   */
+  allowUnrefreshedPrices?: boolean;
   /**
    * Pre-sweep parked backing assets (USDC, USDsui, …) at the wxa account's
    * address into USD credit, plus any CREDIT coins/funds at the address into
@@ -62,6 +81,13 @@ export function newTx(opts?: CommonBuildOpts): Transaction {
  * bump each pool token's `last_price_refresh_timestamp` so the pool's
  * `assert_prices_fresh` passes when the next `mint_wlp` / `request_redeem` /
  * trading `execute` runs in the same PTB.
+ *
+ * Returns the refresh summary — callers MUST inspect `skipped` for whichever
+ * of `extraTickers` their action actually depends on (see
+ * {@link assertTickersRefreshed}). The pool-token bump below still runs for
+ * every configured pool token regardless: `update_token_value` reads the
+ * on-chain price, and the pool's own `assert_prices_fresh` is what rejects a
+ * stale one.
  */
 export async function refreshWlpPoolOracles(
   tx: Transaction,
@@ -71,14 +97,42 @@ export async function refreshWlpPoolOracles(
     lpType?: string;
     updateDataProvider?: UpdateDataProvider;
   },
-): Promise<void> {
+): Promise<OracleRefreshSummary> {
   const poolTickers = getCollateralAssets(client.config);
   const oracleTickers = Array.from(new Set([...extraTickers, ...poolTickers]));
-  await refreshOraclePrices(tx, client, oracleTickers, {
+  const summary = await refreshOraclePrices(tx, client, oracleTickers, {
     updateDataProvider: opts.updateDataProvider,
   });
   for (const tokenType of Object.values(client.config.packages.wlp.pool_tokens)) {
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
+  }
+  return summary;
+}
+
+/**
+ * Fail the build when any ACTION-CRITICAL ticker went unpriced.
+ *
+ * `required` is the subset of the refresh the appended action reads — the
+ * traded market + its collateral, or a WLP deposit/redeem ticker — never the
+ * whole refreshed set: a pool token no source prices is the pool's own
+ * `assert_prices_fresh` problem, and failing the build on it would take down
+ * every unrelated trade.
+ *
+ * No-op under `allowUnrefreshedPrices`. Runs AFTER the refresh appended its
+ * commands, so `tx` is already dirty on throw — the same discard-tx-on-throw
+ * contract every composer has (see {@link wrapRequestAndExecute}).
+ */
+export function assertTickersRefreshed(
+  client: PerpClient,
+  summary: OracleRefreshSummary,
+  required: string[],
+  opts: CommonBuildOpts | undefined,
+): void {
+  if (opts?.allowUnrefreshedPrices) return;
+  const skipped = new Set(summary.skipped);
+  const unserved = [...new Set(required)].filter((ticker) => skipped.has(ticker));
+  if (unserved.length > 0) {
+    throw new OracleTickerUnservedError(unserved, client.oracleSources);
   }
 }
 
@@ -86,7 +140,7 @@ export async function refreshWlpPoolOracles(
  * Build the *Request + execute envelope:
  *
  *   [maybeConsolidate(tx)]
- *   refreshOraclePrices(...)
+ *   refreshOraclePrices(...)      // throws if the traded ticker went unpriced
  *   req = buildRequest()
  *   trading::execute(req)
  *
@@ -114,10 +168,13 @@ export async function wrapRequestAndExecute(
   await maybeConsolidate(client, tx, req.accountId, opts);
 
   if (!opts?.skipOraclePriceRefresh) {
-    await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
+    const summary = await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
       lpType: req.lpType,
       updateDataProvider: opts?.updateDataProvider,
     });
+    // The traded market and its collateral are what `execute` prices against —
+    // proceeding on a stale price for either is exactly the silent-loss case.
+    assertTickersRefreshed(client, summary, [req.ticker, collateralTicker], opts);
   }
 
   const tradingReq = buildRequest();

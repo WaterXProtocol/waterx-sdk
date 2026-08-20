@@ -106,6 +106,9 @@ export { OracleSourceNotImplementedError, resolveOracleRule } from "./rule-regis
 // Aggregation orchestrator
 export { aggregateTicker, aggregateTickerWithConstant, refreshOraclePrices } from "./aggregate.ts";
 export type { OracleRefreshSummary } from "./aggregate.ts";
+// `instanceof`-able for the same reason as `FetchPolicyError` above: a
+// consumer branches on "the build refused to trade an unpriced ticker".
+export { OracleTickerUnservedError } from "./aggregate.ts";
 
 // Config-only feed introspection — which rules a ticker is WIRED for, before
 // any fed-set/`oracleSource` consideration. Consumers that need to know
