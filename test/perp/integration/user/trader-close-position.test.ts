@@ -132,7 +132,6 @@ describe.skipIf(!integrationCloseOneEnabled)(
             acceptablePrice: ap,
             collateralTicker: "USDCUSD",
             skipOraclePriceRefresh: false,
-            useSponsor: true,
           }),
         trader,
         { cooldownTickers: [resolved.ticker], gasBudget: integrationGasBudget("lifecycle") },

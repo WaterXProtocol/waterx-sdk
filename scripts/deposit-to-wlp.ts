@@ -26,7 +26,7 @@ import {
   isProtocolAssetAllowed,
 } from "../src/generated/waterx_account/account.ts";
 import { setPriceRefreshThresholdMs } from "../src/generated/waterx_perp/global_config.ts";
-import { aggregateTickerWithPyth, refreshOraclePrices } from "../src/oracle/index.ts";
+import { aggregateTicker, refreshOraclePrices } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import { getAccountBalance, getGlobalConfigData } from "../src/perp/fetch.ts";
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
+    oracleSource: "waterx_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
@@ -240,16 +240,10 @@ async function main(): Promise<void> {
     // (updatePythPrices) and the TokenPoolInfo.value_usd bump. mint_wlp still
     // calls oracle::get_price, which aborts EStalePrice unless oracle::aggregate
     // ran THIS PTB — so we re-aggregate the price already sitting on-chain.
-    // Only works while that on-chain Pyth price is within pyth_rule tolerance.
-    const feed = client.getPythFeed(ticker);
-    aggregateTickerWithPyth(tx, client, {
-      ticker,
-      priceInfoObjectId: feed.price_info_object,
-    });
+    // Only works while the price already on chain is still fresh enough.
+    aggregateTicker(tx, client, { ticker: ticker });
   } else {
-    // Standalone dev script, no TradingRequest to reimburse a sponsor fund
-    // against — pay the Pyth update fee from tx.gas.
-    await refreshOraclePrices(tx, client, [ticker], { feeSource: { kind: "gas" } });
+    await refreshOraclePrices(tx, client, [ticker]);
     // Push the freshly-aggregated oracle price into TokenPoolInfo.value_usd /
     // last_price_refresh_timestamp so lp_pool::assert_prices_fresh accepts it.
     updateTokenValue(client, tx, { tokenType: usdType });

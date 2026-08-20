@@ -184,10 +184,6 @@ describe("WaterxRule — port", () => {
     expect(WaterxRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
   });
 
-  it("charges no update fee (requiresFeeSource = false)", () => {
-    expect(WaterxRule.requiresFeeSource).toBe(false);
-  });
-
   it("fetchUpdateData pulls per-symbol LEAVES, not the batch envelope", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
@@ -717,13 +713,10 @@ describe("WaterxRule — routing", () => {
     expect(moveTargets(tx)).toContain("waterx_rule::collect_batch_latest");
   });
 
-  it("multi-ticker refresh collects each ticker; one with a Pyth feed also keeps pyth_rule::feed", async () => {
+  it("multi-ticker refresh collects each ticker against its OWN leaf", async () => {
     // One PTB, several tickers, one snapshot covering both — but each collector
-    // gets only ITS leaf. BTCUSD and ETHUSD are in BOTH waterx_rule.feeds AND
-    // pyth_rule.feeds, so each collector gets its waterx collect AND — because
-    // the ticker is still in the aggregator's Pyth-weighted set — an
-    // (abstaining, read-only) pyth_rule::feed on the same collector before one
-    // aggregate.
+    // gets only ITS leaf (a leaf only verifies for its own symbol,
+    // `ECollectorSymbolMismatch`), then one aggregate per ticker.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockLeafRoute(["BTCUSD", "ETHUSD"]);
     const tx = new Transaction();
@@ -734,7 +727,6 @@ describe("WaterxRule — routing", () => {
     expect(count("oracle::new_collector")).toBe(2);
     expect(count("waterx_rule::collect_single_with_proof")).toBe(2);
     expect(count("waterx_rule::new_batch_item")).toBe(2); // one per collector, not one per snapshot symbol
-    expect(count("pyth_rule::feed")).toBe(2); // dual-rule: additive, one per ticker
     expect(count("oracle::aggregate")).toBe(2);
   });
 

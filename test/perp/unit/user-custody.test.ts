@@ -81,7 +81,7 @@ describe("user/custody PTB builders (native_custody)", () => {
     delete noCredit.packages.waterx_credit;
     delete noCredit.packages.native_custody;
     const clientNoCredit = new PerpClient("TESTNET", noCredit, {
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
@@ -98,7 +98,7 @@ describe("user/custody PTB builders (native_custody)", () => {
     const noCustody = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCustody.packages.native_custody;
     const clientNoCustody = new PerpClient("TESTNET", noCustody, {
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
@@ -115,7 +115,7 @@ describe("user/custody PTB builders (native_custody)", () => {
     const noCredit = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCredit.packages.waterx_credit;
     const clientNoCredit = new PerpClient("TESTNET", noCredit, {
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>
@@ -131,7 +131,7 @@ describe("user/custody PTB builders (native_custody)", () => {
     const noCustody = structuredClone(MOCK_TESTNET_CONFIG);
     delete noCustody.packages.native_custody;
     const clientNoCustody = new PerpClient("TESTNET", noCustody, {
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>

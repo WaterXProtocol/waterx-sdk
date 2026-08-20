@@ -26,7 +26,6 @@ describe(`trade orders (${e2eNetwork})`, () => {
         collateralType,
         orderId: 999_999_999n,
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;
@@ -54,7 +53,6 @@ describe(`trade orders (${e2eNetwork})`, () => {
         newSize: rawPrice(0.001),
         newTriggerPrice: tp,
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;

@@ -58,7 +58,6 @@ describe(`trade ghost sizing (${e2eNetwork})`, () => {
           acceptablePrice: rawPrice(200_000),
           collateralTicker: "USDCUSD",
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
       DUMMY_ACCOUNT,
     );
@@ -78,7 +77,6 @@ describe(`trade ghost sizing (${e2eNetwork})`, () => {
           acceptablePrice: ap,
           collateralTicker: "USDCUSD",
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
       DUMMY_ACCOUNT,
     );
@@ -97,7 +95,6 @@ describe(`trade ghost sizing (${e2eNetwork})`, () => {
           acceptablePrice: rawPrice(1),
           collateralTicker: "USDCUSD",
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
       DUMMY_ACCOUNT,
     );
@@ -115,7 +112,6 @@ describe(`trade ghost sizing (${e2eNetwork})`, () => {
           collateralAmount: 1000n,
           collateralTicker: "USDCUSD",
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
       DUMMY_ACCOUNT,
     );
@@ -133,7 +129,6 @@ describe(`trade ghost sizing (${e2eNetwork})`, () => {
           amount: 1000n,
           collateralTicker: "USDCUSD",
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
       DUMMY_ACCOUNT,
     );

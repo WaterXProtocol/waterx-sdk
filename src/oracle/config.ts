@@ -18,15 +18,6 @@ import type { FetchPolicy } from "./update-fetch.ts";
 // Per-package entries (canonical shape, snake_case to match the JSON)
 // ============================================================================
 
-export interface PythRulePackage extends BasePackageEntry {
-  config: string;
-  feeds: Record<string, { feed_id: string; price_info_object: string }>;
-}
-
-export interface PythSponsorRulePackage extends BasePackageEntry {
-  pyth_sponsor: string;
-}
-
 /**
  * `pyth_lazer_rule` deployment entry — present in the deployed testnet
  * `waterx-config` JSON. Read by `PythLazerRule` (`rules/pyth-lazer-rule.ts`):
@@ -42,11 +33,11 @@ export interface PythLazerRulePackage extends BasePackageEntry {
   config: string;
   state: string;
   enabled?: boolean;
-  /** Oracle ticker → integer Pyth Lazer feed id (distinct id scheme from `pyth_rule`'s hex `feed_id`). */
+  /** Oracle ticker → integer Pyth Lazer feed id. */
   feeds: Record<string, number>;
 }
 
-/** Per-ticker `constant_rule` feed entry (mirrors the `pyth_rule.feeds` shape). */
+/** Per-ticker `constant_rule` feed entry. */
 export interface ConstantFeedEntry {
   /**
    * Constant 1e9-scaled price (decimal string), mirroring the on-chain
@@ -61,14 +52,13 @@ export interface WaterxConstantRulePackage extends BasePackageEntry {
   /** Shared `constant_rule::Config` holding the per-ticker constant prices. */
   config: string;
   /**
-   * Oracle ticker → constant feed entry, mirroring `pyth_rule.feeds`. A ticker
-   * present here is fed via `constant_rule::feed` instead of (steady state) or
-   * alongside (dual-feed) `pyth_rule::feed` (e.g. `USDCUSD → { price: "1000000000" }`).
+   * Oracle ticker → constant feed entry. A ticker present here is fed via
+   * `constant_rule::feed` (e.g. `USDCUSD → { price: "1000000000" }`).
    */
   feeds?: Record<string, ConstantFeedEntry>;
 }
 
-/** Per-ticker `supra_rule` feed entry (mirrors the `pyth_rule.feeds` shape). */
+/** Per-ticker `supra_rule` feed entry. */
 export interface SupraFeedEntry {
   /** Supra pair id (mirrors the on-chain `Config`; informational off-chain). */
   pair_id: number;
@@ -94,7 +84,7 @@ export interface SupraRulePackage extends BasePackageEntry {
 
 /**
  * Per-ticker `waterx_rule` feed entry. Keyed in `feeds` by the oracle **ticker**
- * (e.g. `"SUIUSD"`, the same key `pyth_rule.feeds` uses), so
+ * (e.g. `"SUIUSD"`), so
  * `Object.keys(feeds)` is the SDK's supported-ticker set. The fields are
  * informational off-chain — the SDK keys routing/support off the entry's
  * presence and pushes the enclave-signed price verbatim, never re-deriving it.
@@ -141,8 +131,6 @@ export interface WaterxOraclePackage extends BasePackageEntry {
  * structurally an oracle config.
  */
 export interface OraclePackages {
-  pyth_rule: PythRulePackage;
-  pyth_sponsor_rule?: PythSponsorRulePackage;
   /** See {@link PythLazerRulePackage} — typed only, not read for routing. */
   pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;
@@ -159,20 +147,18 @@ export interface OraclePackages {
 /**
  * The caller-tunable subset of `fetchWithPolicy`'s policy exposed on the
  * `pythFetch` create option and `client.pyth.fetch` — the retry/timeout budget
- * for the off-chain Hermes (`fetchPriceFeedsUpdateData`) and Lazer
- * (`PythLazerRule`) update fetches. Deliberately narrower than the internal
- * `FetchPolicy` (no `retryDelayMs` / `apiKey` / `fetchImpl`). Both fetches fall
- * back to `fetchWithPolicy`'s defaults (15s timeout, 2 retries) when unset.
+ * for the off-chain Lazer (`PythLazerRule`) update fetch. Deliberately narrower
+ * than the internal `FetchPolicy` (no `retryDelayMs` / `apiKey` / `fetchImpl`).
+ * Falls back to `fetchWithPolicy`'s defaults (15s timeout, 2 retries) when unset.
  */
 export type PythFetchPolicy = { timeoutMs?: number; retries?: number };
 
 /**
- * `client.pyth` — ONLY the caller-supplied Pyth credential + fetch policy,
- * shared by the Pyth-family rules (`pyth_rule`, `pyth_lazer_rule`). It carries
- * NO endpoints and NO on-chain object ids: every oracle source owns its own
- * infra, co-located with its rule (`PYTH_CORE_INFRA` in `oracle/pyth.ts`;
- * the Lazer constants inside `rules/pyth-lazer-rule.ts`). A non-Pyth source
- * never reads this slice.
+ * `client.pyth` — ONLY the caller-supplied Pyth credential + fetch policy for
+ * `pyth_lazer_rule`, the one remaining Pyth-family rule. It carries NO
+ * endpoints and NO on-chain object ids: every oracle source owns its own
+ * infra, co-located with its rule (`LAZER_INFRA` inside
+ * `rules/pyth-lazer-rule.ts`). A non-Pyth source never reads this slice.
  * Nothing here is sourced from the canonical `waterx-config` JSON — a Bearer
  * secret has no place in a public CDN document.
  */
@@ -183,19 +169,15 @@ export interface PythAccessConfig {
    * no keyless default; absent when a lazer-routed fetch runs →
    * `LazerApiKeyMissing` is thrown at fetch time. Supplied via the
    * `pythApiKey` create option (the SDK never reads `process.env` or the
-   * config JSON). As of the Pyth Pro migration (post-2026-08-18, per
-   * https://docs.pyth.network/price-feeds/core/upgrade) this is ALSO required
-   * for `pyth_rule`'s Hermes fetch (`fetchPriceFeedsUpdateData`) — see
-   * `fetch` below.
+   * config JSON).
    */
   api_key?: string;
   /**
-   * Retry/timeout policy for the Hermes (`fetchPriceFeedsUpdateData`) and
-   * Lazer (`PythLazerRule`) off-chain update fetches — see `fetchWithPolicy`
-   * (`./update-fetch.ts`) for the full policy (backoff, which statuses retry,
-   * Bearer attachment). Supplied via the `pythFetch` create option. Optional:
-   * both fetches default to `fetchWithPolicy`'s built-in defaults (15s
-   * timeout, 2 retries) when unset.
+   * Retry/timeout policy for the Lazer (`PythLazerRule`) off-chain update
+   * fetch — see `fetchWithPolicy` (`./update-fetch.ts`) for the full policy
+   * (backoff, which statuses retry, Bearer attachment). Supplied via the
+   * `pythFetch` create option. Optional: defaults to `fetchWithPolicy`'s
+   * built-ins (15s timeout, 2 retries) when unset.
    */
   fetch?: PythFetchPolicy;
 }

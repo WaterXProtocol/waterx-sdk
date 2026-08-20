@@ -2,7 +2,7 @@
  * Wormhole / Wormholescan integration for the cross-chain credit bridge.
  *
  * Single source of truth for VAA discovery + (de)serialization — mirrors
- * `oracle/pyth.ts`'s role for Pyth's Hermes endpoint. Two directions:
+ * each oracle rule's own INFRA table. Two directions:
  *
  *   - Mint (EVM → Sui): fetch the signed VAA for an EVM `Deposit` by
  *     (emitter chain, emitter address, sequence); the raw bytes feed

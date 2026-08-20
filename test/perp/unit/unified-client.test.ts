@@ -234,7 +234,7 @@ describe("umbrella WaterXClient", () => {
     const unified = await WaterXClient.create({
       network: "TESTNET",
       waterxConfigUrl: "https://waterx.test/testnet.json",
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       perp: { cache: true },
       predict: { grpcUrl: "https://rpc.test:443" },
     });
@@ -289,7 +289,7 @@ describe("umbrella WaterXClient", () => {
       .spyOn(PredictClient, "create")
       .mockResolvedValue(predictClient as unknown as PredictClient);
 
-    await WaterXClient.create({ oracleSource: "pyth_rule" });
+    await WaterXClient.create({ oracleSource: "waterx_rule" });
 
     expect(perpSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
     expect(predictSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
@@ -303,7 +303,7 @@ describe("umbrella WaterXClient", () => {
 
     await WaterXClient.create({
       network: "TESTNET",
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       perp: { network: "MAINNET" },
       predict: { network: "TESTNET", grpcUrl: "https://predict.rpc:443" },
     });

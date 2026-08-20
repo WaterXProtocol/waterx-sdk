@@ -118,6 +118,24 @@ describe("loadConfig validation", () => {
     );
   });
 
+  it("accepts a perp config with NO oracle rule package (a retired rule's block dropped)", async () => {
+    // A deployment that retired a rule and dropped its block from the JSON. No
+    // oracle RULE package is required — which rules run is the client's
+    // `oracleSource` against whatever blocks the config carries — so this must
+    // load, not fail the boot.
+    const retired = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
+      packages: Record<string, unknown>;
+    };
+    delete retired.packages.pyth_lazer_rule;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => retired })),
+    );
+    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
+    expect(cfg.packages.pyth_lazer_rule).toBeUndefined();
+    expect(cfg.packages.waterx_rule?.feeds).toBeDefined();
+  });
+
   it("fetches and parses canonical-shaped testnet JSON", async () => {
     const cfg = await loadConfig("TESTNET", {
       waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,

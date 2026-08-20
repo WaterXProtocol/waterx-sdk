@@ -5,22 +5,22 @@
  *   - `host.ts`             — `OracleHost`, the narrow client slice this module reads.
  *   - `update-fetch.ts`     — `fetchWithPolicy`, the shared retry/timeout/Bearer resilience
  *                             wrapper every off-chain oracle (and config) fetch goes through.
- *   - `pyth.ts`             — Pyth as a price source: Hermes REST + on-chain update PTB.
  *   - `price-update-rule.ts`— `PriceUpdateRule`, the fetch/build strategy port a rule
  *                             implements; `rule-registry.ts` + `aggregate.ts` wire
  *                             routing across rules.
- *   - `rules/*`             — one file per oracle rule (pyth / supra / constant / sponsor).
+ *   - `rules/*`             — one file per oracle rule (lazer / waterx / supra / constant).
  *   - `aggregate.ts`        — the orchestrator that feeds rules into a collector + aggregates.
  *
- * `pyth.ts` deliberately imports NO rule package — Pyth-the-source and the
- * rules that consume it are separate concerns.
+ * Pyth Core (`pyth_rule`) used to sit under this module as a price source of
+ * its own; it was removed outright, together with its rule, its sponsor fee
+ * flow, and its Hermes read plane.
  */
 
 export type { OracleHost } from "./host.ts";
 
 // Shared fetch resilience wrapper — `FetchPolicyError` is re-exported (not
 // just the type) so a consumer (e.g. a BE prefetch cache) can `instanceof`
-// it off the failure `fetchPriceFeedsUpdateData` / `PythLazerRule` /
+// it off the failure `PythLazerRule` /
 // `loadConfig` surface, without a deep import of `./update-fetch.ts`.
 // `fetchWithPolicy` + `joinEndpointPath` are exported for consumers that hit
 // Hermes-compatible endpoints THEMSELVES (e.g. the BE's parsed latest-price
@@ -31,33 +31,13 @@ export type { OracleHost } from "./host.ts";
 export { FetchPolicyError, fetchWithPolicy, joinEndpointPath } from "./update-fetch.ts";
 export type { FetchPolicy } from "./update-fetch.ts";
 
-// Pyth source — `OracleFeeSourceUnavailableError` and
-// `HermesEndpointRejectedAllFeedsError` are re-exported (not just the types)
-// for the same `instanceof` reason as `FetchPolicyError` above: a consumer of
-// `buildPythPriceUpdateCalls` / `updatePythPrices` / `refreshOraclePrices` can
-// branch on the fee-source failure directly, and a consumer of
-// `fetchPriceFeedsUpdateData` / `probeMissingFeeds` can tell a misconfigured
-// or unentitled endpoint apart from feeds that endpoint genuinely lacks.
-export {
-  PythCache,
-  fetchPriceFeedsUpdateData,
-  endpointSupportedFeedIds,
-  probeMissingFeeds,
-  buildPythPriceUpdateCalls,
-  // The pyth read-plane endpoint accessors — Core (keyless, per network) and
-  // Pro (the documented fixed base; auth via the caller's Bearer key). There
-  // is no client-level endpoint field: consumers pick via
-  // `resolveHermesReadEndpoint` (pyth_rule listed → Core, else override ??
-  // Pro) — never a hand-rolled branch, never a cross-source fallback.
-  pythCoreHermesEndpoint,
-  pythProHermesEndpoint,
-  PYTH_PRO_HERMES_ENDPOINT,
-  updatePythPrices,
-  HermesEndpointRejectedAllFeedsError,
-  MISSING_FEED_MEMO_TTL_MS,
-  OracleFeeSourceUnavailableError,
-} from "./pyth.ts";
-export type { OracleFeeSource } from "./pyth.ts";
+// NOTE: Pyth Core (`pyth_rule`) is GONE — the source module (`pyth.ts`), its
+// rule (`PythCoreRule`), its collector-feed leg, the sponsor rule, and the
+// whole update-fee apparatus (`OracleFeeSource`,
+// `OracleFeeSourceUnavailableError`, `PythCache`, `buildPythPriceUpdateCalls`,
+// `fetchPriceFeedsUpdateData`, the Hermes endpoint accessors) were removed
+// with it. Nothing here replaces them: the remaining sources charge no update
+// fee and read no Pyth on-chain state.
 
 // Price-update-rule port
 export type {
@@ -75,27 +55,20 @@ export { ORACLE_SOURCES } from "./price-update-rule.ts";
 export { isOracleSource, parseOracleSourceList } from "./source-list.ts";
 
 // Per-source READ-plane resolution — which tickers a source can price
-// off-chain and with which ids (`resolveOracleReadPlan`), and which
-// Hermes-compatible base the hermes plans execute against
-// (`resolveHermesReadEndpoint`: pyth_rule listed → Core, else override ??
-// the documented Pyth Pro base). The one place the "lazer reads through
-// `pyth_rule.feeds` hex ids" invariant lives; consumers resolve through
-// this instead of hardcoding namespace sharing or endpoint branching.
-export { resolveOracleReadPlan, resolveHermesReadEndpoint } from "./read-plane.ts";
+// off-chain (`resolveOracleReadPlan`). Only the quote-center plane is left:
+// `pyth_lazer_rule` is write-only now that Core's hex feed ids are gone from
+// the config, and reports every ticker it writes as `unreadable`.
+export { resolveOracleReadPlan } from "./read-plane.ts";
 export type { OracleReadPlan } from "./read-plane.ts";
-
-// Pyth Core rule (PriceUpdateRule wrapper over the Pyth source above)
-export { PythCoreRule } from "./rules/pyth-core-rule.ts";
-export type { PythCoreUpdatePayload } from "./rules/pyth-core-rule.ts";
 
 // Pyth Lazer rule (signed-update generation; `feedLazerRule` stays internal to `aggregate.ts`)
 // `LazerApiKeyMissingError` is re-exported (not just the type) for the same
-// `instanceof` reason as `OracleFeeSourceUnavailableError` above.
+// `instanceof` reason as `FetchPolicyError` above.
 export { PythLazerRule, LazerApiKeyMissingError } from "./rules/pyth-lazer-rule.ts";
 export type { PythLazerUpdatePayload } from "./rules/pyth-lazer-rule.ts";
 
 // `WATERX_INFRA` / `waterxQuoteCenterEndpoint` are the source's own infra table +
-// read-plane accessor (mirrors `pythCoreHermesEndpoint`).
+// read-plane accessor.
 // WaterX quote-center rule (first-party ed25519 signed prices; the `feedWaterxRule*`
 // legs stay internal to `aggregate.ts`). Both wire shapes are exported because a
 // BE prefetch cache holds whichever one its quote-center serves: per-symbol
@@ -126,17 +99,17 @@ export type {
 // consumers (e.g. a BE prefetch cache that keys per source and needs each
 // source's `supportedTickers`/`fetchUpdateData`) resolve through it instead of
 // hand-mirroring the map and drifting. `OracleSourceNotImplementedError` is
-// its `instanceof`-able failure (same reason as `OracleFeeSourceUnavailableError`
+// its `instanceof`-able failure (same reason as `FetchPolicyError`
 // above).
 export { OracleSourceNotImplementedError, resolveOracleRule } from "./rule-registry.ts";
 
 // Aggregation orchestrator
-export {
-  aggregateTicker,
-  aggregateTickerWithPyth,
-  aggregateTickerWithConstant,
-  refreshOraclePrices,
-} from "./aggregate.ts";
+export { aggregateTicker, aggregateTickerWithConstant, refreshOraclePrices } from "./aggregate.ts";
+export type { OracleRefreshSummary } from "./aggregate.ts";
 
-// Sponsor rule (fund open / reimburse + witness attach)
-export { openPythSponsorFund, reimbursePythSponsor } from "./rules/sponsor.ts";
+// Config-only feed introspection — which rules a ticker is WIRED for, before
+// any fed-set/`oracleSource` consideration. Consumers that need to know
+// whether a deployment can price a ticker at all (boot checks, market
+// listings, collateral filters) read this instead of hardcoding `pyth_rule`.
+export { configuredOracleRules, hasConfiguredOracleFeed } from "./feeds.ts";
+export type { ConfiguredOracleRule } from "./feeds.ts";

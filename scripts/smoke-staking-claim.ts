@@ -231,7 +231,7 @@ async function main(): Promise<void> {
   console.log(`AccountId: ${accountId}`);
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
+    oracleSource: "waterx_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

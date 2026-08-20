@@ -1,5 +1,5 @@
+import { hasConfiguredOracleFeed } from "../oracle/feeds.ts";
 import type { WaterXConfig } from "../perp/config.ts";
-import { ownEntry } from "./record.ts";
 
 /** Returns all registered market tickers (e.g. "BTCUSD") from waterx-config. */
 export function getMarketTickers(config: WaterXConfig): string[] {
@@ -7,15 +7,19 @@ export function getMarketTickers(config: WaterXConfig): string[] {
 }
 
 /**
- * Returns WLP pool-token tickers that also have a registered pyth_rule feed —
- * the canonical testnet config keys `pool_tokens` by coin symbol (e.g. `"USD"`)
- * while `pyth_rule.feeds` is keyed by oracle ticker (e.g. `"USDCUSD"`), so a
- * naive `Object.keys(pool_tokens)` blows up at `refreshOraclePrices` for any
- * key without a feed. Filter so the auto-refresh path stays tolerant.
+ * Returns WLP pool-token tickers the loaded config wires an oracle rule for —
+ * any rule (`pyth_rule` / `pyth_lazer_rule` / `waterx_rule` / `constant_rule`),
+ * not Pyth specifically, since a deployment retires rules over time and the
+ * pool's collateral must keep refreshing across that.
+ *
+ * The filter exists because the canonical config keys `pool_tokens` by coin
+ * symbol (e.g. `"USD"`) as well as by oracle ticker (e.g. `"USDCUSD"`), so a
+ * naive `Object.keys(pool_tokens)` hands `refreshOraclePrices` keys no rule
+ * prices. Those are dropped here rather than skipped later, so the refresh's
+ * `skipped` list stays meaningful.
  */
 export function getCollateralAssets(config: WaterXConfig): string[] {
-  const feeds = config.packages.pyth_rule?.feeds ?? {};
-  return Object.keys(config.packages.wlp.pool_tokens).filter(
-    (t) => ownEntry(feeds, t) !== undefined,
+  return Object.keys(config.packages.wlp.pool_tokens).filter((ticker) =>
+    hasConfiguredOracleFeed(config, ticker),
   );
 }

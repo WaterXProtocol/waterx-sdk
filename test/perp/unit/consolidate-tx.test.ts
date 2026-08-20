@@ -72,7 +72,7 @@ describe("consolidate tx append helpers", () => {
       const config = structuredClone(MOCK_TESTNET_CONFIG);
       delete config.packages.native_custody;
       const bare = new PerpClient("TESTNET", config, {
-        oracleSource: "pyth_rule",
+        oracleSource: "waterx_rule",
         grpcUrl: "https://fullnode.test.invalid:443",
       });
       const tx = new Transaction();
@@ -128,7 +128,7 @@ describe("consolidate tx append helpers", () => {
       const config = structuredClone(MOCK_TESTNET_CONFIG);
       delete config.packages.waterx_credit;
       const bare = new PerpClient("TESTNET", config, {
-        oracleSource: "pyth_rule",
+        oracleSource: "waterx_rule",
         grpcUrl: "https://fullnode.test.invalid:443",
       });
       const tx = new Transaction();

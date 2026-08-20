@@ -229,7 +229,6 @@ async function seedWlp(
           skipOraclePriceRefresh: false,
           // mint_wlp produces no TradingRequest to reimburse a sponsor fund
           // against — e2e preflight pays its own gas (real signed execution).
-          allowGasFee: true,
         }),
       trader,
       { gasBudget: integrationGasBudget("wlp") },

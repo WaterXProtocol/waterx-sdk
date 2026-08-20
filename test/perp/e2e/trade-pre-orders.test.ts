@@ -58,7 +58,6 @@ describe(`trade pre-orders (${e2eNetwork})`, () => {
             },
           ],
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
       );
     } catch (e) {

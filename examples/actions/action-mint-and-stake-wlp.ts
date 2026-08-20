@@ -33,7 +33,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { aggregateTickerWithPyth, buildMintAndStakeWlpTx } from "../../src/perp/index.ts";
+import { aggregateTicker, buildMintAndStakeWlpTx } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();
@@ -44,13 +44,9 @@ run(async () => {
 
   const tx = new Transaction();
   if (skipPriceUpdate) {
-    // Re-aggregate the on-chain price (no Hermes / no Pyth push) so mint_wlp's
+    // Re-aggregate the price already on chain (no off-chain push) so mint_wlp's
     // oracle::get_price sees a same-PTB aggregate.
-    const feed = client.getPythFeed(depositTicker);
-    aggregateTickerWithPyth(tx, client, {
-      ticker: depositTicker,
-      priceInfoObjectId: feed.price_info_object,
-    });
+    aggregateTicker(tx, client, { ticker: depositTicker });
   }
 
   await buildMintAndStakeWlpTx(client, {
@@ -59,7 +55,6 @@ run(async () => {
     // mint_wlp produces no TradingRequest to reimburse a sponsor fund
     // against — standalone example script pays its own gas. No-op when
     // skipPriceUpdate is true (no refresh to pay a fee for).
-    allowGasFee: true,
     accountId: requireEnv("WATERX_ACCOUNT_ID"),
     depositTokenType: usdcType,
     depositTicker,

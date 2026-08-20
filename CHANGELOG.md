@@ -16,6 +16,97 @@ from the version number alone.
 
 ## [Unreleased]
 
+_Slated as **4.4.0**. Ships **BREAKING** removals: **Pyth Core (`pyth_rule`) is gone from
+the SDK**, and with it the entire on-chain update-fee apparatus. Read the Removed section
+before upgrading. `pyth_lazer_rule` and `waterx_rule` are unaffected as WRITE sources._
+
+#### First-party consumer migration
+
+Both consumers pin exact, so nothing breaks until they bump. What each has to change:
+
+- **`bucket-backend-mono`** (`apps/waterx`): `config.packages.pyth_rule.feeds` in
+  `waterx-registry.service.ts` + `scripts/backfill-candles.ts` (use
+  `configuredOracleRules` / a rule block that still exists); `perp.getPythFeed(...)` in
+  `wlp/wlp-tx.service.ts`; `new PythCache()` + `refreshOraclePrices(..., { cache })` in
+  `campaign/position/campaign-position.service.ts`; and any `ORACLE_SOURCE` still naming
+  `pyth_rule`. A `bootWaterXSdk` feeds assert on `packages.pyth_rule` should be deleted —
+  the SDK no longer fails on a missing rule block.
+- **`waterx-fe`** (`src/libs/server`): `resolveHermesReadEndpoint` +
+  `pythCoreHermesEndpoint` (`oracleSource.ts`, `pyth/hermesFetch.ts`, `pyth/hermes.ts`)
+  and the `plane === 'hermes'` arm in `oraclePrices.ts`. Since `pyth_lazer_rule` is now
+  write-only, **Lazer-priced tickers must be read from the quote-center** — route them
+  through the `waterx_rule` plan instead of a Hermes fetch.
+
+### Removed
+
+- **Pyth Core (`pyth_rule`) — the source, the rule, and everything that existed only to
+  serve it.** Deleted: `src/oracle/pyth.ts` (Hermes REST + the on-chain update PTB),
+  `PythCoreRule`, `feedPythRule`, `src/oracle/rules/sponsor.ts`, and the generated
+  `waterx_pyth_rule` / `pyth_sponsor_rule` bindings (also dropped from
+  `sui-codegen.config.mjs` + `scripts/codegen-summaries.ts`). `ORACLE_SOURCES` is now
+  exactly `pyth_lazer_rule | waterx_rule`, so a stale `ORACLE_SOURCE=pyth_rule` is
+  rejected by `parseOracleSourceList` / the `PerpClient` ctor rather than silently
+  routed. A config that still ships a `packages.pyth_rule` block is ignored.
+  - **Deployment ordering:** the SDK can no longer emit a `pyth_rule::feed` leg, so an
+    aggregator that still weights `PythRule` on chain will abort `EMissingPriceSource`.
+    Drop those weights **before** shipping this version to that network.
+- **The update-fee apparatus**, which only Pyth Core ever needed: `OracleFeeSource`,
+  `OracleFeeSourceUnavailableError`, `PriceUpdateRule.requiresFeeSource`, `PythCache`,
+  and the `allowGasFee` / `useSponsor` / `pythCache` build options on every `build*Tx`.
+  `BuildUpdateOpts` is now empty (kept as the extension point).
+  `refreshOraclePrices` no longer takes `cache` / `feeSource`. Every remaining source
+  verifies a signature and pays nothing, so **a WLP mint no longer needs
+  `allowGasFee: true`** and works inside an Enoki-sponsored transaction.
+- **The Hermes read plane.** `PythRulePackage` (and `PythSponsorRulePackage`) left
+  `OraclePackages`; `resolveHermesReadEndpoint`, `pythCoreHermesEndpoint`,
+  `pythProHermesEndpoint`, `PYTH_PRO_HERMES_ENDPOINT`, `PYTH_CORE_INFRA`,
+  `HermesEndpointRejectedAllFeedsError`, `fetchPriceFeedsUpdateData`,
+  `endpointSupportedFeedIds`, `probeMissingFeeds`, `buildPythPriceUpdateCalls`, and
+  `updatePythPrices` are all gone. `OracleReadPlan` loses its `"hermes"` arm.
+  - **`pyth_lazer_rule` is now WRITE-ONLY.** It pushes with integer feed ids but every
+    off-chain price READ was keyed by the hex ids `pyth_rule.feeds` carried, so
+    `resolveOracleReadPlan(host, "pyth_lazer_rule", …)` returns `{ plane: "none" }` and
+    reports every lazer-written ticker as `unreadable`. **A price facade reading Lazer
+    prices through the SDK must move to the quote-center** (`waterx_rule`; on mainnet
+    its feed set is a superset of Lazer's) or to its own source.
+- `getPythFeed` (on `PerpClient`, `PerpConfigView`, and the `OracleHost` interface),
+  `aggregateTickerWithPyth`, and `OracleHost.grpcClient` (the oracle module no longer
+  makes any on-chain read). `aggregateTicker` loses its `priceInfoObjectId` arg.
+- `scripts/pyth-tolerance-show.ts` and `scripts/set-pyth-tolerance.ts`.
+
+### Changed
+
+- **Every oracle-rule package block is optional, and a requested ticker no listed
+  source can price is SKIPPED instead of failing the tx-build.** Testnet retired
+  `pyth_rule` on chain — first emptying `packages.pyth_rule.feeds`, then dropping the
+  block entirely — while consumers still ran `ORACLE_SOURCE=waterx_rule,pyth_rule`. The
+  SDK broke twice over that: `loadConfig` REQUIRED `packages.pyth_rule.published_at` for
+  a perp config, and `refreshOraclePrices` threw
+  `oracleSource [...] has no feed configured for ticker(s): …`. Both were asserting a
+  deployment shape the SDK does not own. Now `validateConfig` requires NO oracle rule
+  package (only `waterx_oracle`, the shared object every rule feeds), and the fed set
+  names what a client is WILLING to push while the config decides what it CAN — a listed
+  source with no block, or with empty feeds, contributes nothing at init AND at
+  tx-build.
+- `refreshOraclePrices` returns `OracleRefreshSummary` (`{ refreshed, skipped }`)
+  instead of `void`, so a caller can log/alert on tickers that went unpriced.
+  Purely additive for callers that ignore the result. Servability is deliberately
+  narrow: a ticker needs no update leg only when `constant_rule` is the ONLY rule the
+  config wires for it — a dual-feed ticker whose price source did not run is skipped
+  rather than aggregated off the constant leg alone, which would starve the other
+  weighted rule (`EMissingPriceSource`).
+- `getCollateralAssets` filters WLP pool tokens by **any** configured rule
+  (`pyth_lazer_rule` / `waterx_rule` / `constant_rule`) instead of `pyth_rule.feeds`
+  alone, so retiring a rule does not strand the pool's collateral refresh.
+
+### Added
+
+- `oracle/feeds.ts` — `configuredOracleRules(config, ticker)` /
+  `hasConfiguredOracleFeed(config, ticker)`, the config-only "which rules is this ticker
+  wired for" read (exported from `@waterx/sdk`). Consumers doing boot checks or
+  market/collateral filters use this instead of reaching into a specific rule block.
+- `OracleRefreshSummary` is exported from `@waterx/sdk` and `@waterx/sdk/perp`.
+
 ## [4.3.3] - 2026-08-18
 
 _Released as a PATCH carrying one **BREAKING** type change: `WaterxUpdatePayload` is now
@@ -177,11 +268,11 @@ consumers pin exact and adapt in the same change set._
     v2 package `0xefbfd064…` and requests `fixed_rate@1000ms`. The rule was
     republished v2-bound (waterx-contract) after a 2026-08-05 mainnet probe
     found the v1 path dead twice over: the ORIGINAL package `0x7b502c…` aborts
-    `EDifferentVersion` in `state::current_cap` for *any* payload — the shared
+    `EDifferentVersion` in `state::current_cap` for _any_ payload — the shared
     `State` has been migrated past that code — and the v1 entry aborts
     `EInvalidChannel` in `channel::from_v2` on `fixed_rate@1000ms`, which is
     the only channel WaterX's Pyth Pro grant still permits (200ms →
-    *"violates rate limit. Minimum allowed channel is 1000ms"*).
+    _"violates rate limit. Minimum allowed channel is 1000ms"_).
   - **testnet** is unchanged (`parse_and_verify_le_ecdsa_update`,
     `fixed_rate@200ms`): its Lazer package is still the v1-only publish with no
     `update_v2` module, and its rule is v1-bound, so the v1 entry is the only

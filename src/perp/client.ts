@@ -37,9 +37,6 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * self-contained (own infra, own endpoints, own config) with NO cross-source
    * fallback:
    *
-   * - `'pyth_rule'` — Pyth Core `pyth_rule` updates (Hermes VAA + per-feed
-   *   update fees); Core state + Hermes endpoint live in the source's own
-   *   `PYTH_CORE_INFRA` table.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
    *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
    *   and a `pythApiKey` (Lazer is auth-first); Lazer infra lives in the
@@ -56,9 +53,12 @@ export interface CreateClientOptions extends LoadConfigOptions {
    *   since this is the one source fetched from the page.
    *
    * The name is source-neutral on purpose — a source need not be Pyth (as
-   * `'waterx_rule'` shows). Selecting a source whose feed for a requested
-   * ticker is absent is NOT an error at client creation: it fails at tx-build
-   * time for exactly those tickers (see `refreshOraclePrices`).
+   * `'waterx_rule'` shows). The fed set names what this client is WILLING to
+   * push; the loaded config decides what it CAN. Listing a source the
+   * deployment has retired — no package block, or an emptied `feeds` map — is
+   * NOT an error at client creation OR at tx-build: it contributes nothing. A requested ticker that no listed
+   * source serves is likewise skipped rather than fatal, and named in
+   * `refreshOraclePrices`'s returned `skipped` list.
    *
    * Accepts a SINGLE source or a LIST. A list means every listed source's
    * data is fetched and fed in one build — required whenever the on-chain
@@ -72,7 +72,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   /**
    * Pyth Lazer access token (`Authorization: Bearer …`). Required under
    * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
-   * `'pyth_rule'` (keyless Core Hermes). This is a SECRET and never belongs in
+   * `'waterx_rule'` (the quote-center read is public). This is a SECRET and never belongs in
    * the canonical `waterx-config` JSON — pass it at client init from your own
    * env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
    */
@@ -91,7 +91,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * allowlist. A front end whose origin is not allowed — or one that must route
    * egress through its own backend — points this at a same-origin proxy that
    * forwards `GET /v1/quotes/leaves` (and `GET /v1/quotes/update`, the fallback
-   * route). Unused by the Pyth sources.
+   * route). Unused by `pyth_lazer_rule`.
    *
    * An absolute URL. Any base PATH is preserved (`joinEndpointPath`), so
    * `https://app.example/api/quote-center` fetches
@@ -109,7 +109,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
 }
 
 export class PerpClient extends BaseLineClient<WaterXConfig> {
-  /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
+  /** Caller-supplied Pyth Lazer credential + fetch policy — NO infra; each source owns its own tables. */
   pyth: PythAccessConfig;
   /**
    * Caller-supplied quote-center overrides for `oracleSource: 'waterx_rule'`
@@ -201,11 +201,6 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   /** @see PerpConfigView.getAggregator */
   getAggregator(ticker: string): string {
     return this.view.getAggregator(ticker);
-  }
-
-  /** @see PerpConfigView.getPythFeed */
-  getPythFeed(ticker: string) {
-    return this.view.getPythFeed(ticker);
   }
 
   /** @see PerpConfigView.isConstantTicker */

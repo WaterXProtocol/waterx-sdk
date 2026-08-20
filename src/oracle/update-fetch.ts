@@ -4,7 +4,7 @@
  * tx-build depends on one of these REST calls landing (Hermes VAA for
  * `pyth_rule`, Lazer signed updates for `pyth_lazer_rule`); a bare `fetch`
  * with a single attempt and no retry means one Hermes 429/5xx or timeout
- * fails every trade. `fetchPriceFeedsUpdateData` (`./pyth.ts`),
+ * fails every trade. The Lazer signed-update fetch,
  * `PythLazerRule.fetchUpdateData`'s Lazer POST (`./rules/pyth-lazer-rule.ts`),
  * and `loadConfig` (`../perp/config.ts`) all delegate here instead of calling
  * `fetch` directly — this is the ONE place a retry/timeout/auth policy is
@@ -124,7 +124,7 @@ export function rethrowExhaustedFetch(
  * leading-slash path is *absolute* and silently discards the endpoint's path
  * — harmless for a bare-origin endpoint (`https://hermes.pyth.network`) but
  * it dropped the `/hermes` prefix of the Pyth Pro compat endpoint and 404'd
- * every feed (see `fetchPriceFeedsUpdateData`). Every oracle fetch that
+ * every feed. Every oracle fetch that
  * targets `<endpoint><fixed path>` must build its URL here.
  */
 /** One canonical trailing-slash trim — `joinEndpointPath` (URL building) and

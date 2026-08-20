@@ -82,7 +82,7 @@ export const MERKLE_ROOT_INTENT = 2;
 
 /**
  * WaterX quote-center external infra — owned by THIS source, by network.
- * Mirrors `PYTH_CORE_INFRA` (oracle/pyth.ts) and `LAZER_INFRA`
+ * Mirrors `LAZER_INFRA`
  * (rules/pyth-lazer-rule.ts): per-network constants for infrastructure the
  * source's operator runs, co-located with the only rule that reads them — no
  * other oracle source ever touches a quote-center endpoint. Public read (no
@@ -726,10 +726,6 @@ export function feedWaterxRule(
 
 export const WaterxRule: PriceUpdateRule = {
   kind: "waterx_rule",
-
-  // Verification is an in-Move ed25519 check with no Coin argument — no
-  // update fee — see `PriceUpdateRule.requiresFeeSource`.
-  requiresFeeSource: false,
 
   /** Tickers with a `waterx_rule.feeds` entry (keyed by oracle ticker). */
   supportedTickers(host: OracleHost): string[] {

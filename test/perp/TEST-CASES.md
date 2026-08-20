@@ -1,7 +1,9 @@
 # WaterX SDK Test Case Inventory
 
-> Auto-generated: pnpm exec tsx scripts/generate-test-cases-doc.ts
-> Generated: 2026-05-23
+> Auto-generated: pnpm exec tsx scripts/generate-test-cases-doc.ts (generator no longer in the repo)
+> Generated: 2026-05-23 — **STALE**. Notably, 4.4.0 removed Pyth Core: the
+> `pyth`, `pyth-branches`, and `pyth-core-rule` unit files listed below are
+> gone, along with every Hermes / update-fee / sponsor case.
 > Stats: **Unit 254** · **E2E (simulate) 77** · **Integration 12** · Total **343**
 
 ## ID Scheme

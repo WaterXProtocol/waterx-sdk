@@ -89,11 +89,10 @@ export interface WithdrawalQueuePackage {
 }
 
 /**
- * Wormhole infra for the cross-chain credit bridge. `state_id` is the same
- * shared Sui Wormhole `State` object Pyth uses (kept in sync with
- * `PYTH_CORE_INFRA[*].wormhole_state_id` in `oracle/pyth.ts`). Override
- * per-deployment via `WaterXConfig.wormhole` if a deployment ever points
- * elsewhere.
+ * Wormhole infra for the cross-chain credit bridge. `state_id` is the standard
+ * shared Sui Wormhole `State` object for the network (values in
+ * `WORMHOLE_DEFAULTS`, `perp/config.ts`). Override per-deployment via
+ * `WaterXConfig.wormhole` if a deployment ever points elsewhere.
  */
 export interface WormholeInfraConfig {
   /** Shared Sui Wormhole `State` object. */

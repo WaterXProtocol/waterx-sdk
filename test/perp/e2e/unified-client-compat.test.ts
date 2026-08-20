@@ -36,7 +36,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
   beforeAll(async () => {
     const grpcUrl = resolveE2eGrpcUrlOverride();
     unified = await Client.create({
-      oracleSource: "pyth_rule",
+      oracleSource: "waterx_rule",
       network: e2eNetwork === "mainnet" ? "MAINNET" : "TESTNET",
       cache: true,
       waterxConfigUrl: resolveE2eWaterxConfigUrl(),
@@ -120,7 +120,6 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
         collateralAmount: 1_000_000n,
       },
       skipOraclePriceRefresh: true,
-      useSponsor: false,
     };
     let legacyTx;
     let facadeTx;
@@ -154,7 +153,6 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
         collateralAmount: 1_000_000n,
       },
       skipOraclePriceRefresh: false,
-      useSponsor: true,
     };
     let facadeTx;
     try {

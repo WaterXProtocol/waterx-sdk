@@ -28,7 +28,6 @@ run(async () => {
     minLpAmount: BigInt(process.env.WATERX_MIN_LP ?? "0"),
     // mint_wlp produces no TradingRequest to reimburse a sponsor fund
     // against — standalone example script pays its own gas.
-    allowGasFee: true,
   });
 
   await simThenMaybeExecute(client, tx, "mintWlp", keypair);

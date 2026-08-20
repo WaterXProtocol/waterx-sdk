@@ -32,7 +32,6 @@ describe(`trade open (${e2eNetwork})`, () => {
           collateralAmount: 1_000_000n,
         },
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
       if (skipHermesIfFeedUnavailable(ctx, e)) return;

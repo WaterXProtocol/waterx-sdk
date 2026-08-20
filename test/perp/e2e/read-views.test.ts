@@ -34,10 +34,9 @@ describe(`read chain views (${e2eNetwork})`, () => {
     expect(Number(tp.token_decimal)).toBeGreaterThanOrEqual(0);
   }, 60_000);
 
-  it("client.getAggregator / getPythFeed / wlpType / getPoolTokenType", () => {
+  it("client.getAggregator / wlpType / getPoolTokenType", () => {
     const agg = client.config.packages.waterx_oracle?.aggregators?.BTCUSD;
     if (agg) expect(client.getAggregator("BTCUSD")).toBe(agg);
-    expect(client.getPythFeed("BTCUSD").feed_id).toBeTruthy();
     expect(client.wlpType()).toContain("::wlp::WLP");
     expect(client.getPoolTokenType("USDCUSD")).toContain("::");
   });

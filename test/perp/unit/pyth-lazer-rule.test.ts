@@ -70,14 +70,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { aggregateTicker, refreshOraclePrices } from "../../../src/oracle/index.ts";
 import type { RuleUpdateHandle } from "../../../src/oracle/price-update-rule.ts";
-import { PythCoreRule } from "../../../src/oracle/rules/pyth-core-rule.ts";
 import {
   LAZER_INFRA,
   LazerApiKeyMissingError,
   PythLazerRule,
 } from "../../../src/oracle/rules/pyth-lazer-rule.ts";
 import { moveCalls, moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
-import { attachPythGrpcMocks, mockAccumulatorUpdate } from "../helpers/fixtures/pyth-mock-grpc.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 /** Arbitrary signed-update bytes standing in for a real `leEcdsa` message. */
@@ -381,29 +379,15 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     const client = createUnitTestClient();
     const tx = new Transaction();
     // Correct lazer SHAPE, wrong KIND — the kind check must reject before the
-    // shape check can accept, or a Core-tagged payload would verify as Lazer.
-    const coreTaggedLazerShape = {
-      kind: "pyth_rule" as const,
+    // shape check can accept, or another rule's payload would verify as Lazer.
+    const foreignTaggedLazerShape = {
+      kind: "waterx_rule" as const,
       payload: { update: SIGNED_UPDATE, feedIds: [1] },
     };
 
     // Sync throw: the lazer rule's buildUpdateCalls has nothing to await.
-    expect(() => PythLazerRule.buildUpdateCalls(tx, client, coreTaggedLazerShape)).toThrow(
+    expect(() => PythLazerRule.buildUpdateCalls(tx, client, foreignTaggedLazerShape)).toThrow(
       /expected 'pyth_lazer_rule'/,
-    );
-    expect(tx.getData().commands?.length ?? 0).toBe(0);
-  });
-
-  it("PythCoreRule rejects a lazer-tagged payload the same way (wrong-kind, other direction)", async () => {
-    const client = createUnitTestClient();
-    const tx = new Transaction();
-    const lazerTaggedCoreShape = {
-      kind: "pyth_lazer_rule" as const,
-      payload: { updates: [mockAccumulatorUpdate()], feedIds: ["0xfeed"] },
-    };
-
-    await expect(PythCoreRule.buildUpdateCalls(tx, client, lazerTaggedCoreShape)).rejects.toThrow(
-      /expected 'pyth_rule'/,
     );
     expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
@@ -504,7 +488,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
     expect(() =>
       PythLazerRule.narrowUpdateData(
         client,
-        { kind: "pyth_rule", payload: { update: SIGNED_UPDATE, feedIds: [1] } },
+        { kind: "waterx_rule", payload: { update: SIGNED_UPDATE, feedIds: [1] } },
         ["BTCUSD"],
       ),
     ).toThrow(/expected 'pyth_lazer_rule'/);
@@ -526,19 +510,17 @@ describe("PythLazerRule.narrowUpdateData", () => {
 });
 
 describe("aggregateTicker — lazer collector-feed leg", () => {
-  it("feeds BOTH pyth_rule and pyth_lazer_rule for a dual-registered lazer-routed ticker (additive per remove_outliers)", async () => {
+  it("appends pyth_lazer_rule::feed against the verify command's Update handle", async () => {
     const client = createUnitTestClient();
     const tx = new Transaction();
     const handle = await buildHandle(tx, client, [1]);
 
     aggregateTicker(tx, client, {
       ticker: "BTCUSD",
-      priceInfoObjectId: client.getPythFeed("BTCUSD").price_info_object,
       lazerUpdate: handle.update,
     });
 
     const targets = moveTargets(tx);
-    expect(targets).toContain("pyth_rule::feed");
     expect(targets).toContain("pyth_lazer_rule::feed");
     expect(targets).toContain("oracle::aggregate");
     // The lazer feed call matches the contract: waterx rule package,
@@ -558,9 +540,8 @@ describe("aggregateTicker — lazer collector-feed leg", () => {
     expect(feedCall?.arguments[3].NestedResult).toEqual([verifyCommandIndex(tx), 0]);
   });
 
-  it("feeds lazer alone (no pyth_rule::feed) for a ticker without a pyth feed entry", async () => {
+  it("feeds lazer alone for a ticker no other rule is configured for", async () => {
     const client = createUnitTestClient();
-    delete client.config.packages.pyth_rule!.feeds.BTCUSD;
     const tx = new Transaction();
     const handle = await buildHandle(tx, client, [1]);
 
@@ -568,7 +549,6 @@ describe("aggregateTicker — lazer collector-feed leg", () => {
 
     const targets = moveTargets(tx);
     expect(targets).toContain("pyth_lazer_rule::feed");
-    expect(targets).not.toContain("pyth_rule::feed");
     expect(targets).toContain("oracle::aggregate");
   });
 });
@@ -581,7 +561,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     vi.restoreAllMocks();
   });
 
-  it("verifies once and feeds every lazer-routed ticker from the same Update, keeping each ticker's pyth_rule::feed leg", async () => {
+  it("verifies once and feeds every lazer-routed ticker from the same Update", async () => {
     const client = createLazerTestClient("pyth_lazer_rule");
     mockLazerFetch(); // every requested ticker is lazer-supported → no Core fallback, no Hermes call
 
@@ -594,10 +574,8 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     ).toHaveLength(1);
     expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(2);
     expect(targets.filter((t) => t === "pyth_lazer_rule::feed")).toHaveLength(2);
-    // Additive: the dual-registered tickers keep their (abstain-on-stale) Pyth leg …
-    expect(targets.filter((t) => t === "pyth_rule::feed")).toHaveLength(2);
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
-    // … but the Pyth Core UPDATE block never runs for a fully lazer-served set.
+    // No Pyth Core legs of any kind exist any more.
     expect(targets).not.toContain("pyth::update_single_price_feed");
     // One verification serves every feed: BOTH tickers' feed calls take the
     // SAME Update — the single verify command's first return.
@@ -610,13 +588,11 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     ]);
   });
 
-  it("fails the build (no Pyth Core fallback) when a ticker lacks a lazer feed, appending zero PTB commands", async () => {
+  it("drops (no Pyth Core fallback) a ticker that lacks a lazer feed, still building the rest", async () => {
     const client = createLazerTestClient("pyth_lazer_rule");
-    attachPythGrpcMocks(client);
     // ETHUSD drops out of lazer support. Under the old design it fell back to a
-    // Pyth Core block in the same PTB; now there is no fallback — the build
-    // throws for ETHUSD and mutates nothing (the missing-feed check is hoisted
-    // above every fetch and PTB command).
+    // Pyth Core block in the same PTB; there is no fallback now, and no throw
+    // either — ETHUSD contributes nothing and BTCUSD builds normally.
     delete client.config.packages.pyth_lazer_rule?.feeds.ETHUSD;
     const fetchSpy = vi.fn(async () => ({
       ok: true,
@@ -625,17 +601,17 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const tx = new Transaction();
-    await expect(
-      refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], { feeSource: { kind: "gas" } }),
-    ).rejects.toThrow(/oracleSource \[pyth_lazer_rule\] has no feed configured.*ETHUSD/);
+    const summary = await refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], {});
 
-    expect(tx.getData().commands?.length ?? 0).toBe(0);
-    expect(fetchSpy).not.toHaveBeenCalled(); // thrown before any off-chain fetch
+    expect(summary).toEqual({ refreshed: ["BTCUSD"], skipped: ["ETHUSD"] });
+    const targets = moveTargets(tx);
+    // One collector (BTCUSD's) and no Pyth Core update block stood in for ETHUSD.
+    expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(1);
+    expect(targets).not.toContain("pyth::update_single_price_feed");
   });
 
   it("a lazer-only refresh needs no fee source (Lazer verification is fee-free) and appends no Pyth Core update block", async () => {
     const client = createLazerTestClient("pyth_lazer_rule");
-    attachPythGrpcMocks(client);
     // Both tickers have lazer feeds → the whole request is served by the one
     // selected source. Lazer charges no per-feed fee, so no feeSource is
     // required and no `pyth::update_single_price_feed` block appears.

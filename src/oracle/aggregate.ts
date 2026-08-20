@@ -2,14 +2,14 @@
  * Oracle aggregation — the orchestrator that composes rules into the shared
  * `Oracle`. This is the ONE file that knows about every rule: it builds a
  * `PriceCollector`, feeds whichever rules a ticker is configured for
- * (Pyth / Lazer / Supra / Constant), then `aggregate`s.
+ * (Lazer / WaterX / Supra / Constant), then `aggregate`s.
  *
  * Per ticker:
  *   collector = oracle::new_collector(ticker)
- *   [pyth_rule::feed]       when the ticker has a pyth_rule.feeds entry
- *   [pyth_lazer_rule::feed] when the update leg produced a verified lazer Update
- *   [supra_rule::feed]      when supra is enabled + wired
- *   [constant_rule::feed]   when the ticker is a constant ticker
+ *   [pyth_lazer_rule::feed]              when the update leg produced a verified lazer Update
+ *   [waterx_rule::collect_single_…]      when the waterx group carried this symbol's signed data
+ *   [supra_rule::feed]                   when supra is enabled + wired
+ *   [constant_rule::feed]                when the ticker is a constant ticker
  *   oracle::aggregate(oracle, collector)
  *
  * The fed rule set must cover the on-chain weighted set for the ticker —
@@ -26,7 +26,7 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
-import { ownEntry } from "../utils/record.ts";
+import { configuredOracleRules } from "./feeds.ts";
 import type { OracleHost } from "./host.ts";
 import type {
   OracleSource,
@@ -35,11 +35,9 @@ import type {
   RuleUpdateHandle,
   UpdateDataProvider,
 } from "./price-update-rule.ts";
-import { OracleFeeSourceUnavailableError, type OracleFeeSource, type PythCache } from "./pyth.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
-import { feedPythRule } from "./rules/pyth-rule.ts";
 import { maybeFeedSupra } from "./rules/supra-rule.ts";
 import {
   feedWaterxRule,
@@ -61,11 +59,10 @@ import {
  * provider commonly caches one whole-universe payload per source — see
  * {@link UpdateDataProvider}), so it is narrowed to exactly `group.tickers`
  * via `rule.narrowUpdateData` before use. This is load-bearing, not
- * defensive: without it a Pyth Core hit would emit an
- * `update_single_price_feed` — and charge its fee — for every cached feed
- * instead of just this group's, and a payload that cannot cover the group
- * (`narrowUpdateData` → `null`) would never reach the live-fetch fallback.
- * Each rule owns its own subsetting (Core subsets per-feed entries; Lazer's
+ * defensive: a payload that cannot cover the group (`narrowUpdateData` →
+ * `null`) would otherwise never reach the live-fetch fallback, and a wider
+ * hit would push data for symbols this build never asked about. Each rule
+ * owns its own subsetting (waterx subsets per-symbol leaves; Lazer's
  * indivisible payload passes whole iff fully covered), so the orchestrator
  * never branches on `kind` here. A hit whose `kind` doesn't match the
  * group's rule is a caller bug (the provider handed back a different rule's
@@ -99,34 +96,26 @@ async function resolveGroupUpdateData(
  * Aggregate one ticker's price into the shared `Oracle`: build a collector, feed
  * every rule the ticker is configured for, then `aggregate`.
  *
- * - **Pyth** — fed when `priceInfoObjectId` is supplied (i.e. the ticker has a
- *   `pyth_rule.feeds` entry). When this PTB's update leg refreshed the
- *   `PriceInfoObject` it contributes a fresh price; when it did not (a
- *   lazer-routed ticker), the on-chain rule only READS the object and abstains
- *   if it is stale — it never aborts — so the call stays mandatory while
- *   `pyth_rule` remains in the ticker's on-chain weighted set
- *   (`EMissingPriceSource` requires every weighted rule to appear).
  * - **Lazer** — fed when `lazerUpdate` is supplied: the verified update this
  *   PTB's lazer update leg produced with the network's verify entry
  *   (`update_v2::Update` on mainnet, `update::Update` on testnet — see
  *   `PythLazerRule.buildUpdateCalls`). If the ticker's aggregator does
  *   not (yet) weight `PythLazerRule`, the contribution is silently dropped
  *   on-chain — feeding ahead of the weight migration is harmless.
- * - **Supra** — fed alongside Pyth/Lazer when supra is enabled + wired
+ * - **Supra** — fed alongside Lazer/WaterX when supra is enabled + wired
  *   (abstains on-chain for symbols it has no pair for).
  * - **Constant** — fed when the ticker is a constant ticker
  *   ({@link OracleHost.isConstantTicker}).
  *
- * "Dual-feed" (Pyth + Constant, or Pyth + Lazer) and "constant-only" are not
- * special cases — they fall out of which rules the ticker is in. Throws if no
- * rule applies.
+ * "Dual-feed" (WaterX + Constant, or Lazer + WaterX) and "constant-only" are
+ * not special cases — they fall out of which rules the ticker is in. Throws if
+ * no rule applies.
  */
 export function aggregateTicker(
   tx: Transaction,
   host: OracleHost,
   args: {
     ticker: string;
-    priceInfoObjectId?: string;
     lazerUpdate?: TransactionArgument;
     /** This ticker's signed Merkle leaf — the default waterx shape. */
     waterxLeaf?: WaterxSignedLeaf;
@@ -141,11 +130,6 @@ export function aggregateTicker(
   })(tx) as unknown as TransactionArgument;
 
   let fed = false;
-
-  if (args.priceInfoObjectId) {
-    feedPythRule(tx, host, collector, args.priceInfoObjectId);
-    fed = true;
-  }
 
   if (args.lazerUpdate !== undefined) {
     feedLazerRule(tx, host, collector, args.lazerUpdate);
@@ -186,7 +170,8 @@ export function aggregateTicker(
 
   if (!fed) {
     throw new Error(
-      `no oracle rule configured for ticker '${args.ticker}' (no pyth feed, no lazer update, not a constant ticker)`,
+      `no oracle rule configured for ticker '${args.ticker}' ` +
+        "(no lazer update, no waterx signed price, not a constant ticker)",
     );
   }
 
@@ -200,60 +185,63 @@ export function aggregateTicker(
 }
 
 /**
- * Thin wrapper over {@link aggregateTicker} for a Pyth-fed ticker. Kept for
- * back-compat (e.g. WLP mint builds). Caller must run the Pyth update first.
- */
-export function aggregateTickerWithPyth(
-  tx: Transaction,
-  host: OracleHost,
-  args: { ticker: string; priceInfoObjectId: string },
-): void {
-  aggregateTicker(tx, host, args);
-}
-
-/**
- * {@link aggregateTicker} for a **constant-only** ticker (no Pyth update needed —
- * the price comes from the on-chain `constant_rule::Config`).
+ * {@link aggregateTicker} for a **constant-only** ticker — the price comes from
+ * the on-chain `constant_rule::Config`, so no update leg of any kind is needed.
  *
- * Throws if the ticker ALSO has a `pyth_rule.feeds` entry (a dual-feed transition
- * ticker): feeding only the constant leg would leave the still-weighted Pyth rule
- * absent from the collector and abort `aggregate` with `EMissingPriceSource`. Such
- * tickers must go through {@link aggregateTicker} with a `priceInfoObjectId` (or
- * {@link refreshOraclePrices}), which feeds both.
+ * Only correct for a ticker whose on-chain weighted set is `constant_rule`
+ * alone. A ticker that is ALSO served by a price source (dual-feed) must go
+ * through {@link refreshOraclePrices}, which runs that source's update leg and
+ * feeds both — feeding only the constant leg here would leave the other
+ * weighted rule absent from the collector and abort `aggregate` with
+ * `EMissingPriceSource`.
  */
 export function aggregateTickerWithConstant(
   tx: Transaction,
   host: OracleHost,
   args: { ticker: string },
 ): void {
-  if (ownEntry(host.config.packages.pyth_rule?.feeds, args.ticker) !== undefined) {
-    throw new Error(
-      `'${args.ticker}' is in pyth_rule.feeds (dual-feed) — feed both via aggregateTicker({ priceInfoObjectId }) / refreshOraclePrices, not aggregateTickerWithConstant`,
-    );
-  }
   aggregateTicker(tx, host, { ticker: args.ticker });
 }
 
 /**
+ * What {@link refreshOraclePrices} actually put in the PTB.
+ *
+ * - `refreshed` — tickers that got a collector + `oracle::aggregate` (deduped,
+ *   in the caller's order).
+ * - `skipped` — tickers the loaded config wires NO rule for, so there was
+ *   nothing to feed. They are dropped from the PTB rather than failing the
+ *   build; their on-chain price is whatever the `Oracle` already holds. A
+ *   caller trading one of them should log/alert on this — the trading call is
+ *   what will reject a too-stale price, and it does so on chain.
+ */
+export interface OracleRefreshSummary {
+  refreshed: string[];
+  skipped: string[];
+}
+
+/**
  * Refresh multiple tickers in one PTB. For each ticker {@link aggregateTicker}
- * feeds whichever rules it is configured for (Pyth if it has a `pyth_rule.feeds`
- * entry, Lazer if the lazer update leg served it — see below — Supra when
- * enabled, Constant when it's a constant ticker).
+ * feeds whichever rules it is configured for (Lazer if the lazer update leg
+ * served it — see below — WaterX if its group carried a signed price, Supra
+ * when enabled, Constant when it's a constant ticker).
  *
  * Before that, the on-chain price *update* leg is routed by the
  * `host.oracleSources` fed set (see `rule-registry.ts`): EVERY listed source
  * updates the tickers its own `supportedTickers(host)` serves, all in this one
- * PTB. There is **no cross-source fallback** — a requested ticker NO listed
- * source serves, and that is not a constant-only ticker (which needs no
- * price-update leg), fails the build immediately with a clear error naming
- * the ticker and the list. That is the deliberate "fail the tx-build, don't
- * silently reroute" contract: a wrong-but-present feed id is NOT validated
- * here (it surfaces on-chain at dry-run); a ticker MISSING from every listed
- * source's feeds is caught here.
+ * PTB. There is **no cross-source fallback**, and a listed source the loaded
+ * config has no block (or no `feeds`) for simply contributes nothing — the fed
+ * set names what this client is WILLING to push; the config decides what it
+ * CAN push. Listing a retired source is therefore not an error at any layer.
+ *
+ * A requested ticker the config wires no rule at all for is **skipped**, not
+ * thrown on, and reported back in {@link OracleRefreshSummary.skipped}: the
+ * PTB gets the legs the deployment actually has. A wrong-but-present feed id
+ * is likewise not validated here — it surfaces on-chain at dry-run.
  *
  * Each source's fetch + build runs against its own infra, guaranteeing
  * per-rule PTB atomicity. A fee-source pre-check runs first (any listed
- * source's `requiresFeeSource`) BEFORE any off-chain fetch or PTB mutation —
+ * source's `requiresFeeSource`, over the groups that actually have work)
+ * BEFORE any off-chain fetch or PTB mutation —
  * so a fee-charging source with no `opts.feeSource` throws
  * `OracleFeeSourceUnavailable` with zero wasted network calls and zero stray
  * moveCalls. Only once that check passes do the off-chain fetches run — in
@@ -265,36 +253,18 @@ export function aggregateTickerWithConstant(
  * `buildUpdateCalls` returns the verified `Update` PTB value
  * ({@link RuleUpdateHandle}), and every ticker in that group is aggregated
  * with `lazerUpdate` set so {@link aggregateTicker} appends
- * `pyth_lazer_rule::feed` against it. A lazer-routed ticker that still has a
- * `pyth_rule.feeds` entry ALSO keeps its `pyth_rule::feed` leg — required
- * on-chain while `pyth_rule` stays in the ticker's weighted set
- * (`aggregator::remove_outliers` aborts `EMissingPriceSource` unless every
- * weighted rule appears in the collector; an abstention counts as
- * appearing), and safe: `pyth_rule::feed` only READS the `PriceInfoObject`
- * this PTB never refreshed and abstains when it is stale rather than
- * aborting. Conversely, a lazer feed call on an aggregator that does not
- * (yet) weight `PythLazerRule` is silently dropped on-chain — so
+ * `pyth_lazer_rule::feed` against it. A lazer feed call on an aggregator that
+ * does not (yet) weight `PythLazerRule` is silently dropped on-chain — so
  * lazer-routing a ticker ahead of its on-chain weight migration prices it
- * from the remaining weighted rules instead of failing.
+ * from the remaining weighted rules instead of failing. Conversely, starving
+ * a rule the aggregator DOES weight aborts `EMissingPriceSource`, which is why
+ * the fed set must stay a superset of every ticker's weighted set.
  */
 export async function refreshOraclePrices(
   tx: Transaction,
   host: OracleHost,
   tickers: string[],
   opts: {
-    cache?: PythCache;
-    /**
-     * The single resolved fee source for the Pyth update fee, forwarded
-     * verbatim to each group's `PriceUpdateRule.buildUpdateCalls` as
-     * `BuildUpdateOpts.feeSource`. Already-resolved by the caller (see
-     * {@link OracleFeeSource}'s own doc for where/how) — this function makes
-     * no sponsor-vs-gas decision itself, it only checks whether a source was
-     * resolved at all. Ignored by rules with no update fee (e.g.
-     * `pyth_lazer_rule`). Building with `feeSource` unset throws
-     * `OracleFeeSourceUnavailable` (see `oracle/pyth.ts`) instead of
-     * silently drawing from `tx.gas`.
-     */
-    feeSource?: OracleFeeSource;
     /**
      * @internal Test-only: layer fake `PriceUpdateRule`s on top of the
      * production registry (see `rule-registry.ts`'s `resolveOracleRule`).
@@ -312,8 +282,8 @@ export async function refreshOraclePrices(
      */
     updateDataProvider?: UpdateDataProvider;
   } = {},
-): Promise<void> {
-  if (tickers.length === 0) return;
+): Promise<OracleRefreshSummary> {
+  if (tickers.length === 0) return { refreshed: [], skipped: [] };
   // Dedupe the caller's list (order-preserving): a repeated ticker would
   // otherwise aggregate TWICE in this one PTB — wasted gas for every rule, and
   // under waterx the second collect would be dead weight on top of that: the
@@ -321,15 +291,6 @@ export async function refreshOraclePrices(
   // high-water mark from earlier in this same transaction and abstains, so the
   // repeat pays full verification cost to contribute nothing.
   tickers = [...new Set(tickers)];
-
-  // price_info_object lookup for every ticker with a pyth_rule.feeds entry —
-  // needed by aggregateTicker's (unchanged) Pyth feed step below regardless of
-  // which rule performed the on-chain update for that ticker.
-  const pythTickers = tickers.filter(
-    (t) => ownEntry(host.config.packages.pyth_rule?.feeds, t) !== undefined,
-  );
-  const priceInfoByTicker = new Map<string, string>();
-  pythTickers.forEach((t) => priceInfoByTicker.set(t, host.getPythFeed(t).price_info_object));
 
   // The fed set is a LIST (`host.oracleSources`, normalized + deduped at
   // client creation): ONE build carries every listed source's data, and the
@@ -341,8 +302,8 @@ export async function refreshOraclePrices(
   // burns a per-symbol signed-timestamp high-water mark regardless of
   // weights — see aggregateTicker's waterx branch.) Still NO fallback
   // BETWEEN sources: each group serves only the tickers its own feeds list.
-  // Zero-ticker groups are dropped here so everything downstream (fee check,
-  // fetch fan-out, update-leg build) can assume every group has work.
+  // Zero-ticker groups are dropped here so everything downstream (fetch
+  // fan-out, update-leg build) can assume every group has work.
   const groups = host.oracleSources
     .map((source) => {
       const rule = resolveOracleRule(source, opts.ruleOverrides);
@@ -351,41 +312,37 @@ export async function refreshOraclePrices(
     })
     .filter((group) => group.tickers.length > 0);
 
-  // Fail the tx-build (NOT client init, NOT a silent reroute) when NO listed
-  // source has a feed for a requested ticker that actually needs a price
-  // update. Only a CONSTANT-ONLY ticker is exempt — priced entirely by
-  // `constant_rule`, it needs no update leg from any source. A DUAL-FEED ticker
-  // (constant AND pyth) still needs its Pyth leg refreshed, so `isConstantTicker`
-  // alone must NOT exempt it: with no source able to serve it, feeding an
-  // unrefreshed Pyth leg would price it stale (or abort on a missing weighted
-  // source). `priceInfoByTicker.has(t)` ⇔ the ticker has a `pyth_rule.feeds`
-  // entry, so `constant && !hasPyth` is exactly constant-only. This catches a
-  // MISSING feed; a present-but-WRONG feed id is deliberately not validated
-  // here (it aborts on-chain at dry-run).
+  // SKIP — do not throw — the requested tickers no listed source can price.
+  // The fed set and the config's rule blocks are both deployment-owned and
+  // both move (testnet retired `pyth_rule` outright), so a build must not die
+  // because a caller's ticker list is wider than what the deployment currently
+  // prices; it builds the legs that exist and reports the rest as
+  // {@link OracleRefreshSummary.skipped}. This handles a MISSING feed only —
+  // a present-but-WRONG feed id is deliberately not validated here (it aborts
+  // on-chain at dry-run).
+  //
+  // The one exemption is deliberately narrow: a ticker needs no update leg
+  // only when `constant_rule` is the ONLY rule the config wires for it, since
+  // its price lives entirely on chain. A ticker that is constant AND carries a
+  // price source's feed (dual-feed) is NOT exempt — feeding just the constant
+  // leg would leave the other, still-weighted rule absent from the collector
+  // and abort `EMissingPriceSource`, which is strictly worse than leaving the
+  // ticker out of this refresh.
   const covered = new Set(groups.flatMap((group) => group.tickers));
-  const isConstantOnly = (t: string) => host.isConstantTicker(t) && !priceInfoByTicker.has(t);
-  const unservable = tickers.filter((t) => !covered.has(t) && !isConstantOnly(t));
-  if (unservable.length > 0) {
-    const sources = host.oracleSources.join(", ");
-    throw new Error(
-      `oracleSource [${sources}] has no feed configured for ticker(s): ` +
-        `${unservable.join(", ")}. Sources are self-contained with no fallback — add ` +
-        `feeds for them under a listed source, or list a source that serves them.`,
-    );
-  }
-
-  // Fee-source pre-check, hoisted ABOVE the off-chain fetches and PTB build
-  // below. It consults only `rule.requiresFeeSource` — known before any fetch
-  // or PTB mutation — so a fee-charging source (Pyth Core) in the fed set with
-  // no `feeSource` throws with ZERO wasted network calls and zero PTB
-  // commands, rather than waiting for `buildPythPriceUpdateCalls`'s own
-  // per-call guard to fire after the off-chain fetches already ran.
-  if (!opts.feeSource && groups.some((group) => group.rule.requiresFeeSource)) {
-    throw new OracleFeeSourceUnavailableError();
+  const isConstantOnly = (t: string) =>
+    host.isConstantTicker(t) &&
+    configuredOracleRules(host.config, t).every((rule) => rule === "constant_rule");
+  const servable = (t: string) => covered.has(t) || isConstantOnly(t);
+  const skipped = tickers.filter((t) => !servable(t));
+  if (skipped.length > 0) {
+    // Everything below (fetch fan-out, update-leg build, aggregate loop) works
+    // off the narrowed list. `groups` already holds only servable tickers.
+    tickers = tickers.filter(servable);
+    if (tickers.length === 0) return { refreshed: [], skipped };
   }
 
   // Phase 1 — resolve every group's update data IN PARALLEL: the per-source
-  // fetches (Hermes VAA / Lazer POST / quote-center GET) are independent
+  // fetches (Lazer POST / quote-center GET) are independent
   // network calls on the tx-build money path, so a multi-source fed set must
   // not pay one RTT per source sequentially. ALL fetches settle before the
   // first PTB mutation below, so a fetch failure never strands moveCalls in a
@@ -412,23 +369,31 @@ export async function refreshOraclePrices(
   for (const [i, group] of groups.entries()) {
     const data = dataByGroup[i] ?? null;
     const handle: RuleUpdateHandle | undefined =
-      (await group.rule.buildUpdateCalls(tx, host, data, {
-        cache: opts.cache,
-        feeSource: opts.feeSource,
-      })) ?? undefined;
+      (await group.rule.buildUpdateCalls(tx, host, data, {})) ?? undefined;
     switch (group.rule.kind) {
-      case "pyth_rule":
-        // Core's update leg wrote the PriceInfoObjects in place — the feed
-        // leg reads them by id (`priceInfoByTicker`), nothing to carry.
-        break;
-      case "pyth_lazer_rule":
+      case "pyth_lazer_rule": {
         // Route by the handle's kind discriminant — the tag exists so a
         // non-lazer handle can never be silently fed into
         // pyth_lazer_rule::feed.
         if (handle?.kind === "pyth_lazer_rule") {
           for (const ticker of group.tickers) lazerUpdateByTicker.set(ticker, handle.update);
+        } else {
+          // Fail the BUILD, naming the cause — mirrors the waterx guard below.
+          // A lazer group has exactly one way to reach its feed leg (this
+          // handle), and `refreshOraclePrices` already vouched these tickers as
+          // servable, so no handle means the rule broke its own contract.
+          // Left alone it surfaces two frames later as `aggregateTicker`'s
+          // generic "no oracle rule configured for ticker" — which points at
+          // the config rather than at the rule that actually misbehaved.
+          throw new Error(
+            "pyth_lazer_rule.buildUpdateCalls returned no verified Update handle for " +
+              `ticker(s): ${group.tickers.join(", ")}. Its feed leg has no other source ` +
+              "for the Update — a rule that serves tickers must return a " +
+              "`{ kind: 'pyth_lazer_rule', update }` handle.",
+          );
         }
         break;
+      }
       case "waterx_rule": {
         // waterx_rule emits no shared handle (verify+feed is bundled into the
         // per-ticker collect call), so the signed data is carried straight from
@@ -485,10 +450,11 @@ export async function refreshOraclePrices(
   for (const ticker of tickers) {
     aggregateTicker(tx, host, {
       ticker,
-      priceInfoObjectId: priceInfoByTicker.get(ticker),
       lazerUpdate: lazerUpdateByTicker.get(ticker),
       waterxLeaf: waterxLeafByTicker.get(ticker),
       waterxEnvelope: waterxEnvelopeByTicker.get(ticker),
     });
   }
+
+  return { refreshed: tickers, skipped };
 }

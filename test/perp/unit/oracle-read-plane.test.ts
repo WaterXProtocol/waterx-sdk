@@ -1,71 +1,55 @@
 /**
- * `resolveOracleReadPlan` — the per-source READ-plane resolver: hex-id
- * mapping for the pyth sources (Lazer reads through `pyth_rule.feeds`, its
- * integer write ids never reach a read surface), the `unreadable` gap for
- * lazer-written tickers with no hex entry, and the waterx served-set /
- * absent-feeds-claims-all contract.
+ * `resolveOracleReadPlan` — the per-source READ-plane resolver. Since Pyth Core
+ * was removed there is one plane left (the quote-center) and one write-only
+ * source: `pyth_lazer_rule` pushes prices on-chain with integer feed ids but
+ * has no off-chain read surface, so every ticker it writes must be reported
+ * `unreadable` rather than silently omitted.
  */
 import { describe, expect, it } from "vitest";
 
 import type { OracleHost } from "../../../src/oracle/host.ts";
-import { PYTH_PRO_HERMES_ENDPOINT, pythCoreHermesEndpoint } from "../../../src/oracle/pyth.ts";
-import {
-  resolveHermesReadEndpoint,
-  resolveOracleReadPlan,
-} from "../../../src/oracle/read-plane.ts";
+import { resolveOracleReadPlan } from "../../../src/oracle/read-plane.ts";
 
 function hostWith(packages: Record<string, unknown>): OracleHost {
   return { config: { packages } } as unknown as OracleHost;
 }
 
-const HEX_FEEDS = {
-  BTCUSD: { feed_id: "0xfeedbtc", price_info_object: "0x1" },
-  ETHUSD: { feed_id: "0xfeedeth", price_info_object: "0x2" },
-};
-
 describe("resolveOracleReadPlan", () => {
-  it("pyth_rule: maps servable tickers to hex feed ids; write==read so nothing is unreadable", () => {
-    const host = hostWith({ pyth_rule: { feeds: HEX_FEEDS } });
+  it("pyth_lazer_rule: write-only — every ticker it writes comes back unreadable", () => {
+    // The Core-retirement consequence: the update leg serves these tickers
+    // fine, but the hex feed ids every Hermes-compatible read needed lived in
+    // `pyth_rule.feeds`, which is gone. The plan must surface the gap so a
+    // price facade fails loudly instead of omitting a price.
+    const host = hostWith({ pyth_lazer_rule: { feeds: { BTCUSD: 1, ETHUSD: 2 } } });
 
-    const plan = resolveOracleReadPlan(host, "pyth_rule", ["BTCUSD", "ETHUSD", "XAUUSD"]);
+    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "ETHUSD", "XAUUSD"]);
 
-    expect(plan.plane).toBe("hermes");
-    if (plan.plane !== "hermes") throw new Error("unreachable");
-    expect([...plan.feedIdByTicker]).toEqual([
-      ["BTCUSD", "0xfeedbtc"],
-      ["ETHUSD", "0xfeedeth"],
+    expect(plan.plane).toBe("none");
+    // XAUUSD is not lazer-written at all, so it is simply not this source's
+    // business — only the tickers lazer DOES write are reported unreadable.
+    expect(plan.unreadable).toEqual(["BTCUSD", "ETHUSD"]);
+  });
+
+  it("pyth_lazer_rule: an absent feeds block writes nothing, so nothing is unreadable", () => {
+    const plan = resolveOracleReadPlan(hostWith({}), "pyth_lazer_rule", ["BTCUSD"]);
+
+    expect(plan).toEqual({ plane: "none", unreadable: [] });
+  });
+
+  it("pyth_lazer_rule: an Object.prototype key name is NOT feeds-listed — no bracket-walk hole", () => {
+    // `writeFeeds?.[ticker]` walked the prototype chain exactly like `in`:
+    // feeds["toString"] is an inherited Function (≠ undefined), so a
+    // prototype-key ticker was classified `unreadable`. Own-key lookups must
+    // read it as simply not-listed.
+    const host = hostWith({ pyth_lazer_rule: { feeds: { BTCUSD: 1 } } });
+
+    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", [
+      "BTCUSD",
+      "toString",
+      "constructor",
     ]);
-    expect(plan.unreadable).toEqual([]);
-  });
 
-  it("pyth_lazer_rule: reads through pyth_rule's HEX namespace, not its own integer ids", () => {
-    const host = hostWith({
-      pyth_rule: { feeds: HEX_FEEDS },
-      pyth_lazer_rule: { feeds: { BTCUSD: 1, ETHUSD: 2 } },
-    });
-
-    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "ETHUSD"]);
-
-    expect(plan.plane).toBe("hermes");
-    if (plan.plane !== "hermes") throw new Error("unreachable");
-    expect(plan.feedIdByTicker.get("BTCUSD")).toBe("0xfeedbtc");
-    expect(plan.unreadable).toEqual([]);
-  });
-
-  it("pyth_lazer_rule: a lazer-WRITTEN ticker with no hex entry is reported unreadable, not silently dropped", () => {
-    // The Core-retirement trap: the SDK's update leg serves the ticker fine
-    // (lazer feed exists) but no Hermes read can price it — the plan must
-    // surface the gap so consumers fail loudly instead of omitting a price.
-    const host = hostWith({
-      pyth_rule: { feeds: { BTCUSD: HEX_FEEDS.BTCUSD } },
-      pyth_lazer_rule: { feeds: { BTCUSD: 1, SOLUSD: 6 } },
-    });
-
-    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "SOLUSD"]);
-
-    if (plan.plane !== "hermes") throw new Error("unreachable");
-    expect([...plan.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
-    expect(plan.unreadable).toEqual(["SOLUSD"]);
+    expect(plan.unreadable).toEqual(["BTCUSD"]);
   });
 
   it("waterx_rule: serves exactly the feeds-listed tickers", () => {
@@ -87,67 +71,12 @@ describe("resolveOracleReadPlan", () => {
     expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"], unreadable: [] });
   });
 
-  it("hermes arms: an Object.prototype key name is neither served nor unreadable — no bracket-walk hole either", () => {
-    // `writeFeeds?.[ticker]` walked the prototype chain exactly like `in`:
-    // feeds["toString"] is an inherited Function (≠ undefined), so a
-    // prototype-key ticker was classified `unreadable` for the pyth sources.
-    // Own-key lookups must read it as simply not-listed.
-    const host = hostWith({
-      pyth_rule: { feeds: HEX_FEEDS },
-      pyth_lazer_rule: { feeds: { BTCUSD: 1 } },
-    });
-
-    const pyth = resolveOracleReadPlan(host, "pyth_rule", ["BTCUSD", "toString", "constructor"]);
-    if (pyth.plane !== "hermes") throw new Error("unreachable");
-    expect([...pyth.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
-    expect(pyth.unreadable).toEqual([]);
-
-    const lazer = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "toString"]);
-    if (lazer.plane !== "hermes") throw new Error("unreachable");
-    expect([...lazer.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
-    expect(lazer.unreadable).toEqual([]);
-  });
-
   it("waterx_rule: an absent feeds block serves NOTHING — never a silent quote-center takeover", () => {
     // Claiming unlisted tickers would reroute every read to the quote-center
     // (it serves symbols regardless of on-chain config) and swallow tickers a
-    // later-listed source could price; the misconfig is caught loudly by the
-    // consumer's feeds assert at client creation instead.
+    // later-listed source could price.
     const plan = resolveOracleReadPlan(hostWith({}), "waterx_rule", ["BTCUSD", "ETHUSD"]);
 
     expect(plan).toEqual({ plane: "quote_center", tickers: [], unreadable: [] });
-  });
-});
-
-describe("resolveHermesReadEndpoint", () => {
-  it("pyth_rule in the fed set wins — the Core source's own keyless endpoint, per network", () => {
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_rule"])).toBe(
-      pythCoreHermesEndpoint("TESTNET"),
-    );
-    expect(resolveHermesReadEndpoint("MAINNET", ["waterx_rule", "pyth_rule"])).toBe(
-      pythCoreHermesEndpoint("MAINNET"),
-    );
-  });
-
-  it("without pyth_rule, resolves the documented Pyth Pro base — total, never a throw", () => {
-    // The Pro base is IDENTICAL for every subscriber (auth is the Bearer key,
-    // not the URL) — so a lazer/waterx-only fed set always has a first-class
-    // read endpoint without any deployment-supplied URL.
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_lazer_rule"])).toBe(
-      PYTH_PRO_HERMES_ENDPOINT,
-    );
-    expect(resolveHermesReadEndpoint("MAINNET", ["waterx_rule"])).toBe(PYTH_PRO_HERMES_ENDPOINT);
-  });
-
-  it("a deployment override (proxy / self-hosted mirror) beats the Pro base, never the Core branch", () => {
-    const override = "https://app.example/api/hermes";
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_lazer_rule", "waterx_rule"], override)).toBe(
-      override,
-    );
-    // With pyth_rule listed the Core endpoint still wins — the override is a
-    // Pro-side knob, not a Core replacement.
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_rule"], override)).toBe(
-      pythCoreHermesEndpoint("TESTNET"),
-    );
   });
 });

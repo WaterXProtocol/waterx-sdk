@@ -5,10 +5,16 @@
  * Feeding the refreshed price into an oracle `PriceCollector` is a separate
  * step that stays in `aggregate.ts` — this port covers fetch + verify/push
  * only (`buildUpdateCalls` may hand the feed step a PTB value via
- * {@link RuleUpdateHandle}). Implementations: `PythCoreRule` (Hermes VAA) and
- * `PythLazerRule` (Lazer signed updates), with `WaterxRule` (ed25519) to
- * follow. `ConstantRule` and `SupraRule` do NOT implement this port — they
- * remain plain collector-feed helpers wired directly into `aggregate.ts`.
+ * {@link RuleUpdateHandle}). Implementations: `PythLazerRule` (Lazer signed
+ * updates) and `WaterxRule` (quote-center ed25519). `ConstantRule` and
+ * `SupraRule` do NOT implement this port — they remain plain collector-feed
+ * helpers wired directly into `aggregate.ts`.
+ *
+ * No implementation charges an on-chain update fee. Pyth Core (`pyth_rule`),
+ * the only rule that ever did, is gone — and with it the whole fee-source /
+ * sponsor apparatus (`OracleFeeSource`, `requiresFeeSource`,
+ * `pyth_sponsor_rule`). Do not reintroduce a fee concept here without also
+ * restoring the mixed-shape atomicity guard `refreshOraclePrices` used to run.
  *
  * This file defines the port only — routing IS wired: `aggregate.ts`'s
  * `refreshOraclePrices` resolves a concrete rule per `host.oracleSources`
@@ -19,10 +25,8 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import type { OracleHost } from "./host.ts";
-import type { OracleFeeSource, PythCache } from "./pyth.ts";
 
 export type PriceUpdateRuleKind =
-  | "pyth_rule"
   | "pyth_lazer_rule"
   | "supra_rule"
   | "constant_rule"
@@ -43,7 +47,6 @@ export type PriceUpdateRuleKind =
  * list is an (incorrect) editorial decision this comment exists to prevent.
  */
 export const ORACLE_SOURCES = Object.freeze([
-  "pyth_rule",
   "pyth_lazer_rule",
   "waterx_rule",
 ] as const satisfies readonly PriceUpdateRuleKind[]);
@@ -60,8 +63,8 @@ export type OracleSource = (typeof ORACLE_SOURCES)[number];
 /**
  * Off-chain payload fetched by a rule, tagged by `kind` so a caller holding
  * several rules' results can tell them apart. `payload` is `unknown` here —
- * each rule implementation narrows it to its own shape (e.g. `PythCoreRule`'s
- * `{ updates: Uint8Array[]; feedIds: string[] }`). `null` for rules with no
+ * each rule implementation narrows it to its own shape (e.g. `PythLazerRule`'s
+ * single signed `leEcdsa` message). `null` for rules with no
  * off-chain fetch (e.g. `ConstantRule`) or when there is nothing to fetch.
  */
 export type RuleUpdateData = { kind: PriceUpdateRuleKind; payload: unknown } | null;
@@ -75,9 +78,8 @@ export type RuleUpdateData = { kind: PriceUpdateRuleKind; payload: unknown } | n
  *    empty ticker list upstream produced nothing to build).
  * 2. `data.kind !== kind` throws BEFORE the shape check runs. This order is
  *    load-bearing, not stylistic: two rules' payloads can share an identical
- *    shape (e.g. Pyth Core's `{ updates, feedIds }` also satisfies a
- *    hypothetical same-shaped rule), so checking shape first would let a
- *    wrong-kind payload silently pass as this rule's own.
+ *    shape, so checking shape first would let a wrong-kind payload silently
+ *    pass as this rule's own.
  * 3. `!isShape(data.payload)` throws for a same-`kind` payload whose shape
  *    doesn't match this rule's own (e.g. a hand-built test double).
  *
@@ -88,7 +90,7 @@ export type RuleUpdateData = { kind: PriceUpdateRuleKind; payload: unknown } | n
  *   `data` may carry past step 2.
  * @param isShape - Type predicate narrowing `data.payload` to `T`.
  * @param shapeDescription - Human-readable shape, quoted verbatim into the
- *   shape-mismatch error (e.g. `"{ updates: Uint8Array[]; feedIds: string[] }"`).
+ *   shape-mismatch error (e.g. `"{ envelope: WaterxSignedEnvelope }"`).
  */
 export function assertRuleUpdateData<T>(
   data: RuleUpdateData,
@@ -114,8 +116,8 @@ export function assertRuleUpdateData<T>(
 /**
  * PTB value handle a rule's {@link PriceUpdateRule.buildUpdateCalls} may
  * return when its collector-feed leg needs a value produced by the update leg
- * *within the same PTB*. Pyth Core needs none (its feed leg reads the shared
- * `PriceInfoObject` the update leg refreshed), so it returns `void`. The Lazer
+ * *within the same PTB*. `WaterxRule` needs none (its verify+feed is bundled
+ * into one per-ticker collect call), so it returns `void`. The Lazer
  * rule returns the verified-update result of its network's verify entry — one
  * signature verification covers every feed in the payload, and
  * `pyth_lazer_rule::feed` takes it by reference per ticker (see
@@ -136,19 +138,14 @@ export type RuleUpdateHandle = {
 };
 
 /**
- * Options for {@link PriceUpdateRule.buildUpdateCalls}. Mirrors
- * `buildPythPriceUpdateCalls` / `updatePythPrices`'s own opts shape in
- * `./pyth.ts` — `cache` shares on-chain Pyth state reads across builders;
- * `feeSource` is the single {@link OracleFeeSource} already resolved by the
- * caller (see its own doc for where/how). Both fields are Pyth-Core-specific
- * mechanics; `refreshOraclePrices` passes the same `BuildUpdateOpts` to every
- * rule uniformly, so a non-Pyth-Core rule (e.g. `PythLazerRule`, which
- * charges no update fee) simply ignores whichever fields it has no use for.
+ * Options for {@link PriceUpdateRule.buildUpdateCalls}. Deliberately EMPTY:
+ * both former fields (`cache`, `feeSource`) were Pyth-Core mechanics — an
+ * on-chain `PythState` read cache and the update-fee source — and went with
+ * the rule. The type is kept as the extension point so a future rule that
+ * needs per-build options does not have to re-thread a parameter through
+ * `refreshOraclePrices` and every implementation.
  */
-export interface BuildUpdateOpts {
-  readonly cache?: PythCache;
-  readonly feeSource?: OracleFeeSource;
-}
+export type BuildUpdateOpts = Record<string, never>;
 
 /**
  * Injectable update-data cache seam for `refreshOraclePrices` (`aggregate.ts`).
@@ -183,24 +180,6 @@ export interface PriceUpdateRule {
    */
   readonly kind: OracleSource;
 
-  /**
-   * `true` when this rule's on-chain update leg charges a per-update fee
-   * that must be paid from either a sponsor fund or `tx.gas` (Pyth Core:
-   * `true`, via `pyth::update_single_price_feed`'s `base_update_fee`).
-   * `false` for a fee-free update leg (Lazer: signature verification only,
-   * no `Coin` argument). `refreshOraclePrices` (`aggregate.ts`) reads this
-   * BEFORE fetching any group's off-chain payload — for every group whose
-   * rule sets it `true`, `opts.feeSource` must already be resolved, or the
-   * whole call throws `OracleFeeSourceUnavailable` before
-   * any group builds (mixed-shape atomicity: a fee-free group ordered
-   * ahead of a fee-charging one in the same PTB must never get to mutate
-   * `tx` while the fee-charging group is left unpayable). A referential
-   * check against a specific rule instance (e.g. `=== PythCoreRule`) would
-   * silently stop protecting a future fee-charging rule, or a test double
-   * standing in for one — this field is the honest, extensible signal.
-   */
-  readonly requiresFeeSource: boolean;
-
   /** Tickers this rule can serve in this environment (from config feeds + enabled). */
   supportedTickers(host: OracleHost): string[];
 
@@ -222,9 +201,9 @@ export interface PriceUpdateRule {
    * altitude violation this method removes):
    *
    * - A non-null result MUST be valid {@link buildUpdateCalls} input covering
-   *   exactly `tickers` — a divisible payload (Pyth Core's per-feed entries)
-   *   returns a subset; an indivisible payload (Lazer's single signed message)
-   *   returns the whole payload iff every requested ticker is covered.
+   *   exactly `tickers` — a divisible payload (waterx's per-symbol signed
+   *   leaves) returns a subset; an indivisible payload (Lazer's single signed
+   *   message) returns the whole payload iff every requested ticker is covered.
    * - A ticker this payload cannot serve → `null` (miss), NEVER a silent
    *   partial. `null` mirrors {@link UpdateDataProvider.get}'s convention: the
    *   caller falls back to a live {@link fetchUpdateData} for those tickers.
@@ -239,8 +218,8 @@ export interface PriceUpdateRule {
   /**
    * Emit verify/update moveCalls + any per-rule setup into the PTB. Returns a
    * {@link RuleUpdateHandle} when the rule's collector-feed leg needs a PTB
-   * value from this step (Lazer's verified `Update`); rules whose feed leg
-   * reads shared on-chain objects return `void`. Takes no `tickers` param —
+   * value from this step (Lazer's verified `Update`); rules that carry their
+   * signed data straight to the feed leg return `void`. Takes no `tickers` param —
    * every implementation derives everything it needs from `data.payload`
    * (the tickers a group covers were already fixed when `fetchUpdateData`
    * built that payload).

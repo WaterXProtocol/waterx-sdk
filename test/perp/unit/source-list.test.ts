@@ -31,8 +31,11 @@ describe("parseOracleSourceList", () => {
   });
 
   it("drops empty entries (trailing/doubled commas) — the most common env typo, never a boot failure", () => {
-    expect(parseOracleSourceList("pyth_rule,")).toEqual(["pyth_rule"]);
-    expect(parseOracleSourceList("pyth_rule,,waterx_rule")).toEqual(["pyth_rule", "waterx_rule"]);
+    expect(parseOracleSourceList("waterx_rule,")).toEqual(["waterx_rule"]);
+    expect(parseOracleSourceList("pyth_lazer_rule,,waterx_rule")).toEqual([
+      "pyth_lazer_rule",
+      "waterx_rule",
+    ]);
   });
 
   it("every canonical value resolves to a REGISTERED rule — the parser may never bless a value the registry cannot serve", () => {

@@ -36,6 +36,9 @@ function normalizeTypeName(typeName: string): string {
 
 /** Collector witness type per rule package — `original_id` is what a TypeName carries. */
 const RULE_WITNESS: Record<string, string> = {
+  // `pyth_rule` stays listed on purpose even though the SDK can no longer feed
+  // it: an aggregator that still weights the retired Core rule must show up as
+  // UNFED here rather than silently vanish from the comparison.
   pyth_rule: "pyth_rule::PythRule",
   pyth_lazer_rule: "pyth_lazer_rule::PythLazerRule",
   waterx_rule: "waterx_rule::WaterxRule",
@@ -95,7 +98,6 @@ function fedWitnesses(client: PerpClient, ticker: string): Set<string> {
     const t = witnessTypeName(client, pkg);
     if (t) fed.add(t);
   };
-  if (client.config.packages.pyth_rule?.feeds?.[ticker] !== undefined) add("pyth_rule");
   if (client.isConstantTicker(ticker)) add("constant_rule");
   if (client.getSupraRule()) add("supra_rule");
   if (client.oracleSources.includes("pyth_lazer_rule")) add("pyth_lazer_rule");

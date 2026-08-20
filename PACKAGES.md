@@ -1,3 +1,7 @@
+> **Note (4.4.0):** the Pyth Core entries below — `pyth_rule`, `pyth_sponsor_rule`, Pyth
+> State / PriceInfoObjects / feed ids — are retained as a deployment record only. The
+> SDK no longer reads or references any of them; see the CHANGELOG.
+
 # WaterX Protocol — Package IDs & Shared Objects (Testnet)
 
 ## Package IDs

@@ -12,8 +12,6 @@ export type {
   PythAccessConfig,
   PythFetchPolicy,
   PythLazerRulePackage,
-  PythRulePackage,
-  PythSponsorRulePackage,
   SupraFeedEntry,
   SupraRulePackage,
   TestnetFaucetPackage,
@@ -125,26 +123,24 @@ export * from "./tx-builders.ts";
 // ======== Read-only queries ========
 export * from "./fetch.ts";
 
-// ======== Oracle utilities (Pyth source + rule aggregation) ========
+// ======== Oracle utilities (rule aggregation) ========
 export {
   FetchPolicyError,
   LazerApiKeyMissingError,
-  OracleFeeSourceUnavailableError,
   OracleSourceNotImplementedError,
-  PythCache,
   aggregateTicker,
   aggregateTickerWithConstant,
-  aggregateTickerWithPyth,
   ORACLE_SOURCES,
-  buildPythPriceUpdateCalls,
-  fetchPriceFeedsUpdateData,
+  // Config-only "which rules is this ticker wired for" read. On the root
+  // surface alongside `getCollateralAssets` because it answers the same
+  // question a consumer's boot check asks, and reaching for
+  // `@waterx/sdk/oracle` just for it is friction that pushes people back to
+  // hardcoding a rule block.
+  configuredOracleRules,
+  hasConfiguredOracleFeed,
   isOracleSource,
   parseOracleSourceList,
-  pythCoreHermesEndpoint,
-  pythProHermesEndpoint,
   refreshOraclePrices,
-  resolveHermesReadEndpoint,
-  updatePythPrices,
   waterxEnvelopeOf,
   // Leaves are the DEFAULT waterx wire shape, so their accessor + parser belong
   // on the same surface as `waterxEnvelopeOf` (and on the root, which re-exports
@@ -157,8 +153,9 @@ export {
   waterxQuoteCenterEndpoint,
 } from "../oracle/index.ts";
 export type {
+  ConfiguredOracleRule,
   FetchPolicy,
-  OracleFeeSource,
+  OracleRefreshSummary,
   OracleSource,
   UpdateDataProvider,
   // Payload types for the update-data cache seam: a consumer implementing
@@ -208,8 +205,6 @@ export * as viewCalls from "../generated/waterx_perp_view/view.ts";
 export * as wxaAccountCalls from "../generated/waterx_account/account.ts";
 export * as stakingCalls from "../generated/waterx_staking/waterx_staking.ts";
 export * as oracleCalls from "../generated/waterx_oracle/oracle.ts";
-export * as pythRuleCalls from "../generated/waterx_pyth_rule/pyth_rule.ts";
-export * as pythSponsorRuleCalls from "../generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
 export * as referralCalls from "../generated/waterx_referral/referral_table.ts";
 export * as nativeCustodyCalls from "../generated/native_custody/custody_vault.ts";
 export * as withdrawalQueueCalls from "../generated/withdrawal_queue/withdrawal_queue.ts";

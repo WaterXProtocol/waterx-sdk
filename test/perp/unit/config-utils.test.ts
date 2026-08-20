@@ -16,12 +16,25 @@ describe("config utils", () => {
     expect(collaterals).toEqual(["USDCUSD"]);
   });
 
-  it("getCollateralAssets returns empty when pyth_rule feeds are absent", () => {
-    const noFeeds = {
+  it("getCollateralAssets keeps a pool token another rule still wires when pyth_rule is gone", () => {
+    // Retiring Core (testnet did exactly this) must not strand the pool's
+    // collateral: USDCUSD is also in pyth_lazer_rule + waterx_rule feeds.
+    const noPyth = {
       ...MOCK_TESTNET_CONFIG,
       packages: { ...MOCK_TESTNET_CONFIG.packages, pyth_rule: undefined },
     } as unknown as WaterXConfig;
-    expect(getCollateralAssets(noFeeds)).toEqual([]);
+    expect(getCollateralAssets(noPyth)).toEqual(["USDCUSD"]);
+  });
+
+  it("getCollateralAssets returns empty when NO rule wires the pool token", () => {
+    const noRules = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
+      packages: Record<string, unknown>;
+    };
+    delete noRules.packages.pyth_rule;
+    delete noRules.packages.pyth_lazer_rule;
+    delete noRules.packages.waterx_rule;
+    delete noRules.packages.constant_rule;
+    expect(getCollateralAssets(noRules as unknown as WaterXConfig)).toEqual([]);
   });
 
   it("returns empty arrays when maps are empty", () => {

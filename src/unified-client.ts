@@ -3,7 +3,7 @@
  *
  * Exposes three namespaces over the two product-line sub-clients:
  *
- *   const client = await WaterXClient.create({ network: "TESTNET", oracleSource: "pyth_rule" });
+ *   const client = await WaterXClient.create({ network: "TESTNET", oracleSource: "waterx_rule" });
  *   client.account.createAccount(tx, { alias });   // -> shared waterx_account + funding
  *   client.perp.placeOrderRequest(tx, params);     // -> perp builder
  *   client.predict.placeOrder(tx, params);         // -> prediction builder
@@ -25,7 +25,7 @@
  *
  * Each namespace method forwards to the existing free-function builder with the
  * line's client pre-bound as the first argument; builders are build-only (they
- * return / mutate a `Transaction`), so frontend wallet flows and multi-step Pyth
+ * return / mutate a `Transaction`), so frontend wallet flows and multi-step oracle
  * injection keep working.
  */
 
@@ -165,8 +165,6 @@ export interface ClientCreateOptions {
    * explicitly (wire it from your own env var, e.g. `ORACLE_SOURCE`).
    * Source-neutral by design: a source need not be Pyth (see `'waterx_rule'`).
    *
-   * - `'pyth_rule'` — Pyth Core updates; infra in the source's own
-   *   `PYTH_CORE_INFRA` table.
    * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`
    *   and a config carrying `packages.pyth_lazer_rule`); infra in the
    *   source's own `LAZER_INFRA` table.
@@ -175,9 +173,11 @@ export interface ClientCreateOptions {
    *   source's own `WATERX_INFRA` table. Pair with `waterxEndpoint` /
    *   `waterxFetch` when the browser needs a proxy.
    *
-   * Each source is self-contained with no cross-source fallback; selecting a
-   * source whose feed for a ticker is absent fails at tx-build (not at init).
-   * See perp `CreateClientOptions.oracleSource` for the full note.
+   * Each source is self-contained with no cross-source fallback. Listing a
+   * source this deployment's config does not carry (or has emptied the feeds
+   * of) is NOT an error at any layer — it simply contributes nothing; a ticker
+   * no listed source serves is skipped at tx-build. See perp
+   * `CreateClientOptions.oracleSource` for the full note.
    */
   oracleSource: OracleSource | OracleSource[];
   /**
@@ -197,7 +197,7 @@ export interface ClientCreateOptions {
    * the quote-center deployment's CORS allowlist: a front end whose origin is
    * not allowed points this at its own same-origin proxy. An absolute URL whose
    * base PATH is preserved — `https://app.example/api/quote-center` fetches
-   * `…/api/quote-center/v1/quotes/leaves`. Unused by the Pyth sources.
+   * `…/api/quote-center/v1/quotes/leaves`. Unused by `pyth_lazer_rule`.
    */
   waterxEndpoint?: string;
   /**

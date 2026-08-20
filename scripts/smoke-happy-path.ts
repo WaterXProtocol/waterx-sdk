@@ -120,7 +120,7 @@ async function main(): Promise<void> {
   console.log(`AccountId: ${accountId}`);
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
+    oracleSource: "waterx_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
@@ -209,7 +209,6 @@ async function main(): Promise<void> {
       minLpAmount: 0n,
       // mint_wlp produces no TradingRequest to reimburse a sponsor fund
       // against — standalone smoke script pays its own gas.
-      allowGasFee: true,
     });
     if (!(await sim(client, keypair, mintTx, "mintWlp (sim)"))) process.exit(2);
     const r = await execute(client, keypair, mintTx, "mintWlp (execute)");

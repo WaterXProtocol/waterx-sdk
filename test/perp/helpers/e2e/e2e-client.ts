@@ -84,7 +84,7 @@ let clientInitPromise: Promise<PerpClient> | undefined;
  * Lazily build (once) the shared e2e client and resolve when it is ready
  * (Vitest e2e setup awaits this). Kept lazy — as a function, not an eager
  * top-level IIFE — so that merely importing this module has NO side effects:
- * pure helpers can pull in `resolveE2eGrpcUrlOverride` / `pythFeedIdsForE2e`
+ * pure helpers can pull in `resolveE2eGrpcUrlOverride`
  * etc. without triggering a `PerpClient.create` (and its `loadConfig`, which
  * now requires a config URL). The config load happens only on first call.
  */
@@ -93,7 +93,7 @@ export function clientInit(): Promise<PerpClient> {
     clientInitPromise = (async () => {
       const grpcUrl = resolveE2eGrpcUrlOverride();
       const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
-        oracleSource: "pyth_rule",
+        oracleSource: "waterx_rule",
         cache: true,
         waterxConfigUrl: resolveE2eWaterxConfigUrl(),
         ...(grpcUrl ? { grpcUrl } : {}),
@@ -109,15 +109,6 @@ export function clientInit(): Promise<PerpClient> {
 
 export async function getE2eClient(): Promise<PerpClient> {
   return client ?? clientInit();
-}
-
-export function pythFeedIdsForE2e(c = client): Record<string, string> {
-  const feeds = c.config.packages.pyth_rule?.feeds ?? {};
-  const out: Record<string, string> = {};
-  for (const [ticker, row] of Object.entries(feeds)) {
-    if (row?.feed_id) out[ticker] = row.feed_id;
-  }
-  return out;
 }
 
 /**

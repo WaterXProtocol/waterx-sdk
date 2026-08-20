@@ -6,7 +6,6 @@
 
 import type { Transaction } from "@mysten/sui/transactions";
 
-import type { OracleFeeSource } from "../../oracle/index.ts";
 import type { PerpClient } from "../client.ts";
 import { stake, unstake } from "../user/staking.ts";
 import {
@@ -34,15 +33,9 @@ export interface BuildMintWlpParams extends MintWlpParams, CommonBuildOpts {
  * `last_price_refresh_timestamp` so `assert_prices_fresh` inside
  * `mint_wlp` passes.
  *
- * Never uses the pyth_sponsor flow — `mint_wlp` produces no
- * `TradingRequest`, so there's nothing for the sponsor to attach its
- * witness to, and `pyth_sponsor_rule::reimburse` cannot consume a Fund
- * without one. So when `skipOraclePriceRefresh` is `false` (the refresh
- * actually runs), the caller MUST pass `allowGasFee: true` — the Pyth
- * update fee is drawn from `tx.gas`, which Enoki-sponsored transactions
- * reject; a sponsored caller should keep `skipOraclePriceRefresh: true`
- * instead and rely on freshness from other trade traffic (see
- * `OracleFeeSourceUnavailable` in `oracle/pyth.ts`).
+ * The refresh costs no on-chain fee — Pyth Core, the only source that ever
+ * charged one, is gone — so this is safe inside an Enoki-sponsored
+ * transaction with no `tx.gas` draw to opt into.
  */
 export async function buildMintWlpTx(
   client: PerpClient,
@@ -52,16 +45,9 @@ export async function buildMintWlpTx(
 
   await maybeConsolidate(client, tx, params.accountId, params);
 
-  // `mint_wlp` has no sponsor flow to resolve against (see the doc comment
-  // above) — the only candidate source at this edge is the caller's
-  // ergonomic `allowGasFee` opt-in.
-  const feeSource: OracleFeeSource | undefined = params.allowGasFee ? { kind: "gas" } : undefined;
-
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
-      cache: params.pythCache,
       lpType: params.lpType,
-      feeSource,
       updateDataProvider: params.updateDataProvider,
     });
   }
@@ -104,16 +90,9 @@ export async function buildMintAndStakeWlpTx(
 
   await maybeConsolidate(client, tx, params.accountId, params);
 
-  // `mint_wlp` has no sponsor flow to resolve against (see `buildMintWlpTx`'s
-  // doc comment) — the only candidate source at this edge is the caller's
-  // ergonomic `allowGasFee` opt-in.
-  const feeSource: OracleFeeSource | undefined = params.allowGasFee ? { kind: "gas" } : undefined;
-
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
-      cache: params.pythCache,
       lpType: params.lpType,
-      feeSource,
       updateDataProvider: params.updateDataProvider,
     });
   }
@@ -157,7 +136,7 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
  * Pass `skipOraclePriceRefresh: true` only when the caller is composing this
  * into a larger PTB that already pre-pumps prices. Like `buildMintWlpTx`,
  * `request_redeem` produces no `TradingRequest`, so a non-skipped refresh
- * requires `allowGasFee: true` (see `buildMintWlpTx`'s doc comment).
+ * costs no on-chain fee (see `buildMintWlpTx`'s doc comment).
  */
 export async function buildUnstakeAndRequestRedeemWlpTx(
   client: PerpClient,
@@ -168,16 +147,9 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
 
   await maybeConsolidate(client, tx, params.accountId, params);
 
-  // `request_redeem` has no sponsor flow to resolve against (see
-  // `buildMintWlpTx`'s doc comment) — the only candidate source at this edge
-  // is the caller's ergonomic `allowGasFee` opt-in.
-  const feeSource: OracleFeeSource | undefined = params.allowGasFee ? { kind: "gas" } : undefined;
-
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [], {
-      cache: params.pythCache,
       lpType: params.lpType,
-      feeSource,
       updateDataProvider: params.updateDataProvider,
     });
   }

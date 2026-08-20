@@ -3,7 +3,7 @@
  *
  * Each `build*Tx` composer creates (or appends to) a `Transaction`, refreshes
  * the on-chain `Oracle` via Pyth, optionally pre-sweeps parked balances
- * (`consolidateToUsd`), wires the `pyth_sponsor_rule` flow when deployed in
+ * (`consolidateToUsd`), refreshes oracle prices in
  * config, and calls the matching `*_request` + `execute`. Implementations are
  * split by domain under `tx-builders/`:
  *
@@ -23,10 +23,4 @@ export * from "./tx-builders/rewards.ts";
 export * from "./tx-builders/credit.ts";
 
 // Oracle helpers re-exported for callers composing custom PTBs.
-export {
-  openPythSponsorFund,
-  PythCache,
-  refreshOraclePrices,
-  reimbursePythSponsor,
-  updatePythPrices,
-} from "../oracle/index.ts";
+export { refreshOraclePrices } from "../oracle/index.ts";
