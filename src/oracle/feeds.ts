@@ -13,10 +13,15 @@
  *
  * Note the difference from the fed set (`OracleHost.oracleSources`): this says
  * what the CONFIG wires, the fed set says which sources this client actually
- * fetches + pushes prices for. A ticker can be config-wired for a rule that is
- * not in the fed set — the collector still gets that rule's (read-only,
- * possibly abstaining) feed leg, which is what keeps `EMissingPriceSource`
- * away while a weight migration is in flight.
+ * fetches + pushes prices for. Being config-wired is **not** enough to reach a
+ * collector: `refreshOraclePrices` builds groups only for SELECTED sources, so
+ * a rule this config wires but the fed set omits contributes no leg at all.
+ *
+ * That is why the fed set must stay a SUPERSET of every ticker's on-chain
+ * weighted rule set — starving a weighted rule aborts
+ * `EMissingPriceSource`, while feeding an unweighted one is harmlessly
+ * dropped. Use this function to answer "can this deployment price the ticker
+ * at all", never "will this client's next build feed rule X".
  */
 
 import { ownEntry } from "../utils/record.ts";

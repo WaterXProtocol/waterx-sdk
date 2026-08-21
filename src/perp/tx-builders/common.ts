@@ -137,6 +137,51 @@ export function assertTickersRefreshed(
 }
 
 /**
+ * Fail the build when ANY WLP pool asset went unpriced.
+ *
+ * Stricter than {@link assertTickersRefreshed}, and deliberately so: `mint_wlp`
+ * sizes the LP payout against the pool's **whole** `pricing_tvl_usd` /
+ * `pool.tvl_usd` (it takes `&WlpAum`), so a stale price on ANY pool asset
+ * mis-mints — not just on the deposit ticker.
+ *
+ * The on-chain guard does NOT catch this. `refreshWlpPoolOracles` appends
+ * `update_token_value` for every pool token, and that call re-stamps
+ * `last_price_refresh_timestamp` with `clock.timestamp_ms()` off whatever
+ * price the `Oracle` already holds — so `assert_prices_fresh` passes
+ * afterwards whether or not this PTB actually refreshed that asset. The build
+ * is the only place the gap can be caught.
+ *
+ * Two distinct failures, both fatal:
+ *
+ * 1. A pool asset whose ticker no listed source served — it is in
+ *    `summary.skipped`.
+ * 2. A pool asset the config wires NO ready rule for — `getCollateralAssets`
+ *    drops it before the refresh, so it never even reaches `skipped`. Silent
+ *    without this check.
+ */
+export function assertWlpPoolRefreshed(
+  client: PerpClient,
+  summary: OracleRefreshSummary,
+  opts: CommonBuildOpts | undefined,
+): void {
+  if (opts?.allowUnrefreshedPrices) return;
+  const priceable = new Set(getCollateralAssets(client.config));
+  const skipped = new Set(summary.skipped);
+  const poolTickers = Object.keys(client.config.packages.wlp.pool_tokens);
+  const unpriceable = poolTickers.filter((ticker) => !priceable.has(ticker));
+  const unserved = poolTickers.filter((ticker) => skipped.has(ticker));
+  if (unpriceable.length === 0 && unserved.length === 0) return;
+  throw new OracleTickerUnservedError(
+    [...new Set([...unpriceable, ...unserved])],
+    client.oracleSources,
+    unpriceable.length > 0
+      ? `WLP pool asset(s) ${unpriceable.join(", ")} have no fully-wired oracle rule in ` +
+          "this config at all, so they never reached the refresh."
+      : "They are WLP pool assets, and mint/redeem values the whole pool.",
+  );
+}
+
+/**
  * Build the *Request + execute envelope:
  *
  *   [maybeConsolidate(tx)]

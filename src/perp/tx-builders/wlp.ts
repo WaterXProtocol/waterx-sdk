@@ -18,6 +18,7 @@ import {
 } from "../user/wlp.ts";
 import {
   assertTickersRefreshed,
+  assertWlpPoolRefreshed,
   maybeConsolidate,
   newTx,
   refreshWlpPoolOracles,
@@ -56,9 +57,11 @@ export async function buildMintWlpTx(
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
     });
-    // `mint_wlp` values the deposit at this ticker's oracle price — minting
-    // against an unrefreshed one mis-sizes the LP payout.
+    // `mint_wlp` values the deposit at this ticker's oracle price AND sizes the
+    // payout against the pool's whole TVL (it takes `&WlpAum`), so BOTH the
+    // deposit ticker and every other pool asset must have been refreshed.
     assertTickersRefreshed(client, summary, [params.depositTicker], params);
+    assertWlpPoolRefreshed(client, summary, params);
   }
 
   mintWlp(client, tx, params);
@@ -104,9 +107,11 @@ export async function buildMintAndStakeWlpTx(
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
     });
-    // `mint_wlp` values the deposit at this ticker's oracle price — minting
-    // against an unrefreshed one mis-sizes the LP payout.
+    // `mint_wlp` values the deposit at this ticker's oracle price AND sizes the
+    // payout against the pool's whole TVL (it takes `&WlpAum`), so BOTH the
+    // deposit ticker and every other pool asset must have been refreshed.
     assertTickersRefreshed(client, summary, [params.depositTicker], params);
+    assertWlpPoolRefreshed(client, summary, params);
   }
 
   const stakeAlias = params.stakeAlias ?? "WLP";
@@ -160,13 +165,15 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
   await maybeConsolidate(client, tx, params.accountId, params);
 
   if (!params.skipOraclePriceRefresh) {
-    // No caller-named ticker here: the redeem prices the whole pool, and every
-    // pool token is covered on chain by `assert_prices_fresh`. Nothing extra to
-    // assert — a skipped pool token surfaces there, not silently.
-    await refreshWlpPoolOracles(tx, client, [], {
+    // No caller-named ticker here — but the redeem values the whole pool, and
+    // this builder emits `update_token_value` for every pool token, which
+    // re-stamps freshness off the price already on chain. So the pool-wide
+    // assertion is exactly as load-bearing here as it is for mint.
+    const summary = await refreshWlpPoolOracles(tx, client, [], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
     });
+    assertWlpPoolRefreshed(client, summary, params);
   }
 
   unstake(client, tx, {

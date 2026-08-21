@@ -96,8 +96,16 @@ Both consumers pin exact, so nothing breaks until they bump. What each has to ch
   execute against whatever price the `Oracle` already holds — which can still
   sit inside the on-chain freshness window, so the action would succeed at a
   stale price instead of failing. `allowUnrefreshedPrices: true` is the explicit
-  opt-in; the check stays scoped to action-critical tickers, so an unrelated WLP
-  pool token going unpriced does not take down every trade.
+  opt-in. For a **trade**, action-critical means the traded market + its
+  collateral, so an unrelated WLP pool token going unpriced does not take down
+  every trade. For **WLP mint / redeem** it means the WHOLE pool: `mint_wlp`
+  takes `&WlpAum` and sizes the payout against `pool.tvl_usd`, so a stale price
+  on any pool asset mis-mints. The on-chain guard cannot catch that —
+  `update_token_value` re-stamps `last_price_refresh_timestamp` off the price
+  already on chain, so `assert_prices_fresh` passes either way — which also
+  covers a pool asset the config wires no ready rule for, since
+  `getCollateralAssets` drops it before the refresh and it never reaches
+  `skipped`.
   Purely additive for callers that ignore the result. Servability is deliberately
   narrow: a ticker needs no update leg only when `constant_rule` is the ONLY rule the
   config wires for it — a dual-feed ticker whose price source did not run is skipped

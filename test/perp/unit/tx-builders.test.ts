@@ -15,10 +15,12 @@ import {
   buildDepositCollateralTx,
   buildExecuteWithdrawalTx,
   buildIncreasePositionTx,
+  buildMintAndStakeWlpTx,
   buildMintWlpTx,
   buildPlaceOrderTx,
   buildRedeemVaaTx,
   buildRequestCreditWithdrawTx,
+  buildUnstakeAndRequestRedeemWlpTx,
   buildUpdateOrderTx,
   buildWithdrawCollateralTx,
 } from "../../../src/perp/tx-builders.ts";
@@ -222,6 +224,107 @@ describe("tx-builders (v3)", () => {
     const targets = moveTargets(tx);
     expect(targets).not.toContain("oracle::aggregate");
     expect(targets).toContain("lp_pool::mint_wlp");
+  });
+
+  it("buildMintWlpTx FAILS CLOSED when a NON-deposit pool asset goes unpriced", async () => {
+    // `mint_wlp` takes `&WlpAum` and sizes the payout against the pool's whole
+    // TVL, so a stale price on ANY pool asset mis-mints — not just the deposit
+    // ticker. The on-chain guard cannot catch it: `update_token_value`
+    // re-stamps `last_price_refresh_timestamp` off the price already on chain,
+    // so `assert_prices_fresh` passes either way.
+    //
+    // SUIUSD is a second pool asset wired ONLY under lazer while the fed set is
+    // waterx: fully wired (so getCollateralAssets keeps it and it reaches the
+    // refresh) but unserved (so it lands in `skipped`).
+    const c = createUnitTestClient({ oracleSource: "waterx_rule" });
+    c.config.packages.wlp!.pool_tokens.SUIUSD = "0x2::sui::SUI";
+    c.config.packages.pyth_lazer_rule!.feeds.SUIUSD = 9;
+    mockQuoteCenterLeaves(["USDCUSD"]);
+
+    await expect(
+      buildMintWlpTx(c, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        depositTokenType: MOCK_USDC_TYPE,
+        depositTicker: "USDCUSD",
+        depositAmount: 10_000_000n,
+        minLpAmount: 0n,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toThrow(/SUIUSD/);
+  });
+
+  it("buildMintAndStakeWlpTx FAILS CLOSED on the same unserved pool asset", async () => {
+    const c = createUnitTestClient({ oracleSource: "waterx_rule" });
+    c.config.packages.wlp!.pool_tokens.SUIUSD = "0x2::sui::SUI";
+    c.config.packages.pyth_lazer_rule!.feeds.SUIUSD = 9;
+    mockQuoteCenterLeaves(["USDCUSD"]);
+
+    await expect(
+      buildMintAndStakeWlpTx(c, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        depositTokenType: MOCK_USDC_TYPE,
+        depositTicker: "USDCUSD",
+        depositAmount: 10_000_000n,
+        minLpAmount: 0n,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toBeInstanceOf(OracleTickerUnservedError);
+  });
+
+  it("buildMintWlpTx FAILS CLOSED on a pool asset with NO wired rule (never reaches `skipped`)", async () => {
+    // The subtler hole: `getCollateralAssets` drops a pool token that no rule
+    // wires, so it never enters the refresh and can never appear in
+    // `summary.skipped`. Checking the summary alone would miss it entirely.
+    const c = createUnitTestClient({ oracleSource: "waterx_rule" });
+    c.config.packages.wlp!.pool_tokens.SUIUSD = "0x2::sui::SUI"; // no feeds anywhere
+    mockQuoteCenterLeaves(["USDCUSD"]);
+
+    await expect(
+      buildMintWlpTx(c, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        depositTokenType: MOCK_USDC_TYPE,
+        depositTicker: "USDCUSD",
+        depositAmount: 10_000_000n,
+        minLpAmount: 0n,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toThrow(/no fully-wired oracle rule/);
+  });
+
+  it("buildUnstakeAndRequestRedeemWlpTx FAILS CLOSED on an unserved pool asset", async () => {
+    // Redeem values the whole pool too, and this builder emits the same
+    // freshness-restamping `update_token_value` calls.
+    const c = createUnitTestClient({ oracleSource: "waterx_rule" });
+    c.config.packages.wlp!.pool_tokens.SUIUSD = "0x2::sui::SUI";
+    c.config.packages.pyth_lazer_rule!.feeds.SUIUSD = 9;
+    mockQuoteCenterLeaves(["USDCUSD"]);
+
+    await expect(
+      buildUnstakeAndRequestRedeemWlpTx(c, {
+        accountId: PTB_DUMMY_ACCOUNT_ID,
+        redeemTokenType: MOCK_USDC_TYPE,
+        withdrawalAmount: 1_000n,
+        consolidateToUsd: false,
+      }),
+    ).rejects.toBeInstanceOf(OracleTickerUnservedError);
+  });
+
+  it("an unserved pool asset is escapable with allowUnrefreshedPrices", async () => {
+    const c = createUnitTestClient({ oracleSource: "waterx_rule" });
+    c.config.packages.wlp!.pool_tokens.SUIUSD = "0x2::sui::SUI";
+    c.config.packages.pyth_lazer_rule!.feeds.SUIUSD = 9;
+    mockQuoteCenterLeaves(["USDCUSD"]);
+
+    const tx = await buildMintWlpTx(c, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      depositTokenType: MOCK_USDC_TYPE,
+      depositTicker: "USDCUSD",
+      depositAmount: 10_000_000n,
+      minLpAmount: 0n,
+      consolidateToUsd: false,
+      allowUnrefreshedPrices: true,
+    });
+    expect(moveTargets(tx)).toContain("lp_pool::mint_wlp");
   });
 
   it("buildPlaceOrderTx FAILS CLOSED when the traded ticker goes unpriced", async () => {

@@ -225,9 +225,10 @@ export class OracleTickerUnservedError extends Error {
   /** The action-critical tickers that received no oracle leg. */
   readonly tickers: string[];
 
-  constructor(tickers: string[], sources: readonly string[]) {
+  constructor(tickers: string[], sources: readonly string[], context?: string) {
     super(
       `no listed oracle source [${sources.join(", ")}] served ticker(s): ${tickers.join(", ")}. ` +
+        (context ? `${context} ` : "") +
         "This build appends an action that depends on them, so it would execute against " +
         "whatever price the Oracle already holds. Add feeds under a listed source, list a " +
         "source that serves them, or pass allowUnrefreshedPrices: true to accept the " +
