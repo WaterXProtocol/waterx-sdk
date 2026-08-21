@@ -201,6 +201,74 @@ describe("getMarketStatus — a holiday's midnight IS a status boundary", () => 
   });
 });
 
+describe("getMarketStatus — modified hours on a 24/7 schedule", () => {
+  // The 24/7 arm only understands FULL closures, so evaluating it first
+  // reported a continuous venue shut for the whole of an early-close day.
+  // Modified hours have to be resolved before every other arm.
+  const { tradingHours: ALWAYS_XMAS } = parsePythSchedule(
+    "America/New_York;O,O,O,O,O,O,O;1224/0930-1300",
+  );
+
+  it("is OPEN inside the replacement window, not closed all day", () => {
+    expect(getMarketStatus(ALWAYS_XMAS, false, etDate(2026, 12, 24, 11, 0)).status).toBe("open");
+  });
+
+  it("is CLOSED before the window opens", () => {
+    const at = etDate(2026, 12, 24, 8, 0);
+    const { status, nextStatusChangeIn } = getMarketStatus(ALWAYS_XMAS, false, at);
+    expect(status).toBe("closed");
+    expect(new Date(at.getTime() + nextStatusChangeIn!).toISOString()).toBe(
+      "2026-12-24T14:30:00.000Z", // 09:30 ET
+    );
+  });
+
+  it("is CLOSED after the window, and resumes when the date ends", () => {
+    const at = etDate(2026, 12, 24, 15, 0);
+    const { status, nextStatusChangeIn } = getMarketStatus(ALWAYS_XMAS, false, at);
+    expect(status).toBe("closed");
+    expect(new Date(at.getTime() + nextStatusChangeIn!).toISOString()).toBe(
+      "2026-12-25T05:00:00.000Z", // Dec 25 00:00 ET — continuous trading resumes
+    );
+  });
+
+  it("a 24/7 venue with only a FULL-closure holiday is unaffected", () => {
+    const { tradingHours } = parsePythSchedule("America/New_York;O,O,O,O,O,O,O;1225/C");
+    expect(getMarketStatus(tradingHours, false, etDate(2026, 12, 25, 11, 0)).status).toBe("closed");
+    expect(getMarketStatus(tradingHours, false, etDate(2026, 12, 24, 11, 0)).status).toBe("open");
+  });
+});
+
+describe("getMarketStatus — a modified-hours date seen from the day BEFORE", () => {
+  it("reports the replacement window's open, not the next normal trading day", () => {
+    // Treating the date as a plain holiday skipped the whole session and
+    // pointed at the next NORMAL trading day.
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1224/1000-1300",
+    );
+    const at = etDate(2026, 12, 23, 18, 0);
+    const { status, nextStatusChangeIn } = getMarketStatus(tradingHours, false, at);
+
+    expect(status).toBe("closed");
+    expect(new Date(at.getTime() + nextStatusChangeIn!).toISOString()).toBe(
+      "2026-12-24T15:00:00.000Z", // 10:00 ET on the 24th
+    );
+  });
+
+  it("still skips a FULL-closure date to the next real open", () => {
+    // The other half of the same branch: no windows means nothing opens that
+    // day, so walking past it remains correct.
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1224/C",
+    );
+    const at = etDate(2026, 12, 23, 18, 0);
+    const { nextStatusChangeIn } = getMarketStatus(tradingHours, false, at);
+    // Dec 24 2026 is a Thursday and shut, so the next open is Friday the 25th.
+    expect(new Date(at.getTime() + nextStatusChangeIn!).toISOString()).toBe(
+      "2026-12-25T14:30:00.000Z",
+    );
+  });
+});
+
 describe("getMarketStatus — sub-minute precision", () => {
   it("counts the seconds already elapsed in the current minute", () => {
     // All the internal arithmetic is minute-of-week, i.e. as if `now` sat on

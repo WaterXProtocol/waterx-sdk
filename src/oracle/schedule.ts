@@ -892,6 +892,31 @@ function scheduledStatusAt(events: WeeklyEvent[], mow: number): "open" | "closed
   return prev?.type === "open" ? "open" : "closed";
 }
 
+/**
+ * Status on a date whose MODIFIED hours replace the schedule, or `null` once
+ * the last window has passed (shut for the rest of the day — the caller's
+ * holiday walk then owns the answer).
+ *
+ * Windows are minutes-from-midnight and day-scoped, so this is plain arithmetic
+ * against the local time of day; a `24:00` end stays distinct from `00:00`.
+ */
+function modifiedHoursStatus(
+  windows: { start: number; end: number }[],
+  local: LocalParts,
+): MarketStatusResult | null {
+  const intoDay = minutesIntoLocalDay(local);
+
+  const openNow = windows.find((w) => intoDay >= w.start && intoDay < w.end);
+  if (openNow !== undefined) {
+    return { status: "open", nextStatusChangeIn: (openNow.end - intoDay) * MS_PER_MINUTE };
+  }
+  const laterToday = windows.find((w) => w.start > intoDay);
+  if (laterToday !== undefined) {
+    return { status: "closed", nextStatusChangeIn: (laterToday.start - intoDay) * MS_PER_MINUTE };
+  }
+  return null;
+}
+
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
   const { events, alwaysOpen, holidays: holidaySet, holidayHours } = derive(tradingHours);
 
@@ -910,6 +935,19 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
 
   const local = toLocalParts(now, tradingHours.timezone);
 
+  // MODIFIED HOURS replace the weekly schedule for this date — an early close
+  // or a split session. This runs before EVERY other arm, the 24/7 one
+  // included: a continuous venue with an early close is closed outside those
+  // windows, and evaluating the 24/7 arm first reported it shut for the whole
+  // day instead (it only knows full closures). Falling through means the last
+  // window has passed, i.e. shut for the rest of the day, which the holiday
+  // walks below answer correctly.
+  const modifiedToday = holidayHours.get(holidayKey(local.month, local.day));
+  if (modifiedToday !== undefined) {
+    const within = modifiedHoursStatus(modifiedToday, local);
+    if (within !== null) return within;
+  }
+
   if (events.length === 0) {
     // Continuous 24/7: only a holiday can change the status.
     const onHoliday = isHoliday(holidaySet, local);
@@ -923,27 +961,6 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
   }
 
   const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
-
-  // MODIFIED HOURS replace the weekly schedule for this date — an early close
-  // or a split session. Evaluated before the closure arm below, because such a
-  // date is NOT fully closed; treating it as one (or, as before, discarding the
-  // windows entirely and falling back to the normal weekly hours) is how a
-  // venue reported itself open after it had shut.
-  const modified = holidayHours.get(holidayKey(local.month, local.day));
-  if (modified !== undefined) {
-    const intoDay = minutesIntoLocalDay(local);
-    const openNow = modified.find((w) => intoDay >= w.start && intoDay < w.end);
-    if (openNow !== undefined) {
-      return { status: "open", nextStatusChangeIn: (openNow.end - intoDay) * MS_PER_MINUTE };
-    }
-    const laterToday = modified.find((w) => w.start > intoDay);
-    if (laterToday !== undefined) {
-      return { status: "closed", nextStatusChangeIn: (laterToday.start - intoDay) * MS_PER_MINUTE };
-    }
-    // Past the last window: shut for the rest of the day, and at local midnight
-    // the date is no longer special, so the normal holiday-lift walk below is
-    // the right answer.
-  }
 
   if (isHoliday(holidaySet, local)) {
     // The venue reopens the moment it is BOTH off-holiday and scheduled-open.
@@ -1027,6 +1044,20 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
         nextStatusChangeIn = holidayStarts;
       }
     } else if (nextChangeEvent.type === "open" && isHoliday(holidaySet, next.at)) {
+      // The upcoming open lands on a date with MODIFIED hours: the venue does
+      // open that day, just at its replacement time. Treating the date as a
+      // plain holiday skipped the whole session and reported the next NORMAL
+      // trading day instead.
+      const modifiedThen = holidayHours.get(holidayKey(next.at.month, next.at.day));
+      if (modifiedThen !== undefined && modifiedThen.length > 0) {
+        // Midnight of that local date, plus the first window's start.
+        const midnight = next.ms - minutesIntoLocalDay(next.at) * MS_PER_MINUTE;
+        const opensIn = midnight + modifiedThen[0]!.start * MS_PER_MINUTE;
+        if (opensIn > 0) {
+          nextStatusChangeIn = opensIn;
+          return { status: currentStatus, nextStatusChangeIn };
+        }
+      }
       // Closed by schedule, and the upcoming open lands on a holiday.
       //
       // The masked session may still be RUNNING when that holiday lifts — a
