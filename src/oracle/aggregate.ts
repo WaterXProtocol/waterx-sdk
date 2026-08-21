@@ -28,6 +28,7 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import type { OracleHost } from "./host.ts";
 import {
+  ORACLE_SOURCES,
   oracleCredentialsFromHost,
   type OracleSource,
   type PriceUpdateRule,
@@ -240,6 +241,45 @@ export function aggregateTickerWithConstant(
  * weight migration prices it from the remaining weighted rules instead of
  * failing.
  */
+/**
+ * `constant_rule` pins this ticker AND no other rule in the config carries a
+ * feed for it — so a collector fed by the constant leg alone is the complete
+ * picture, and no price-update source owes it anything.
+ *
+ * Checked across EVERY known source, not just the listed ones: the question is
+ * what the on-chain aggregator is likely to weight, which does not depend on
+ * what this client happens to have listed.
+ */
+function isConstantOnlyTicker(host: OracleHost, ticker: string): boolean {
+  if (!host.isConstantTicker(ticker)) return false;
+  for (const source of ORACLE_SOURCES) {
+    if (resolveOracleRule(source).supportedTickers(host).includes(ticker)) return false;
+  }
+  // supra_rule is an auxiliary feed helper rather than an `OracleSource`, so it
+  // is not in the loop above — but a supra feed is still a non-constant leg the
+  // aggregator can weight, so a ticker carrying one is not constant-only.
+  // Read straight off the config slice, exactly as `isConstantTicker` does.
+  const supraFeeds = host.config.packages.supra_rule?.feeds;
+  if (supraFeeds !== undefined && Object.hasOwn(supraFeeds, ticker)) return false;
+  return true;
+}
+
+/**
+ * What {@link refreshOraclePrices} actually put on chain.
+ *
+ * `skipped` holds the requested tickers NO listed source can price (and that
+ * `constant_rule` does not pin). They got no collector and no aggregate, so
+ * their on-chain price is whatever a previous transaction left — which is why
+ * every caller whose ACTION depends on a ticker must check this rather than
+ * assume the refresh covered its whole request.
+ */
+export interface OracleRefreshSummary {
+  /** Tickers aggregated in this PTB — includes constant-pinned ones. */
+  refreshed: string[];
+  /** Requested tickers no listed source serves. */
+  skipped: string[];
+}
+
 export async function refreshOraclePrices(
   tx: Transaction,
   host: OracleHost,
@@ -262,8 +302,8 @@ export async function refreshOraclePrices(
      */
     updateDataProvider?: UpdateDataProvider;
   } = {},
-): Promise<void> {
-  if (tickers.length === 0) return;
+): Promise<OracleRefreshSummary> {
+  if (tickers.length === 0) return { refreshed: [], skipped: [] };
   // Dedupe the caller's list (order-preserving): a repeated ticker would
   // otherwise aggregate TWICE in this one PTB — wasted gas for every rule, and
   // under waterx the second collect would be dead weight on top of that: the
@@ -292,24 +332,37 @@ export async function refreshOraclePrices(
     })
     .filter((group) => group.tickers.length > 0);
 
-  // Fail the tx-build (NOT client init, NOT a silent reroute) when NO listed
-  // source has a feed for a requested ticker that actually needs a price
-  // update. Only a CONSTANT-ONLY ticker is exempt — priced entirely by
-  // `constant_rule`, it needs no update leg from any source. Every source now
-  // reads AND writes through its own feeds namespace, so `isConstantTicker`
-  // alone decides the exemption. This catches a MISSING feed; a
-  // present-but-WRONG feed id is deliberately not validated here (it aborts
-  // on-chain at dry-run).
+  // A ticker no listed source can price is SKIPPED, not thrown on, and named
+  // in the returned summary.
+  //
+  // This is a broad primitive: callers sweep whole market lists through it, and
+  // losing 29 tickers because the 30th is unconfigured is the wrong trade — the
+  // 29 still need their prices on chain. Safety lives one level up, where the
+  // ACTION is known: the `build*Tx` composers fail closed on the tickers their
+  // specific call actually depends on (`assertTickersRefreshed` /
+  // `assertWlpPoolRefreshed` in `perp/tx-builders/common.ts`). A bare
+  // `refreshOraclePrices` caller composing its own PTB reads `skipped` and
+  // decides for itself.
+  //
+  // Exemption: a CONSTANT-ONLY ticker needs no update leg from any source, so
+  // it counts as refreshed with just its constant feed.
+  //
+  // "Constant-only" is deliberately stricter than "constant-pinned". A ticker
+  // that constant_rule pins AND some other rule also has a feed for is NOT
+  // exempt, even when that other rule is outside the fed set: the on-chain
+  // aggregator very likely weights the rule whose feed the config carries, and
+  // aggregating a constant-only collector for it aborts `EMissingPriceSource`.
+  // Exempting on `isConstantTicker` alone would be correct only while the fed
+  // set covers every ticker's weighted set — an operator-maintained property
+  // this function cannot verify without reading chain state. So the strict
+  // reading fails SAFE: the ticker is skipped, named, and the composers turn
+  // that into a build error instead of an opaque on-chain abort.
+  //
+  // Catches a MISSING feed only; a present-but-WRONG feed id is deliberately
+  // left to abort on-chain at dry-run.
   const covered = new Set(groups.flatMap((group) => group.tickers));
-  const unservable = tickers.filter((t) => !covered.has(t) && !host.isConstantTicker(t));
-  if (unservable.length > 0) {
-    const sources = host.oracleSources.join(", ");
-    throw new Error(
-      `oracleSource [${sources}] has no feed configured for ticker(s): ` +
-        `${unservable.join(", ")}. Sources are self-contained with no fallback — add ` +
-        `feeds for them under a listed source, or list a source that serves them.`,
-    );
-  }
+  const skipped = tickers.filter((t) => !covered.has(t) && !isConstantOnlyTicker(host, t));
+  const refreshed = tickers.filter((t) => !skipped.includes(t));
 
   // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below
   // (the position the retired fee-source pre-check held). It consults only
@@ -444,8 +497,10 @@ export async function refreshOraclePrices(
     }
   }
 
-  // Aggregate each ticker, feeding whichever rules it is configured for.
-  for (const ticker of tickers) {
+  // Aggregate each REFRESHED ticker, feeding whichever rules it is configured
+  // for. A skipped ticker gets no collector at all — aggregating one with no
+  // feed leg would write an empty collector and abort `EMissingPriceSource`.
+  for (const ticker of refreshed) {
     aggregateTicker(tx, host, {
       ticker,
       lazerUpdate: lazerUpdateByTicker.get(ticker),
@@ -453,4 +508,6 @@ export async function refreshOraclePrices(
       waterxEnvelope: waterxEnvelopeByTicker.get(ticker),
     });
   }
+
+  return { refreshed, skipped };
 }

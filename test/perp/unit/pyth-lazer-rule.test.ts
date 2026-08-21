@@ -576,11 +576,10 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     ]);
   });
 
-  it("fails the build (no cross-source fallback) when a ticker lacks a lazer feed, appending zero PTB commands", async () => {
+  it("skips a ticker lacking a lazer feed while still refreshing the rest (no cross-source fallback)", async () => {
     const client = createLazerTestClient("pyth_lazer_rule");
-    // ETHUSD drops out of lazer support. There is no fallback — the build
-    // throws for ETHUSD and mutates nothing (the missing-feed check is hoisted
-    // above every fetch and PTB command).
+    // ETHUSD drops out of lazer support. There is no fallback: it is skipped
+    // and named, BTCUSD still goes through, and no other source is consulted.
     delete client.config.packages.pyth_lazer_rule?.feeds.ETHUSD;
     const fetchSpy = vi.fn(async () => ({
       ok: true,
@@ -589,12 +588,15 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
     const tx = new Transaction();
-    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
-      /oracleSource \[pyth_lazer_rule\] has no feed configured.*ETHUSD/,
-    );
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD"],
+      skipped: ["ETHUSD"],
+    });
 
-    expect(tx.getData().commands?.length ?? 0).toBe(0);
-    expect(fetchSpy).not.toHaveBeenCalled(); // thrown before any off-chain fetch
+    // BTCUSD was served, so the lazer fetch DID run and commands were appended
+    // — but nothing was emitted for ETHUSD.
+    expect(moveTargets(tx).join("\n")).not.toContain("ETHUSD");
+    expect(fetchSpy).toHaveBeenCalled();
   });
 
   it("credential hoist: a keyless lazer-listed build throws LazerApiKeyMissing BEFORE any fetch or PTB mutation", async () => {

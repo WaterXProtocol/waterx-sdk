@@ -130,6 +130,26 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
 
 ### Fixed
 
+- **A ticker no listed source serves is now SKIPPED, not thrown on.**
+  `refreshOraclePrices` returns `OracleRefreshSummary { refreshed, skipped }`; a
+  sweep over 30 markets no longer loses 29 because the 30th is unconfigured.
+  Safety moved to where the ACTION is known: the `build*Tx` composers fail closed
+  via `OracleTickerUnservedError` on the tickers their specific call depends on
+  (traded market + collateral; **every pool asset** for WLP), with
+  `allowUnrefreshedPrices: true` as the explicit opt-out.
+- **WLP no longer silently drops an unpriceable pool asset.** `refreshWlpPoolOracles`
+  used to pre-filter pool tokens through the fed set, so an unservable one was
+  dropped from BOTH the refresh and the `update_token_value` bump — and nothing on
+  chain objected, because `assert_prices_fresh` only checks each token's
+  `last_price_refresh_timestamp` against `price_refresh_threshold_ms`, which a
+  recent-enough stale price passes. `mint_wlp` sizes the payout off the whole
+  pool's `tvl_usd`, so that mis-valued the mint. It now requests every pool asset
+  and fails the build on any gap.
+- **The constant exemption is strict.** A ticker `constant_rule` pins is exempt only
+  when NO other rule in the config carries a feed for it. Constant-pinned plus a
+  feed under an unlisted source is no longer silently aggregated constant-only —
+  that aborted `EMissingPriceSource` whenever the aggregator weighted the other
+  rule. Code and comment previously disagreed on this; the strict reading fails safe.
 - **The weekday fold no longer guesses.** A comma-joined schedule with more than 7
   tokens is ambiguous whenever two runs of adjacent ranges could each own the
   surplus — leftmost-greedy and rightmost-greedy each produce a plausible but WRONG

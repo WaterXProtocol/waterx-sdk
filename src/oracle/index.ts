@@ -64,6 +64,7 @@ export type { OraclePriceEntry } from "./read-prices.ts";
 // client creation — see `validate.ts`'s header.
 export {
   OracleFedSetError,
+  OracleTickerUnservedError,
   assertOracleWriteCoverage,
   missingOracleCredentials,
   servableTickers,
@@ -125,6 +126,7 @@ export { OracleSourceNotImplementedError, resolveOracleRule } from "./rule-regis
 
 // Aggregation orchestrator
 export { aggregateTicker, aggregateTickerWithConstant, refreshOraclePrices } from "./aggregate.ts";
+export type { OracleRefreshSummary } from "./aggregate.ts";
 
 // Market hours: the Pyth schedule-grammar parser + the pure market-status
 // walker (the one cross-repo implementation — see `schedule.ts`'s header).

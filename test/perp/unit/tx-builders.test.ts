@@ -1,7 +1,11 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { parseSignedLeaves, type UpdateDataProvider } from "../../../src/oracle/index.ts";
+import {
+  OracleTickerUnservedError,
+  parseSignedLeaves,
+  type UpdateDataProvider,
+} from "../../../src/oracle/index.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
@@ -204,6 +208,11 @@ describe("tx-builders (v3)", () => {
   it("buildMintWlpTx WITHOUT skip fails when a pool token has no feed for the selected source (no fallback)", async () => {
     // The companion to the skip test above — proves the skip is what avoids
     // the failure, not that the scenario is benign.
+    //
+    // `refreshOraclePrices` itself only SKIPS the unservable pool asset; the
+    // WLP composer is what fails closed, because mint sizes the payout off the
+    // whole pool's tvl_usd and `assert_prices_fresh` would NOT catch a pool
+    // asset left at a previous transaction's (recent-enough) price.
     const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
 
@@ -216,7 +225,25 @@ describe("tx-builders (v3)", () => {
         minLpAmount: 0n,
         consolidateToUsd: false,
       }),
-    ).rejects.toThrow(/no feed configured/);
+    ).rejects.toThrow(OracleTickerUnservedError);
+  });
+
+  it("buildMintWlpTx builds anyway under the explicit allowUnrefreshedPrices opt-out", async () => {
+    // The escape hatch exists because "unpriceable" can be a deliberate
+    // deployment state; it must be EXPLICIT, never the default.
+    const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    lazerClient.config.packages.pyth_lazer_rule!.feeds = {};
+
+    const tx = await buildMintWlpTx(lazerClient, {
+      accountId: PTB_DUMMY_ACCOUNT_ID,
+      depositTokenType: MOCK_USDC_TYPE,
+      depositTicker: "USDCUSD",
+      depositAmount: 10_000_000n,
+      minLpAmount: 0n,
+      consolidateToUsd: false,
+      allowUnrefreshedPrices: true,
+    });
+    expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 
   it("buildMintWlpTx with oracle refresh (fee-free — composes into sponsored transactions)", async () => {

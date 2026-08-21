@@ -118,25 +118,27 @@ describe("refreshOraclePrices — 'pyth_lazer_rule' with a fake rule injected", 
     expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(2);
   });
 
-  it("fails the tx-build (no fallback) when the selected source has no feed for a requested ticker", async () => {
+  it("SKIPS a ticker the selected source cannot serve, and never reroutes it", async () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     // Fake lazer serves only ETHUSD; BTCUSD is a normal (non-constant) ticker
-    // with no lazer feed → the build must throw instead of rerouting it to
-    // another source.
+    // with no lazer feed. It is reported in `skipped` rather than thrown on —
+    // a sweep over 30 markets must not lose 29 because the 30th is
+    // unconfigured. The composers fail closed on what their action needs; see
+    // `assertTickersRefreshed` in tx-builders.test.ts.
     const fakeLazer = createFakeRule("pyth_lazer_rule", ["ETHUSD"]);
     const waterxSpy = vi.spyOn(WaterxRule, "fetchUpdateData");
 
-    await expect(
-      refreshOraclePrices(new Transaction(), client, ["BTCUSD", "ETHUSD"], {
-        ruleOverrides: { pyth_lazer_rule: fakeLazer },
-      }),
-    ).rejects.toThrow(/oracleSource \[pyth_lazer_rule\] has no feed configured.*BTCUSD/);
+    const summary = await refreshOraclePrices(new Transaction(), client, ["BTCUSD", "ETHUSD"], {
+      ruleOverrides: { pyth_lazer_rule: fakeLazer },
+    });
+    expect(summary).toEqual({ refreshed: ["ETHUSD"], skipped: ["BTCUSD"] });
 
-    // No fallback rule ran, and the selected rule never fetched either (throw
-    // is hoisted above every off-chain call).
+    // No fallback rule ran — BTCUSD is simply dropped, never rerouted to a
+    // source outside the fed set. The listed rule DID fetch, for the ticker it
+    // does serve; skipping one ticker must not starve the others.
     expect(waterxSpy).not.toHaveBeenCalled();
-    expect(fakeLazer.fetchUpdateData).not.toHaveBeenCalled();
+    expect(fakeLazer.fetchUpdateData).toHaveBeenCalledWith(client, ["ETHUSD"]);
   });
 
   it("forwards the same tx and the exact payload fetchUpdateData resolved into buildUpdateCalls", async () => {
@@ -176,6 +178,30 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
     vi.restoreAllMocks();
   });
 
+  it("a constant-pinned ticker that ANOTHER rule also feeds is NOT exempt — it fails safe", async () => {
+    // The distinction between "constant-pinned" and "constant-only". Here
+    // USDCUSD is pinned by constant_rule AND carries a waterx feed, while the
+    // fed set lists only lazer. Exempting on `isConstantTicker` alone would
+    // aggregate a constant-only collector — and if the on-chain aggregator
+    // weights waterx_rule for it (very likely, since the config carries that
+    // feed), that aborts EMissingPriceSource with nothing to point at.
+    //
+    // So it is skipped instead: named at build, where a human can read it.
+    const client = createUnitTestClient({ oracleSource: ["pyth_lazer_rule"] });
+    client.pyth = { ...client.pyth, api_key: "unit-test-token" };
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    // ...but waterx (NOT in the fed set) still carries a feed for it.
+    client.config.packages.waterx_rule!.feeds.USDCUSD = { ticker: "USDCUSDT" };
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["USDCUSD"])).resolves.toEqual({
+      refreshed: [],
+      skipped: ["USDCUSD"],
+    });
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
+  });
+
   it("USDCUSD constant-only is exempt under EVERY fed set, and aggregates a constant-only collector", async () => {
     // THE config-drop regression (WL-2355): after `pyth_rule` leaves the config,
     // USDCUSD exists ONLY in `constant_rule.feeds`. Every fed set must exempt it
@@ -196,7 +222,10 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
       expect("pyth_rule" in client.config.packages).toBe(false);
 
       const tx = new Transaction();
-      await expect(refreshOraclePrices(tx, client, ["USDCUSD"])).resolves.toBeUndefined();
+      await expect(refreshOraclePrices(tx, client, ["USDCUSD"])).resolves.toEqual({
+        refreshed: ["USDCUSD"],
+        skipped: [],
+      });
 
       const targets = moveTargets(tx);
       expect(targets).toContain("oracle::new_collector");
@@ -209,18 +238,23 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
     }
   });
 
-  it("a non-constant ticker with no feed for the selected source throws (no reroute to any other source)", async () => {
+  it("a non-constant ticker with no feed is skipped, never rerouted to another source", async () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     const fakeLazer = createFakeRule("pyth_lazer_rule", []);
     const waterxSpy = vi.spyOn(WaterxRule, "fetchUpdateData");
 
+    const tx = new Transaction();
     await expect(
-      refreshOraclePrices(new Transaction(), client, ["BTCUSD"], {
+      refreshOraclePrices(tx, client, ["BTCUSD"], {
         ruleOverrides: { pyth_lazer_rule: fakeLazer },
       }),
-    ).rejects.toThrow(/no feed configured.*BTCUSD/);
+    ).resolves.toEqual({ refreshed: [], skipped: ["BTCUSD"] });
+    // The point of "no reroute": an unlisted source is never consulted, and a
+    // skipped ticker gets NO collector — aggregating one with no feed leg
+    // would abort EMissingPriceSource on chain.
     expect(waterxSpy).not.toHaveBeenCalled();
+    expect(tx.getData().commands?.length ?? 0).toBe(0);
   });
 });
 
@@ -479,7 +513,7 @@ describe("refreshOraclePrices — updateDataProvider (BE prefetch-cache seam)", 
         ruleOverrides: { pyth_lazer_rule: fakeLazer },
         updateDataProvider: provider,
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ refreshed: ["BTCUSD"], skipped: [] });
 
     expect(provider.get).toHaveBeenCalledWith("pyth_lazer_rule", ["BTCUSD"]);
     expect(fakeLazer.buildUpdateCalls).toHaveBeenCalledWith(tx, client, cached);
@@ -661,14 +695,16 @@ describe("refreshOraclePrices — multi-source fed set", () => {
     });
     expect(moveTargets(okTx)).toContain("oracle::aggregate");
 
-    // SUIUSD is outside both groups → the whole build fails, naming the list.
+    // SUIUSD is outside BOTH groups → skipped and named, while BTCUSD (which
+    // one of them serves) still gets refreshed. Partial coverage is the point:
+    // a broad sweep keeps what it can price.
+    const partialTx = new Transaction();
     await expect(
-      refreshOraclePrices(new Transaction(), client, ["BTCUSD", "SUIUSD"], {
+      refreshOraclePrices(partialTx, client, ["BTCUSD", "SUIUSD"], {
         ruleOverrides: { pyth_lazer_rule: fakeLazer, waterx_rule: fakeWaterx },
       }),
-    ).rejects.toThrow(
-      /oracleSource \[pyth_lazer_rule, waterx_rule\] has no feed configured.*SUIUSD/,
-    );
+    ).resolves.toEqual({ refreshed: ["BTCUSD"], skipped: ["SUIUSD"] });
+    expect(moveTargets(partialTx)).toContain("oracle::aggregate");
   });
 
   it("a credential-free fed set builds keyless (waterx only — no pyth_api_key required)", async () => {

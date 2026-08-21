@@ -34,6 +34,32 @@ export type { OracleCredentialKind };
  * serve NO ticker, so listing it is config drift, not a working fed set.
  * `instanceof`-able; `source` names the offender for operator dashboards.
  */
+/**
+ * A build depends on a ticker this client's fed set cannot price.
+ *
+ * Distinct from {@link OracleFedSetError}, which is about a deployment being
+ * misconfigured at all. This one is per-BUILD: `refreshOraclePrices` skipped
+ * the ticker (by design — see `OracleRefreshSummary`), and the composer decided
+ * that particular ticker was load-bearing for the action being built.
+ */
+export class OracleTickerUnservedError extends Error {
+  readonly tickers: string[];
+  readonly sources: readonly string[];
+
+  constructor(tickers: string[], sources: readonly string[], why?: string) {
+    super(
+      `oracleSource [${sources.join(", ")}] has no feed for ticker(s): ${tickers.join(", ")}. ` +
+        (why ?? "This build depends on their prices, so it cannot proceed. ") +
+        "Add feeds under a listed source, list a source that serves them, or pass " +
+        "allowUnrefreshedPrices: true to build anyway against whatever price the " +
+        "chain already holds.",
+    );
+    this.name = "OracleTickerUnservedError";
+    this.tickers = tickers;
+    this.sources = sources;
+  }
+}
+
 export class OracleFedSetError extends Error {
   /** The listed source with no servable tickers. */
   readonly source: OracleSource;

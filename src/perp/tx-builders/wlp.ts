@@ -46,6 +46,7 @@ export async function buildMintWlpTx(
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
+      build: params,
     });
   }
 
@@ -91,6 +92,7 @@ export async function buildMintAndStakeWlpTx(
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
+      build: params,
     });
   }
 
@@ -146,6 +148,7 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
     await refreshWlpPoolOracles(tx, client, [], {
       lpType: params.lpType,
       updateDataProvider: params.updateDataProvider,
+      build: params,
     });
   }
 
