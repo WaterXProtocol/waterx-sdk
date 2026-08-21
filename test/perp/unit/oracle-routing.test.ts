@@ -30,7 +30,7 @@ import { WaterXClient } from "../../../src/unified-client.ts";
 import { createMockPredictClient } from "../../prediction/helpers/mock-client.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
-import { createUnitTestClient } from "../helpers/test-client.ts";
+import { createUnitTestClient, withOracleSources } from "../helpers/test-client.ts";
 
 /** Fake `PriceUpdateRule` — supports exactly `supported`, no on-chain calls. */
 function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRule {
@@ -302,42 +302,43 @@ describe("PerpClient.create — oracleSource threads through the async factory",
     vi.restoreAllMocks();
   });
 
-  // No "defaults when omitted" case on purpose: `oracleSource` is a REQUIRED
-  // create option — omitting it is a compile error, not a runtime default.
-  it("resolves the passed oracleSource option", async () => {
-    vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
+  // There is no option to pass: the fed set comes from the config the client
+  // loaded, so a deployment cannot be pointed at a source it does not wire.
+  it("resolves the fed set from the loaded config", async () => {
+    vi.spyOn(configModule, "loadConfig").mockResolvedValue(
+      withOracleSources(MOCK_TESTNET_CONFIG, ["pyth_lazer_rule"]),
+    );
+    const client = await PerpClient.create("TESTNET", {});
     expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
   });
 });
 
-describe("WaterXClient.create — oracleSource threads into PerpClient.create", () => {
+describe("WaterXClient.create — the fed set is never an option", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("forwards the top-level oracleSource option to PerpClient.create", async () => {
+  it("does not forward any oracleSource to PerpClient.create", async () => {
     const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
     vi.spyOn(PredictClient, "create").mockResolvedValue(createMockPredictClient());
 
-    await WaterXClient.create({ oracleSource: "pyth_lazer_rule" });
+    await WaterXClient.create({});
 
     expect(perpCreate).toHaveBeenCalledWith(
       "TESTNET",
-      expect.objectContaining({ oracleSource: "pyth_lazer_rule" }),
+      expect.not.objectContaining({ oracleSource: expect.anything() }),
     );
   });
 
-  it("the top-level oracleSource is required and forwarded verbatim", async () => {
-    const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(createUnitTestClient());
+  it("the umbrella exposes whatever the perp line derived", async () => {
+    const perp = createUnitTestClient({ oracleSource: ["pyth_lazer_rule", "waterx_rule"] });
+    const perpCreate = vi.spyOn(PerpClient, "create").mockResolvedValue(perp);
     vi.spyOn(PredictClient, "create").mockResolvedValue(createMockPredictClient());
 
-    await WaterXClient.create({ oracleSource: "waterx_rule" });
+    const client = await WaterXClient.create({});
 
-    expect(perpCreate).toHaveBeenCalledWith(
-      "TESTNET",
-      expect.objectContaining({ oracleSource: "waterx_rule" }),
-    );
+    expect(client.perp.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);
+    expect(perpCreate).toHaveBeenCalledTimes(1);
   });
 });
 

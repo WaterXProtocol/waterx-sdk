@@ -3,7 +3,6 @@
  *
  * Network: {@link resolveIntegrationNetwork} → `PerpClient.create(TESTNET | MAINNET)`.
  */
-import { oracleSourceFromEnv } from "../../../../scripts/load-repo-env.ts";
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
 import {
@@ -28,7 +27,6 @@ export async function createIntegrationWaterXClient(): Promise<PerpClient> {
   const grpcUrl = resolveE2eGrpcUrlOverride();
   const pythApiKey = process.env.PYTH_API_KEY?.trim() || undefined;
   const c = await PerpClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
-    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: resolveE2eWaterxConfigUrl(),
     ...(pythApiKey ? { pythApiKey } : {}),

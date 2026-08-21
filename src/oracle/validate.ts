@@ -48,7 +48,7 @@ export class OracleTickerUnservedError extends Error {
 
   constructor(tickers: string[], sources: readonly string[], why?: string) {
     super(
-      `oracleSource [${sources.join(", ")}] has no feed for ticker(s): ${tickers.join(", ")}. ` +
+      `fed set [${sources.join(", ")}] has no feed for ticker(s): ${tickers.join(", ")}. ` +
         (why ?? "This build depends on their prices, so it cannot proceed. ") +
         "Add feeds under a listed source, list a source that serves them, or pass " +
         "allowUnrefreshedPrices: true to build anyway against whatever price the " +

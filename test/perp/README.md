@@ -108,8 +108,8 @@ Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/\*.ts`** a
 
 ## Related: oracle debug (not Vitest)
 
-| Command                  | Purpose                                                                                                                                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes/Lazer refresh + oracle PTB **simulate** (`-- --format raw`). Wire `ORACLE_SOURCE` / `PYTH_API_KEY` (or `--oracle-source`); `pyth_rule` refresh miss → `WARN` / `OK (STALE)`; `pyth_lazer_rule` never falls back to Core |
+| Command                  | Purpose                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes/Lazer refresh + oracle PTB **simulate** (`-- --format raw`). Fed set comes from the config; wire `PYTH_API_KEY` when it carries `pyth_lazer_rule`. A refresh miss → `WARN` / `OK (STALE)`; sources never fall back to one another |
 
 Admin-keystore flows live on branch **`integration/admin-e2e-parked`**.

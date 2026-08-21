@@ -13,7 +13,7 @@
 
 import { BaseLineClient } from "../base-client.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../oracle/price-update-rule.ts";
-import { isOracleSource } from "../oracle/source-list.ts";
+import { deriveOracleSources } from "../oracle/source-list.ts";
 import type { FetchPolicy } from "../oracle/update-fetch.ts";
 import { servableTickers } from "../oracle/validate.ts";
 import { PerpConfigView } from "./config-view.ts";
@@ -66,11 +66,10 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * SUPERSET of every ticker's weighted set. Order is meaningful to consumers
    * (read-plane priority), not to the on-chain build.
    */
-  oracleSource: OracleSource | OracleSource[];
   /**
    * Pyth Lazer access token (`Authorization: Bearer …`). Required under
-   * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
-   * `'waterx_rule'` (public quote-center). This is a SECRET and never belongs
+   * a config that wires `pyth_lazer_rule` (Lazer is auth-first) and unused by
+   * `waterx_rule` (public quote-center). This is a SECRET and never belongs
    * in the canonical `waterx-config` JSON — pass it at client init from your
    * own env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
    */
@@ -81,7 +80,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
    */
   pythFetch?: PythFetchPolicy;
   /**
-   * Quote-center base URL for `oracleSource: 'waterx_rule'` — overrides the
+   * Quote-center base URL for `waterx_rule` — overrides the
    * source's own per-network `WATERX_INFRA` default.
    *
    * This is the one source a BROWSER fetches itself (the signed price is pulled
@@ -110,14 +109,14 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
   pyth: PythAccessConfig;
   /**
-   * Caller-supplied quote-center overrides for `oracleSource: 'waterx_rule'`
+   * Caller-supplied quote-center overrides for `waterx_rule`
    * (`waterxEndpoint` / `waterxFetch` create options) — access-only, mirroring
    * `pyth` above; unset fields resolve against the rule's own `WATERX_INFRA`.
    */
   waterx: WaterxAccessConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
-  /** The fed set: `oracleSource` create option normalized to a non-empty, deduped list. */
+  /** The fed set, derived from the config — see {@link deriveOracleSources}. */
   readonly oracleSources: readonly OracleSource[];
 
   /** Canonical-schema lookups (delegated to below); no transport. */
@@ -141,21 +140,18 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.waterxEndpoint !== undefined ? { endpoint: opts.waterxEndpoint } : {}),
       ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
     };
-    // Normalize single-or-list to a deduped, order-preserving list, gated by
-    // `isOracleSource` — the SAME predicate `parseOracleSourceList` uses. An
-    // empty list, a nullish entry (an untyped caller omitting the REQUIRED
-    // option), or an unregistered value (`'core'`, `'pyth'`, …) fails
-    // construction loudly instead of booting green and surfacing as
-    // `OracleSourceNotImplemented` at the first tx-build.
-    const sources = Array.isArray(opts.oracleSource) ? opts.oracleSource : [opts.oracleSource];
-    this.oracleSources = [...new Set(sources)];
-    if (
-      this.oracleSources.length === 0 ||
-      this.oracleSources.some((source) => !isOracleSource(source))
-    ) {
+    // The fed set is a property of the DEPLOYMENT, read off the same config
+    // that wires the rules — never a create option and never an env var.
+    this.oracleSources = deriveOracleSources(config);
+    if (this.oracleSources.length === 0) {
+      // Not a per-ticker coverage question (that is left to tx-build, on
+      // purpose): a config wiring NO price-update source at all cannot price
+      // anything, so every build would skip every ticker and every trade would
+      // abort on chain. Fail at construction, where the config is in hand.
       throw new Error(
-        `oracleSource is REQUIRED and must name at least one of ${ORACLE_SOURCES.join(" | ")} ` +
-          `(got ${JSON.stringify(sources)})`,
+        `this deployment's config wires no price-update source — expected a published ` +
+          `package with a non-empty feeds map for at least one of ` +
+          `${ORACLE_SOURCES.join(" | ")}.`,
       );
     }
     this.view = new PerpConfigView(

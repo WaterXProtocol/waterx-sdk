@@ -11,7 +11,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { createAccount } from "../src/account/account.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 async function main(): Promise<void> {
@@ -21,7 +21,6 @@ async function main(): Promise<void> {
   const doExecute = process.env.EXECUTE === "1";
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

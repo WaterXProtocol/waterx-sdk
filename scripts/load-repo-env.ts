@@ -13,8 +13,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
-import { parseOracleSourceList, type OracleSource } from "../src/oracle/index.ts";
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Repository root (directory containing `package.json`). */
@@ -48,23 +46,6 @@ export function loadRepoEnvFiles(opts?: { repoRoot?: string }): void {
 export function waterxConfigUrlFromEnv(): string | undefined {
   const url = process.env.WATERX_CONFIG_URL?.trim();
   return url || undefined;
-}
-
-/**
- * The fed set for a CLI/dev script, read from `ORACLE_SOURCE` at this harness
- * boundary (the SDK itself never touches `process.env`) through the canonical
- * {@link parseOracleSourceList}, falling back to `fallback` when unset.
- *
- * ONE default for every script: the `oracleSource` create option is REQUIRED,
- * so each script used to hardcode its own literal — and retiring a source then
- * meant the same one-line edit in a dozen files. Scripts that want a different
- * default pass one; every script gets env-overridability for free.
- */
-export function oracleSourceFromEnv(
-  fallback: OracleSource | OracleSource[] = "waterx_rule",
-): OracleSource | OracleSource[] {
-  const raw = process.env.ORACLE_SOURCE?.trim();
-  return raw ? parseOracleSourceList(raw) : fallback;
 }
 
 /**

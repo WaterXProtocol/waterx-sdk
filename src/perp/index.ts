@@ -142,9 +142,8 @@ export {
   fetchWaterxUpdateData,
   getMarketStatus,
   isFreshWaterxEntry,
-  isOracleSource,
+  deriveOracleSources,
   missingOracleCredentials,
-  parseOracleSourceList,
   parsePythSchedule,
   PythScheduleParseError,
   // THE quote-center route ladder (leaves-first, envelope only where there is

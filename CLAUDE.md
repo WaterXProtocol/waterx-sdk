@@ -59,12 +59,22 @@ never reads one. `client.pyth` is `PythAccessConfig` — ONLY the caller-supplie
 CDN JSON); it carries no endpoints or object ids. Read-plane endpoint
 accessor for consumers: `waterxQuoteCenterEndpoint(network)`.
 
-Which price-update **sources** run is the client's REQUIRED `oracleSource`
-create option — a single value or a LIST (the fed set): every listed source's
-data is fetched and fed in one build, and the chain's per-ticker weight tables
-arbitrate. There is **no default source**, **no cross-source fallback**, and
-**no client-creation feeds guard**: a ticker no listed source serves fails at
-**tx-build** (constant-only tickers are exempt), not at init; a
+Which price-update **sources** run is **DERIVED from the config**
+(`deriveOracleSources` in `src/oracle/source-list.ts`): a source is fed when its
+block is published AND carries feeds. There is **no `oracleSource` create
+option** and **no `ORACLE_SOURCE` env var** — mainnet derives
+`[pyth_lazer_rule, waterx_rule]`, testnet `[waterx_rule]`. Every derived
+source's data is fetched and fed in one build, and the chain's per-ticker
+weight tables arbitrate; over-feeding is dropped on-chain while starving a
+weighted rule aborts, so deriving the maximal wired set is the fail-safe
+direction. Retired blocks (`pyth_rule`, `pyth_sponsor_rule`) are still in the
+live configs and are inert — neither is an `ORACLE_SOURCES` member. There is
+**no cross-source fallback**: a ticker no derived source serves is **SKIPPED**
+by `refreshOraclePrices` (reported in `OracleRefreshSummary.skipped`,
+constant-ONLY tickers exempt), and the `build*Tx` composers then fail closed
+with `OracleTickerUnservedError` on the tickers their action needs (traded
+ticker + collateral; EVERY pool asset for WLP) unless `allowUnrefreshedPrices`
+is set. Construction throws only when the config wires NO source at all. A
 present-but-wrong feed id is left to abort on-chain at dry-run. The
 `pyth_lazer_rule` source reads only `api_key`/`fetch` from `client.pyth` and
 gets its on-chain infra from `LAZER_INFRA` + config. `'waterx_rule'`
@@ -203,8 +213,8 @@ aborts `EMissingPriceSource` when a weighted rule is absent from the collector
 
 `oracle/aggregate.ts::refreshOraclePrices(tx, client, tickers, opts?)` runs the
 selected source's off-chain fetch + on-chain update leg, then the per-ticker
-feeds + aggregate, in one call. Which source runs is `oracleSource`: a signed
-Lazer update for
+feeds + aggregate, in one call, and returns an `OracleRefreshSummary`. Which
+sources run is the derived fed set: a signed Lazer update for
 `'pyth_lazer_rule'`, a quote-center signed Merkle leaf per ticker for
 `'waterx_rule'` (that one emits no separate update leg — verify and feed are
 bundled into `collect_single_with_proof`).
@@ -307,6 +317,6 @@ src/
 - Pre-orders must be reduce-only, opposite side of main, no collateral, no linked position. `place_order_request` validates this at request creation before any wxa take.
 - Cancel-order wildcard: pass `orderTypeTag: ORDER_TAG_WILDCARD` (255) and `triggerPrice: 0n` to scan all 4 books by `orderId`.
 - Price scaling: human-readable USD (`50000`) → raw 1e9-scaled bigint via `rawPrice(usd)`. Pass the raw form to `acceptablePrice` / `triggerPrice` / size args.
-- Mainnet config **is** published (`mainnet.json` in the config repo) and `MAINNET` loads. The fed set differs by network — verified 2026-08-19, mainnet carries `waterx_rule` (29 feeds, every open market), `pyth_lazer_rule` (25), and `constant_rule` (`USDCUSD`), while testnet's main config has NO `pyth_lazer_rule` block and routes on `waterx_rule` (+ constant/supra). Read the config rather than assuming; an `oracleSource` copied across networks can name a source that deployment does not carry, which fails at tx-build for the tickers it would have served.
-- `waterx_rule` (Nautilus enclave CEX-price rule) ships as an `oracleSource` list entry (`'waterx_rule'`) — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls one signed Merkle LEAF per ticker from the quote-center (`GET /v1/quotes/leaves`, public read) and then verifies AND feeds in a single `collect_single_with_proof` per collector, so its `buildUpdateCalls` emits nothing. Against a quote-center with no leaf route (404) it falls back to the older shape: ONE indivisible batch envelope (`GET /v1/quotes/update`) fed through `collect_batch_latest`, which has to rebuild every item in the batch in-PTB just to use one symbol's price. Every other status throws rather than falling back — see `fetchWaterxSignedLeaves` for why (and note 501 can NOT signal a missing route, since `fetchWithPolicy` retries all 5xx). The quote-center host comes from the rule-owned `WATERX_INFRA[network]` table (in `rules/waterx-rule.ts`; accessor `waterxQuoteCenterEndpoint(network)`), overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy precedence `waterxFetch` → defaults — deliberately NO `pythFetch` fallback; sources never share config) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live response that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain. REPLAY DISPOSITION: on the `collect_*` paths a replayed per-symbol signed timestamp ABSTAINS, it does not abort (audit F-014's high-water mark means the chain already holds a price at least this fresh), so two concurrent builds may share one snapshot; only the single-rule `feed_*` entries abort `EReplayedSignature`.
-- **`pyth_rule` / Pyth Core / Hermes are RETIRED (5.0.0)** — no `pyth.ts`, no `PYTH_CORE_INFRA`, no `PythCache`, no `updatePythPrices` / `fetchPriceFeedsUpdateData` / `pythCoreHermesEndpoint`, no `aggregateTickerWithPyth`, no `getPythFeed`, no sponsor/fee machinery, and no `PythRulePackage` / `PythSponsorRulePackage` in the config schema. `ORACLE_SOURCES` is `["pyth_lazer_rule","waterx_rule"]`; `parseOracleSourceList` rejects `pyth_rule` with a retired-value hint. Legacy knobs likewise gone: no `LAZER_DEFAULTS` (now `LAZER_INFRA` inside `rules/pyth-lazer-rule.ts`), no `WATERX_DEFAULTS` / `WaterxInfraConfig` (now `WATERX_INFRA` / `WaterxAccessConfig`). `client.pyth` is `PythAccessConfig` (caller `api_key` + `fetch` only); `client.waterx` is `WaterxAccessConfig` (caller overrides only). `oracleSource` is REQUIRED at client creation and accepts a list (the fed set) — there is no default source and no cross-source fallback anywhere.
+- Mainnet config **is** published (`mainnet.json` in the config repo) and `MAINNET` loads. The fed set differs by network — verified 2026-08-19, mainnet carries `waterx_rule` (29 feeds, every open market), `pyth_lazer_rule` (25), and `constant_rule` (`USDCUSD`), while testnet's main config has NO `pyth_lazer_rule` block and routes on `waterx_rule` (+ constant/supra). Read the config rather than assuming; this is exactly why the fed set is derived from the config rather than declared — a hand-typed list copied across networks names a source that deployment does not carry.
+- `waterx_rule` (Nautilus enclave CEX-price rule) is derived whenever the config wires it — `src/oracle/rules/waterx-rule.ts` against the committed `src/generated/waterx_rule` bindings. It pulls one signed Merkle LEAF per ticker from the quote-center (`GET /v1/quotes/leaves`, public read) and then verifies AND feeds in a single `collect_single_with_proof` per collector, so its `buildUpdateCalls` emits nothing. Against a quote-center with no leaf route (404) it falls back to the older shape: ONE indivisible batch envelope (`GET /v1/quotes/update`) fed through `collect_batch_latest`, which has to rebuild every item in the batch in-PTB just to use one symbol's price. Every other status throws rather than falling back — see `fetchWaterxSignedLeaves` for why (and note 501 can NOT signal a missing route, since `fetchWithPolicy` retries all 5xx). The quote-center host comes from the rule-owned `WATERX_INFRA[network]` table (in `rules/waterx-rule.ts`; accessor `waterxQuoteCenterEndpoint(network)`), overridable per client via `waterxEndpoint` (base path preserved) and `waterxFetch` (policy precedence `waterxFetch` → defaults — deliberately NO `pythFetch` fallback; sources never share config) — browser consumers blocked by the quote-center's CORS allowlist point these at a same-origin proxy. A live response that does not cover every requested ticker is rejected at fetch, not left to abstain on-chain. REPLAY DISPOSITION: on the `collect_*` paths a replayed per-symbol signed timestamp ABSTAINS, it does not abort (audit F-014's high-water mark means the chain already holds a price at least this fresh), so two concurrent builds may share one snapshot; only the single-rule `feed_*` entries abort `EReplayedSignature`.
+- **`pyth_rule` / Pyth Core / Hermes are RETIRED (5.0.0)** — no `pyth.ts`, no `PYTH_CORE_INFRA`, no `PythCache`, no `updatePythPrices` / `fetchPriceFeedsUpdateData` / `pythCoreHermesEndpoint`, no `aggregateTickerWithPyth`, no `getPythFeed`, no sponsor/fee machinery, and no `PythRulePackage` / `PythSponsorRulePackage` in the config schema. `ORACLE_SOURCES` is `["pyth_lazer_rule","waterx_rule"]`, and since `pyth_rule` is not a member the block still present in live configs can never be derived into a fed set. Legacy knobs likewise gone: no `LAZER_DEFAULTS` (now `LAZER_INFRA` inside `rules/pyth-lazer-rule.ts`), no `WATERX_DEFAULTS` / `WaterxInfraConfig` (now `WATERX_INFRA` / `WaterxAccessConfig`). `client.pyth` is `PythAccessConfig` (caller `api_key` + `fetch` only); `client.waterx` is `WaterxAccessConfig` (caller overrides only). There is no `oracleSource` create option and no `ORACLE_SOURCE` env var — the fed set is derived from the config (`deriveOracleSources`) — and no cross-source fallback anywhere.

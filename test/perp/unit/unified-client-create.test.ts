@@ -20,7 +20,6 @@ describe("Client.create", () => {
     const client = await Client.create({
       network: "TESTNET",
       grpcUrl: "https://grpc.test:443",
-      oracleSource: "waterx_rule",
       waterxConfigUrl: "https://waterx.test/testnet.json",
       cache: true,
     });
@@ -29,7 +28,6 @@ describe("Client.create", () => {
       grpcUrl: "https://grpc.test:443",
       waterxConfigUrl: "https://waterx.test/testnet.json",
       cache: true,
-      oracleSource: "waterx_rule",
     });
     expect(predictCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: "https://grpc.test:443",
@@ -48,13 +46,12 @@ describe("Client.create", () => {
       .spyOn(PredictClient, "create")
       .mockResolvedValue(createMockPredictClient());
 
-    await Client.create({ oracleSource: "waterx_rule" });
+    await Client.create({});
 
     expect(perpCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: undefined,
       waterxConfigUrl: undefined,
       cache: undefined,
-      oracleSource: "waterx_rule",
     });
     expect(predictCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: undefined,
@@ -71,7 +68,6 @@ describe("Client.create", () => {
 
     await Client.create({
       network: "TESTNET",
-      oracleSource: "waterx_rule",
       perp: { network: "MAINNET", cache: false },
       predict: { network: "TESTNET", waterxConfigUrl: "https://waterx.test/predict.json" },
     });
@@ -80,7 +76,6 @@ describe("Client.create", () => {
       grpcUrl: undefined,
       waterxConfigUrl: undefined,
       cache: false,
-      oracleSource: "waterx_rule",
     });
     expect(predictCreate).toHaveBeenCalledWith("TESTNET", {
       grpcUrl: undefined,
@@ -95,7 +90,6 @@ describe("Client.create", () => {
 
     await Client.create({
       grpcUrl: "https://shared.grpc:443",
-      oracleSource: "waterx_rule",
       perp: { waterxConfigUrl: "https://waterx.test/perp.json" },
     });
 
@@ -103,7 +97,6 @@ describe("Client.create", () => {
       grpcUrl: "https://shared.grpc:443",
       waterxConfigUrl: "https://waterx.test/perp.json",
       cache: undefined,
-      oracleSource: "waterx_rule",
     });
   });
 });

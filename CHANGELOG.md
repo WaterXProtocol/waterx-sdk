@@ -24,6 +24,28 @@ section. All of it lands in one gated PR (#89).
 [WL-2345](https://bucketprotocol.atlassian.net/browse/WL-2345) ·
 [WL-2355](https://bucketprotocol.atlassian.net/browse/WL-2355)._
 
+### BREAKING — the oracle fed set is derived, not declared
+
+- **`oracleSource` is REMOVED** as a create option, and `ORACLE_SOURCE` is no longer read
+  by any consumer. The fed set is derived from the deployment config: a source is fed
+  when its block is published AND carries at least one feed. Mainnet derives
+  `[pyth_lazer_rule, waterx_rule]`, testnet `[waterx_rule]` — verified against both live
+  configs.
+  - **Why.** The chain arbitrates: feeding an unweighted rule is dropped on-chain, while
+    starving a weighted one aborts `EMissingPriceSource`. The failure is one-sided, so a
+    hand-typed list can only err in the fatal direction — the classic being one copied
+    between networks, naming a source that deployment does not carry. The config cannot,
+    because it _is_ what wires the rules.
+  - **Retired blocks are inert.** `pyth_rule` and `pyth_sponsor_rule` are still present in
+    the live configs; neither is an `ORACLE_SOURCES` member, so neither can be derived.
+  - **Not filtered by credentials.** A keyless client whose config wires Lazer still fails
+    loudly with `LazerApiKeyMissing`; silently dropping the source would starve a rule the
+    chain may weight and turn a build error into an opaque on-chain abort.
+  - Construction now throws only when the config wires NO price-update source at all.
+- **`parseOracleSourceList` / `isOracleSource` are REMOVED** — there is no env string to
+  parse. **Added: `deriveOracleSources(config)`**, pure and config-only, for boot asserts
+  that need the fed set before a client exists (pairs with `missingOracleCredentials`).
+
 ### BREAKING — removal ledger (WL-2355: `pyth_rule` / Pyth Core retirement)
 
 Consumers must not import any of these; every removal is listed so the FE/BE fold PRs

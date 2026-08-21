@@ -101,8 +101,8 @@ function verifyCommandIndex(tx: Transaction): number {
 }
 
 /** Client with a lazer api key set (replace `pyth` — never mutate the shared PYTH_DEFAULTS). */
-function createLazerTestClient(oracleSource?: "pyth_lazer_rule") {
-  const client = createUnitTestClient(oracleSource ? { oracleSource } : {});
+function createLazerTestClient(oracleSource: "pyth_lazer_rule" = "pyth_lazer_rule") {
+  const client = createUnitTestClient({ oracleSource });
   client.pyth = { ...client.pyth, api_key: "unit-test-token" };
   return client;
 }
@@ -159,12 +159,12 @@ describe("PythLazerRule.kind", () => {
 
 describe("PythLazerRule.supportedTickers", () => {
   it("returns the tickers with integer lazer feed ids configured", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     expect(PythLazerRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
   });
 
   it("returns an empty array when the pyth_lazer_rule package is absent", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     delete client.config.packages.pyth_lazer_rule;
     expect(PythLazerRule.supportedTickers(client)).toEqual([]);
   });
@@ -285,7 +285,7 @@ describe("PythLazerRule.fetchUpdateData", () => {
   });
 
   it("throws LazerApiKeyMissing (before any network call) when pyth.api_key is unset", async () => {
-    const client = createUnitTestClient(); // no api_key
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" }); // no api_key
     const fetchSpy = mockLazerFetch();
 
     const rejection = expect(PythLazerRule.fetchUpdateData(client, ["BTCUSD"])).rejects;
@@ -340,7 +340,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
   });
 
   it("appends exactly the contract's parse_and_verify_le_ecdsa_update(state, clock, bytes) call and returns the Update handle", async () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
 
     const handle = await buildHandle(tx, client, [1]);
@@ -366,7 +366,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
   });
 
   it("is a no-op returning no handle when data is null (empty ticker list upstream)", async () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
 
     const handle = await PythLazerRule.buildUpdateCalls(tx, client, null);
@@ -376,7 +376,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
   });
 
   it("throws on kind mismatch even when the payload shape looks like a lazer update", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
     // Correct lazer SHAPE, wrong KIND — the kind check must reject before the
     // shape check can accept, or a foreign-tagged payload would verify as Lazer.
@@ -393,7 +393,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
   });
 
   it("throws on a 'pyth_lazer_rule' payload with a foreign shape", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
     // Foreign-shaped payload ({updates plural, feedIds}) tagged as lazer.
     const wrongShape = {
@@ -407,7 +407,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
   });
 
   it("throws when the config carries no pyth_lazer_rule package", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     delete client.config.packages.pyth_lazer_rule;
     const tx = new Transaction();
 
@@ -429,7 +429,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
   };
 
   it("serves the WHOLE payload for a covered subset — one signed message is indivisible", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     const narrowed = PythLazerRule.narrowUpdateData(client, universeLazerData, ["BTCUSD"]);
 
@@ -440,7 +440,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
   });
 
   it("serves the whole payload when every packed ticker is requested, in any order", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     const narrowed = PythLazerRule.narrowUpdateData(client, universeLazerData, [
       "USDCUSD",
@@ -452,7 +452,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
   });
 
   it("misses (null) for a config-listed ticker whose feed id is not packed in this payload", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const btcOnly = {
       kind: "pyth_lazer_rule" as const,
       payload: { update: SIGNED_UPDATE, feedIds: [1] },
@@ -464,26 +464,26 @@ describe("PythLazerRule.narrowUpdateData", () => {
   });
 
   it("misses (null) for a ticker with no pyth_lazer_rule feed configured", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     expect(PythLazerRule.supportedTickers(client)).not.toContain("DOGEUSD");
 
     expect(PythLazerRule.narrowUpdateData(client, universeLazerData, ["DOGEUSD"])).toBeNull();
   });
 
   it("returns null for an empty ticker list (mirrors fetchUpdateData's empty → null)", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     expect(PythLazerRule.narrowUpdateData(client, universeLazerData, [])).toBeNull();
   });
 
   it("passes null data through as null", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     expect(PythLazerRule.narrowUpdateData(client, null, ["BTCUSD"])).toBeNull();
   });
 
   it("throws on a wrong-kind payload instead of missing (a routing bug, not a cache miss)", () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
 
     expect(() =>
       PythLazerRule.narrowUpdateData(
@@ -495,7 +495,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
   });
 
   it("narrowed (whole) payload is accepted by buildUpdateCalls, appending the single verify call", async () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
 
     const narrowed = PythLazerRule.narrowUpdateData(client, universeLazerData, [
@@ -511,7 +511,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
 
 describe("aggregateTicker — lazer collector-feed leg", () => {
   it("feeds pyth_lazer_rule per the contract: (collector, config, clock, update)", async () => {
-    const client = createUnitTestClient();
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     const tx = new Transaction();
     const handle = await buildHandle(tx, client, [1]);
 

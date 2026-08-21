@@ -32,7 +32,7 @@ import { aggregateTickerWithConstant } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
-import { loadRepoEnvFiles, oracleSourceFromEnv, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 const TICKER = "USDCUSD"; // WLP pool's only token's ticker
@@ -52,7 +52,6 @@ async function main(): Promise<void> {
   const doExecute = process.env.EXECUTE === "1";
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: oracleSourceFromEnv(),
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });

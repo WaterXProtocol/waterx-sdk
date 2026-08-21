@@ -3,7 +3,7 @@
  *
  * Exposes three namespaces over the two product-line sub-clients:
  *
- *   const client = await WaterXClient.create({ network: "TESTNET", oracleSource: "pyth_lazer_rule" });
+ *   const client = await WaterXClient.create({ network: "TESTNET" });
  *   client.account.createAccount(tx, { alias });   // -> shared waterx_account + funding
  *   client.perp.placeOrderRequest(tx, params);     // -> perp builder
  *   client.predict.placeOrder(tx, params);         // -> prediction builder
@@ -36,7 +36,6 @@ import * as accountOps from "./account/index.ts";
 import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
 import type { PythFetchPolicy } from "./oracle/config.ts";
-import type { OracleSource } from "./oracle/price-update-rule.ts";
 import type { FetchPolicy } from "./oracle/update-fetch.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
@@ -172,15 +171,9 @@ export interface ClientCreateOptions {
    *   ed25519 signed batches; no credential, no per-update fee); infra in the
    *   source's own `WATERX_INFRA` table. Pair with `waterxEndpoint` /
    *   `waterxFetch` when the browser needs a proxy.
-   *
-   * Each source is self-contained with no cross-source fallback; selecting a
-   * source whose feed for a ticker is absent fails at tx-build (not at init).
-   * See perp `CreateClientOptions.oracleSource` for the full note.
-   */
-  oracleSource: OracleSource | OracleSource[];
   /**
-   * Pyth Lazer access token, forwarded to the perp line. Required under
-   * `oracleSource: 'pyth_lazer_rule'`, unused by `'waterx_rule'`. A SECRET —
+   * Pyth Lazer access token, forwarded to the perp line. Required when the
+   * deployment's config wires `pyth_lazer_rule`, unused otherwise. A SECRET —
    * pass it at init from your own env var; it is never read from the config
    * JSON or `process.env`.
    */
@@ -188,8 +181,8 @@ export interface ClientCreateOptions {
   /** Retry/timeout policy for the perp line's off-chain oracle fetches. */
   pythFetch?: PythFetchPolicy;
   /**
-   * Quote-center base URL for `oracleSource: 'waterx_rule'`, forwarded to the
-   * perp line — overrides the source's own per-network `WATERX_INFRA` default.
+   * Quote-center base URL for `waterx_rule`, forwarded to the perp line —
+   * overrides the source's own per-network `WATERX_INFRA` default.
    *
    * `waterx_rule` is the one source a BROWSER fetches itself, so it is bound by
    * the quote-center deployment's CORS allowlist: a front end whose origin is
@@ -289,7 +282,6 @@ export class WaterXClient {
       grpcUrl: opts.grpcUrl,
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
-      oracleSource: opts.oracleSource,
       pythApiKey: opts.pythApiKey,
       pythFetch: opts.pythFetch,
       waterxEndpoint: opts.waterxEndpoint,

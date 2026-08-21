@@ -42,10 +42,11 @@ export type {
   UpdateDataProvider,
 } from "./price-update-rule.ts";
 export { oracleCredentialsFromHost } from "./price-update-rule.ts";
-// Canonical OracleSource value list + THE env-string parser consumers fold
-// onto — semantics and rationale in `source-list.ts`'s header.
+// Canonical OracleSource value list + THE fed-set derivation (config in,
+// sources out) — semantics and rationale in `source-list.ts`'s header. There
+// is no `oracleSource` option and no `ORACLE_SOURCE` env var to parse.
 export { ORACLE_SOURCES } from "./price-update-rule.ts";
-export { isOracleSource, parseOracleSourceList } from "./source-list.ts";
+export { deriveOracleSources } from "./source-list.ts";
 
 // Per-source READ-plane resolution — which tickers a source can price
 // off-chain and with which ids (`resolveOracleReadPlan`; every source reads

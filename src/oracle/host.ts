@@ -36,7 +36,7 @@ export interface OracleHost {
   readonly grpcClient: SuiGrpcClient;
   /**
    * The FED SET for `refreshOraclePrices`'s update legs — the REQUIRED
-   * `oracleSource` create option normalized to a non-empty, deduped list.
+   * Derived from the deployment config (`deriveOracleSources`).
    * Every listed source's data is fetched and fed in one build; the chain's
    * per-ticker weight tables decide which contributions count (feeding an
    * unweighted rule is dropped on-chain; starving a weighted one aborts), so

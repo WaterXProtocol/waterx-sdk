@@ -6,7 +6,6 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
-import { oracleSourceFromEnv } from "../../../../scripts/load-repo-env.ts";
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
 import { resolveE2eNetwork, type E2eNetwork } from "./e2e-network.ts";
@@ -95,7 +94,6 @@ export function clientInit(): Promise<PerpClient> {
       const grpcUrl = resolveE2eGrpcUrlOverride();
       const pythApiKey = process.env.PYTH_API_KEY?.trim() || undefined;
       const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
-        oracleSource: oracleSourceFromEnv(),
         cache: true,
         waterxConfigUrl: resolveE2eWaterxConfigUrl(),
         ...(pythApiKey ? { pythApiKey } : {}),

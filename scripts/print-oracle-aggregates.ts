@@ -8,8 +8,6 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { DRY_RUN_SENDER } from "../src/constants.ts";
 import {
-  ORACLE_SOURCES,
-  parseOracleSourceList,
   refreshOraclePrices,
   resolveOracleRule,
   type OracleSource,
@@ -87,28 +85,6 @@ function resolveNetwork(argv: string[]): Network {
   return "MAINNET";
 }
 
-/**
- * CLI `--oracle-source` → `ORACLE_SOURCE` env → undefined (caller defaults).
- *
- * Accepts a comma-separated LIST — the fed set — via the SDK's own
- * `parseOracleSourceList`, so the value documented for consumers (and exported
- * for `pnpm oracle:aggregates`) works here verbatim. A local copy of the source
- * list would drift; this one already had, omitting `waterx_rule`.
- */
-function resolveOracleSource(cliValue: string | undefined): OracleSource[] | undefined {
-  const raw = (cliValue ?? process.env.ORACLE_SOURCE)?.trim();
-  if (!raw) return undefined;
-  try {
-    return parseOracleSourceList(raw);
-  } catch {
-    console.error(
-      `Unknown oracle source ${JSON.stringify(raw)} ` +
-        `(comma-separated list of ${ORACLE_SOURCES.join(" | ")})`,
-    );
-    process.exit(1);
-  }
-}
-
 /** Lazer Bearer token from harness env — SDK never reads process.env itself. */
 function resolvePythApiKey(): string | undefined {
   const raw = process.env.PYTH_API_KEY?.trim();
@@ -118,14 +94,12 @@ function resolvePythApiKey(): string | undefined {
 function parseArgs(argv: string[]): {
   format: OutputFormat;
   network: Network;
-  oracleSource: OracleSource[] | undefined;
   tickers: string[];
 } {
   const tail = argv.slice(2);
   const tokens = tail[0] && !tail[0].startsWith("-") ? tail.slice(1) : tail;
 
   let format: OutputFormat = "pretty";
-  let oracleSourceCli: string | undefined;
   const network = resolveNetwork(argv);
   const tickers: string[] = [];
 
@@ -174,15 +148,6 @@ function parseArgs(argv: string[]): {
       }
       continue;
     }
-    if (a === "--oracle-source") {
-      oracleSourceCli = tokens[i + 1];
-      i++;
-      if (!oracleSourceCli) {
-        console.error(`--oracle-source requires a value (${ORACLE_SOURCES.join(" | ")})`);
-        process.exit(1);
-      }
-      continue;
-    }
     if (a === "--ticker" || a === "-t") {
       const v = tokens[i + 1];
       i++;
@@ -196,7 +161,7 @@ function parseArgs(argv: string[]): {
       }
     }
   }
-  return { format, network, oracleSource: resolveOracleSource(oracleSourceCli), tickers };
+  return { format, network, tickers };
 }
 
 function allTickerFeeds(client: PerpClient): TickerFeed[] {
@@ -543,7 +508,7 @@ async function runOne(
 
 async function main() {
   loadRepoEnvFiles();
-  const { format, network, oracleSource, tickers } = parseArgs(process.argv);
+  const { format, network, tickers } = parseArgs(process.argv);
   const waterxConfigUrl = waterxConfigUrlForNetwork(network);
   const pythApiKey = resolvePythApiKey();
   const client = await PerpClient.create(network, {
@@ -552,7 +517,6 @@ async function main() {
     // The SDK's oracleSource is required (no default) — this diagnostic script
     // defaults its own flag to waterx_rule (keyless) so bare invocations keep
     // working.
-    oracleSource: oracleSource ?? "waterx_rule",
     ...(pythApiKey !== undefined ? { pythApiKey } : {}),
   });
 

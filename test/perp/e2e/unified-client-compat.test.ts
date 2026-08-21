@@ -36,7 +36,6 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
   beforeAll(async () => {
     const grpcUrl = resolveE2eGrpcUrlOverride();
     unified = await Client.create({
-      oracleSource: "waterx_rule",
       network: e2eNetwork === "mainnet" ? "MAINNET" : "TESTNET",
       cache: true,
       waterxConfigUrl: resolveE2eWaterxConfigUrl(),

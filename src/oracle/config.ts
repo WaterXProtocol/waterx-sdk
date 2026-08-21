@@ -30,7 +30,7 @@ import type { FetchPolicy } from "./update-fetch.ts";
  * verify call, `published_at`/`config` for the per-ticker feed call.
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
- * which rule prices a ticker is decided solely by the client's `oracleSource`
+ * which rule prices a ticker is decided solely by the client's derived fed set
  * create option (see `OracleHost.oracleSources`), never by this flag or any
  * other config value.
  */
@@ -110,7 +110,7 @@ export interface WaterxRuleFeedEntry {
  * `rules/waterx-rule.ts`), not this JSON.
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
- * which rule prices a ticker is decided solely by the client's `oracleSource`
+ * which rule prices a ticker is decided solely by the client's derived fed set
  * create option (see `OracleHost.oracleSources`), mirroring `pyth_lazer_rule`.
  */
 export interface WaterxRulePackage extends BasePackageEntry {
@@ -141,7 +141,7 @@ export interface OraclePackages {
   pyth_lazer_rule?: PythLazerRulePackage;
   constant_rule?: WaterxConstantRulePackage;
   supra_rule?: SupraRulePackage;
-  /** See {@link WaterxRulePackage} — read by `WaterxRule` when `oracleSource` selects it. */
+  /** See {@link WaterxRulePackage} — read by `WaterxRule` when the config wires it. */
   waterx_rule?: WaterxRulePackage;
   waterx_oracle: WaterxOraclePackage;
 }

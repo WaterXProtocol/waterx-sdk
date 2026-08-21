@@ -341,7 +341,7 @@ function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void
   // Validate by deployment kind. A perp config must carry the perp set; a
   // credit config the credit set. `waterx_account` is common to both.
   // NO oracle-rule package is required by presence — which rules run is the
-  // client's `oracleSource` option, never the config's package set (and
+  // client's derived fed set, never a hand-declared list (and
   // `pyth_rule`, once required here, was retired in 5.0.0 — a config may
   // carry or omit its block freely).
   const isPerp = "waterx_perp" in cfg.packages;

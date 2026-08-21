@@ -1,67 +1,49 @@
 /**
- * `source-list.ts` — THE parser for a consumer's `ORACLE_SOURCE` env string
- * (comma list of `OracleSource` values → the fed set). The FE and BE
- * previously carried twin hand-written parsers whose semantics drifted once
- * in review (a trailing comma booted one deployment green and 500'd the
- * other); this canonical behavior is what both fold onto:
+ * `source-list.ts` — THE fed set, derived from the deployment config.
  *
- *  - split on `,`, trim entries, DROP empties (trailing/doubled commas are
- *    the most common env typo, never a boot failure)
- *  - validate every entry against {@link ORACLE_SOURCES}
- *  - dedupe, order-preserving (list order is consumer read-plane policy —
- *    the SDK's own fed-set build treats the list as a set)
- *  - throw an operator-actionable error on empty/unset/invalid input —
- *    there is NO default oracle source
+ * There is no `oracleSource` option and no `ORACLE_SOURCE` env var. Which
+ * sources a build feeds is a property of the DEPLOYMENT, so it is read from
+ * the same canonical JSON that carries their packages and feeds: a source is
+ * in the fed set when its block is published AND carries at least one feed.
  *
- * The SDK still never reads `process.env` — callers pass the raw string.
+ * Why derived rather than declared. The chain arbitrates — per-ticker weights
+ * decide which contributions count, feeding an UNWEIGHTED rule is dropped
+ * on-chain, and starving a WEIGHTED one aborts `EMissingPriceSource`. The
+ * failure is therefore one-sided: over-feeding is free, under-feeding is fatal.
+ * A hand-typed list errs in the fatal direction (the classic being one copied
+ * between networks, naming a source that deployment does not carry); the
+ * config cannot, because it IS what wires the rules. Mainnet derives
+ * `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no
+ * per-deployment configuration at all.
  *
- * STRICTER than the consumers' previous `in`-operator checks: a value named
- * like an `Object.prototype` key (`toString`, `constructor`, …) passed those
- * and died deep in the stack; `Set.has` rejects it here at parse.
+ * Retired rules are inert here by construction: `pyth_rule` and
+ * `pyth_sponsor_rule` still sit in the live configs, but neither is an
+ * {@link ORACLE_SOURCES} member — there is no rule module that could feed one
+ * — so their blocks are never consulted.
  *
- * Zod adopters: this THROWS a plain Error. Inside a zod `.transform()` a
- * throw escapes `schema.parse()` un-aggregated and masks sibling issues —
- * wrap it: `try { return parseOracleSourceList(raw); } catch (e) {
- * ctx.addIssue({ code: "custom", message: (e as Error).message }); return
- * z.NEVER; }`.
+ * Deliberately NOT filtered by which credentials the caller holds. A keyless
+ * client whose config wires Lazer fails loudly at build
+ * (`LazerApiKeyMissing`); silently dropping the source instead would starve a
+ * rule the chain may weight and turn a clear build error into an opaque
+ * on-chain abort.
  */
 
+import type { OracleConfig } from "./config.ts";
 import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
 
-// Widened-annotation Set (not an assertion) so the type predicate below
-// narrows by CONSTRUCTION rather than by cast.
-const ORACLE_SOURCE_SET: ReadonlySet<string> = new Set(ORACLE_SOURCES);
-
 /**
- * THE runtime membership check for {@link ORACLE_SOURCES} — the parser below
- * and `PerpClient`'s ctor validation both use this one predicate, so the env
- * parser and the create-option front door can never disagree. `Set.has`,
- * never `in`/bracket reads (prototype-chain safe by construction).
+ * The fed set this deployment wires: every implementable source with a
+ * published package and a non-empty feeds map, in {@link ORACLE_SOURCES}
+ * order.
+ *
+ * Pure and config-only, so consumers can call it before a client exists (e.g.
+ * to pair with {@link missingOracleCredentials} in a boot assert).
  */
-export function isOracleSource(value: string): value is OracleSource {
-  return ORACLE_SOURCE_SET.has(value);
-}
-
-export function parseOracleSourceList(raw: string | null | undefined): OracleSource[] {
-  const parts = (raw ?? "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part !== "");
-  const sources = parts.filter(isOracleSource);
-  if (parts.length === 0 || sources.length !== parts.length) {
-    const got = raw == null || raw.trim() === "" ? "unset" : `'${raw}'`;
-    // A deployment still carrying the 5.0.0-retired value gets told exactly
-    // what happened rather than the generic "not a member" — the operator fix
-    // (delete one list entry) is different in kind from a typo'd source name.
-    const retiredHint = parts.includes("pyth_rule")
-      ? " (pyth_rule retired — remove it from ORACLE_SOURCE)"
-      : "";
-    throw new Error(
-      `ORACLE_SOURCE must be a comma-separated list of ${ORACLE_SOURCES.join(" | ")} ` +
-        `(got ${got}) — there is NO default oracle source; set it in the deployment's env.` +
-        retiredHint,
+export function deriveOracleSources(config: OracleConfig): OracleSource[] {
+  return ORACLE_SOURCES.filter((source) => {
+    const block = config.packages[source];
+    return (
+      !!block?.published_at && Object.keys((block as { feeds?: object }).feeds ?? {}).length > 0
     );
-  }
-
-  return [...new Set(sources)];
+  });
 }

@@ -2,7 +2,7 @@
  * High-level perp transaction builders — barrel.
  *
  * Each `build*Tx` composer creates (or appends to) a `Transaction`, refreshes
- * the on-chain `Oracle` via the client's `oracleSource` fed set, optionally
+ * the on-chain `Oracle` via the client's derived fed set, optionally
  * pre-sweeps parked balances (`consolidateToUsd`), and calls the matching
  * `*_request` + `execute`. Implementations are split by domain under
  * `tx-builders/`:

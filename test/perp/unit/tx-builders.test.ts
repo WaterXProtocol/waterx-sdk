@@ -366,7 +366,6 @@ describe("tx-builders (v3)", () => {
     const cfg = structuredClone(MOCK_TESTNET_CONFIG);
     delete cfg.packages.withdrawal_queue;
     const noQueue = new PerpClient("TESTNET", cfg, {
-      oracleSource: "waterx_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     expect(() =>

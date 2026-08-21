@@ -50,7 +50,7 @@ export const ORACLE_SOURCES = Object.freeze([
 ] as const satisfies readonly PriceUpdateRuleKind[]);
 
 /**
- * The kinds listable in a client's `oracleSource` create option (see
+ * The implementable price-update sources — the candidates `deriveOracleSources` picks from (see
  * `OracleHost.oracleSources`) — i.e. rules that can serve as the on-chain
  * price *update* leg `refreshOraclePrices` runs before aggregating. Derived
  * from {@link ORACLE_SOURCES}. The SDK never reads `process.env` — consumers
