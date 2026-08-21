@@ -5,8 +5,8 @@
  * The schema mirrors the canonical JSON layout one-to-one (each package
  * groups its own object IDs + per-ticker maps). External chain infra is
  * **not** in the JSON — each oracle source owns its own per-network table
- * (`PYTH_CORE_INFRA` in `oracle/pyth.ts`, `LAZER_INFRA` in
- * `oracle/rules/pyth-lazer-rule.ts`); Wormhole bridge infra lives in
+ * (`LAZER_INFRA` in `oracle/rules/pyth-lazer-rule.ts`, `WATERX_INFRA` in
+ * `oracle/rules/waterx-rule.ts`); Wormhole bridge infra lives in
  * `WORMHOLE_DEFAULTS` below.
  */
 
@@ -43,8 +43,6 @@ export type {
   PythAccessConfig,
   PythFetchPolicy,
   PythLazerRulePackage,
-  PythRulePackage,
-  PythSponsorRulePackage,
   SupraFeedEntry,
   SupraRulePackage,
   WaterxConstantRulePackage,
@@ -57,9 +55,9 @@ export type {
 // Per-package entries (canonical shape, snake_case to match the JSON)
 // ============================================================================
 
-// Oracle-layer package entries (pyth_rule / pyth_sponsor_rule / constant_rule /
-// supra_rule / waterx_oracle) live in `oracle/config.ts` (shared infra) and are
-// re-exported at the top of this file.
+// Oracle-layer package entries (lazer / waterx / constant / supra rules +
+// waterx_oracle, and the retired-but-typed legacy blocks) live in
+// `oracle/config.ts` (shared infra) and are re-exported at the top of this file.
 
 export interface WaterxPerpMarketEntry {
   market: string;
@@ -130,8 +128,8 @@ export interface TestnetFaucetPackage {
 export interface WaterXPackages extends AccountPackages, OraclePackages {
   // Account-layer packages (bucket_framework, waterx_account, waterx_referral,
   // and the credit/bridge stack) are inherited from AccountPackages.
-  // Oracle-layer packages (pyth_rule, pyth_sponsor_rule, constant_rule,
-  // supra_rule, waterx_oracle) are inherited from OraclePackages.
+  // Oracle-layer packages (the rule blocks + waterx_oracle) are inherited
+  // from OraclePackages.
   waterx_perp: WaterxPerpPackage;
   waterx_perp_view: BasePackageEntry;
   waterx_staking?: WaterxStakingPackage;
@@ -151,15 +149,13 @@ export interface WaterXPackages extends AccountPackages, OraclePackages {
 // Wormhole — external chain infra, defaults by network
 // ============================================================================
 //
-// Oracle-source infra lives with each source (`PYTH_CORE_INFRA` in
-// `oracle/pyth.ts`, `LAZER_INFRA` in `oracle/rules/pyth-lazer-rule.ts`);
-// `client.pyth` is the caller-supplied access slice only (`PythAccessConfig`,
-// re-exported at the top of this file).
+// Oracle-source infra lives with each source (`LAZER_INFRA` in
+// `oracle/rules/pyth-lazer-rule.ts`, `WATERX_INFRA` in
+// `oracle/rules/waterx-rule.ts`); `client.pyth` is the caller-supplied access
+// slice only (`PythAccessConfig`, re-exported at the top of this file).
 
 // `WormholeInfraConfig` is defined in `account/config.ts` (funding base) and
-// re-exported at the top of this file. `state_id` is the same shared Sui
-// Wormhole `State` object Pyth uses (kept in sync with
-// `PYTH_CORE_INFRA[*].wormhole_state_id`).
+// re-exported at the top of this file.
 
 export const WORMHOLE_DEFAULTS: Record<Network, WormholeInfraConfig> = {
   MAINNET: {
@@ -344,15 +340,15 @@ function validateConfig(cfg: WaterXConfig, expected: Network, url: string): void
   };
   // Validate by deployment kind. A perp config must carry the perp set; a
   // credit config the credit set. `waterx_account` is common to both.
-  // `pyth_lazer_rule` is intentionally NOT required (and never will be by
-  // presence alone) — it's an optional/experimental package selected only via
-  // a client's `oracleSource` option, never by its presence in the config.
+  // NO oracle-rule package is required by presence — which rules run is the
+  // client's derived fed set, never a hand-declared list (and
+  // `pyth_rule`, once required here, was retired in 5.0.0 — a config may
+  // carry or omit its block freely).
   const isPerp = "waterx_perp" in cfg.packages;
   const isCredit = "waterx_credit" in cfg.packages || "wormhole_bridge" in cfg.packages;
   const required: (keyof WaterXPackages)[] = isPerp
     ? [
         "bucket_framework",
-        "pyth_rule",
         "waterx_account",
         "waterx_oracle",
         "waterx_perp",

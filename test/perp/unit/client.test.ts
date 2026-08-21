@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PYTH_CORE_INFRA } from "../../../src/oracle/pyth.ts";
+import { WATERX_INFRA } from "../../../src/oracle/rules/waterx-rule.ts";
 import { PerpClient, type CreateClientOptions } from "../../../src/perp/client.ts";
 import * as configModule from "../../../src/perp/config.ts";
 import type { WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
@@ -8,15 +8,15 @@ import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
 } from "../helpers/fixtures/mock-testnet-config.ts";
-import { createUnitTestClient } from "../helpers/test-client.ts";
+import { createUnitTestClient, withOracleSources } from "../helpers/test-client.ts";
 
 describe("PerpClient (offline)", () => {
   const client = createUnitTestClient();
 
-  it("exposes testnet config; Core infra is rule-owned, not on the client", () => {
+  it("exposes testnet config; source infra is rule-owned, not on the client", () => {
     expect(client.network).toBe("TESTNET");
     expect(client.config.network).toBe("testnet");
-    expect(PYTH_CORE_INFRA.TESTNET.state_id).toMatch(/^0x/);
+    expect(WATERX_INFRA.TESTNET.endpoint).toMatch(/^https:/);
     expect(client.config.packages.waterx_perp.global_config).toMatch(/^0x/);
   });
 
@@ -30,11 +30,38 @@ describe("PerpClient (offline)", () => {
     expect(() => client.getMarket("NOPE")).toThrow(/Unknown market ticker/);
   });
 
-  it("getPythFeed / getAggregator / getPoolTokenType / wlpType", () => {
-    expect(client.getPythFeed("BTCUSD").feed_id).toMatch(/^0x/);
+  it("getAggregator / getPoolTokenType / wlpType", () => {
     expect(client.getAggregator("BTCUSD")).toMatch(/^0x/);
     expect(client.getPoolTokenType("USDCUSD")).toContain("::");
     expect(client.wlpType()).toContain("::wlp::WLP");
+  });
+
+  it("pricedPoolTickers returns pool tokens the FED SET can price", () => {
+    // The shared fixture's pool token is USDCUSD, served by waterx + lazer.
+    expect(createUnitTestClient({ oracleSource: "waterx_rule" }).pricedPoolTickers()).toEqual([
+      "USDCUSD",
+    ]);
+    expect(createUnitTestClient({ oracleSource: "pyth_lazer_rule" }).pricedPoolTickers()).toEqual([
+      "USDCUSD",
+    ]);
+  });
+
+  it("pricedPoolTickers drops a pool token NO listed source serves", () => {
+    // The regression the old config-only helper could not catch: a token some
+    // OTHER rule serves is still unpriceable to this client, and handing it to
+    // refreshOraclePrices would throw "no feed configured" mid-build.
+    const lazerOnly = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    delete lazerOnly.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    expect(lazerOnly.pricedPoolTickers()).toEqual([]);
+  });
+
+  it("pricedPoolTickers keeps a constant-pinned pool token with no source feed", () => {
+    // Constant tickers need no update leg at all, so they stay servable even
+    // when the fed set carries no feed for them.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    expect(client.pricedPoolTickers()).toEqual(["USDCUSD"]);
   });
 
   it("isConstantTicker reflects constant_rule.feeds", () => {
@@ -66,9 +93,8 @@ describe("PerpClient (offline)", () => {
     expect(noPkgId.isConstantTicker("USDCUSD")).toBe(false);
   });
 
-  it("throws for unknown aggregator, pyth feed, and pool token", () => {
+  it("throws for unknown aggregator and pool token", () => {
     expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
-    expect(() => client.getPythFeed("NOPE")).toThrow(/No pyth feed listed/);
     expect(() => client.getPoolTokenType("NOPE")).toThrow(/No pool token registered/);
   });
 
@@ -205,7 +231,7 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
       },
     } as unknown as WaterXConfig;
 
-    const client = new PerpClient("TESTNET", config, { oracleSource: "pyth_lazer_rule" });
+    const client = new PerpClient("TESTNET", config, {});
 
     expect(client.pyth).toEqual({});
     expect(client.pyth.api_key).toBeUndefined();
@@ -213,39 +239,55 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
 
   it("pythApiKey is supplied at client init, never through the config JSON", () => {
     const client = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
-      oracleSource: "pyth_lazer_rule",
       pythApiKey: "caller-supplied",
     });
 
     expect(client.pyth).toEqual({ api_key: "caller-supplied" });
   });
 
-  it("construction throws when oracleSource is omitted, empty, or lists a nullish entry", () => {
-    // An untyped (JS / `as any`) caller omitting the REQUIRED option
-    // normalizes to `[undefined]` — that must fail HERE, not boot green and
-    // surface as `OracleSourceNotImplemented: undefined` at the first
-    // tx-build (the exact green-boot/500 shape this refactor eliminates).
-    const config = structuredClone(MOCK_TESTNET_CONFIG);
-    expect(() => new PerpClient("TESTNET", config, {} as CreateClientOptions)).toThrow(
-      /oracleSource is REQUIRED/,
-    );
-    expect(() => new PerpClient("TESTNET", config, { oracleSource: [] })).toThrow(
-      /oracleSource is REQUIRED/,
-    );
-    // Values outside the canonical ORACLE_SOURCES list (legacy 'core'/'pro',
-    // typos) fail HERE too — same authority as parseOracleSourceList, so the
-    // env parser and the client front door can never disagree.
+  it("derives the fed set from the config — no option, no env", () => {
+    // Both sources wired in the fixture ⇒ both fed. This is the whole contract:
+    // what a deployment wires is what it feeds.
+    const both = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {});
+    expect(both.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);
+
+    // Unwire lazer ⇒ it drops out, with nothing to keep in sync by hand.
     expect(
-      () =>
-        new PerpClient("TESTNET", config, {
-          oracleSource: "core" as unknown as CreateClientOptions["oracleSource"],
-        }),
-    ).toThrow(/oracleSource is REQUIRED/);
+      new PerpClient("TESTNET", withOracleSources(MOCK_TESTNET_CONFIG, ["waterx_rule"]), {})
+        .oracleSources,
+    ).toEqual(["waterx_rule"]);
+  });
+
+  it("a published source with an EMPTY feeds map is not in the fed set", () => {
+    // Published-but-serving-nothing is not a source; feeding it would emit an
+    // update leg that can never carry a ticker.
+    const config = structuredClone(MOCK_TESTNET_CONFIG);
+    config.packages.pyth_lazer_rule!.feeds = {};
+    expect(new PerpClient("TESTNET", config, {}).oracleSources).toEqual(["waterx_rule"]);
+  });
+
+  it("retired rule blocks in the config are inert — they can never be derived", () => {
+    // `pyth_rule` / `pyth_sponsor_rule` are still present in the LIVE configs.
+    // Neither is an ORACLE_SOURCES member (no rule module could feed one), so
+    // their presence changes nothing.
+    const config = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
+      packages: Record<string, unknown>;
+    };
+    config.packages.pyth_rule = { published_at: "0x1", feeds: { BTCUSD: {} } };
+    config.packages.pyth_sponsor_rule = { published_at: "0x2" };
+    const client = new PerpClient("TESTNET", config as unknown as WaterXConfig, {});
+    expect(client.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);
+  });
+
+  it("construction throws when the config wires NO price-update source at all", () => {
+    // Not a per-ticker coverage question (that is tx-build's job): a config
+    // that can price nothing would skip every ticker and abort every trade.
+    const config = withOracleSources(MOCK_TESTNET_CONFIG, []);
+    expect(() => new PerpClient("TESTNET", config, {})).toThrow(/wires no price-update source/);
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {
     const client = new PerpClient("TESTNET", structuredClone(MOCK_TESTNET_CONFIG), {
-      oracleSource: "pyth_rule",
       pythFetch: { timeoutMs: 8_000, retries: 1 },
     });
 
@@ -260,31 +302,29 @@ describe("PerpClient.create", () => {
 
   it("returns async client with loaded config", async () => {
     const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", { cache: true, oracleSource: "pyth_rule" });
-    expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true, oracleSource: "pyth_rule" });
+    const client = await PerpClient.create("TESTNET", { cache: true });
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true });
     expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
     expect(client.network).toBe("TESTNET");
   });
 
-  it("create() threads oracleSource + pythApiKey through to the client", async () => {
-    vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
-    const client = await PerpClient.create("TESTNET", {
-      oracleSource: "pyth_lazer_rule",
-      pythApiKey: "k",
-    });
+  it("create() derives the fed set from the loaded config and threads pythApiKey", async () => {
+    vi.spyOn(configModule, "loadConfig").mockResolvedValue(
+      withOracleSources(MOCK_TESTNET_CONFIG, ["pyth_lazer_rule"]),
+    );
+    const client = await PerpClient.create("TESTNET", { pythApiKey: "k" });
     expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
     expect(client.pyth).toEqual({ api_key: "k" });
   });
 
-  it("does NOT throw at init when the selected source has no feeds configured", async () => {
-    // The old assertOracleSourceConfigured threw here; now selecting a source
-    // with empty feeds is fine at init — it surfaces per-ticker at tx-build
-    // (see refreshOraclePrices). No cross-source fallback, no init guard.
-    const noLazerFeeds = structuredClone(MOCK_TESTNET_CONFIG);
-    noLazerFeeds.packages.pyth_lazer_rule!.feeds = {};
-    vi.spyOn(configModule, "loadConfig").mockResolvedValue(noLazerFeeds);
-    const client = await PerpClient.create("TESTNET", { oracleSource: "pyth_lazer_rule" });
-    expect(client.oracleSources).toEqual(["pyth_lazer_rule"]);
+  it("does NOT throw at init when a wired source cannot serve every ticker", async () => {
+    // Per-TICKER coverage is still tx-build's business, not init's: a source
+    // wired with a partial feeds map is a perfectly good source.
+    const partial = structuredClone(MOCK_TESTNET_CONFIG);
+    partial.packages.pyth_lazer_rule!.feeds = { BTCUSD: 1 };
+    vi.spyOn(configModule, "loadConfig").mockResolvedValue(partial);
+    const client = await PerpClient.create("TESTNET", {});
+    expect(client.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);
   });
 
   it("mainnet() and testnet() delegate to create()", async () => {
@@ -292,8 +332,8 @@ describe("PerpClient.create", () => {
       ...MOCK_TESTNET_CONFIG,
       network: network === "MAINNET" ? "mainnet" : "testnet",
     }));
-    const testnet = await PerpClient.testnet({ oracleSource: "pyth_rule" });
-    const mainnet = await PerpClient.mainnet({ oracleSource: "pyth_rule" });
+    const testnet = await PerpClient.testnet({});
+    const mainnet = await PerpClient.mainnet({});
     expect(testnet.network).toBe("TESTNET");
     expect(mainnet.network).toBe("MAINNET");
     expect(loadConfig).toHaveBeenCalledTimes(2);

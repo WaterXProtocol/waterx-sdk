@@ -47,16 +47,17 @@ function isNetworkTypeError(err: TypeError): boolean {
 
 /**
  * Oracle feed/aggregate failures that are environment-dependent on testnet (not SDK regressions).
- * Covers on-chain rule aborts (`pyth_rule`/`supra_rule`) AND off-chain Hermes REST blips
- * (`fetchPriceFeedsUpdateData` throws before the tx builds when hermes-beta returns 5xx/429 or
- * empty data) — both are Pyth infra transients, so callers skip instead of hard-failing.
+ * Covers on-chain rule aborts (`supra_rule`) AND off-chain source REST blips (the Lazer POST /
+ * quote-center GET throw before the tx builds when the upstream returns 5xx/429 or empty data)
+ * — infra transients, so callers skip instead of hard-failing.
  */
 export function isOracleTransientFailureMessage(msg: string): boolean {
   return (
     msg.includes("::supra_rule::feed") ||
-    msg.includes("::pyth_rule::feed") ||
-    msg.includes("Hermes price fetch failed") ||
-    msg.includes("Hermes returned no binary price data")
+    msg.includes("Lazer price fetch failed") ||
+    msg.includes("Lazer returned no leEcdsa update data") ||
+    msg.includes("WaterX quote-center fetch failed") ||
+    msg.includes("WaterX quote-center leaf fetch failed")
   );
 }
 

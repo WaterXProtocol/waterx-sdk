@@ -18,7 +18,6 @@ import type { PythFetchPolicy, PythLazerRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
-  type BuildUpdateOpts,
   type PriceUpdateRule,
   type RuleUpdateData,
   type RuleUpdateHandle,
@@ -120,7 +119,7 @@ const LAZER_LATEST_PRICE_REQUEST = {
 
 /**
  * Shape check ONLY — the `kind` discriminant is checked separately by the
- * caller before this runs (mirrors `PythCoreRule`'s guard split), so a
+ * caller before this runs (mirrors `WaterxRule`'s guard split), so a
  * same-shaped payload from a different rule can never silently pass.
  */
 function isPythLazerUpdatePayloadShape(payload: unknown): payload is PythLazerUpdatePayload {
@@ -136,9 +135,11 @@ function isPythLazerUpdatePayloadShape(payload: unknown): payload is PythLazerUp
  * Thrown by {@link PythLazerRule.fetchUpdateData} when `pyth_lazer_rule` is
  * deployed in config but no `pythApiKey` was supplied at client init — the
  * Lazer HTTP API requires a Bearer token and the SDK never reads
- * `process.env` to find one. `instanceof`-able (mirrors
- * `OracleFeeSourceUnavailableError` in `pyth.ts`) so a consumer can branch on
- * the failure type directly instead of string-matching `error.message`.
+ * `process.env` to find one. Also thrown by `refreshOraclePrices`'s hoisted
+ * credential pre-check (`aggregate.ts`) BEFORE any fetch, keyed off this
+ * rule's `credential` declaration. `instanceof`-able (mirrors `FetchPolicyError`
+ * in `../update-fetch.ts`) so a consumer can branch on the failure type
+ * directly instead of string-matching `error.message`.
  */
 export class LazerApiKeyMissingError extends Error {
   constructor() {
@@ -160,11 +161,47 @@ function requireLazerPackage(host: OracleHost): PythLazerRulePackage {
 }
 
 /**
- * Fetch one signed `leEcdsa` update for `feedIds` from the Lazer HTTP API.
- * Goes through the shared `fetchWithPolicy` (`../update-fetch.ts`) — same
- * retry/timeout/Bearer policy as `fetchPriceFeedsUpdateData`, unified so
- * both oracle sources fail the same way under upstream degradation.
+ * THE `POST {endpoint}/v1/latest_price` transport — shared by BOTH legs of
+ * this endpoint: the signed-update WRITE fetch below and the parsed-price READ
+ * executor (`readLazerPrices` in `../read-prices.ts`). They differ only in the
+ * request pins they send and how they decode/blame the response, so keeping
+ * one transport stops the URL, method, headers, and auth/retry policy drifting
+ * between them.
+ *
+ * `requestPins` is spread into the body alongside `priceFeedIds` + `channel`;
+ * the raw `Response` comes back undecoded so each caller owns its own error
+ * framing (the write leg reframes an exhausted retry, the read leg maps 403 to
+ * an entitlement error).
+ *
+ * Goes through the shared `fetchWithPolicy` (`../update-fetch.ts`) — the one
+ * retry/timeout/Bearer policy every oracle fetch shares, so all sources fail
+ * the same way under upstream degradation.
  */
+export function postLazerLatestPrice(
+  endpoint: string,
+  channel: string,
+  apiKey: string,
+  feedIds: number[],
+  requestPins: Record<string, unknown>,
+  fetchOpts?: PythFetchPolicy,
+): Promise<Response> {
+  // joinEndpointPath preserves any base path on the endpoint — the same
+  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
+  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
+  // Lazer endpoint has no base path, but a config override may.
+  const url = joinEndpointPath(endpoint, "v1/latest_price");
+  return fetchWithPolicy(
+    url.toString(),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priceFeedIds: feedIds, ...requestPins, channel }),
+    },
+    { apiKey, ...fetchOpts },
+  );
+}
+
+/** Fetch one signed `leEcdsa` update for `feedIds` from the Lazer HTTP API. */
 async function fetchLazerSignedUpdate(
   endpoint: string,
   channel: string,
@@ -172,21 +209,15 @@ async function fetchLazerSignedUpdate(
   feedIds: number[],
   fetchOpts?: PythFetchPolicy,
 ): Promise<Uint8Array> {
-  // joinEndpointPath preserves any base path on the endpoint — the same
-  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
-  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
-  // Lazer endpoint has no base path, but a config override may.
-  const url = joinEndpointPath(endpoint, "v1/latest_price");
   let res: Response;
   try {
-    res = await fetchWithPolicy(
-      url.toString(),
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceFeedIds: feedIds, ...LAZER_LATEST_PRICE_REQUEST, channel }),
-      },
-      { apiKey, ...fetchOpts },
+    res = await postLazerLatestPrice(
+      endpoint,
+      channel,
+      apiKey,
+      feedIds,
+      LAZER_LATEST_PRICE_REQUEST,
+      fetchOpts,
     );
   } catch (err) {
     rethrowExhaustedFetch(
@@ -228,9 +259,12 @@ export function feedLazerRule(
 export const PythLazerRule: PriceUpdateRule = {
   kind: "pyth_lazer_rule",
 
-  // Verification is a flat signature check with no Coin argument — no
-  // update fee — see `PriceUpdateRule.requiresFeeSource`.
-  requiresFeeSource: false,
+  // Lazer is auth-first: the signed-update fetch cannot run without the
+  // caller's `pythApiKey` Bearer. Declared on the port — kind AND error
+  // together — so `refreshOraclePrices`'s hoisted pre-check and consumers'
+  // `missingOracleCredentials` boot asserts both key off the rule itself, and
+  // the orchestrator never constructs this error on the rule's behalf.
+  credential: { kind: "pyth_api_key", missing: () => new LazerApiKeyMissingError() },
 
   /** Tickers with a `pyth_lazer_rule.feeds` entry (integer Lazer feed ids). */
   supportedTickers(host: OracleHost): string[] {
@@ -295,8 +329,7 @@ export const PythLazerRule: PriceUpdateRule = {
    * Appends the single `parse_and_verify_le_ecdsa_update*(state, clock, bytes)`
    * call — one secp256k1 signature check covering every feed in the payload —
    * and returns its `Update` result as the handle the per-ticker feed leg
-   * consumes. `opts.cache` / `opts.feeSource` are Pyth-Core-specific and
-   * ignored (Lazer verification charges no update fee).
+   * consumes.
    *
    * The entry name comes from `LAZER_INFRA[network].verify_entry`: mainnet's
    * rule binds `update_v2`, testnet's is still the v1 publish. Both take
@@ -306,7 +339,6 @@ export const PythLazerRule: PriceUpdateRule = {
     tx: Transaction,
     host: OracleHost,
     data: RuleUpdateData,
-    _opts?: BuildUpdateOpts,
   ): RuleUpdateHandle | undefined {
     const payload = assertRuleUpdateData(
       data,

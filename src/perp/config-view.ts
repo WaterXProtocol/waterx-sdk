@@ -43,29 +43,18 @@ export class PerpConfigView {
     return a;
   }
 
-  /** `pyth_rule.feeds[ticker]`, throws if unknown. */
-  getPythFeed(ticker: string) {
-    const f = ownEntry(this.config.packages.pyth_rule?.feeds, ticker);
-    if (!f) throw new Error(`No pyth feed listed for ticker: ${ticker}`);
-    return f;
-  }
-
   /**
    * True when `ticker` is priced by `constant_rule` (a constant pin,
-   * e.g. `USDCUSD → $1`) rather than Pyth. Such tickers are fed via
-   * `constant_rule::feed` and need no Pyth update; see {@link refreshOraclePrices}.
+   * e.g. `USDCUSD → $1`) rather than a live source. Such tickers are fed via
+   * `constant_rule::feed` and need no source update leg; see
+   * {@link refreshOraclePrices}.
    *
    * All-or-nothing, mirroring {@link getSupraRule} and the keeper: only routes a
    * ticker to the constant rule when the rule is FULLY wired (`published_at` +
    * `config` present). A half-populated block — a `feeds` entry listed before the
    * rule is deployed, a realistic mid-rollout state — would otherwise make this
-   * true while {@link aggregateTicker} throws, aborting the whole price-refresh PTB
-   * instead of safely falling back to Pyth.
-   *
-   * Whether a constant ticker is *also* Pyth-fed (the dual-feed transition state)
-   * or constant-only is not a separate flag — it falls out of whether the ticker
-   * still has a `pyth_rule.feeds` entry. {@link aggregateTicker} feeds each rule the
-   * ticker is configured for, so no `isDualFeed` / `isConstantOnly` predicate is needed.
+   * true while {@link aggregateTicker} throws, aborting the whole price-refresh
+   * PTB instead of leaving the ticker to its live sources.
    */
   isConstantTicker(ticker: string): boolean {
     const c = this.config.packages.constant_rule;

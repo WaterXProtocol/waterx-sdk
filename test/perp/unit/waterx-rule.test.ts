@@ -28,85 +28,29 @@ import {
   type PriceUpdateRule,
 } from "../../../src/oracle/index.ts";
 import {
+  fetchWaterxSignedLeaves,
+  fetchWaterxSignedUpdate,
+  isFreshWaterxEntry,
   parseSignedEnvelope,
   parseSignedLeaves,
+  WATERX_MAX_PRICE_AGE_MS,
   WaterxRule,
   type WaterxSignedEnvelope,
   type WaterxSignedLeaf,
 } from "../../../src/oracle/rules/waterx-rule.ts";
 import { moveCalls, moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
+import {
+  HASH_HEX,
+  mockEnvelopeOnly,
+  mockLeafRoute,
+  mockQuoteCenter,
+  rawEnvelope,
+  rawLeaves,
+  rawLeavesText,
+  requestedPaths,
+  SIG_HEX,
+} from "../helpers/fixtures/quote-center.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
-
-/** Arbitrary 64-byte ed25519 signature (hex), standing in for a real one. */
-const SIG_HEX = "ab".repeat(64);
-/** A 32-byte keccak256 hash (hex) — the only shape a proof element may take. */
-const HASH_HEX = "cd".repeat(32);
-
-/** The price fields shared by both wire shapes (u64s as plain JSON numbers, as the quote-center emits them). */
-function rawItem(symbol: string): Record<string, unknown> {
-  return {
-    symbol,
-    ticker: `${symbol}T`,
-    sources: [2, 3, 4],
-    method: "median",
-    price_timestamp_ms: 1_784_799_999_000,
-    price_n: 63_700_000_000_000,
-    price_scale: 1_000_000_000,
-    confidence_n: 10_000_000_000,
-    confidence_scale: 1_000_000_000,
-    max_source_deviation_bps: 0,
-    num_sources: 3,
-  };
-}
-
-/** Server-shape `/v1/quotes/update` body. */
-function rawEnvelope(symbols: string[] = ["BTCUSD"]): Record<string, unknown> {
-  return {
-    intent: 1,
-    timestamp_ms: 1_784_800_000_000,
-    payload: { items: symbols.map(rawItem) },
-    signature: SIG_HEX,
-  };
-}
-
-/**
- * Server-shape `/v1/quotes/leaves` body as RAW TEXT — deliberately not an object
- * run through `JSON.stringify`.
- *
- * The display-only `price` / `confidence` are Rust `f64`s, and serde emits a
- * whole-numbered one as `0.0`. `JSON.stringify({ confidence: 0.0 })` emits `0`,
- * so an OBJECT fixture cannot produce that token at all — which is precisely how
- * a `BigInt("0.0")` crash in the reviver reached a deployed endpoint with a green
- * test suite. Every leaf test now runs against text the service could actually
- * have sent, including the `0.0` and exponent forms.
- */
-function rawLeavesText(symbols: string[] = ["BTCUSD"], proof: string[] = [HASH_HEX]): string {
-  const proofJson = JSON.stringify(proof);
-  const leaves = symbols.map(
-    (symbol) => `{
-      "symbol": "${symbol}", "ticker": "${symbol}T",
-      "price": 63700.0, "confidence": 0.0,
-      "price_n": 63700000000000, "price_scale": 1000000000,
-      "confidence_n": 10000000000, "confidence_scale": 1000000000,
-      "sources": [2, 3, 4], "method": "median",
-      "num_sources": 3, "max_source_deviation_bps": 0,
-      "price_timestamp_ms": 1784799999000,
-      "signed_timestamp_ms": 1784800000000,
-      "root": "${HASH_HEX}", "proof": ${proofJson},
-      "signature": "${SIG_HEX}",
-      "enclave_pubkey": "${"cd".repeat(32)}", "enclave_version": 1
-    }`,
-  );
-  return `{"leaves":[${leaves.join(",")}]}`;
-}
-
-/** The same body as a mutable object, for tests that tamper with a field. */
-function rawLeaves(
-  symbols: string[] = ["BTCUSD"],
-  proof: string[] = [HASH_HEX],
-): Record<string, unknown> {
-  return JSON.parse(rawLeavesText(symbols, proof)) as Record<string, unknown>;
-}
 
 /** The parsed (bigint-typed) envelope, for direct feed / narrow tests. */
 function sampleEnvelope(symbols: string[] = ["BTCUSD"]): WaterxSignedEnvelope {
@@ -121,61 +65,6 @@ function sampleLeaves(
   return parseSignedLeaves(rawLeavesText(symbols, proof));
 }
 
-interface MockRoute {
-  status?: number;
-  /** Object body — stringified. Use `text` when the exact token matters. */
-  body?: unknown;
-  /** Verbatim response text (wire-faithful float tokens, malformed JSON, …). */
-  text?: string;
-}
-
-/**
- * Route-aware quote-center mock: `/v1/quotes/leaves` and `/v1/quotes/update` get
- * their own response, and an unconfigured route 404s the way a quote-center
- * that never had it would. A single blanket mock cannot express this suite's
- * central case — the rule tries the leaf route FIRST and only falls back on a
- * 404 — so every fetch here is routed by pathname.
- */
-function mockQuoteCenter(routes: {
-  leaves?: MockRoute;
-  update?: MockRoute;
-}): ReturnType<typeof vi.spyOn> {
-  const respond = (route: MockRoute | undefined): Response => {
-    const status = route?.status ?? (route ? 200 : 404);
-    const text =
-      route?.text ?? (route?.body === undefined ? "Not Found" : JSON.stringify(route.body));
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      text: async () => text,
-    } as unknown as Response;
-  };
-  return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
-    const { pathname } = new URL(String(input));
-    if (pathname.endsWith("/v1/quotes/leaves")) return Promise.resolve(respond(routes.leaves));
-    if (pathname.endsWith("/v1/quotes/update")) return Promise.resolve(respond(routes.update));
-    return Promise.resolve(respond(undefined));
-  }) as ReturnType<typeof vi.spyOn>;
-}
-
-/** The happy default: the quote-center serves leaves, as wire-faithful text. */
-function mockLeafRoute(symbols: string[] = ["BTCUSD"]): ReturnType<typeof vi.spyOn> {
-  return mockQuoteCenter({ leaves: { text: rawLeavesText(symbols) } });
-}
-
-/** An older quote-center: no leaf route, envelope only. */
-function mockEnvelopeOnly(
-  symbols: string[] = ["BTCUSD"],
-  envelope: Record<string, unknown> = rawEnvelope(symbols),
-): ReturnType<typeof vi.spyOn> {
-  return mockQuoteCenter({ leaves: { status: 404 }, update: { body: envelope } });
-}
-
-/** Pathnames the rule actually requested, in order. */
-function requestedPaths(spy: ReturnType<typeof vi.spyOn>): string[] {
-  return spy.mock.calls.map((call) => new URL(String(call[0])).pathname);
-}
-
 afterEach(() => vi.restoreAllMocks());
 
 describe("WaterxRule — port", () => {
@@ -184,8 +73,8 @@ describe("WaterxRule — port", () => {
     expect(WaterxRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
   });
 
-  it("charges no update fee (requiresFeeSource = false)", () => {
-    expect(WaterxRule.requiresFeeSource).toBe(false);
+  it("declares no credential (public quote-center read surface)", () => {
+    expect(WaterxRule.credential).toBeUndefined();
   });
 
   it("fetchUpdateData pulls per-symbol LEAVES, not the batch envelope", async () => {
@@ -493,6 +382,71 @@ describe("WaterxRule — port", () => {
   });
 });
 
+describe("isFreshWaterxEntry", () => {
+  const entry = (publishTimeMs: number) => ({ price: 1, conf: 0, publishTimeMs });
+
+  it("accepts a price inside the max age", () => {
+    expect(isFreshWaterxEntry(entry(1_000_000), 1_000_000 + 30_000)).toBe(true);
+  });
+
+  it("rejects a price older than the max age", () => {
+    expect(isFreshWaterxEntry(entry(1_000_000), 1_000_000 + WATERX_MAX_PRICE_AGE_MS + 1)).toBe(
+      false,
+    );
+  });
+
+  it("rejects a FUTURE-dated price beyond clock skew", () => {
+    // `now - publishTime <= MAX` alone treats anything in the future as the
+    // freshest possible price. A price minutes ahead is a broken clock or a
+    // malformed payload, not a fresh quote.
+    expect(isFreshWaterxEntry(entry(1_000_000 + 60_000), 1_000_000)).toBe(false);
+  });
+
+  it("tolerates small skew — two independent clocks drift", () => {
+    expect(isFreshWaterxEntry(entry(1_000_000 + 1_000), 1_000_000)).toBe(true);
+  });
+});
+
+describe("quote-center batch cap", () => {
+  it("chunks the leaf route at 32 symbols and concatenates the results", async () => {
+    // Leaves are independently verifiable per symbol, so splitting the request
+    // changes nothing about the PTB. Unchunked, one more feed on a 31-feed
+    // deployment takes a non-retryable 400 reading only "leaf fetch failed: 400".
+    const symbols = Array.from({ length: 40 }, (_, i) => `T${String(i)}USD`);
+    // Per-CALL response: each chunk gets leaves for exactly the symbols it asked
+    // for, so the concatenation is verifiable rather than assumed.
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
+      const asked = new URL(String(url)).searchParams.get("symbols")!.split(",");
+      const text = rawLeavesText(asked);
+      return { ok: true, status: 200, text: async () => text } as unknown as Response;
+    }) as unknown as typeof fetch);
+
+    const pulled = await fetchWaterxSignedLeaves("https://qc.example", symbols);
+    expect("leaves" in pulled && pulled.leaves.map((l) => l.symbol)).toEqual(symbols);
+
+    const batches = spy.mock.calls.map(
+      (c) => new URL(String(c[0])).searchParams.get("symbols")!.split(",").length,
+    );
+    expect(batches).toEqual([32, 8]);
+  });
+
+  it("does not chunk at or below the cap — one request, as before", async () => {
+    const symbols = Array.from({ length: 32 }, (_, i) => `T${String(i)}USD`);
+    const spy = mockLeafRoute(symbols);
+    await fetchWaterxSignedLeaves("https://qc.example", symbols);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses an over-cap ENVELOPE fetch with a message naming the cap", async () => {
+    // One signature covers the whole batch, so this route genuinely cannot be
+    // split; the failure should say that instead of surfacing a bare 400.
+    const symbols = Array.from({ length: 40 }, (_, i) => `T${String(i)}USD`);
+    await expect(fetchWaterxSignedUpdate("https://qc.example", symbols)).rejects.toThrow(
+      /signs at most 32 per request/,
+    );
+  });
+});
+
 describe("WaterxRule — batch-envelope fallback", () => {
   it("falls back to /v1/quotes/update when the leaf route 404s (older quote-center)", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
@@ -717,13 +671,10 @@ describe("WaterxRule — routing", () => {
     expect(moveTargets(tx)).toContain("waterx_rule::collect_batch_latest");
   });
 
-  it("multi-ticker refresh collects each ticker; one with a Pyth feed also keeps pyth_rule::feed", async () => {
+  it("multi-ticker refresh collects each ticker with only its OWN leaf — no retired Core leg", async () => {
     // One PTB, several tickers, one snapshot covering both — but each collector
-    // gets only ITS leaf. BTCUSD and ETHUSD are in BOTH waterx_rule.feeds AND
-    // pyth_rule.feeds, so each collector gets its waterx collect AND — because
-    // the ticker is still in the aggregator's Pyth-weighted set — an
-    // (abstaining, read-only) pyth_rule::feed on the same collector before one
-    // aggregate.
+    // gets only ITS leaf (one new_batch_item per collector, not one per
+    // snapshot symbol), and nothing pyth_rule-shaped appears anywhere.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockLeafRoute(["BTCUSD", "ETHUSD"]);
     const tx = new Transaction();
@@ -734,7 +685,7 @@ describe("WaterxRule — routing", () => {
     expect(count("oracle::new_collector")).toBe(2);
     expect(count("waterx_rule::collect_single_with_proof")).toBe(2);
     expect(count("waterx_rule::new_batch_item")).toBe(2); // one per collector, not one per snapshot symbol
-    expect(count("pyth_rule::feed")).toBe(2); // dual-rule: additive, one per ticker
+    expect(count("pyth_rule::feed")).toBe(0); // the Core leg is retired
     expect(count("oracle::aggregate")).toBe(2);
   });
 

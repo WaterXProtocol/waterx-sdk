@@ -3,7 +3,7 @@
  *
  * Exposes three namespaces over the two product-line sub-clients:
  *
- *   const client = await WaterXClient.create({ network: "TESTNET", oracleSource: "pyth_rule" });
+ *   const client = await WaterXClient.create({ network: "TESTNET" });
  *   client.account.createAccount(tx, { alias });   // -> shared waterx_account + funding
  *   client.perp.placeOrderRequest(tx, params);     // -> perp builder
  *   client.predict.placeOrder(tx, params);         // -> prediction builder
@@ -25,8 +25,8 @@
  *
  * Each namespace method forwards to the existing free-function builder with the
  * line's client pre-bound as the first argument; builders are build-only (they
- * return / mutate a `Transaction`), so frontend wallet flows and multi-step Pyth
- * injection keep working.
+ * return / mutate a `Transaction`), so frontend wallet flows and multi-step
+ * oracle injection keep working.
  */
 
 import { Transaction } from "@mysten/sui/transactions";
@@ -36,7 +36,6 @@ import * as accountOps from "./account/index.ts";
 import * as perpReferral from "./account/referral.ts";
 import type { Network } from "./constants.ts";
 import type { PythFetchPolicy } from "./oracle/config.ts";
-import type { OracleSource } from "./oracle/price-update-rule.ts";
 import type { FetchPolicy } from "./oracle/update-fetch.ts";
 import { PerpClient, type CreateClientOptions as PerpCreateOptions } from "./perp/client.ts";
 // Perp builder/view modules (every export takes the client as its first arg).
@@ -159,30 +158,8 @@ export interface ClientCreateOptions {
   /** Memoize the fetched config JSON. */
   cache?: boolean;
   /**
-   * The perp line's oracle price-update source (perp-line only — the
-   * prediction line has no oracle leg), forwarded to `PerpClient.create`.
-   * REQUIRED — there is NO default source: every deployment names its source
-   * explicitly (wire it from your own env var, e.g. `ORACLE_SOURCE`).
-   * Source-neutral by design: a source need not be Pyth (see `'waterx_rule'`).
-   *
-   * - `'pyth_rule'` — Pyth Core updates; infra in the source's own
-   *   `PYTH_CORE_INFRA` table.
-   * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`
-   *   and a config carrying `packages.pyth_lazer_rule`); infra in the
-   *   source's own `LAZER_INFRA` table.
-   * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
-   *   ed25519 signed batches; no credential, no per-update fee); infra in the
-   *   source's own `WATERX_INFRA` table. Pair with `waterxEndpoint` /
-   *   `waterxFetch` when the browser needs a proxy.
-   *
-   * Each source is self-contained with no cross-source fallback; selecting a
-   * source whose feed for a ticker is absent fails at tx-build (not at init).
-   * See perp `CreateClientOptions.oracleSource` for the full note.
-   */
-  oracleSource: OracleSource | OracleSource[];
-  /**
-   * Pyth Lazer access token, forwarded to the perp line. Required under
-   * `oracleSource: 'pyth_lazer_rule'`, unused by `'pyth_rule'`. A SECRET —
+   * Pyth Lazer access token, forwarded to the perp line. Required when the
+   * deployment's config wires `pyth_lazer_rule`, unused otherwise. A SECRET —
    * pass it at init from your own env var; it is never read from the config
    * JSON or `process.env`.
    */
@@ -190,8 +167,8 @@ export interface ClientCreateOptions {
   /** Retry/timeout policy for the perp line's off-chain oracle fetches. */
   pythFetch?: PythFetchPolicy;
   /**
-   * Quote-center base URL for `oracleSource: 'waterx_rule'`, forwarded to the
-   * perp line — overrides the source's own per-network `WATERX_INFRA` default.
+   * Quote-center base URL for `waterx_rule`, forwarded to the perp line —
+   * overrides the source's own per-network `WATERX_INFRA` default.
    *
    * `waterx_rule` is the one source a BROWSER fetches itself, so it is bound by
    * the quote-center deployment's CORS allowlist: a front end whose origin is
@@ -291,7 +268,6 @@ export class WaterXClient {
       grpcUrl: opts.grpcUrl,
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
-      oracleSource: opts.oracleSource,
       pythApiKey: opts.pythApiKey,
       pythFetch: opts.pythFetch,
       waterxEndpoint: opts.waterxEndpoint,

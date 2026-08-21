@@ -19,35 +19,13 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       version: 1,
       referral_table: "0xb008a69a277ed7a62318566fd1bba6bc213cdd642232cf62ed3bf58fe437515f",
     },
-    pyth_rule: {
-      published_at: "0x4b56cbbdbc31b975c6825effeeadaf76819650623b4d69065f8a723a9ed06fa0",
-      original_id: "0x4b56cbbdbc31b975c6825effeeadaf76819650623b4d69065f8a723a9ed06fa0",
-      version: 1,
-      config: "0x3607ace703da413919d9aedcd4cad2f1b4897bb5740a8f91fb09a635b22b0041",
-      feeds: {
-        BTCUSD: {
-          feed_id: "0xf9c0172ba10dfa4d19088d94f5bf61d3b54d5bd7483a322a982e1373ee8ea31b",
-          price_info_object: "0x72431a238277695d3f31e4425225a4462674ee6cceeea9d66447b210755fffba",
-        },
-        ETHUSD: {
-          feed_id: "0xca80ba6dc32e08d06f1aa886011eed1d77c77be9eb761cc10d72b7d0a2fd57a6",
-          price_info_object: "0x4fde30cb8a5dc3cfee1c1c358fc66dc308408827efb217247c7ba54d76ccbee9",
-        },
-        USDCUSD: {
-          feed_id: "0x41f3625971ca2ed2263e78573fe5ce23e13d2558ed3f2e47ab0f84fb9e7ae722",
-          price_info_object: "0x9c4dd4008297ffa5e480684b8100ec21cc934405ed9a25d4e4d7b6259aad9c81",
-        },
-      },
-    },
-    pyth_sponsor_rule: {
-      published_at: "0xad089846b632a810516115180d20d26812c552860f9e8d7f0c6dbd66e910b2eb",
-      original_id: "0xad089846b632a810516115180d20d26812c552860f9e8d7f0c6dbd66e910b2eb",
-      version: 1,
-      pyth_sponsor: "0x1528bdc52a60aaab31a9501001dfa69377708e4c2296c3d2e25b9ca0f4e9e256",
-    },
+    // NO pyth_rule / pyth_sponsor_rule blocks: retired in 5.0.0 — the schema
+    // slot is optional and the SDK never reads them, so the fixture mirrors a
+    // post-retirement config republish. Tests that pin "config may still
+    // carry the legacy block" clone the fixture and add one.
     // Real deployed testnet entry (feeds trimmed to the fixture's tickers).
     // `enabled` mirrors the JSON but is never read for routing — routing is the
-    // client `oracleSource` option alone.
+    // derived fed set alone.
     pyth_lazer_rule: {
       published_at: "0xc192ffd76818fd029ee4493748be7251e3fc51ce0f2803bede8f9970c40a8739",
       original_id: "0xc192ffd76818fd029ee4493748be7251e3fc51ce0f2803bede8f9970c40a8739",
@@ -59,7 +37,7 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       feeds: { BTCUSD: 1, ETHUSD: 2, USDCUSD: 7 },
     },
     // Real deployed testnet waterx_rule (v2). `enabled` mirrors the JSON but is
-    // never read for routing — routing is the client `oracleSource` option alone.
+    // read for routing only via `deriveOracleSources` (an explicit `false` disables).
     // `feeds` keyed by oracle ticker (== the SDK's supported-ticker set).
     waterx_rule: {
       published_at: "0xe1500e0c522eab37d2487e2d0babb08c48a425474455ba262f0caa339c503524",
@@ -80,8 +58,8 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       original_id: "0xc04574571e0001000000000000000000000000000000000000000000c057ab1e",
       version: 1,
       config: "0xc04574571e0002000000000000000000000000000000000000000000c0577cf9",
-      // Empty by default so the shared fixture keeps every ticker on Pyth.
-      // Constant-routing tests clone the config and populate this map.
+      // Empty by default so the shared fixture keeps every ticker on the live
+      // sources. Constant-routing tests clone the config and populate this map.
       feeds: {},
     },
     waterx_account: {

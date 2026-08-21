@@ -24,7 +24,7 @@ import {
 } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipIfTransientInfrastructureError,
 } from "../helpers/e2e/simulate-assertions.ts";
 
@@ -36,7 +36,6 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
   beforeAll(async () => {
     const grpcUrl = resolveE2eGrpcUrlOverride();
     unified = await Client.create({
-      oracleSource: "pyth_rule",
       network: e2eNetwork === "mainnet" ? "MAINNET" : "TESTNET",
       cache: true,
       waterxConfigUrl: resolveE2eWaterxConfigUrl(),
@@ -128,7 +127,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
       legacyTx = await buildPlaceOrderTx(legacyPerpClient, params);
       facadeTx = await unified.perp.buildPlaceOrderTx(params);
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }
@@ -160,7 +159,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
     try {
       facadeTx = await unified.perp.buildPlaceOrderTx(params);
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }

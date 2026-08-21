@@ -12,8 +12,6 @@ export type {
   PythAccessConfig,
   PythFetchPolicy,
   PythLazerRulePackage,
-  PythRulePackage,
-  PythSponsorRulePackage,
   SupraFeedEntry,
   SupraRulePackage,
   TestnetFaucetPackage,
@@ -81,7 +79,7 @@ export {
 export type { Network } from "./constants.ts";
 
 // ======== Utilities ========
-export { getMarketTickers, getCollateralAssets } from "../utils/config.ts";
+export { getMarketTickers } from "../utils/config.ts";
 export {
   annualizedApyFromRatio,
   annualizeFundingRate,
@@ -125,26 +123,46 @@ export * from "./tx-builders.ts";
 // ======== Read-only queries ========
 export * from "./fetch.ts";
 
-// ======== Oracle utilities (Pyth source + rule aggregation) ========
+// ======== Oracle utilities (sources + rule aggregation + read planes) ========
 export {
   FetchPolicyError,
   LazerApiKeyMissingError,
-  OracleFeeSourceUnavailableError,
+  LazerNotEntitledError,
+  OracleTickerUnservedError,
+  OracleWeightCoverageError,
+  OracleWeightUnreadableError,
   OracleSourceNotImplementedError,
-  PythCache,
   aggregateTicker,
   aggregateTickerWithConstant,
-  aggregateTickerWithPyth,
   ORACLE_SOURCES,
-  buildPythPriceUpdateCalls,
-  fetchPriceFeedsUpdateData,
-  isOracleSource,
-  parseOracleSourceList,
-  pythCoreHermesEndpoint,
-  pythProHermesEndpoint,
+  assertOracleWeightCoverage,
+  assertOracleWriteCoverage,
+  fetchPythProHistory,
+  fetchPythSymbolCatalog,
+  fetchWaterxSignedLeaves,
+  fetchWaterxSignedUpdate,
+  fetchWaterxUpdateData,
+  getMarketStatus,
+  isFreshWaterxEntry,
+  deriveOracleSources,
+  missingOracleCredentials,
+  parsePythSchedule,
+  PythScheduleParseError,
+  // THE quote-center route ladder (leaves-first, envelope only where there is
+  // no leaf route). Both SDK planes go through it, so a consumer running its
+  // own prefetch reaches for the same one rather than re-deriving the ladder.
+  pullWaterxQuotes,
+  readLazerPrices,
+  readPlanTickers,
+  readQuoteCenterPrices,
   refreshOraclePrices,
-  resolveHermesReadEndpoint,
-  updatePythPrices,
+  resolveOracleReadPlan,
+  resolveOracleRule,
+  // `refreshOraclePrices`' OWN acceptance predicate. Consumers filtering a
+  // ticker list before a build must use this rather than re-deriving "some
+  // listed source carries it", or they drift from what the build accepts.
+  servableTickers,
+  WATERX_MAX_PRICE_AGE_MS,
   waterxEnvelopeOf,
   // Leaves are the DEFAULT waterx wire shape, so their accessor + parser belong
   // on the same surface as `waterxEnvelopeOf` (and on the root, which re-exports
@@ -158,8 +176,20 @@ export {
 } from "../oracle/index.ts";
 export type {
   FetchPolicy,
-  OracleFeeSource,
+  HolidayDate,
+  MarketStatusResult,
+  OracleCredentialKind,
+  OraclePriceEntry,
+  // The return type of the exported `refreshOraclePrices` /
+  // `refreshWlpPoolOracles` — a consumer inspecting `skipped` (the whole point
+  // of the return value) must be able to name it.
+  OracleRefreshSummary,
+  OracleReadPlan,
   OracleSource,
+  ParsedPythSchedule,
+  PythSymbolRecord,
+  TradingHours,
+  TradingSession,
   UpdateDataProvider,
   // Payload types for the update-data cache seam: a consumer implementing
   // `UpdateDataProvider` has to name what it caches, in either shape.
@@ -208,8 +238,6 @@ export * as viewCalls from "../generated/waterx_perp_view/view.ts";
 export * as wxaAccountCalls from "../generated/waterx_account/account.ts";
 export * as stakingCalls from "../generated/waterx_staking/waterx_staking.ts";
 export * as oracleCalls from "../generated/waterx_oracle/oracle.ts";
-export * as pythRuleCalls from "../generated/waterx_pyth_rule/pyth_rule.ts";
-export * as pythSponsorRuleCalls from "../generated/pyth_sponsor_rule/pyth_sponsor_rule.ts";
 export * as referralCalls from "../generated/waterx_referral/referral_table.ts";
 export * as nativeCustodyCalls from "../generated/native_custody/custody_vault.ts";
 export * as withdrawalQueueCalls from "../generated/withdrawal_queue/withdrawal_queue.ts";

@@ -1,0 +1,272 @@
+/**
+ * `parsePythSchedule` — ported from BOTH consumers' suites (BE
+ * `pyth-schedule.parser.spec.ts` + FE `pythSchedule.test.ts`), reconciled to
+ * the SDK's superset parser so any drift between the three repos' parse
+ * semantics fails HERE first. The superset accepts every era's tokens:
+ * `Open`/`O`/`open`, `Closed`/`C`/`closed`, `&`-joined and comma-joined
+ * multi-session days, and `MMDD` / `MMDD/C` holidays.
+ */
+import { describe, expect, it } from "vitest";
+
+import { parsePythSchedule, PythScheduleParseError } from "../../../src/oracle/schedule.ts";
+
+describe("parsePythSchedule", () => {
+  // ---------------------------------------------------------------------------
+  // Format coverage
+  // ---------------------------------------------------------------------------
+
+  it("parses an NYSE-style equity schedule with holidays", () => {
+    const input =
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,Closed,Closed;0101,1225";
+    const { tradingHours, alwaysOpen } = parsePythSchedule(input);
+    expect(alwaysOpen).toBe(false);
+    expect(tradingHours.timezone).toBe("America/New_York");
+    expect(tradingHours.sessions).toEqual([
+      { open: "09:30", close: "16:00", days: [1, 2, 3, 4, 5] },
+    ]);
+    expect(tradingHours.holidays).toEqual([
+      { month: 1, day: 1 },
+      { month: 12, day: 25 },
+    ]);
+  });
+
+  it("parses a 24/7 crypto schedule and flags it always-open", () => {
+    const input = "UTC;Open,Open,Open,Open,Open,Open,Open;";
+    const { tradingHours, alwaysOpen } = parsePythSchedule(input);
+    expect(alwaysOpen).toBe(true);
+    expect(tradingHours.timezone).toBe("UTC");
+    // All seven days collapse into a single (00:00, 24:00→00:00) session.
+    expect(tradingHours.sessions).toHaveLength(1);
+    expect(tradingHours.sessions[0]).toEqual({
+      open: "00:00",
+      close: "00:00",
+      days: [0, 1, 2, 3, 4, 5, 6],
+    });
+    expect(tradingHours.holidays).toBeUndefined();
+  });
+
+  it("parses a forex schedule (Mon–Thu open, Fri 0000-1700, Sun 1700-2400)", () => {
+    const input = "America/New_York;Open,Open,Open,Open,0000-1700,Closed,1700-2400;";
+    const { tradingHours, alwaysOpen } = parsePythSchedule(input);
+    expect(alwaysOpen).toBe(false);
+    // Mon=1..Thu=4 collapse into the 00:00→00:00 (24h) session
+    const fullDay = tradingHours.sessions.find((s) => s.open === "00:00" && s.close === "00:00");
+    expect(fullDay).toBeDefined();
+    expect(fullDay?.days.sort()).toEqual([1, 2, 3, 4]);
+    // Fri 0000-1700 → days [5]
+    const friSession = tradingHours.sessions.find((s) => s.open === "00:00" && s.close === "17:00");
+    expect(friSession).toBeDefined();
+    expect(friSession?.days).toEqual([5]);
+    // Sun 1700-2400 → days [0]
+    const sunSession = tradingHours.sessions.find((s) => s.open === "17:00" && s.close === "00:00");
+    expect(sunSession).toBeDefined();
+    expect(sunSession?.days).toEqual([0]);
+  });
+
+  it("handles trailing `;` in holidays segment", () => {
+    const input = "UTC;Open,Open,Open,Open,Open,Open,Open;";
+    const result = parsePythSchedule(input);
+    expect(result.tradingHours.holidays).toBeUndefined();
+  });
+
+  it("handles missing `;` for holidays segment", () => {
+    const input = "UTC;Open,Open,Open,Open,Open,Open,Open";
+    const result = parsePythSchedule(input);
+    expect(result.tradingHours.holidays).toBeUndefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Error paths
+  // ---------------------------------------------------------------------------
+
+  it("rejects too few weekdays", () => {
+    expect(() => parsePythSchedule("UTC;Open,Open,Open;")).toThrow(PythScheduleParseError);
+  });
+
+  it("rejects malformed time of day", () => {
+    expect(() => parsePythSchedule("UTC;9999-1600,Open,Open,Open,Open,Open,Open;")).toThrow(
+      PythScheduleParseError,
+    );
+  });
+
+  it("rejects malformed holiday MMDD", () => {
+    expect(() => parsePythSchedule("UTC;Open,Open,Open,Open,Open,Open,Open;1335")).toThrow(
+      PythScheduleParseError,
+    );
+  });
+
+  it("rejects obviously-invalid timezone strings", () => {
+    expect(() => parsePythSchedule("<not-a-tz>;Open,Open,Open,Open,Open,Open,Open;")).toThrow(
+      PythScheduleParseError,
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Multi-session day (one day with two HHMM-HHMM tokens, comma-joined)
+  // ---------------------------------------------------------------------------
+
+  it("parses a multi-session day (e.g. lunch break) — old comma format", () => {
+    // Hypothetical: Mon 09:30-12:00 + 13:30-16:00, all other weekdays closed.
+    const input = "America/New_York;0930-1200,1330-1600,Closed,Closed,Closed,Closed,Closed,Closed;";
+    const { tradingHours } = parsePythSchedule(input);
+    // Mon has two windows → two sessions, each only Mon (day=1).
+    const morning = tradingHours.sessions.find((s) => s.open === "09:30" && s.close === "12:00");
+    const afternoon = tradingHours.sessions.find((s) => s.open === "13:30" && s.close === "16:00");
+    expect(morning?.days).toEqual([1]);
+    expect(afternoon?.days).toEqual([1]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // New Pyth format: O/C shorthand, & multi-session, MMDD/C holidays
+  // ---------------------------------------------------------------------------
+
+  it("parses new-format O (24/7 open all days) as alwaysOpen", () => {
+    const input = "America/New_York;O,O,O,O,O,O,O;";
+    const { alwaysOpen } = parsePythSchedule(input);
+    expect(alwaysOpen).toBe(true);
+  });
+
+  it("parses new-format C (closed days) in an equity schedule", () => {
+    const input =
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;0101/C,0704/C";
+    const { tradingHours, alwaysOpen } = parsePythSchedule(input);
+    expect(alwaysOpen).toBe(false);
+    expect(tradingHours.sessions).toEqual([
+      { open: "09:30", close: "16:00", days: [1, 2, 3, 4, 5] },
+    ]);
+    expect(tradingHours.holidays).toEqual([
+      { month: 1, day: 1 },
+      { month: 7, day: 4 },
+    ]);
+  });
+
+  it("parses & multi-session within a day", () => {
+    const input =
+      "America/New_York;0000-1700&1800-2400,0000-1700&1800-2400,0000-1700&1800-2400,0000-1700&1800-2400,0000-1700,C,1800-2400;";
+    const { tradingHours } = parsePythSchedule(input);
+    const earlySession = tradingHours.sessions.find(
+      (s) => s.open === "00:00" && s.close === "17:00",
+    );
+    expect(earlySession?.days.sort()).toEqual([1, 2, 3, 4, 5]);
+    const lateSession = tradingHours.sessions.find(
+      (s) => s.open === "18:00" && s.close === "00:00",
+    );
+    expect(lateSession?.days.sort()).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("keeps modified-hours holidays (MMDD/HHMM-HHMM) as replacement windows", () => {
+    // Discarding these was a live bug: the venue fell back to its NORMAL weekly
+    // hours on an early-close day and reported itself open after it had shut.
+    // The catalog carries thousands of them (`0930-1300` ~2.5k times alone).
+    const input =
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;0101/C,1224/0000-1300";
+    const { tradingHours } = parsePythSchedule(input);
+
+    expect(tradingHours.holidays).toEqual([
+      { month: 1, day: 1 }, // full closure — no `sessions`
+      { month: 12, day: 24, sessions: [{ open: "00:00", close: "13:00" }] },
+    ]);
+  });
+
+  it("keeps a SPLIT modified-hours holiday (&-joined windows)", () => {
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1224/0000-1430&1800-2400",
+    );
+    // 2400 renders as 24:00, not 00:00 — a day-scoped window has to keep
+    // end-of-day distinguishable from start-of-day.
+    expect(tradingHours.holidays).toEqual([
+      {
+        month: 12,
+        day: 24,
+        sessions: [
+          { open: "00:00", close: "14:30" },
+          { open: "18:00", close: "24:00" },
+        ],
+      },
+    ]);
+  });
+
+  it("REFUSES to guess when two runs could equally own the surplus", () => {
+    // The legacy comma form of Pyth's FX week: 8 tokens, and BOTH the leading
+    // pair and the trailing pair are a valid two-session day. Leftmost-greedy
+    // assigns it to Monday, rightmost-greedy to Sunday, and each silently
+    // produces a plausible-but-wrong weekly calendar that still has 7 slots.
+    // A wrong calendar reports a closed venue as tradable, so this throws
+    // rather than picking a side.
+    const ambiguous = "America/New_York;0000-1700,1701-2400,O,O,O,O,0000-1700,1701-2400;";
+    expect(() => parsePythSchedule(ambiguous)).toThrow(PythScheduleParseError);
+    expect(() => parsePythSchedule(ambiguous)).toThrow(/ambiguous weekday fold/);
+  });
+
+  it("accepts long-form and lower-case holiday closures, not just `C`", () => {
+    // `keywordDay` already takes Closed/C/closed for weekdays. Accepting only
+    // the single letter here would silently reclassify a closure as modified
+    // hours and DROP it — the venue then renders open on the holiday.
+    for (const spelling of ["C", "c", "Closed", "closed"]) {
+      const { tradingHours } = parsePythSchedule(
+        `America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1225/${spelling}`,
+      );
+      expect(tradingHours.holidays).toEqual([{ month: 12, day: 25 }]);
+    }
+  });
+
+  it('ignores non-MMDD sentinel values in holidays (e.g. Pyth "0")', () => {
+    const input =
+      "America/New_York;0000-1700&1800-2400,0000-1700&1800-2400,0000-1700&1800-2400,0000-1700&1800-2400,0000-1700,C,1800-2400;0";
+    const { tradingHours } = parsePythSchedule(input);
+    expect(tradingHours.holidays).toBeUndefined();
+  });
+
+  it("folds a surplus comma-joined session into the ONLY day that can take it", () => {
+    // Mon–Fri 09:30–16:00, Sat closed, Sun 00:00-12:00 + 13:00-24:00 — eight
+    // tokens for seven days. Exactly one run of adjacent ranges can absorb the
+    // surplus by collapsing whole (`0000-1200,1300-2400`); the Mon–Fri run is
+    // five tokens and would have to choose WHICH pair merges, so it is not a
+    // candidate. Leftmost-greedy folding used to give Monday two sessions,
+    // drop Friday, report Saturday open, and emit a duplicate weekday.
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,0000-1200,1300-2400;",
+    );
+
+    const weekday = tradingHours.sessions.find((s) => s.open === "09:30" && s.close === "16:00");
+    expect(weekday?.days).toEqual([1, 2, 3, 4, 5]); // Friday intact, no duplicates
+    // Both Sunday sessions land on day 0; Saturday appears nowhere.
+    expect(tradingHours.sessions.find((s) => s.open === "00:00")?.days).toEqual([0]);
+    expect(tradingHours.sessions.find((s) => s.open === "13:00")?.days).toEqual([0]);
+    for (const session of tradingHours.sessions) {
+      expect(session.days).not.toContain(6);
+      expect(new Set(session.days).size).toBe(session.days.length);
+    }
+  });
+
+  it("still folds the lunch-break shape into MONDAY (the only adjacent range run)", () => {
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1200,1330-1600,Closed,Closed,Closed,Closed,Closed,Closed;",
+    );
+    expect(tradingHours.sessions.find((s) => s.open === "09:30")?.days).toEqual([1]);
+    expect(tradingHours.sessions.find((s) => s.open === "13:30")?.days).toEqual([1]);
+  });
+
+  it("rejects a shape-valid but non-existent IANA zone AT PARSE, as a typed error", () => {
+    // It used to parse fine and then throw an untyped `RangeError` from `Intl`
+    // deep inside `getMarketStatus` — past the try/catch this parser's contract
+    // tells callers to use, taking down a whole markets response instead of
+    // degrading one feed.
+    expect(() => parsePythSchedule("Not/AReal_Zone;O,O,O,O,O,C,C;0101/C")).toThrow(
+      PythScheduleParseError,
+    );
+  });
+
+  // ---------------------------------------------------------------------------
+  // FE-era lowercase tokens (the reconciled superset accepts both spellings)
+  // ---------------------------------------------------------------------------
+
+  it("accepts lowercase open/closed tokens (FE-era spelling)", () => {
+    const { tradingHours, alwaysOpen } = parsePythSchedule(
+      "UTC;open,open,open,open,open,closed,closed;",
+    );
+    expect(alwaysOpen).toBe(false);
+    const fullDay = tradingHours.sessions.find((s) => s.open === "00:00" && s.close === "00:00");
+    expect(fullDay?.days.sort()).toEqual([1, 2, 3, 4, 5]);
+  });
+});

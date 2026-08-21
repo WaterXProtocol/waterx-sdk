@@ -53,7 +53,6 @@ import {
   MarketData,
   marketData as marketDataCall,
 } from "../src/generated/waterx_perp_view/view.ts";
-import { refreshOraclePrices } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
 import {
@@ -66,9 +65,8 @@ import {
   buildClosePositionTx,
   buildPlaceOrderTx,
   matchOrders,
-  updateTokenValue,
+  refreshWlpPoolOracles,
 } from "../src/perp/index.ts";
-import { getCollateralAssets } from "../src/utils/config.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
@@ -199,7 +197,6 @@ async function main(): Promise<void> {
   console.log(`AccountId: ${accountId}`);
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
@@ -300,15 +297,10 @@ async function main(): Promise<void> {
 
     // Pool freshness: refresh every pool token's oracle + base ticker, then
     // bump each pool token's last_price_refresh_timestamp so the in-call
-    // `assert_prices_fresh` passes.
-    const poolTickers = getCollateralAssets(client.config);
-    const oracleTickers = Array.from(new Set([BTC, "USDCUSD", ...poolTickers]));
-    // Standalone keeper script, no TradingRequest to reimburse a sponsor
-    // fund against — pay the Pyth update fee from tx.gas.
-    await refreshOraclePrices(matchTx, client, oracleTickers, { feeSource: { kind: "gas" } });
-    for (const [, tokenType] of Object.entries(client.config.packages.wlp.pool_tokens)) {
-      updateTokenValue(client, matchTx, { tokenType });
-    }
+    // `assert_prices_fresh` passes. One call — hand-rolling it is the trap
+    // `refreshWlpPoolOracles` exists to close (the refresh set and the bump
+    // set must not diverge, and neither may be pre-filtered).
+    await refreshWlpPoolOracles(matchTx, client, [BTC, "USDCUSD"], {});
 
     matchOrders(client, matchTx, {
       ticker: BTC,

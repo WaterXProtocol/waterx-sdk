@@ -13,8 +13,9 @@
 
 import { BaseLineClient } from "../base-client.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../oracle/price-update-rule.ts";
-import { isOracleSource } from "../oracle/source-list.ts";
+import { deriveOracleSources } from "../oracle/source-list.ts";
 import type { FetchPolicy } from "../oracle/update-fetch.ts";
+import { servableTickers } from "../oracle/validate.ts";
 import { PerpConfigView } from "./config-view.ts";
 import {
   loadConfig,
@@ -31,59 +32,20 @@ import type { Network } from "./constants.ts";
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
   /**
-   * Which oracle price-update source drives `refreshOraclePrices`. REQUIRED —
-   * there is NO default source: every deployment names its source explicitly
-   * (wire it from your own env var, e.g. `ORACLE_SOURCE`). Each source is
-   * self-contained (own infra, own endpoints, own config) with NO cross-source
-   * fallback:
-   *
-   * - `'pyth_rule'` — Pyth Core `pyth_rule` updates (Hermes VAA + per-feed
-   *   update fees); Core state + Hermes endpoint live in the source's own
-   *   `PYTH_CORE_INFRA` table.
-   * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (ONE `leEcdsa` verify
-   *   per PTB, no per-feed fees); needs `packages.pyth_lazer_rule` with feeds
-   *   and a `pythApiKey` (Lazer is auth-first); Lazer infra lives in the
-   *   source's own `LAZER_INFRA` table.
-   * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
-   *   ed25519-signed prices): one signed Merkle LEAF per ticker, verified AND
-   *   fed by a single `collect_single_with_proof` per collector (falling back to
-   *   one whole-batch envelope + `collect_batch_latest` against a quote-center
-   *   with no leaf route). No credential and no per-update fee; needs
-   *   `packages.waterx_rule` with feeds. Quote-center infra lives in the source's own `WATERX_INFRA`
-   *   table; endpoint/transport overridable via
-   *   {@link CreateClientOptions.waterxEndpoint} /
-   *   {@link CreateClientOptions.waterxFetch} — the browser-CORS proxy hook,
-   *   since this is the one source fetched from the page.
-   *
-   * The name is source-neutral on purpose — a source need not be Pyth (as
-   * `'waterx_rule'` shows). Selecting a source whose feed for a requested
-   * ticker is absent is NOT an error at client creation: it fails at tx-build
-   * time for exactly those tickers (see `refreshOraclePrices`).
-   *
-   * Accepts a SINGLE source or a LIST. A list means every listed source's
-   * data is fetched and fed in one build — required whenever the on-chain
-   * weight tables have more than one rule weighted (e.g. a Core→Pro or
-   * Pro+Waterx coexistence window): the chain drops unweighted contributions
-   * (harmless) but aborts on a starved weighted rule, so the list must stay a
-   * SUPERSET of every ticker's weighted set. Order is meaningful to consumers
-   * (read-plane priority), not to the on-chain build.
-   */
-  oracleSource: OracleSource | OracleSource[];
-  /**
    * Pyth Lazer access token (`Authorization: Bearer …`). Required under
-   * `oracleSource: 'pyth_lazer_rule'` (Lazer is auth-first) and unused by
-   * `'pyth_rule'` (keyless Core Hermes). This is a SECRET and never belongs in
-   * the canonical `waterx-config` JSON — pass it at client init from your own
-   * env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
+   * a config that wires `pyth_lazer_rule` (Lazer is auth-first) and unused by
+   * `waterx_rule` (public quote-center). This is a SECRET and never belongs
+   * in the canonical `waterx-config` JSON — pass it at client init from your
+   * own env var (e.g. `PYTH_API_KEY`); the SDK never reads `process.env`.
    */
   pythApiKey?: string;
   /**
-   * Retry/timeout policy for the off-chain Hermes / Lazer update fetches (see
+   * Retry/timeout policy for the off-chain Lazer update fetch (see
    * `fetchWithPolicy`). Optional — defaults to 15s timeout, 2 retries.
    */
   pythFetch?: PythFetchPolicy;
   /**
-   * Quote-center base URL for `oracleSource: 'waterx_rule'` — overrides the
+   * Quote-center base URL for `waterx_rule` — overrides the
    * source's own per-network `WATERX_INFRA` default.
    *
    * This is the one source a BROWSER fetches itself (the signed price is pulled
@@ -112,14 +74,14 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
   pyth: PythAccessConfig;
   /**
-   * Caller-supplied quote-center overrides for `oracleSource: 'waterx_rule'`
+   * Caller-supplied quote-center overrides for `waterx_rule`
    * (`waterxEndpoint` / `waterxFetch` create options) — access-only, mirroring
    * `pyth` above; unset fields resolve against the rule's own `WATERX_INFRA`.
    */
   waterx: WaterxAccessConfig;
   /** Wormhole infra for the credit bridge (network defaults unless overridden). */
   wormhole: WormholeInfraConfig;
-  /** The fed set: `oracleSource` create option normalized to a non-empty, deduped list. */
+  /** The fed set, derived from the config — see {@link deriveOracleSources}. */
   readonly oracleSources: readonly OracleSource[];
 
   /** Canonical-schema lookups (delegated to below); no transport. */
@@ -143,21 +105,18 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.waterxEndpoint !== undefined ? { endpoint: opts.waterxEndpoint } : {}),
       ...(opts.waterxFetch !== undefined ? { fetch: opts.waterxFetch } : {}),
     };
-    // Normalize single-or-list to a deduped, order-preserving list, gated by
-    // `isOracleSource` — the SAME predicate `parseOracleSourceList` uses. An
-    // empty list, a nullish entry (an untyped caller omitting the REQUIRED
-    // option), or an unregistered value (`'core'`, `'pyth'`, …) fails
-    // construction loudly instead of booting green and surfacing as
-    // `OracleSourceNotImplemented` at the first tx-build.
-    const sources = Array.isArray(opts.oracleSource) ? opts.oracleSource : [opts.oracleSource];
-    this.oracleSources = [...new Set(sources)];
-    if (
-      this.oracleSources.length === 0 ||
-      this.oracleSources.some((source) => !isOracleSource(source))
-    ) {
+    // The fed set is a property of the DEPLOYMENT, read off the same config
+    // that wires the rules — never a create option and never an env var.
+    this.oracleSources = deriveOracleSources(config);
+    if (this.oracleSources.length === 0) {
+      // Not a per-ticker coverage question (that is left to tx-build, on
+      // purpose): a config wiring NO price-update source at all cannot price
+      // anything, so every build would skip every ticker and every trade would
+      // abort on chain. Fail at construction, where the config is in hand.
       throw new Error(
-        `oracleSource is REQUIRED and must name at least one of ${ORACLE_SOURCES.join(" | ")} ` +
-          `(got ${JSON.stringify(sources)})`,
+        `this deployment's config wires no price-update source — expected a published ` +
+          `package with a non-empty feeds map for at least one of ` +
+          `${ORACLE_SOURCES.join(" | ")}.`,
       );
     }
     this.view = new PerpConfigView(
@@ -203,9 +162,37 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
     return this.view.getAggregator(ticker);
   }
 
-  /** @see PerpConfigView.getPythFeed */
-  getPythFeed(ticker: string) {
-    return this.view.getPythFeed(ticker);
+  /**
+   * WLP pool-token tickers THIS client's fed set can actually price — the
+   * ticker set the WLP builders refresh before `assert_prices_fresh`.
+   *
+   * Filtered, not raw `Object.keys(pool_tokens)`: a token only an UNLISTED
+   * source serves is not priceable by this client. The predicate is
+   * `refreshOraclePrices`'s own (`servableTickers`), so this list is exactly
+   * what a refresh would accept.
+   *
+   * NOTE this is a QUERY, not what the WLP builders use — they deliberately
+   * refresh and bump the WHOLE pool, because dropping an unpriceable asset
+   * from both halves is silent (see `assertWlpPoolRefreshed`).
+   */
+  pricedPoolTickers(): string[] {
+    return servableTickers(this, Object.keys(this.config.packages.wlp?.pool_tokens ?? {}));
+  }
+
+  /**
+   * {@link pricedPoolTickers} already joined to each token's Move type.
+   *
+   * A query, not a build primitive: the WLP builders deliberately refresh and
+   * bump the WHOLE pool (`refreshWlpPoolOracles`), because pre-filtering to
+   * what this client can price silently drops an asset from both halves. Use
+   * this to ASK what a fed set covers — e.g. a dashboard, or a boot assert
+   * pairing it with `assertOracleWriteCoverage`.
+   */
+  pricedPoolTokens(): { ticker: string; tokenType: string }[] {
+    return this.pricedPoolTickers().map((ticker) => ({
+      ticker,
+      tokenType: this.getPoolTokenType(ticker),
+    }));
   }
 
   /** @see PerpConfigView.isConstantTicker */

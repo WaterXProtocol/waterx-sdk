@@ -11,7 +11,7 @@ import { mintCreditToAccount } from "../../../src/account/funding/custody.ts";
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
 } from "../helpers/e2e/simulate-assertions.ts";
 
 const DUMMY_ACCOUNT = "0x0000000000000000000000000000000000000000000000000000000000000001";
@@ -38,10 +38,9 @@ describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
           collateralAmount: 1_000_000n,
         },
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       throw e;
     }
     tx.setSender(DUMMY_ACCOUNT);
@@ -60,12 +59,9 @@ describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
         minLpAmount: 0n,
         // testnet WLP pool has no rewarders; defaults to client.getRewarderTypes("WLP").
         rewarderTypes: client.getRewarderTypes("WLP"),
-        // mint_wlp produces no TradingRequest to reimburse a sponsor fund
-        // against — standalone e2e simulate probe pays its own gas.
-        allowGasFee: true,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       throw e;
     }
     tx.setSender(DUMMY_ACCOUNT);

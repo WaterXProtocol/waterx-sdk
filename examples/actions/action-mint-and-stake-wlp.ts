@@ -16,13 +16,12 @@
  *   WATERX_AMOUNT      collateral to deposit, raw units (default 30000000 = 30 USDC)
  *   WATERX_MIN_LP      slippage floor on minted WLP, raw units (default 0 = no floor)
  *   WATERX_STAKE_ALIAS staking pool alias in waterx_staking.pools (default "WLP")
- *   WATERX_SKIP_PRICE_UPDATE=1  skip the Hermes fetch + on-chain Pyth push and
- *                      only re-aggregate the price already on-chain. mint_wlp
- *                      still needs a same-PTB oracle::aggregate (else
- *                      EStalePrice), so we run collector → feed → aggregate
- *                      ourselves, then pass skipOraclePriceRefresh: true. Only
- *                      works while the on-chain Pyth price is within the
- *                      pyth_rule tolerance window.
+ *   WATERX_SKIP_PRICE_UPDATE=1  skip the source update legs and only
+ *                      re-aggregate USDCUSD off its on-chain constant_rule
+ *                      pin. mint_wlp still needs a same-PTB oracle::aggregate
+ *                      (else EStalePrice), so we run collector → feed →
+ *                      aggregate ourselves, then pass
+ *                      skipOraclePriceRefresh: true.
  */
 import { Transaction } from "@mysten/sui/transactions";
 
@@ -33,7 +32,7 @@ import {
   run,
   simThenMaybeExecute,
 } from "../_shared.ts";
-import { aggregateTickerWithPyth, buildMintAndStakeWlpTx } from "../../src/perp/index.ts";
+import { aggregateTickerWithConstant, buildMintAndStakeWlpTx } from "../../src/perp/index.ts";
 
 run(async () => {
   const client = await buildClient();
@@ -44,22 +43,14 @@ run(async () => {
 
   const tx = new Transaction();
   if (skipPriceUpdate) {
-    // Re-aggregate the on-chain price (no Hermes / no Pyth push) so mint_wlp's
-    // oracle::get_price sees a same-PTB aggregate.
-    const feed = client.getPythFeed(depositTicker);
-    aggregateTickerWithPyth(tx, client, {
-      ticker: depositTicker,
-      priceInfoObjectId: feed.price_info_object,
-    });
+    // Re-aggregate USDCUSD off its on-chain constant_rule pin (no off-chain
+    // data needed) so mint_wlp's oracle::get_price sees a same-PTB aggregate.
+    aggregateTickerWithConstant(tx, client, { ticker: depositTicker });
   }
 
   await buildMintAndStakeWlpTx(client, {
     tx,
     skipOraclePriceRefresh: skipPriceUpdate,
-    // mint_wlp produces no TradingRequest to reimburse a sponsor fund
-    // against — standalone example script pays its own gas. No-op when
-    // skipPriceUpdate is true (no refresh to pay a fee for).
-    allowGasFee: true,
     accountId: requireEnv("WATERX_ACCOUNT_ID"),
     depositTokenType: usdcType,
     depositTicker,

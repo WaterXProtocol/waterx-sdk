@@ -3,8 +3,6 @@
  *
  *   - `buildClient(network?)` — async PerpClient constructor (testnet default);
  *     reads the config URL from `WATERX_CONFIG_URL` (required — the SDK has no default)
- *     and the oracle fed set from `ORACLE_SOURCE` (comma list; defaults to every
- *     source the loaded config configures feeds for — see `configuredOracleSources`)
  *   - `loadActiveKeypair()` — read the local Sui CLI's active ed25519 keypair
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain
@@ -24,47 +22,12 @@ import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
 import { AccountCreated } from "../src/generated/waterx_account/events.ts";
-import { ORACLE_SOURCES, type OracleSource } from "../src/oracle/price-update-rule.ts";
-import { parseOracleSourceList } from "../src/oracle/source-list.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadConfig } from "../src/perp/config.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import type { Network } from "../src/perp/constants.ts";
 
 const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
-
-/**
- * Every source THIS deployment configures feeds for — read off the config
- * rather than hardcoded, because the right fed set differs per network: today
- * testnet carries `pyth_rule` + `pyth_lazer_rule` while mainnet carries only
- * `pyth_rule`, and that changes without an SDK release.
- *
- * A superset is the safe side of the asymmetry: feeding a rule the chain does
- * not weight is dropped on-chain, whereas starving a weighted rule aborts
- * `EMissingPriceSource`. Confirm a network's actual weights with
- * `pnpm oracle:aggregates:testnet`.
- *
- * `cache: true` means `PerpClient.create` below reuses this fetch (the cache is
- * keyed by network + url), so this costs no extra round trip.
- */
-async function configuredOracleSources(
-  network: Network,
-  waterxConfigUrl: string,
-): Promise<OracleSource[]> {
-  const config = await loadConfig(network, { waterxConfigUrl, cache: true });
-  // An `OracleSource` value IS its `packages` key, so this needs no mapping.
-  const configured = ORACLE_SOURCES.filter(
-    (source) => Object.keys(config.packages[source]?.feeds ?? {}).length > 0,
-  );
-  if (configured.length === 0) {
-    throw new Error(
-      `buildClient: ${network} config lists no oracle-source feeds ` +
-        `(${ORACLE_SOURCES.join(" | ")}) — set ORACLE_SOURCE explicitly`,
-    );
-  }
-  return configured;
-}
 
 export async function buildClient(network: Network = "TESTNET"): Promise<PerpClient> {
   const waterxConfigUrl = process.env.WATERX_CONFIG_URL;
@@ -74,15 +37,11 @@ export async function buildClient(network: Network = "TESTNET"): Promise<PerpCli
         "(e.g. https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json)",
     );
   }
-  // Env-driven, exactly as a real consumer wires it.
-  const oracleSource = process.env.ORACLE_SOURCE
-    ? parseOracleSourceList(process.env.ORACLE_SOURCE)
-    : await configuredOracleSources(network, waterxConfigUrl);
+  // The fed set is derived from the config the client loads — nothing to wire.
   return PerpClient.create(network, {
     cache: true,
     waterxConfigUrl,
-    oracleSource,
-    pythApiKey: process.env.PYTH_API_KEY, // required iff pyth_lazer_rule is listed
+    pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
   });
 }
 

@@ -8,7 +8,7 @@ There used to be a generated case table (ID, preconditions, operation, expected)
 
 Do **not** commit private keys. Run **`pnpm env:init`** once to create **`.env.local`** from **`.env.example`** (Unix: tries `chmod 600`). Put **`WATERX_INTEGRATION_PRIVATE_KEY`** and other secrets only there or in your shell — see `.env.example` for precedence. **`.integration-trader.keystore`** remains supported and gitignored.
 
-Pyth **Hermes** sporadic **502/503/504/521**: SDK **`fetchPriceFeedsUpdateData`** goes through **`fetchWithPolicy`** (`src/oracle/update-fetch.ts`) — bounded retry with exponential backoff on network errors / 429 / 5xx (default: 2 retries; still no beta⇄prod failover) — and only throws once retries are exhausted. E2e simulate tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (infra flake, not SDK regression). **Testnet e2e / CI** use **`hermes-beta.pyth.network`** (`PYTH_DEFAULTS.TESTNET`) — testnet feed ids **404 on prod Hermes**. Integration tests do **not** skip pure Hermes HTTP failures (only on-chain **`::pyth_rule::feed`** transients via **`execIntegrationOrSkipOracleTransient`**).
+**Oracle fetch flakiness:** every off-chain oracle fetch goes through **`fetchWithPolicy`** (`src/oracle/update-fetch.ts`) — bounded retry with exponential backoff on network errors / 429 / 5xx (default: 2 retries), throwing only once retries are exhausted. There is **no cross-source fallback**: a source that cannot serve a ticker is skipped, never rerouted. Which sources a run feeds is **derived from the config it loads** (`deriveOracleSources`), so a harness selects them by pointing at a different `WATERX_CONFIG_URL`, not by setting an env var. Integration tests skip on-chain oracle transients via **`execIntegrationOrSkipOracleTransient`**.
 
 PRs to `main` run [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml): `Lint`, `Typecheck`, `Build`, then **`pnpm test:ci:unit`** and a single **`test-e2e`** job running **`pnpm exec tsx scripts/run-e2e.ts --testnet`** (simulate only). **`pnpm test:ci`** / **`pnpm test:ci:full`** runs **`pnpm test:ci:e2e`**, which also defaults to **`--testnet`** so local “full CI” matches the workflow network.
 
@@ -27,7 +27,7 @@ PRs to `main` run [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml): 
 - **`wlp-redeem`**: no wxa WLP or no pending redeem queue row (preflight enqueues pending redeem when **`WATERX_INTEGRATION_PRIVATE_KEY`** is set locally).
 - **`read-account`** (probe paths): rare skip if canonical account has no eligible position on chain.
 - **`referral`** / **`read-referral`**: referral not in config (**`describe.skipIf`**).
-- **Hermes HTTP 404 / 5xx during `build*Tx`**: gateway outage or feed mismatch — tests **`ctx.skip`** via **`skipHermesIfFeedUnavailable`** (including **`runBuiltTradingTx`** used by **`trade-position`**).
+- **Oracle fetch 404 / 429 / 5xx during `build*Tx`**: source gateway outage or feed mismatch (Lazer or the quote-center) — tests **`ctx.skip`** via **`skipIfOracleFetchUnavailable`** (including **`runBuiltTradingTx`** used by **`trade-position`**). A MALFORMED payload is not skipped: that is the quote-center serving bad data, which should fail red.
 
 **Ghost-ID simulate** (**`trade-ghost-sizing`**, **`trade-pre-order-requests`**) does **not** depend on discovery; they still **`simulate`** the sponsor + oracle PTB (Move may **abort** on invalid ids — that is acceptable for builder smoke).
 
@@ -89,7 +89,7 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 - **Mainnet wxa discovery:** there is **no** built-in canonical mainnet account. Behavior differs by path:
   - **Custody/credit** (`resolveCustodyWxaRow`): env / owner hints only — no WLP/USDC all-market fallback after hints miss (that path exceeded the 180s `beforeAll` hookTimeout on public gRPC). Set **`WATERX_E2E_WXA_ACCOUNT_ID`** + **`WATERX_E2E_WXA_OWNER`** for stateful suites.
   - **WLP stored-balance candidates** (`collectWxaAccountIdCandidates`): env hints **plus** redeem-queue recipients; still **skips** all-market position scan + funded probe. Testnet keeps canonical wxa + full market/probe fallback.
-- **Oracle:** Pyth Hermes + **`refreshOraclePrices`** / **`updatePythPrices`** (`src/utils/pyth.ts`, **`test/perp/helpers/e2e/e2e-oracle-context.ts`**). There is **no** legacy bucket-aggregator prime step.
+- **Oracle:** Lazer / quote-center signed updates via **`refreshOraclePrices`** (`src/oracle/aggregate.ts`), fed by whichever sources the loaded config wires. There is **no** legacy bucket-aggregator prime step and no Hermes warm step.
 - **Oracle (Lazer):** `PythLazerRule` has **mock-only unit coverage** today (`test/perp/unit/pyth-lazer-rule.test.ts`) — the Lazer API is auth-first and feed responses need an **entitled** Pyth Pro key. A future real e2e should read **`WATERX_E2E_LAZER_API_KEY`** at the harness boundary and pass it as the **`pythApiKey`** create option (the SDK never reads env), skipping when unset. Never hardcode a key.
 - **gRPC:** optional **`WATERX_E2E_GRPC_URL`**; parallelism **`WATERX_E2E_MAX_FORKS=2`…`8`** if your RPC tolerates it.
 
@@ -108,8 +108,8 @@ Root **`tsconfig.json`** **`include`** covers **`test/perp/helpers/**/\*.ts`** a
 
 ## Related: oracle debug (not Vitest)
 
-| Command                  | Purpose                                                                                                                                                                                                                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Hermes/Lazer refresh + oracle PTB **simulate** (`-- --format raw`). Wire `ORACLE_SOURCE` / `PYTH_API_KEY` (or `--oracle-source`); `pyth_rule` refresh miss → `WARN` / `OK (STALE)`; `pyth_lazer_rule` never falls back to Core |
+| Command                  | Purpose                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm oracle:aggregates` | **mainnet** default; `pnpm oracle:aggregates:testnet` or `-- --testnet` for testnet. Oracle refresh + PTB **simulate** (`-- --format raw`). The fed set is derived from the config it loads — there is no source flag; wire `PYTH_API_KEY` when that config carries `pyth_lazer_rule`. A refresh miss → `WARN` / `OK (STALE)`; sources never fall back to one another |
 
 Admin-keystore flows live on branch **`integration/admin-e2e-parked`**.
