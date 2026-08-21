@@ -30,8 +30,10 @@ import {
 import {
   fetchWaterxSignedLeaves,
   fetchWaterxSignedUpdate,
+  isFreshWaterxEntry,
   parseSignedEnvelope,
   parseSignedLeaves,
+  WATERX_MAX_PRICE_AGE_MS,
   WaterxRule,
   type WaterxSignedEnvelope,
   type WaterxSignedLeaf,
@@ -377,6 +379,31 @@ describe("WaterxRule — port", () => {
     });
     expect(handle).toBeUndefined();
     expect(moveCalls(tx)).toHaveLength(0);
+  });
+});
+
+describe("isFreshWaterxEntry", () => {
+  const entry = (publishTimeMs: number) => ({ price: 1, conf: 0, publishTimeMs });
+
+  it("accepts a price inside the max age", () => {
+    expect(isFreshWaterxEntry(entry(1_000_000), 1_000_000 + 30_000)).toBe(true);
+  });
+
+  it("rejects a price older than the max age", () => {
+    expect(isFreshWaterxEntry(entry(1_000_000), 1_000_000 + WATERX_MAX_PRICE_AGE_MS + 1)).toBe(
+      false,
+    );
+  });
+
+  it("rejects a FUTURE-dated price beyond clock skew", () => {
+    // `now - publishTime <= MAX` alone treats anything in the future as the
+    // freshest possible price. A price minutes ahead is a broken clock or a
+    // malformed payload, not a fresh quote.
+    expect(isFreshWaterxEntry(entry(1_000_000 + 60_000), 1_000_000)).toBe(false);
+  });
+
+  it("tolerates small skew — two independent clocks drift", () => {
+    expect(isFreshWaterxEntry(entry(1_000_000 + 1_000), 1_000_000)).toBe(true);
   });
 });
 

@@ -138,9 +138,17 @@ export async function readLazerPrices(opts: {
       continue;
     }
     const scale = 10 ** feed.exponent;
+    const price = Number(feed.price) * scale;
+    const conf = typeof feed.confidence === "number" ? feed.confidence * scale : 0;
+    // A non-finite decode is a MISSING price, not a price. `Number("abc")` is
+    // NaN and an absurd exponent overflows to Infinity; either would flow
+    // straight into a consumer's staleness/deviation maths, where NaN silently
+    // fails every comparison it appears in. Skipping matches how a feed with no
+    // timestamp is handled above — omitted, so the caller sees it as unserved.
+    if (!Number.isFinite(price) || !Number.isFinite(conf)) continue;
     out.set(feed.priceFeedId, {
-      price: Number(feed.price) * scale,
-      conf: typeof feed.confidence === "number" ? feed.confidence * scale : 0,
+      price,
+      conf,
       publishTimeMs: feed.feedUpdateTimestamp / 1000,
     });
   }

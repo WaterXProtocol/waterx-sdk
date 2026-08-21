@@ -51,6 +51,17 @@ export interface HolidayDate {
   month: number;
   /** 1..31, in the schedule's timezone */
   day: number;
+  /**
+   * MODIFIED hours for this date, in place of the weekly schedule — an early
+   * close (`1224/0930-1300`) or a split session (`1224/0000-1430&1800-2400`).
+   * Absent means a FULL closure, the `MMDD/C` form.
+   *
+   * These were previously discarded, which meant the venue fell back to its
+   * NORMAL weekly hours on an early-close day and reported itself open after it
+   * had shut. They are not an edge case: the live Pyth catalog carries
+   * thousands (`0930-1300` alone appears ~2.5k times).
+   */
+  sessions?: { open: string; close: string }[];
 }
 
 export interface TradingHours {
@@ -326,11 +337,6 @@ function parseHolidays(input: string): HolidayDate[] {
     const mmdd = slashIdx !== -1 ? raw.slice(0, slashIdx) : raw;
     const action = slashIdx !== -1 ? raw.slice(slashIdx + 1) : undefined;
 
-    // Modified hours (e.g. 1224/0000-1700): not a full closure — skip.
-    // Closure spelling matches `keywordDay`'s tolerance (`C` / `Closed`, any
-    // case): live Pyth only ever emits `C`, but accepting one spelling here
-    // and three there is the kind of asymmetry that silently drops a holiday.
-    if (action !== undefined && !/^(c|closed)$/i.test(action)) continue;
     // Non-MMDD sentinels (e.g. Pyth's '0' placeholder for "no holidays") — skip.
     if (!/^\d{4}$/.test(mmdd)) continue;
 
@@ -339,7 +345,21 @@ function parseHolidays(input: string): HolidayDate[] {
     if (month < 1 || month > 12 || day < 1 || day > 31) {
       throw new PythScheduleParseError(`invalid holiday MMDD: ${mmdd}`);
     }
-    results.push({ month, day });
+
+    // Closure spelling matches `keywordDay`'s tolerance (`C` / `Closed`, any
+    // case): live Pyth only ever emits `C`, but accepting one spelling here
+    // and three there is the kind of asymmetry that silently drops a holiday.
+    // Anything else is MODIFIED HOURS — `0930-1300`, or `&`-joined windows —
+    // which replace the weekly schedule for that date rather than being a
+    // closure. Discarding them made an early-close day read as a normal one.
+    let sessions: { open: string; close: string }[] | undefined;
+    if (action !== undefined && !/^(c|closed)$/i.test(action)) {
+      sessions = action.split("&").map((part) => {
+        const window = parseRange(part.trim());
+        return { open: minutesToHHMM(window.open), close: minutesToHHMM(window.close) };
+      });
+    }
+    results.push(sessions ? { month, day, sessions } : { month, day });
   }
   return results;
 }
@@ -377,6 +397,12 @@ function groupIntoSessions(slots: RawWindow[][]): TradingSession[] {
     .sort((a, b) => a.open.localeCompare(b.open));
 }
 
+/**
+ * Minutes-from-midnight → `"HH:MM"`. A 1440 close renders `"24:00"`, which is
+ * what a day-scoped holiday window wants: end-of-day has to stay
+ * distinguishable from start-of-day. Weekly sessions map it to `"00:00"` at
+ * the call site, because there a close <= open already means "next day".
+ */
 function minutesToHHMM(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -433,7 +459,20 @@ export function getMarketStatus(
   }
 
   const current = now ?? new Date();
-  return computeScheduledStatus(tradingHours, current);
+  const result = computeScheduledStatus(tradingHours, current);
+
+  // Every delta above is computed from minute-of-week arithmetic, i.e. as if
+  // `now` sat exactly on the start of the current minute — so a boundary was
+  // reported up to 59.999s LATE, and a consumer scheduling a re-check off this
+  // value woke to find the status had already changed. Subtract the sub-minute
+  // offset. (`getTime() % 60_000` is zone-independent: every modern IANA offset
+  // is a whole number of minutes.)
+  if (result.nextStatusChangeIn === null) return result;
+  const intoMinute = current.getTime() % MS_PER_MINUTE;
+  return {
+    ...result,
+    nextStatusChangeIn: Math.max(0, result.nextStatusChangeIn - intoMinute),
+  };
 }
 
 /** Represents a boundary event in the weekly timeline (in minutes from Sun 00:00). */
@@ -475,9 +514,16 @@ const fmtCache = new Map<string, Intl.DateTimeFormat>();
  * and with no way to invalidate. Refresh by replacing the object — which is
  * what a service rebuilding its schedule map from a catalog fetch does anyway.
  */
-const derivedCache = new WeakMap<TradingHours, WeeklyCoverage & { holidays: Set<number> }>();
+const derivedCache = new WeakMap<TradingHours, DerivedSchedule>();
 
-function derive(tradingHours: TradingHours): WeeklyCoverage & { holidays: Set<number> } {
+interface DerivedSchedule extends WeeklyCoverage {
+  /** Every holiday date, closures and modified-hours alike. */
+  holidays: Set<number>;
+  /** Replacement windows for the modified-hours dates only. */
+  holidayHours: Map<number, { start: number; end: number }[]>;
+}
+
+function derive(tradingHours: TradingHours): DerivedSchedule {
   let derived = derivedCache.get(tradingHours);
   if (!derived) {
     // The walker is exported for a shape that crosses process boundaries
@@ -491,6 +537,7 @@ function derive(tradingHours: TradingHours): WeeklyCoverage & { holidays: Set<nu
     derived = {
       ...buildWeeklyEvents(tradingHours.sessions),
       holidays: buildHolidaySet(tradingHours.holidays),
+      holidayHours: buildHolidayHours(tradingHours.holidays),
     };
     derivedCache.set(tradingHours, derived);
   }
@@ -846,7 +893,7 @@ function scheduledStatusAt(events: WeeklyEvent[], mow: number): "open" | "closed
 }
 
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
-  const { events, alwaysOpen, holidays: holidaySet } = derive(tradingHours);
+  const { events, alwaysOpen, holidays: holidaySet, holidayHours } = derive(tradingHours);
 
   // An EMPTY event list has two opposite meanings, and collapsing them to
   // "open" reported a permanently-closed venue as tradable:
@@ -876,6 +923,27 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
   }
 
   const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
+
+  // MODIFIED HOURS replace the weekly schedule for this date — an early close
+  // or a split session. Evaluated before the closure arm below, because such a
+  // date is NOT fully closed; treating it as one (or, as before, discarding the
+  // windows entirely and falling back to the normal weekly hours) is how a
+  // venue reported itself open after it had shut.
+  const modified = holidayHours.get(holidayKey(local.month, local.day));
+  if (modified !== undefined) {
+    const intoDay = minutesIntoLocalDay(local);
+    const openNow = modified.find((w) => intoDay >= w.start && intoDay < w.end);
+    if (openNow !== undefined) {
+      return { status: "open", nextStatusChangeIn: (openNow.end - intoDay) * MS_PER_MINUTE };
+    }
+    const laterToday = modified.find((w) => w.start > intoDay);
+    if (laterToday !== undefined) {
+      return { status: "closed", nextStatusChangeIn: (laterToday.start - intoDay) * MS_PER_MINUTE };
+    }
+    // Past the last window: shut for the rest of the day, and at local midnight
+    // the date is no longer special, so the normal holiday-lift walk below is
+    // the right answer.
+  }
 
   if (isHoliday(holidaySet, local)) {
     // The venue reopens the moment it is BOTH off-holiday and scheduled-open.
@@ -980,6 +1048,30 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
 
 function holidayKey(month: number, day: number): number {
   return month * 100 + day;
+}
+
+/**
+ * Replacement windows for a modified-hours holiday, as minutes-from-midnight.
+ * An empty array means a FULL closure (`MMDD/C`).
+ */
+function holidayWindows(entry: HolidayDate): { start: number; end: number }[] {
+  return (entry.sessions ?? []).map((w) => {
+    const open = parseHHMM(w.open);
+    const close = parseHHMM(w.close);
+    return { start: open.hour * 60 + open.minute, end: close.hour * 60 + close.minute };
+  });
+}
+
+/** Only the dates that REPLACE the schedule, keyed like {@link buildHolidaySet}. */
+function buildHolidayHours(
+  holidays: HolidayDate[] | undefined,
+): Map<number, { start: number; end: number }[]> {
+  const map = new Map<number, { start: number; end: number }[]>();
+  for (const h of holidays ?? []) {
+    const windows = holidayWindows(h);
+    if (windows.length > 0) map.set(holidayKey(h.month, h.day), windows);
+  }
+  return map;
 }
 
 function buildHolidaySet(holidays: HolidayDate[] | undefined): Set<number> {

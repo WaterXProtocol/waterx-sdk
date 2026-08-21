@@ -201,6 +201,74 @@ describe("getMarketStatus — a holiday's midnight IS a status boundary", () => 
   });
 });
 
+describe("getMarketStatus — sub-minute precision", () => {
+  it("counts the seconds already elapsed in the current minute", () => {
+    // All the internal arithmetic is minute-of-week, i.e. as if `now` sat on
+    // the start of the minute — so a boundary was reported up to 59.999s LATE
+    // and a consumer scheduling a re-check off it woke up after the change.
+    const at = new Date(etDate(2026, 3, 2, 15, 30).getTime() + 42_500);
+    const { nextStatusChangeIn } = getMarketStatus(NYSE_HOURS, false, at);
+    // 16:00 close is 30 minutes away, less the 42.5s already spent.
+    expect(nextStatusChangeIn).toBe(30 * 60_000 - 42_500);
+  });
+
+  it("never returns a negative delta", () => {
+    // Sitting inside the boundary minute itself: the change is now, not in the
+    // past.
+    const at = new Date(etDate(2026, 3, 2, 16, 0).getTime() + 30_000);
+    const { nextStatusChangeIn } = getMarketStatus(NYSE_HOURS, false, at);
+    expect(nextStatusChangeIn).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("getMarketStatus — modified-hours holidays (early closes)", () => {
+  // These were parsed away entirely, so the venue fell back to its NORMAL
+  // weekly hours on an early-close day and reported itself open after it had
+  // shut. Not an edge case: the live catalog carries thousands of them.
+  const { tradingHours: NYSE_XMAS } = parsePythSchedule(
+    "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1224/0930-1300",
+  );
+
+  it("is CLOSED after the early close, where the weekly schedule says open", () => {
+    // 15:00 ET on Dec 24 — inside the normal 09:30-16:00 window, but the
+    // replacement window ended at 13:00.
+    expect(getMarketStatus(NYSE_XMAS, false, etDate(2026, 12, 24, 15, 0)).status).toBe("closed");
+  });
+
+  it("is OPEN inside the replacement window, and closes at ITS end", () => {
+    const at = etDate(2026, 12, 24, 11, 0);
+    const { status, nextStatusChangeIn } = getMarketStatus(NYSE_XMAS, false, at);
+    expect(status).toBe("open");
+    // 13:00, not the weekly 16:00.
+    expect(nextStatusChangeIn).toBe(2 * MS_PER_HOUR);
+  });
+
+  it("is CLOSED before the replacement window opens, and reports ITS start", () => {
+    const at = etDate(2026, 12, 24, 9, 0);
+    const { status, nextStatusChangeIn } = getMarketStatus(NYSE_XMAS, false, at);
+    expect(status).toBe("closed");
+    expect(nextStatusChangeIn).toBe(0.5 * MS_PER_HOUR);
+  });
+
+  it("a FULL-closure holiday on the same schedule still reads closed all day", () => {
+    // `MMDD/C` has no windows, so it must not be mistaken for modified hours.
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1225/C",
+    );
+    expect(getMarketStatus(tradingHours, false, etDate(2026, 12, 25, 11, 0)).status).toBe("closed");
+  });
+
+  it("handles a SPLIT replacement window", () => {
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1224/0930-1200&1400-1600",
+    );
+    expect(getMarketStatus(tradingHours, false, etDate(2026, 12, 24, 10, 0)).status).toBe("open");
+    // The gap between the two windows.
+    expect(getMarketStatus(tradingHours, false, etDate(2026, 12, 24, 13, 0)).status).toBe("closed");
+    expect(getMarketStatus(tradingHours, false, etDate(2026, 12, 24, 15, 0)).status).toBe("open");
+  });
+});
+
 describe("getMarketStatus — rehydrated schedules", () => {
   it("a session naming NO days is a venue that never opens, not a 24/7 one", () => {
     // `buildWeeklyEvents` returns an empty event list for BOTH "no coverage"

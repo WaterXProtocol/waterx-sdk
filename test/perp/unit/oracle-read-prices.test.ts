@@ -178,6 +178,45 @@ describe("readLazerPrices", () => {
   });
 });
 
+describe("readLazerPrices — non-finite decodes are omitted, not emitted", () => {
+  // `Number("abc")` is NaN and an absurd exponent overflows to Infinity. Either
+  // flows straight into a consumer's staleness/deviation maths, where NaN
+  // silently fails every comparison it takes part in. Omitting matches how a
+  // feed with no timestamp is handled — the caller sees it as unserved.
+  const feed = (over: Record<string, unknown>) => ({
+    parsed: {
+      priceFeeds: [
+        {
+          priceFeedId: 1,
+          price: "100",
+          exponent: -2,
+          confidence: 1,
+          feedUpdateTimestamp: 1_700_000_000_000_000,
+          ...over,
+        },
+      ],
+    },
+  });
+
+  it("omits a feed whose price does not parse as a number", async () => {
+    mockFetchResponse({ json: feed({ price: "not-a-number" }) });
+    const out = await readLazerPrices({ apiKey: "k", feedIds: [1], network: "MAINNET" });
+    expect(out.size).toBe(0);
+  });
+
+  it("omits a feed whose exponent overflows the decode to Infinity", async () => {
+    mockFetchResponse({ json: feed({ exponent: 400 }) });
+    const out = await readLazerPrices({ apiKey: "k", feedIds: [1], network: "MAINNET" });
+    expect(out.size).toBe(0);
+  });
+
+  it("still emits a well-formed feed", async () => {
+    mockFetchResponse({ json: feed({}) });
+    const out = await readLazerPrices({ apiKey: "k", feedIds: [1], network: "MAINNET" });
+    expect(out.get(1)?.price).toBeCloseTo(1);
+  });
+});
+
 describe("readQuoteCenterPrices", () => {
   // The shared wire fixture, with XAUUSD pinned to the zero-divisor case the
   // decode guard exists for (`confidence_scale: 0`).

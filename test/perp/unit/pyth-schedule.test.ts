@@ -154,12 +154,36 @@ describe("parsePythSchedule", () => {
     expect(lateSession?.days.sort()).toEqual([0, 1, 2, 3, 4]);
   });
 
-  it("ignores modified-hours holiday entries (MMDD/HHMM-HHMM)", () => {
+  it("keeps modified-hours holidays (MMDD/HHMM-HHMM) as replacement windows", () => {
+    // Discarding these was a live bug: the venue fell back to its NORMAL weekly
+    // hours on an early-close day and reported itself open after it had shut.
+    // The catalog carries thousands of them (`0930-1300` ~2.5k times alone).
     const input =
       "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;0101/C,1224/0000-1300";
     const { tradingHours } = parsePythSchedule(input);
-    // 0101/C → holiday; 1224/0000-1300 → modified hours, not in holidays list
-    expect(tradingHours.holidays).toEqual([{ month: 1, day: 1 }]);
+
+    expect(tradingHours.holidays).toEqual([
+      { month: 1, day: 1 }, // full closure — no `sessions`
+      { month: 12, day: 24, sessions: [{ open: "00:00", close: "13:00" }] },
+    ]);
+  });
+
+  it("keeps a SPLIT modified-hours holiday (&-joined windows)", () => {
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1224/0000-1430&1800-2400",
+    );
+    // 2400 renders as 24:00, not 00:00 — a day-scoped window has to keep
+    // end-of-day distinguishable from start-of-day.
+    expect(tradingHours.holidays).toEqual([
+      {
+        month: 12,
+        day: 24,
+        sessions: [
+          { open: "00:00", close: "14:30" },
+          { open: "18:00", close: "24:00" },
+        ],
+      },
+    ]);
   });
 
   it("REFUSES to guess when two runs could equally own the surplus", () => {

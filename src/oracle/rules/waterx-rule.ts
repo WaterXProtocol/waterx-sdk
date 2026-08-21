@@ -127,8 +127,21 @@ export const WATERX_MAX_PRICE_AGE_MS = 90_000;
  * the on-chain abstain boundary instead of each inventing a policy.
  */
 export function isFreshWaterxEntry(entry: OraclePriceEntry, nowMs: number): boolean {
-  return nowMs - entry.publishTimeMs <= WATERX_MAX_PRICE_AGE_MS;
+  const age = nowMs - entry.publishTimeMs;
+  // A FUTURE timestamp is not fresh — it is a broken clock or a malformed
+  // payload, and a bare `age <= MAX` treats it as the freshest possible price.
+  // One tolerance of clock skew is allowed in the other direction, since the
+  // quote-center and the caller keep independent clocks; beyond that, reject.
+  if (age < -WATERX_CLOCK_SKEW_TOLERANCE_MS) return false;
+  return age <= WATERX_MAX_PRICE_AGE_MS;
 }
+
+/**
+ * How far ahead of the reader's clock a quote-center timestamp may sit before
+ * it is treated as broken rather than merely skewed. Two independent clocks
+ * drift; a price minutes in the future does not.
+ */
+export const WATERX_CLOCK_SKEW_TOLERANCE_MS = 5_000;
 
 /**
  * One item inside a signed batch payload, mirroring the quote-center
