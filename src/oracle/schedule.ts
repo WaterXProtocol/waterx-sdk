@@ -736,6 +736,46 @@ function msUntilLocalDayStart(
 }
 
 /**
+ * Milliseconds until the next MODIFIED-hours session opens, or `null` if none
+ * falls inside the lookahead.
+ *
+ * Needed because a modified date is not tied to the weekly schedule: a venue
+ * that is normally shut on Sunday can still have a `1227/1000-1200` session,
+ * and the weekly event walk has no `open` event anywhere near it. Answering
+ * "when does trading next resume" purely from weekly events therefore skipped
+ * the session entirely and pointed at the following Monday — while querying
+ * during the session itself correctly reported open. That asymmetry is the bug.
+ *
+ * Same integer-calendar scan as {@link msUntilLocalDayStart}: only the winning
+ * day is converted to an instant.
+ */
+function msUntilNextModifiedOpen(
+  now: Date,
+  timezone: string,
+  holidayHours: Map<number, { start: number; end: number }[]>,
+  from: LocalParts,
+): number | null {
+  if (holidayHours.size === 0) return null;
+
+  const probe = new Date(Date.UTC(from.year, from.month - 1, from.day));
+  for (let daysAhead = 1; daysAhead <= HOLIDAY_LOOKAHEAD_DAYS; daysAhead++) {
+    probe.setUTCDate(probe.getUTCDate() + 1);
+    const windows = holidayHours.get(holidayKey(probe.getUTCMonth() + 1, probe.getUTCDate()));
+    if (windows === undefined || windows.length === 0) continue;
+    const midnight = msUntilLocalMidnight(now, timezone, daysAhead, from);
+    return midnight + windows[0]!.start * MS_PER_MINUTE;
+  }
+  return null;
+}
+
+/** The sooner of two candidate deltas, either of which may be absent. */
+function soonest(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.min(a, b);
+}
+
+/**
  * Build the week's open/close events — derived from MERGED OPEN INTERVALS, not
  * by cancelling event pairs.
  *
@@ -973,10 +1013,14 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
       msFromNow: 0,
     });
 
+    const viaSchedule =
+      midSession ?? findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
     return {
       status: "closed",
-      nextStatusChangeIn:
-        midSession ?? findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local),
+      nextStatusChangeIn: soonest(
+        viaSchedule,
+        msUntilNextModifiedOpen(now, tradingHours.timezone, holidayHours, local),
+      ),
     };
   }
 
@@ -1072,6 +1116,17 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
         midSession ?? findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
       if (skipped !== null) nextStatusChangeIn = skipped;
     }
+  }
+
+  if (currentStatus === "closed") {
+    // A modified-hours session can sit on a day the weekly schedule never
+    // opens, so it has no `open` event for the walk above to find. Take
+    // whichever comes first.
+    nextStatusChangeIn =
+      soonest(
+        nextStatusChangeIn,
+        msUntilNextModifiedOpen(now, tradingHours.timezone, holidayHours, local),
+      ) ?? nextStatusChangeIn;
   }
 
   return { status: currentStatus, nextStatusChangeIn };

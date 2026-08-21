@@ -269,6 +269,67 @@ describe("getMarketStatus — a modified-hours date seen from the day BEFORE", (
   });
 });
 
+describe("getMarketStatus — a modified session on a normally-CLOSED day", () => {
+  // The forward walk only fired when the WEEKLY open landed on the holiday
+  // date. A session on a day the schedule never opens has no `open` event
+  // anywhere near it, so it was skipped entirely — while querying during the
+  // session reported open. That asymmetry is what this pins.
+  //
+  // Mon–Fri 09:00–17:00, plus a one-off Sunday 10:00–12:00 on Dec 27 2026.
+  const { tradingHours: SUNDAY_SESSION } = parsePythSchedule(
+    "America/New_York;0900-1700,0900-1700,0900-1700,0900-1700,0900-1700,C,C;1227/1000-1200",
+  );
+  const whenChanging = (at: Date) => {
+    const { status, nextStatusChangeIn } = getMarketStatus(SUNDAY_SESSION, false, at);
+    return {
+      status,
+      when:
+        nextStatusChangeIn == null
+          ? null
+          : new Date(at.getTime() + nextStatusChangeIn).toISOString(),
+    };
+  };
+
+  it("the day before points at the session, not the next normal weekday", () => {
+    expect(whenChanging(etDate(2026, 12, 26, 12, 0))).toEqual({
+      status: "closed",
+      when: "2026-12-27T15:00:00.000Z", // Sun 10:00 ET — not Mon 09:00
+    });
+  });
+
+  it("finds it from further out too", () => {
+    expect(whenChanging(etDate(2026, 12, 25, 18, 0))).toEqual({
+      status: "closed",
+      when: "2026-12-27T15:00:00.000Z",
+    });
+  });
+
+  it("is open DURING the session, closing at its end", () => {
+    expect(whenChanging(etDate(2026, 12, 27, 11, 0))).toEqual({
+      status: "open",
+      when: "2026-12-27T17:00:00.000Z", // 12:00 ET
+    });
+  });
+
+  it("after the session, the next change is the normal Monday open", () => {
+    expect(whenChanging(etDate(2026, 12, 27, 13, 0))).toEqual({
+      status: "closed",
+      when: "2026-12-28T14:00:00.000Z", // Mon 09:00 ET
+    });
+  });
+
+  it("a schedule with no modified hours is unaffected by the extra scan", () => {
+    const { tradingHours } = parsePythSchedule(
+      "America/New_York;0900-1700,0900-1700,0900-1700,0900-1700,0900-1700,C,C;",
+    );
+    const at = etDate(2026, 12, 26, 12, 0);
+    const { nextStatusChangeIn } = getMarketStatus(tradingHours, false, at);
+    expect(new Date(at.getTime() + nextStatusChangeIn!).toISOString()).toBe(
+      "2026-12-28T14:00:00.000Z", // straight to Monday
+    );
+  });
+});
+
 describe("getMarketStatus — sub-minute precision", () => {
   it("counts the seconds already elapsed in the current minute", () => {
     // All the internal arithmetic is minute-of-week, i.e. as if `now` sat on
