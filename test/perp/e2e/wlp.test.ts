@@ -13,7 +13,7 @@ import {
 import {
   assertSimulateSuccessOrSkipOracleAndState,
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
 } from "../helpers/e2e/simulate-assertions.ts";
 
 describe(`wlp (${e2eNetwork})`, () => {
@@ -42,7 +42,7 @@ describe(`wlp (${e2eNetwork})`, () => {
         consolidateToUsd: false,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       throw e;
     }
     tx.setSender(row.ownerAddress);

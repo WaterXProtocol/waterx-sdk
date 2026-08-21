@@ -8,7 +8,7 @@ import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipIfTransientInfrastructureError,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
@@ -28,7 +28,7 @@ describe(`trade orders (${e2eNetwork})`, () => {
         skipOraclePriceRefresh: false,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }
@@ -55,7 +55,7 @@ describe(`trade orders (${e2eNetwork})`, () => {
         skipOraclePriceRefresh: false,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect } from "vitest";
 
+import { FetchPolicyError } from "../../../../src/oracle/index.ts";
 import {
   isInfrastructureTransientError,
   isOracleTransientFailureMessage,
@@ -118,30 +119,50 @@ export function skipSimulateIfWeightedSourceMissing(
 }
 
 /**
- * When {@link refreshOraclePrices} fails before dry-run — Hermes gateway / feed infra, not SDK logic.
- * Covers **404** feed mismatch, **5xx** bursts (503/521), and HTML error pages from Cloudflare.
+ * Skip when the OFF-CHAIN oracle fetch fails before dry-run — source infra, not
+ * SDK logic.
+ *
+ * This used to gate on `"Hermes price fetch failed"`, a message only the
+ * retired Pyth Core path ever produced. After 5.0.0 nothing emits it, so the
+ * helper was inert: a genuine Lazer/quote-center outage failed the test instead
+ * of skipping it. It now matches what the live sources actually throw —
+ * `FetchPolicyError` (the shared retry wrapper, after its retries are spent),
+ * Lazer's `"Lazer price fetch failed: <status>"`, and the quote-center's
+ * `"... quote-center leaf fetch failed: <status>"` — plus the Cloudflare error
+ * pages that arrive as HTML instead of JSON.
+ *
+ * Deliberately NOT matched: malformed-payload errors ("returned a malformed
+ * signed envelope", "missing an integer timestamp_ms"). Those are a
+ * quote-center serving bad data, which is a real failure worth a red test, not
+ * an outage to skip past.
  */
-export function skipHermesIfFeedUnavailable(
+export function skipIfOracleFetchUnavailable(
   ctx: { skip: (reason?: string) => void },
   error: unknown,
 ): boolean {
   const msg = error instanceof Error ? error.message : String(error);
-  if (!msg.includes("Hermes price fetch failed")) return false;
+  const isFetchFailure =
+    error instanceof FetchPolicyError ||
+    /(?:Lazer|quote-center)[^\n]*fetch failed/.test(msg) ||
+    msg.includes("Lazer returned no leEcdsa update data");
+  if (!isFetchFailure) return false;
 
   const firstLine = msg.split("\n")[0] ?? msg;
-  const statusMatch = /Hermes price fetch failed: (\d{3})/.exec(firstLine);
-  const status = statusMatch ? Number(statusMatch[1]) : undefined;
+  const status =
+    error instanceof FetchPolicyError
+      ? error.status
+      : Number(/fetch failed: (\d{3})/.exec(firstLine)?.[1] ?? NaN);
 
-  if (msg.includes("Price ids not found") || status === 404) {
-    ctx.skip(`Hermes feed / gateway mismatch: ${firstLine}`);
+  if (status === 404 || msg.includes("Price ids not found")) {
+    ctx.skip(`oracle feed / gateway mismatch: ${firstLine}`);
     return true;
   }
-  if (status != null && (status === 429 || status >= 500)) {
-    ctx.skip(`Hermes gateway unavailable: ${firstLine}`);
+  if (Number.isFinite(status) && (status === 429 || (status as number) >= 500)) {
+    ctx.skip(`oracle gateway unavailable: ${firstLine}`);
     return true;
   }
   if (msg.includes("Web server is down") || msg.includes("cloudflare.com")) {
-    ctx.skip(`Hermes gateway unavailable: ${firstLine}`);
+    ctx.skip(`oracle gateway unavailable: ${firstLine}`);
     return true;
   }
   return false;

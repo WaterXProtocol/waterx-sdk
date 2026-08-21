@@ -7,7 +7,7 @@ import { describe, it } from "vitest";
 import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipIfTransientInfrastructureError,
 } from "../helpers/e2e/simulate-assertions.ts";
 
@@ -34,7 +34,7 @@ describe(`trade open (${e2eNetwork})`, () => {
         skipOraclePriceRefresh: false,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }

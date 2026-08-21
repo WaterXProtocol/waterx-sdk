@@ -11,7 +11,7 @@ import { matchOrders } from "../../../../src/perp/user/trading.ts";
 import { DUMMY_SENDER } from "../e2e/e2e-client.ts";
 import {
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipSimulateIfOracleTransient,
 } from "../e2e/simulate-assertions.ts";
 import { refreshOraclePricesForTradingEdge } from "./oracle-trading-edge.ts";
@@ -62,7 +62,7 @@ export async function runBuiltTradingTx(opts: {
   try {
     built = await opts.buildTx();
   } catch (e) {
-    if (opts.oracleTransientCtx && skipHermesIfFeedUnavailable(opts.oracleTransientCtx, e)) {
+    if (opts.oracleTransientCtx && skipIfOracleFetchUnavailable(opts.oracleTransientCtx, e)) {
       return;
     }
     throw e;

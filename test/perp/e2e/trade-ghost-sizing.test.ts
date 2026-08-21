@@ -16,7 +16,7 @@ import { lifecycleTickerRow } from "../helpers/e2e/lifecycle-test-markets.ts";
 import {
   assertSimulateReached,
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
 
@@ -32,7 +32,7 @@ async function simulateTxFromBuilder(
   try {
     tx = await build();
   } catch (e) {
-    if (skipHermesIfFeedUnavailable(ctx, e)) return;
+    if (skipIfOracleFetchUnavailable(ctx, e)) return;
     throw e;
   }
   tx.setSender(sender);
