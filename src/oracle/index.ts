@@ -60,9 +60,10 @@ export type { OracleReadPlan } from "./read-plane.ts";
 export { LazerNotEntitledError, readLazerPrices, readQuoteCenterPrices } from "./read-prices.ts";
 export type { OraclePriceEntry } from "./read-prices.ts";
 
-// Boot-time deployment asserts consumers fold onto (`OracleFedSetError` is
-// `instanceof`-able, same rationale as above). Deliberately NOT called at
-// client creation — see `validate.ts`'s header.
+// Boot-time deployment asserts consumers fold onto (`OracleTickerUnservedError`
+// is `instanceof`-able, same rationale as above — and is the SAME type the
+// per-build composers raise). Deliberately NOT called at client creation —
+// see `validate.ts`'s header.
 export {
   OracleTickerUnservedError,
   assertOracleWriteCoverage,

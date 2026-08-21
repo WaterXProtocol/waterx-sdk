@@ -30,6 +30,7 @@ import { WaterXClient } from "../../../src/unified-client.ts";
 import { createMockPredictClient } from "../../prediction/helpers/mock-client.ts";
 import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
+import { SIG_HEX } from "../helpers/fixtures/quote-center.ts";
 import { createUnitTestClient, withOracleSources } from "../helpers/test-client.ts";
 
 /** Fake `PriceUpdateRule` — supports exactly `supported`, no on-chain calls. */
@@ -83,7 +84,10 @@ function createFakeRule(kind: OracleSource, supported: string[]): PriceUpdateRul
  */
 function createFakeWaterxRule(supported: string[]): PriceUpdateRule {
   const fake = createFakeRule("waterx_rule", supported);
-  const envelope = { intent: 1, timestamp_ms: 0n, signature: "", payload: { items: [] } };
+  // A wire-REALISTIC signature: the payload shape gate checks it is 64 bytes
+  // of hex, because a consumer cache can hand back a half-built envelope and
+  // the failure would otherwise land mid-PTB-build.
+  const envelope = { intent: 1, timestamp_ms: 0n, signature: SIG_HEX, payload: { items: [] } };
   vi.mocked(fake.fetchUpdateData).mockResolvedValue({
     kind: "waterx_rule",
     payload: { envelope },

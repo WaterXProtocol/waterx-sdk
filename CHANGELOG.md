@@ -18,9 +18,10 @@ from the version number alone.
 
 _The next release is **5.0.0** (MAJOR): the `pyth_rule` (Pyth Core / Hermes) source is
 RETIRED and the WL-2345 consumer seams are built directly on the post-retirement
-surface. `package.json` already carries `5.0.0` so the packed tarball consumers build
-against during the gated window identifies itself correctly; release tagging dates this
-section. All of it lands in one gated PR (#89).
+surface. `package.json` deliberately still carries the CURRENT version — the release
+workflow bumps it at publish — so the tarball consumers build against during the gated
+window is named for the pre-bump version; hand them the tarball PATH rather than a
+version to pin. Release tagging dates this section. All of it lands in one gated PR (#89).
 [WL-2345](https://bucketprotocol.atlassian.net/browse/WL-2345) ·
 [WL-2355](https://bucketprotocol.atlassian.net/browse/WL-2355)._
 
@@ -74,9 +75,9 @@ can grep against it:
   (the dual-feed carve-out is moot without a Pyth leg).
 - **Client/host surface**: `OracleHost.getPythFeed`, `PerpClient.getPythFeed`,
   `PerpConfigView.getPythFeed`.
-- **Config**: `ORACLE_SOURCES` is `["pyth_lazer_rule", "waterx_rule"]`;
-  `parseOracleSourceList` rejects `pyth_rule` with a retired-value hint
-  ("pyth_rule retired — remove it from ORACLE_SOURCE"); the `PythRulePackage` /
+- **Config**: `ORACLE_SOURCES` is `["pyth_lazer_rule", "waterx_rule"]`, and since
+  `pyth_rule` is not a member the block still present in the live configs can never be
+  derived into a fed set (see the fed-set section above); the `PythRulePackage` /
   `PythSponsorRulePackage` schema types AND their `OraclePackages` slots are DELETED
   (these types describe what the SDK reads, and it reads neither — a deployed config
   JSON may still carry the blocks, since extra keys are ignored, so no republish is
@@ -102,9 +103,9 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
   `LazerNotEntitledError` with the verbatim entitlement body) and
   `readQuoteCenterPrices` (quote-center envelope read) returning
   `Map<id|ticker, OraclePriceEntry>` (`{ price, publishTimeMs, conf }`).
-- **Boot-time validation** (`validate.ts`): `assertOracleWriteCoverage(host)` (throws
-  `OracleFedSetError` for a listed source with no feeds; write set == read set, so the
-  old read-coverage assert is resolved-by-design) and
+- **Boot-time validation** (`validate.ts`): `assertOracleWriteCoverage(host, tickers)`
+  (throws `OracleTickerUnservedError` naming every ticker the fed set cannot price;
+  write set == read set, so the old read-coverage assert is resolved-by-design) and
   `missingOracleCredentials(sources, { pythApiKey })` (`OracleCredentialKind`).
 - **Rule port additions**: `PriceUpdateRule.credential` — ONE
   `OracleCredentialRequirement` carrying both the `kind` a rule needs and the error it

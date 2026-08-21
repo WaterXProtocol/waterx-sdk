@@ -184,13 +184,21 @@ export async function refreshWlpPoolOracles(
   // `refreshOraclePrices` dedupes its own input, so a plain concat is enough.
   const oracleTickers = [...extraTickers, ...Object.keys(poolTokens)];
 
-  // BEFORE the fetch. `refreshOraclePrices` no longer throws on an unservable
-  // ticker (it skips and reports), so nothing is gained by waiting for it —
-  // and waiting costs the full off-chain fetch plus every collector/aggregate
-  // moveCall appended to a caller-supplied `tx`, all discarded on the throw.
-  // The predicate is pure config, so this is the same answer the summary would
-  // have given, for free.
-  assertWlpPoolRefreshed(client, plannedSummary(client, oracleTickers), opts);
+  // Fail closed BEFORE the fetch, on EVERYTHING this build depends on.
+  //
+  // `refreshOraclePrices` no longer throws on an unservable ticker (it skips
+  // and reports), so nothing is gained by waiting for it — and waiting costs
+  // the full off-chain fetch plus every collector/aggregate moveCall appended
+  // to a caller-supplied `tx`, all discarded on the throw. The predicate is
+  // pure config, so the pre-flight answer is identical to the summary's, free.
+  //
+  // Two required sets, each with its own explanation: `extraTickers` are the
+  // caller's action-critical ones (the traded market + its collateral, or a
+  // WLP deposit ticker), and the pool is required wholesale because mint and
+  // redeem value the WHOLE pool.
+  const planned = plannedSummary(client, oracleTickers);
+  assertTickersRefreshed(client, planned, extraTickers, opts);
+  assertWlpPoolRefreshed(client, planned, opts);
 
   const summary = await refreshOraclePrices(tx, client, oracleTickers, {
     updateDataProvider: opts.updateDataProvider,
@@ -248,14 +256,13 @@ export async function wrapRequestAndExecute(
   await maybeConsolidate(client, tx, req.accountId, opts);
 
   if (!opts?.skipOraclePriceRefresh) {
-    const summary = await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
+    // The action-critical pair for a trade — the market being traded and the
+    // collateral it is margined in — is passed as the extras, which
+    // `refreshWlpPoolOracles` fails closed on before it fetches anything.
+    await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
       ...opts,
       lpType: req.lpType,
     });
-    // The action-critical pair for a trade: the market being traded and the
-    // collateral it is margined in. `refreshWlpPoolOracles` already failed
-    // closed on the pool assets; this covers the two tickers THIS call needs.
-    assertTickersRefreshed(client, summary, [req.ticker, collateralTicker], opts);
   }
 
   const tradingReq = buildRequest();

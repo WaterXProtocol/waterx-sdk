@@ -2,8 +2,8 @@
  * Offline `PerpClient` for unit tests — no network, deterministic config.
  */
 import { ORACLE_SOURCES, type OracleSource } from "../../../src/oracle/price-update-rule.ts";
-import type { FetchPolicy } from "../../../src/oracle/update-fetch.ts";
 import { deriveOracleSources } from "../../../src/oracle/source-list.ts";
+import type { FetchPolicy } from "../../../src/oracle/update-fetch.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import type { WaterXConfig } from "../../../src/perp/config.ts";
 import { MOCK_TESTNET_CONFIG } from "./fixtures/mock-testnet-config.ts";

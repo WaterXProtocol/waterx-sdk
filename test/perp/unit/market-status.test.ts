@@ -110,6 +110,41 @@ describe("getMarketStatus — overlapping and duplicated sessions", () => {
 });
 
 describe("getMarketStatus — rehydrated schedules", () => {
+  it("a session naming NO days is a venue that never opens, not a 24/7 one", () => {
+    // `buildWeeklyEvents` returns an empty event list for BOTH "no coverage"
+    // and "full coverage". Inferring which from `sessions.length` read this as
+    // 24/7 and reported a permanently-closed venue as tradable.
+    const noDays: TradingHours = {
+      timezone: "America/New_York",
+      sessions: [{ open: "09:30", close: "16:00", days: [] }],
+    };
+    expect(getMarketStatus(noDays, false, etDate(2026, 3, 2, 12, 0))).toEqual({
+      status: "closed",
+      nextStatusChangeIn: null,
+    });
+  });
+
+  it("still reports a genuine 24/7 schedule as open", () => {
+    // The other side of the same discriminator — full coverage must not get
+    // swept up by the fix above.
+    const always: TradingHours = {
+      timezone: "America/New_York",
+      sessions: [{ open: "00:00", close: "00:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    expect(getMarketStatus(always, false, etDate(2026, 3, 2, 12, 0)).status).toBe("open");
+  });
+
+  it("rejects a malformed session time instead of throwing a raw RangeError", () => {
+    // NaN minutes propagate to `new Date(NaN)` and `Intl` throws an untyped
+    // RangeError from deep inside the walker — past the try/catch callers put
+    // around the parser. Same hole the timezone check closes.
+    const badTime: TradingHours = {
+      timezone: "America/New_York",
+      sessions: [{ open: "9:30am", close: "16:00", days: [1] }],
+    };
+    expect(() => getMarketStatus(badTime, false, new Date())).toThrow(PythScheduleParseError);
+  });
+
   it("rejects an unusable timezone instead of throwing a raw RangeError", () => {
     // `TradingHours` crosses process boundaries (cached JSON, BE markets
     // types), so it reaches the walker WITHOUT having gone through

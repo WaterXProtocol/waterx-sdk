@@ -5,7 +5,7 @@
  * every `host.oracleSources` entry through it, and consumers (e.g. a BE
  * prefetch cache keying per source) import `resolveOracleRule` rather than
  * hand-mirroring this map. Selection is driven purely by the value passed in
- * (ultimately `OracleHost.oracleSources`, the `oracleSource` client create
+ * (ultimately `OracleHost.oracleSources`, derived from the deployment config
  * option) — never by a config JSON `enabled` flag and never by `process.env`.
  *
  * Each source is self-contained: it owns its own infra + config and does NOT

@@ -289,7 +289,7 @@ export async function refreshOraclePrices(
   // repeat pays full verification cost to contribute nothing.
   tickers = [...new Set(tickers)];
 
-  // The fed set is a LIST (`host.oracleSources`, normalized + deduped at
+  // The fed set is a LIST (`host.oracleSources`, derived from the config at
   // client creation): ONE build carries every listed source's data, and the
   // chain's per-ticker weight tables decide which contributions count —
   // feeding an unweighted rule's PRICE is dropped on-chain, while starving a

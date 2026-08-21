@@ -177,6 +177,10 @@ export type {
   MarketStatusResult,
   OracleCredentialKind,
   OraclePriceEntry,
+  // The return type of the exported `refreshOraclePrices` /
+  // `refreshWlpPoolOracles` — a consumer inspecting `skipped` (the whole point
+  // of the return value) must be able to name it.
+  OracleRefreshSummary,
   OracleReadPlan,
   OracleSource,
   ParsedPythSchedule,

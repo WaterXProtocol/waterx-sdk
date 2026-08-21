@@ -29,10 +29,11 @@ import type { FetchPolicy } from "./update-fetch.ts";
  * `feeds` for ticker support + integer feed-id resolution, `state` for the
  * verify call, `published_at`/`config` for the per-ticker feed call.
  *
- * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
- * which rule prices a ticker is decided solely by the client's derived fed set
- * create option (see `OracleHost.oracleSources`), never by this flag or any
- * other config value.
+ * `enabled` switches the source off for this deployment: `deriveOracleSources`
+ * skips a block explicitly set to `false`. Absent means ON — every live config
+ * omits it, and a published block with feeds is a wired source. Which rule
+ * prices a given TICKER is still decided by the feeds maps alone, never by a
+ * per-ticker flag.
  */
 export interface PythLazerRulePackage extends BasePackageEntry {
   config: string;
@@ -111,7 +112,7 @@ export interface WaterxRuleFeedEntry {
  *
  * `enabled` mirrors the JSON field verbatim but MUST NOT be read for routing —
  * which rule prices a ticker is decided solely by the client's derived fed set
- * create option (see `OracleHost.oracleSources`), mirroring `pyth_lazer_rule`.
+ * (see `OracleHost.oracleSources`), mirroring `pyth_lazer_rule`.
  */
 export interface WaterxRulePackage extends BasePackageEntry {
   /** Shared `waterx_rule::Config` (per-symbol on-chain feed_config). */

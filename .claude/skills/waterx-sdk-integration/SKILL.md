@@ -1,13 +1,13 @@
 ---
 name: waterx-sdk-integration
-description: Use when integrating @waterx/sdk into an app, keeper, or bot — wiring a WaterX client, creating and funding a wxa account, building perp or prediction transactions, or debugging a WaterX build/simulate failure. Covers the required waterxConfigUrl and oracleSource options, the build→simulate→execute discipline, and the aborts integrators hit first.
+description: Use when integrating @waterx/sdk into an app, keeper, or bot — wiring a WaterX client, creating and funding a wxa account, building perp or prediction transactions, or debugging a WaterX build/simulate failure. Covers the required waterxConfigUrl option, the config-derived oracle fed set, the build→simulate→execute discipline, and the aborts integrators hit first.
 ---
 
 # Integrating `@waterx/sdk`
 
 WaterX is a perpetual futures DEX and prediction market on Sui. The SDK **builds
 transactions**; it never signs on your behalf and never reads `process.env`. Every
-chain-specific value comes from a config JSON *you* supply.
+chain-specific value comes from a config JSON _you_ supply.
 
 Work the steps in order. Each one has a decision you must make explicitly — the SDK has
 no defaults for the first two on purpose, so that every environment runs the same build
@@ -15,11 +15,11 @@ and differs only by configuration.
 
 ## Step 1 — Choose the entry point
 
-| You need                     | Import                                                | Client                    |
-| ---------------------------- | ----------------------------------------------------- | ------------------------- |
-| Both product lines           | `@waterx/sdk`                                         | `WaterXClient.create()`   |
-| Perpetuals only              | `@waterx/sdk/perp`                                    | `PerpClient.create()`     |
-| Prediction markets only      | `@waterx/sdk/prediction`                              | `PredictClient.create()`  |
+| You need                | Import                   | Client                   |
+| ----------------------- | ------------------------ | ------------------------ |
+| Both product lines      | `@waterx/sdk`            | `WaterXClient.create()`  |
+| Perpetuals only         | `@waterx/sdk/perp`       | `PerpClient.create()`    |
+| Prediction markets only | `@waterx/sdk/prediction` | `PredictClient.create()` |
 
 The umbrella exposes three namespaces: `client.account` (shared wxa account + funding),
 `client.perp`, `client.predict`. The two lines have colliding builder names
@@ -33,17 +33,15 @@ pnpm add @waterx/sdk @mysten/sui @mysten/bcs   # the two Mysten packages are pee
 
 Node ≥ 22. ESM and CJS both resolve.
 
-## Step 2 — Supply the two required options
+## Step 2 — Supply the config URL
 
 ```ts
 import { WaterXClient } from "@waterx/sdk";
-import { parseOracleSourceList } from "@waterx/sdk/oracle";
 
 const client = await WaterXClient.create({
   network: "TESTNET",
   waterxConfigUrl: process.env.WATERX_CONFIG_URL, // REQUIRED — no default, no env fallback
-  oracleSource: parseOracleSourceList(process.env.ORACLE_SOURCE), // REQUIRED — no default
-  pythApiKey: process.env.PYTH_API_KEY, // required iff the set includes 'pyth_lazer_rule'
+  pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
 });
 ```
 
@@ -53,30 +51,36 @@ as-is — the SDK appends no `<network>.json` and no git ref. Your app reads the
 the SDK never does. Look up ids through the client (`client.perp.getMarket(ticker)`,
 `client.perp.creditType()`, `client.perp.wlpType()`) rather than hardcoding them.
 
-**`oracleSource`** is one source or a **list — the fed set**. Every listed source's data
-is fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrate.
+**The oracle fed set is DERIVED from that config** — there is no `oracleSource` option
+and no `ORACLE_SOURCE` env var. A source is fed when its block is published, carries at
+least one feed, and is not explicitly `enabled: false`. Every derived source's data is
+fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrate. Read the
+answer for a live deployment with `client.perp.oracleSources`, or before a client exists
+with `deriveOracleSources(config)`.
 
-| Source            | Notes                                                                    |
-| ----------------- | ------------------------------------------------------------------------ |
-| `pyth_lazer_rule` | one signed verify per PTB, no per-feed fees; **requires `pythApiKey`**    |
+| Source            | Notes                                                                            |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `pyth_lazer_rule` | one signed verify per PTB, no per-feed fees; **requires `pythApiKey`**           |
 | `waterx_rule`     | first-party TEE quote-center; no credential; browser needs a CORS-allowed origin |
 
-(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0; `parseOracleSourceList`
-rejects it with a retired-value hint.)
+(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0. Its block is still published
+in the live configs and is inert: it is not a derivable source, so nothing feeds it.)
 
-The rule that decides the value: **the fed set must be a superset of every ticker's
+Why derived rather than declared: **the fed set must be a superset of every ticker's
 on-chain weighted rules.** Starving a weighted rule aborts `EMissingPriceSource`; feeding
-an unweighted one is silently dropped. That asymmetry is what makes a weight migration an
-env edit rather than an SDK release.
+an unweighted one is silently dropped. Because the failure is one-sided, taking every
+source the config wires is the fail-safe answer — and a hand-typed list could only err
+in the fatal direction (the classic being one copied between networks). A weight
+migration is then a config change, never an env edit and never an SDK release.
 
-Never guess the set — read it off chain:
+Inspect what a network actually weights when you are debugging:
 
 ```bash
 pnpm oracle:aggregates:testnet   # per-ticker aggregator sources + weights
 ```
 
-Parse env with `parseOracleSourceList` (it trims, drops empties, validates, dedupes, and
-throws actionably), never a bare `split(",")`.
+Want to fail at BOOT rather than at the first trade that needs a missing feed? Pass the
+tickers you care about to `assertOracleWriteCoverage(client.perp, tickers)`.
 
 ## Step 3 — Ensure a wxa account
 
@@ -136,15 +140,15 @@ const tx = await client.perp.buildPlaceOrderTx({
     isStopOrder: false,
     reduceOnly: false,
     size: rawPrice(0.001),
-    triggerPrice: undefined,          // omit ⇒ market order
+    triggerPrice: undefined, // omit ⇒ market order
     acceptablePrice: rawPrice(120_000), // slippage cap
     collateralAmount: 5_000_000n,
   },
-  preOrders: [],                      // optional reduce-only TP/SL legs
+  preOrders: [], // optional reduce-only TP/SL legs
 });
 
 tx.setSender(address);
-await client.perp.simulate(tx);       // ALWAYS. Free, and catches every step-2 mistake.
+await client.perp.simulate(tx); // ALWAYS. Free, and catches every step-2 mistake.
 await client.perp.signAndExecuteTransaction({ transaction: tx, signer });
 ```
 
@@ -176,7 +180,7 @@ Stop if you catch yourself doing any of these:
 
 - **Hardcoding an object id.** It belongs in the config JSON, read via the client.
 - **Writing `BTC/USD` or `BTC`.** Tickers are concatenated: `BTCUSD`, `ETHUSD`, `SUIUSD`.
-  (Collateral *tokens* keep a plain symbol — `USDC` — and are a different thing.)
+  (Collateral _tokens_ keep a plain symbol — `USDC` — and are a different thing.)
 - **Passing a plain number as a price or size.** Wrap in `rawPrice()`. The exception:
   view `basePriceUsd` arguments take a whole-dollar u64 — `parseWholeDollarU64`.
 - **Skipping simulate.** Every failure in the table below is free to find at simulate.
@@ -196,14 +200,14 @@ Which step a failure sends you back to. The **full messages, causes, and fixes l
 one place** — `README.md`'s Troubleshooting table — so that they stay accurate; do not
 re-derive them from here.
 
-| Error | Go back to |
-| ----- | ---------- |
-| `loadConfig: no config URL …` | Step 2 — `waterxConfigUrl` |
-| `oracleSource is REQUIRED …` / `… has no feed configured for ticker(s)` | Step 2 — `oracleSource` |
-| `EMissingPriceSource` | Step 2 — the fed set is too narrow for that ticker |
-| `LazerApiKeyMissing …` | Step 2 — `pythApiKey` |
-| `EAccountNotFound` | Step 3 — the account id is not on this network |
-| `EReplayedSignature` | Step 5 — an envelope was reused across builds |
+| Error                                                                 | Go back to                                         |
+| --------------------------------------------------------------------- | -------------------------------------------------- |
+| `loadConfig: no config URL …`                                         | Step 2 — `waterxConfigUrl`                         |
+| `fed set […] has no feed for ticker(s)` (`OracleTickerUnservedError`) | Step 2 — the config's feeds                        |
+| `EMissingPriceSource`                                                 | Step 2 — the fed set is too narrow for that ticker |
+| `LazerApiKeyMissing …`                                                | Step 2 — `pythApiKey`                              |
+| `EAccountNotFound`                                                    | Step 3 — the account id is not on this network     |
+| `EReplayedSignature`                                                  | Step 5 — an envelope was reused across builds      |
 
 ## Verifying an integration
 

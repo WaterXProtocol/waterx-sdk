@@ -25,7 +25,7 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
     // carry the legacy block" clone the fixture and add one.
     // Real deployed testnet entry (feeds trimmed to the fixture's tickers).
     // `enabled` mirrors the JSON but is never read for routing — routing is the
-    // client `oracleSource` option alone.
+    // derived fed set alone.
     pyth_lazer_rule: {
       published_at: "0xc192ffd76818fd029ee4493748be7251e3fc51ce0f2803bede8f9970c40a8739",
       original_id: "0xc192ffd76818fd029ee4493748be7251e3fc51ce0f2803bede8f9970c40a8739",
@@ -37,7 +37,7 @@ export const MOCK_TESTNET_CONFIG: WaterXConfig = {
       feeds: { BTCUSD: 1, ETHUSD: 2, USDCUSD: 7 },
     },
     // Real deployed testnet waterx_rule (v2). `enabled` mirrors the JSON but is
-    // never read for routing — routing is the client `oracleSource` option alone.
+    // read for routing only via `deriveOracleSources` (an explicit `false` disables).
     // `feeds` keyed by oracle ticker (== the SDK's supported-ticker set).
     waterx_rule: {
       published_at: "0xe1500e0c522eab37d2487e2d0babb08c48a425474455ba262f0caa339c503524",

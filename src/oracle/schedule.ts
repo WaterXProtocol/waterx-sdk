@@ -452,9 +452,9 @@ const fmtCache = new Map<string, Intl.DateTimeFormat>();
  * and with no way to invalidate. Refresh by replacing the object — which is
  * what a service rebuilding its schedule map from a catalog fetch does anyway.
  */
-const derivedCache = new WeakMap<TradingHours, { events: WeeklyEvent[]; holidays: Set<number> }>();
+const derivedCache = new WeakMap<TradingHours, WeeklyCoverage & { holidays: Set<number> }>();
 
-function derive(tradingHours: TradingHours): { events: WeeklyEvent[]; holidays: Set<number> } {
+function derive(tradingHours: TradingHours): WeeklyCoverage & { holidays: Set<number> } {
   let derived = derivedCache.get(tradingHours);
   if (!derived) {
     // The walker is exported for a shape that crosses process boundaries
@@ -466,7 +466,7 @@ function derive(tradingHours: TradingHours): { events: WeeklyEvent[]; holidays: 
     // Behind the cache miss, so it costs one regex per schedule object.
     assertUsableTimezone(tradingHours.timezone);
     derived = {
-      events: buildWeeklyEvents(tradingHours.sessions),
+      ...buildWeeklyEvents(tradingHours.sessions),
       holidays: buildHolidaySet(tradingHours.holidays),
     };
     derivedCache.set(tradingHours, derived);
@@ -512,10 +512,26 @@ function toLocalParts(date: Date, timezone: string): LocalParts {
   return { dayOfWeek: dayMap[weekdayStr] ?? 0, hour, minute, month, day, year };
 }
 
-/** Parse "HH:MM" to { hour, minute } */
+/**
+ * Parse `"HH:MM"` to `{ hour, minute }`.
+ *
+ * Validated, not coerced. `Number("9:30am".split(":")[1])` is `NaN`, and a NaN
+ * minute-of-week flows all the way to `new Date(NaN)`, where `Intl` throws a
+ * raw `RangeError: Invalid time value` — an untyped throw from deep inside the
+ * walker, which sails past the try/catch this module tells callers to put
+ * around the parser. Same escape hatch {@link assertUsableTimezone} closes for
+ * timezones, and it matters for the same reason: `TradingHours` reaches
+ * {@link getMarketStatus} from cached JSON and consumers' own types, so it has
+ * often never been through {@link parsePythSchedule}.
+ */
 function parseHHMM(s: string): { hour: number; minute: number } {
-  const parts = s.split(":").map(Number);
-  return { hour: parts[0] ?? 0, minute: parts[1] ?? 0 };
+  const match = /^(\d{1,2}):(\d{2})$/.exec(s);
+  const hour = match ? Number(match[1]) : NaN;
+  const minute = match ? Number(match[2]) : NaN;
+  if (!match || hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) {
+    throw new PythScheduleParseError(`invalid session time (expected HH:MM): ${s}`);
+  }
+  return { hour, minute };
 }
 
 /** Minutes from Sunday 00:00 for a given day + time. */
@@ -667,7 +683,7 @@ function msUntilLocalDayStart(
  * three special cases, and the output alternates open/close by construction —
  * which is exactly what `computeScheduledStatus` assumes.
  */
-function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
+function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyCoverage {
   // Half-open [start, end) intervals in minutes-of-week, wrapping split at the
   // week boundary so the merge below is plain linear-interval arithmetic.
   const intervals: { start: number; end: number }[] = [];
@@ -698,7 +714,11 @@ function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
     }
   }
 
-  if (intervals.length === 0) return [];
+  // No coverage at all. Distinct from full coverage below, and the two used to
+  // be indistinguishable — both returned an empty event list, so the caller
+  // guessed from `sessions.length` and got it wrong for a session whose `days`
+  // is empty: a venue that never opens read as 24/7 tradable.
+  if (intervals.length === 0) return { events: [], alwaysOpen: false };
 
   intervals.sort((a, b) => a.start - b.start || a.end - b.end);
   const merged: { start: number; end: number }[] = [];
@@ -725,7 +745,7 @@ function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
   // Fully covered week ⇒ never closes. An empty event list is how
   // `computeScheduledStatus` recognises 24/7 (and still applies holidays).
   if (merged.length === 1 && merged[0]!.end - merged[0]!.start >= MINUTES_PER_WEEK) {
-    return [];
+    return { events: [], alwaysOpen: true };
   }
 
   const events: WeeklyEvent[] = [];
@@ -737,20 +757,32 @@ function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
     events.push({ minuteOfWeek: iv.end % MINUTES_PER_WEEK, type: "close" });
   }
   events.sort((a, b) => a.minuteOfWeek - b.minuteOfWeek || (a.type === "close" ? -1 : 1));
-  return events;
+  return { events, alwaysOpen: false };
+}
+
+/**
+ * What a week's sessions cover. `events` empty means the status never changes
+ * on schedule — `alwaysOpen` says in which direction (holidays can still mask
+ * an always-open venue, which is why this is not simply a boolean status).
+ */
+interface WeeklyCoverage {
+  events: WeeklyEvent[];
+  alwaysOpen: boolean;
 }
 
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
-  const { events, holidays: holidaySet } = derive(tradingHours);
+  const { events, alwaysOpen, holidays: holidaySet } = derive(tradingHours);
 
   // An EMPTY event list has two opposite meanings, and collapsing them to
   // "open" reported a permanently-closed venue as tradable:
-  //   - no sessions at all  ⇒ the venue never opens;
-  //   - sessions whose merged coverage spans the whole week (a 24/7 schedule)
-  //     ⇒ the venue never closes — but its HOLIDAYS still mask it, which the
-  //     old early return skipped by leaving before the holiday check.
-  // The no-sessions arm reads no clock at all, so `local` is derived below it.
-  if (events.length === 0 && tradingHours.sessions.length === 0) {
+  //   - NO coverage (no sessions, or sessions that name no days) ⇒ the venue
+  //     never opens;
+  //   - coverage spanning the whole week (a 24/7 schedule) ⇒ it never closes —
+  //     but its HOLIDAYS still mask it, which an early return would skip.
+  // `buildWeeklyEvents` reports which via `alwaysOpen`; inferring it from
+  // `sessions.length` mis-read a session whose `days` is empty as 24/7.
+  // This arm reads no clock at all, so `local` is derived below it.
+  if (events.length === 0 && !alwaysOpen) {
     return { status: "closed", nextStatusChangeIn: null };
   }
 

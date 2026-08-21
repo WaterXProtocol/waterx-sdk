@@ -61,6 +61,23 @@ describe("deriveOracleSources", () => {
     expect(deriveOracleSources(configWith({ waterx_rule: { feeds: { BTCUSD: {} } } }))).toEqual([]);
   });
 
+  it("honours an explicit `enabled: false`, and treats absent as ON", () => {
+    // With routing derived from config, this flag is the only lever an
+    // operator has for switching a source off; ignoring it made it a dead
+    // knob. Absent means ON — every live config omits it.
+    const off = configWith({
+      pyth_lazer_rule: { published_at: "0x1", feeds: { BTCUSD: 1 }, enabled: false },
+      waterx_rule: { published_at: "0x2", feeds: { BTCUSD: {} } },
+    });
+    expect(deriveOracleSources(off)).toEqual(["waterx_rule"]);
+
+    const on = configWith({
+      pyth_lazer_rule: { published_at: "0x1", feeds: { BTCUSD: 1 }, enabled: true },
+      waterx_rule: { published_at: "0x2", feeds: { BTCUSD: {} } },
+    });
+    expect(deriveOracleSources(on)).toEqual(["pyth_lazer_rule", "waterx_rule"]);
+  });
+
   it("IGNORES retired rule blocks — they are still in the live configs", () => {
     // `pyth_rule` and `pyth_sponsor_rule` remain in prod mainnet.json today.
     // Neither is an ORACLE_SOURCES member (no rule module could feed one), so

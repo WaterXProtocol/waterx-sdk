@@ -208,14 +208,29 @@ export interface WaterxEnvelopePayload {
  */
 export type WaterxUpdatePayload = WaterxLeafPayload | WaterxEnvelopePayload;
 
+/**
+ * Structural gate for the ENVELOPE payload shape — symmetric with
+ * {@link isWaterxLeafPayloadShape}, which validates every leaf.
+ *
+ * This runs on payloads that never went through {@link parseSignedEnvelope}:
+ * a consumer's `UpdateDataProvider` hands back whatever its cache holds, and a
+ * value revived from JSON can have lost its bigints or been written half-built.
+ * A gate that checked only `signature: string` + `Array.isArray(items)` let
+ * those through, and the failure landed mid-PTB-build inside `newItemArg` —
+ * after legs were already appended to the caller's `tx`. Every item is checked
+ * with the SAME guard the wire door uses.
+ */
 function isWaterxEnvelopePayloadShape(payload: unknown): payload is WaterxEnvelopePayload {
   const env = (payload as { envelope?: unknown })?.envelope as WaterxSignedEnvelope | undefined;
   return (
     typeof env === "object" &&
     env !== null &&
-    typeof env.signature === "string" &&
+    // ed25519 over the batch — a wrong-length signature is an on-chain abort.
+    isHexOfBytes(env.signature, 64) &&
     typeof env.timestamp_ms === "bigint" &&
-    Array.isArray(env.payload?.items)
+    env.timestamp_ms >= 0n &&
+    Array.isArray(env.payload?.items) &&
+    env.payload.items.every(isBatchItemShape)
   );
 }
 

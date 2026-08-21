@@ -35,10 +35,11 @@ export type { OracleCredentialKind };
 /**
  * A build depends on a ticker this client's fed set cannot price.
  *
- * Distinct from {@link OracleFedSetError}, which is about a deployment being
- * misconfigured at all. This one is per-BUILD: `refreshOraclePrices` skipped
- * the ticker (by design — see `OracleRefreshSummary`), and the composer decided
- * that particular ticker was load-bearing for the action being built.
+ * Raised from two places, deliberately the same type: the per-BUILD composers
+ * (`refreshOraclePrices` skipped the ticker by design — see
+ * `OracleRefreshSummary` — and the composer decided it was load-bearing for
+ * the action) and the boot-time {@link assertOracleWriteCoverage}. One error
+ * for one question: "this fed set cannot price these tickers".
  */
 export class OracleTickerUnservedError extends Error {
   readonly tickers: string[];

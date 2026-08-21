@@ -166,12 +166,14 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    * WLP pool-token tickers THIS client's fed set can actually price — the
    * ticker set the WLP builders refresh before `assert_prices_fresh`.
    *
-   * Filtered, not raw `Object.keys(pool_tokens)`, for two reasons: some
-   * deployments key `pool_tokens` by coin symbol (`"USD"`) rather than oracle
-   * ticker (`"USDCUSD"`), and a token only an UNLISTED source serves is not
-   * priceable by this client. The predicate is `refreshOraclePrices`'s own
-   * (`servableTickers`), so a refresh over this list can never throw
-   * "no feed configured".
+   * Filtered, not raw `Object.keys(pool_tokens)`: a token only an UNLISTED
+   * source serves is not priceable by this client. The predicate is
+   * `refreshOraclePrices`'s own (`servableTickers`), so this list is exactly
+   * what a refresh would accept.
+   *
+   * NOTE this is a QUERY, not what the WLP builders use — they deliberately
+   * refresh and bump the WHOLE pool, because dropping an unpriceable asset
+   * from both halves is silent (see `assertWlpPoolRefreshed`).
    */
   pricedPoolTickers(): string[] {
     return servableTickers(this, Object.keys(this.config.packages.wlp?.pool_tokens ?? {}));

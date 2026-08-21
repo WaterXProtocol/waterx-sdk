@@ -107,7 +107,6 @@ function parseArgs(argv: string[]): {
     const a = tokens[i]!;
     if (a === "--help" || a === "-h") {
       console.log(`Usage: pnpm oracle:aggregates [-- --format pretty|raw] [--ticker T[,T...]] [--testnet|--mainnet]
-       [--oracle-source pyth_lazer_rule|waterx_rule]
        pnpm oracle:aggregates:testnet
        pnpm oracle:aggregates:mainnet
 
@@ -119,7 +118,6 @@ function parseArgs(argv: string[]): {
                     Default (omitted): every configured aggregator.
   --testnet         Use TESTNET (pnpm oracle:aggregates:testnet).
   --mainnet         Use MAINNET (default when no network flag).
-  --oracle-source   Price-update source(s) — comma-separated list = the fed set
 
   Network precedence: --testnet / --mainnet → WATERX_E2E_NETWORK → mainnet.
   Lazer token: PYTH_API_KEY (required when the fed set includes pyth_lazer_rule).

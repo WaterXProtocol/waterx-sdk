@@ -42,6 +42,13 @@ import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
 export function deriveOracleSources(config: OracleConfig): OracleSource[] {
   return ORACLE_SOURCES.filter((source) => {
     const block = config.packages[source];
-    return !!block?.published_at && Object.keys(block.feeds ?? {}).length > 0;
+    if (!block?.published_at || Object.keys(block.feeds ?? {}).length === 0) return false;
+    // `enabled` is the one lever the schema offers for switching a source off,
+    // and with routing derived from config it is the ONLY lever left — so it
+    // is honoured here. Absent means ON: every live config omits it, and a
+    // published block with feeds is a wired source. (`supra_rule` is
+    // default-OFF and requires an explicit `true` — it is an auxiliary leg,
+    // not a source, so the asymmetry is deliberate.)
+    return block.enabled !== false;
   });
 }
