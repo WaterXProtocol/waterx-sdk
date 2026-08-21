@@ -147,6 +147,61 @@ describe("readOracleWeightCoverage — unsuppliable weights", () => {
   });
 });
 
+describe("readOracleWeightCoverage — a LISTED source is not suppliable everywhere", () => {
+  // Being in the fed set buys nothing per ticker. `refreshOraclePrices` groups a
+  // ticker under a source only when that source's feeds carry it, so a listed
+  // source with no feed for THIS ticker emits no leg for it.
+
+  it("flags a lazer-weighted ticker that only WaterX feeds, even with lazer listed", async () => {
+    // Both sources listed; XAUUSD is in waterx.feeds only, but the aggregator
+    // weights PythLazerRule. No lazer leg is ever emitted for XAUUSD, so the
+    // weighted rule is starved and remove_outliers aborts — while a fed-set
+    // membership check waves it through.
+    const host = hostWith(
+      ["waterx_rule", "pyth_lazer_rule"],
+      { XAUUSD: ["PythLazerRule"] },
+      { feeds: { waterx_rule: ["XAUUSD"], pyth_lazer_rule: ["BTCUSD"] } },
+    );
+    const [row] = await readOracleWeightCoverage(host, ["XAUUSD"]);
+    expect(row?.unsuppliable).toEqual(["PythLazerRule"]);
+  });
+
+  it("passes the same ticker once that source actually carries its feed", async () => {
+    const host = hostWith(
+      ["waterx_rule", "pyth_lazer_rule"],
+      { XAUUSD: ["PythLazerRule"] },
+      { feeds: { waterx_rule: ["XAUUSD"], pyth_lazer_rule: ["XAUUSD"] } },
+    );
+    const [row] = await readOracleWeightCoverage(host, ["XAUUSD"]);
+    expect(row?.unsuppliable).toEqual([]);
+  });
+
+  it("judges each weighted rule on ITS own feed, not on the union", async () => {
+    // Weighted to both. Waterx carries it, lazer does not — so exactly one of
+    // the two is unsuppliable, and merging the sources' ticker sets would have
+    // reported neither.
+    const host = hostWith(
+      ["waterx_rule", "pyth_lazer_rule"],
+      { XAUUSD: ["WaterxRule", "PythLazerRule"] },
+      { feeds: { waterx_rule: ["XAUUSD"], pyth_lazer_rule: ["BTCUSD"] } },
+    );
+    const [row] = await readOracleWeightCoverage(host, ["XAUUSD"]);
+    expect(row?.unsuppliable).toEqual(["PythLazerRule"]);
+  });
+
+  it("supra still rides when SOME listed source feeds the ticker", async () => {
+    // Supra's leg is conditional on the collector having been fed at all, which
+    // is a union question — distinct from the per-source rule above.
+    const host = hostWith(
+      ["waterx_rule", "pyth_lazer_rule"],
+      { XAUUSD: ["WaterxRule", "SupraRule"] },
+      { supraWired: true, feeds: { waterx_rule: ["XAUUSD"], pyth_lazer_rule: ["BTCUSD"] } },
+    );
+    const [row] = await readOracleWeightCoverage(host, ["XAUUSD"]);
+    expect(row?.unsuppliable).toEqual([]);
+  });
+});
+
 describe("readOracleWeightCoverage — auxiliary legs are PER TICKER", () => {
   // They are not globally available: `aggregateTicker` emits the constant leg
   // only when the ticker is constant-pinned, and the supra leg only when a

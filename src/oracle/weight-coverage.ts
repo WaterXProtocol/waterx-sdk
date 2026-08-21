@@ -11,6 +11,12 @@
  * contribution, and the abort takes down the WHOLE PTB — every other ticker in
  * the same build with it.
  *
+ * The mirror-image shape is just as dangerous and less obvious: a ticker
+ * weighted to a rule this client DOES list, but whose feed that source does not
+ * carry. Being in the fed set buys nothing per ticker — `refreshOraclePrices`
+ * groups a ticker under a source only when that source's feeds have it — so the
+ * leg never appears and the weighted rule is starved just the same.
+ *
  * That is live on mainnet today, not hypothetical. `XAGUSD` / `WTIUSD` /
  * `BRENTUSD` are in `waterx_rule.feeds` (so: servable) while their aggregators
  * still weight the retired `PythRule@1`, which 5.0.0 cannot feed at all. The
@@ -117,23 +123,34 @@ export async function readOracleWeightCoverage(
 ): Promise<TickerWeightCoverage[]> {
   const aggregators = host.config.packages.waterx_oracle.aggregators;
 
-  // Sources this fed set can feed at all. Auxiliary witnesses are decided
-  // PER TICKER below, because their legs are conditional.
-  const fedSources = new Set<string>();
+  // Which tickers each LISTED source actually feeds — per source, not merged.
+  //
+  // Being in the fed set is not enough: `refreshOraclePrices` groups a ticker
+  // under a source only when that source's feeds carry it, so a lazer-weighted
+  // ticker that only WaterX feeds gets no lazer leg no matter that lazer is
+  // listed. Treating a listed source as suppliable for EVERY ticker passed
+  // exactly that case, which then aborts `EMissingPriceSource` on chain.
+  const feedsByWitness = new Map<string, Set<string>>();
   for (const [witness, source] of Object.entries(WITNESS_TO_SOURCE)) {
-    if (host.oracleSources.includes(source)) fedSources.add(witness);
+    if (host.oracleSources.includes(source)) {
+      feedsByWitness.set(witness, new Set(resolveOracleRule(source).supportedTickers(host)));
+    }
   }
   const supraWired = host.getSupraRule() !== undefined;
-  const servedBySource = new Set(
-    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host)),
-  );
+  /** Some listed source feeds this ticker, so a collector gets fed at all. */
+  const anySourceFeeds = (ticker: string): boolean => {
+    for (const served of feedsByWitness.values()) if (served.has(ticker)) return true;
+    return false;
+  };
 
   const suppliableFor = (ticker: string, witness: string): boolean => {
-    if (fedSources.has(witness)) return true;
+    const served = feedsByWitness.get(witness);
+    // A source witness: suppliable only where that source has THIS ticker's feed.
+    if (served !== undefined) return served.has(ticker);
     if (witness === "ConstantRule") return host.isConstantTicker(ticker);
     // Supra rides on a collector a SOURCE already fed — never on its own, and
     // never on a constant-only collector.
-    if (witness === "SupraRule") return supraWired && servedBySource.has(ticker);
+    if (witness === "SupraRule") return supraWired && anySourceFeeds(ticker);
     return false;
   };
 
