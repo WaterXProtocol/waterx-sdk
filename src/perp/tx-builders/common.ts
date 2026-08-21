@@ -38,10 +38,15 @@ export interface CommonBuildOpts {
    * saving: under `waterx_rule` a repeated per-builder refresh would submit
    * the same signed timestamp twice per symbol in one PTB, paying full
    * verification for an on-chain abstain (the F-014 per-symbol replay
-   * high-water mark). NEVER share one fetched waterx envelope across two
-   * CONCURRENT builds for the same symbol, though — across transactions a
-   * replayed timestamp ABORTS `EReplayedSignature` on the single-rule feed
-   * entries.
+   * high-water mark).
+   *
+   * Sharing one fetched waterx snapshot across CONCURRENT builds is safe on
+   * these paths: every builder here feeds through `collect_*`, where a
+   * replayed per-symbol timestamp ABSTAINS rather than aborting — the chain
+   * already holds a price at least that fresh. `EReplayedSignature` is raised
+   * only by the single-rule `feed_*` entries, which no `build*Tx` uses. The
+   * cost of sharing is a contribution that does not count, not a failed
+   * transaction.
    */
   skipOraclePriceRefresh?: boolean;
   /**

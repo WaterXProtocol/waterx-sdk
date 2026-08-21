@@ -22,7 +22,9 @@
  * `assertOracleWriteCoverage`.
  */
 
+import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
+import { resolveOracleRule } from "./rule-registry.ts";
 
 /**
  * The on-chain witness struct each SDK source feeds. The aggregator's weight
@@ -34,12 +36,24 @@ import type { OracleSource } from "./price-update-rule.ts";
  * them needs no source. Anything NOT in this map (notably the retired
  * `PythRule`) cannot be supplied by this SDK at any fed set.
  */
-const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource | "auxiliary">> = Object.freeze({
+const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource>> = Object.freeze({
   PythLazerRule: "pyth_lazer_rule",
   WaterxRule: "waterx_rule",
-  ConstantRule: "auxiliary",
-  SupraRule: "auxiliary",
 });
+
+/**
+ * Auxiliary witnesses — fed alongside a source rather than being one.
+ *
+ * Their emission is CONDITIONAL, per ticker, so they cannot be treated as
+ * globally available (which certified a ticker clean that then aborted):
+ *
+ * - `ConstantRule` rides only when `host.isConstantTicker(ticker)`.
+ * - `SupraRule` rides only when the deployment has supra wired AND a price
+ *   -update source already fed that collector — `aggregateTicker` puts the
+ *   supra leg inside `if (fed)`, so a ticker no listed source serves never
+ *   gets one, constant-only tickers included.
+ */
+// (Both are handled by `suppliableFor` inside `readOracleWeightCoverage`.)
 
 /** One ticker's on-chain weighting, as far as fed-set coverage is concerned. */
 export interface TickerWeightCoverage {
@@ -68,24 +82,19 @@ export class OracleWeightCoverageError extends Error {
   }
 }
 
-/**
- * Minimal client slice this module needs.
- *
- * Reads go through `grpcClient` with an explicit `include: { json: true }`
- * mask, NOT the client's `getObject` convenience wrapper: that wrapper requests
- * no mask, so `json` comes back undefined and every aggregator would parse as
- * "no weights" — an assert that passes on exactly the deployments it exists to
- * fail. (It did, until this was caught against live mainnet.)
- */
-interface WeightCoverageHost {
-  readonly oracleSources: readonly OracleSource[];
-  readonly config: { packages: { waterx_oracle: { aggregators: Record<string, string> } } };
-  readonly grpcClient: {
-    getObject(input: {
-      objectId: string;
-      include: { json: true };
-    }): Promise<{ object?: { json?: unknown } }>;
-  };
+/** Raised when an aggregator object cannot be decoded — see `readOracleWeightCoverage`. */
+export class OracleWeightUnreadableError extends Error {
+  readonly ticker: string;
+
+  constructor(ticker: string, aggregatorId: string, why: string) {
+    super(
+      `cannot read aggregator ${aggregatorId} for ${ticker}: ${why}. This check exists to fail ` +
+        `CLOSED, so an undecodable weight table is an error rather than an empty one — treating ` +
+        `it as "no weights" would certify every ticker clean without verifying anything.`,
+    );
+    this.name = "OracleWeightUnreadableError";
+    this.ticker = ticker;
+  }
 }
 
 /** `0x…::aggregator::PythRule` → `PythRule`; already-short names pass through. */
@@ -103,30 +112,66 @@ function witnessName(raw: unknown): string {
  * at all, which {@link assertOracleWriteCoverage} is the right check for.
  */
 export async function readOracleWeightCoverage(
-  host: WeightCoverageHost,
+  host: OracleHost,
   tickers: readonly string[],
 ): Promise<TickerWeightCoverage[]> {
   const aggregators = host.config.packages.waterx_oracle.aggregators;
-  const suppliable = new Set<string>();
+
+  // Sources this fed set can feed at all. Auxiliary witnesses are decided
+  // PER TICKER below, because their legs are conditional.
+  const fedSources = new Set<string>();
   for (const [witness, source] of Object.entries(WITNESS_TO_SOURCE)) {
-    if (source === "auxiliary" || host.oracleSources.includes(source)) suppliable.add(witness);
+    if (host.oracleSources.includes(source)) fedSources.add(witness);
   }
+  const supraWired = host.getSupraRule() !== undefined;
+  const servedBySource = new Set(
+    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host)),
+  );
+
+  const suppliableFor = (ticker: string, witness: string): boolean => {
+    if (fedSources.has(witness)) return true;
+    if (witness === "ConstantRule") return host.isConstantTicker(ticker);
+    // Supra rides on a collector a SOURCE already fed — never on its own, and
+    // never on a constant-only collector.
+    if (witness === "SupraRule") return supraWired && servedBySource.has(ticker);
+    return false;
+  };
 
   const wanted = tickers.filter((t) => Object.hasOwn(aggregators, t));
   // Independent reads — one round trip each would make a 30-market boot assert
   // needlessly serial.
   const objects = await Promise.all(
     wanted.map((t) =>
+      // Explicit field mask: the client's `getObject` wrapper requests none, so
+      // `json` would come back undefined and every aggregator would look
+      // weightless — an assert that passes exactly where it must fail.
       host.grpcClient.getObject({ objectId: aggregators[t]!, include: { json: true } }),
     ),
   );
 
   return wanted.map((ticker, i) => {
-    const json = objects[i]?.object?.json ?? {};
+    // FAIL CLOSED on anything undecodable. Defaulting a missing object / JSON /
+    // weights map to an empty list made the assert succeed without verifying a
+    // single weight — the exact fail-open shape this gate exists to prevent.
+    const id = aggregators[ticker]!;
+    const json = objects[i]?.object?.json;
+    if (json === undefined || json === null || typeof json !== "object") {
+      throw new OracleWeightUnreadableError(ticker, id, "no JSON payload in the object read");
+    }
     const raw = (json as { weights?: { contents?: unknown[] } | unknown[] }).weights;
-    const entries = Array.isArray(raw) ? raw : (raw?.contents ?? []);
+    const entries = Array.isArray(raw) ? raw : raw?.contents;
+    if (!Array.isArray(entries)) {
+      throw new OracleWeightUnreadableError(ticker, id, "no decodable `weights` table");
+    }
     const weighted = entries.map((e) => witnessName((e as { key?: unknown }).key));
-    return { ticker, weighted, unsuppliable: weighted.filter((w) => !suppliable.has(w)) };
+    if (weighted.some((w) => w === "" || w === "undefined")) {
+      throw new OracleWeightUnreadableError(ticker, id, "a weight entry has no rule type name");
+    }
+    return {
+      ticker,
+      weighted,
+      unsuppliable: weighted.filter((w) => !suppliableFor(ticker, w)),
+    };
   });
 }
 
@@ -140,7 +185,7 @@ export async function readOracleWeightCoverage(
  * entire transaction on chain.
  */
 export async function assertOracleWeightCoverage(
-  host: WeightCoverageHost,
+  host: OracleHost,
   tickers: readonly string[],
 ): Promise<void> {
   const rows = await readOracleWeightCoverage(host, tickers);

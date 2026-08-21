@@ -108,8 +108,15 @@ function fedSetTickers(host: OracleHost): Set<string> {
 function tickersWithAnySourceFeed(host: OracleHost): Set<string> {
   const out = new Set<string>();
   for (const source of ORACLE_SOURCES) {
+    // Skip a source the deployment DISABLED — routing already honours
+    // `enabled: false` (`deriveOracleSources`), and applying it in one place
+    // but not the other meant a disabled block's informational feeds
+    // disqualified a constant-only ticker that nothing would ever feed. The
+    // predicate has to match what actually gets emitted.
+    if (host.config.packages[source]?.enabled === false) continue;
     for (const ticker of resolveOracleRule(source).supportedTickers(host)) out.add(ticker);
   }
+  // `getSupraRule()` already requires `enabled` — see `config-view.ts`.
   if (host.getSupraRule() !== undefined) {
     for (const ticker of Object.keys(host.config.packages.supra_rule?.feeds ?? {})) out.add(ticker);
   }

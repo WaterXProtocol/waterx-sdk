@@ -806,6 +806,37 @@ function minuteOfWeekOf(parts: LocalParts): number {
   return minuteOfWeek(parts.dayOfWeek, parts.hour, parts.minute);
 }
 
+/**
+ * Ms from `now` to the end of the holiday run covering `from` — but only when
+ * the venue is SCHEDULED-OPEN at that instant, i.e. it resumes mid-session.
+ *
+ * `null` when the holiday run ends outside the lookahead, or when the venue is
+ * scheduled-closed then (so the reopen is a later `open` event, not this
+ * boundary).
+ *
+ * Both holiday arms need this. A venue is closed on a holiday even mid-session,
+ * so it comes back the moment the holiday lifts — which for any session
+ * spanning local midnight is NOT the next `open` event. Asking only about
+ * `open` events reported the reopening up to a full session late, whether the
+ * holiday is happening now or is still ahead.
+ */
+function midSessionReopen(
+  events: WeeklyEvent[],
+  holidaySet: Set<number>,
+  now: Date,
+  timezone: string,
+  /** The instant inside the holiday run to measure from (`now`, or a future open). */
+  from: { at: LocalParts; msFromNow: number },
+): number | null {
+  const base = new Date(now.getTime() + from.msFromNow);
+  const untilLift = msUntilLocalDayStart(base, timezone, holidaySet, false, from.at);
+  if (untilLift === null) return null;
+
+  const liftsIn = from.msFromNow + untilLift;
+  const liftsAt = toLocalParts(new Date(now.getTime() + liftsIn), timezone);
+  return scheduledStatusAt(events, minuteOfWeekOf(liftsAt)) === "open" ? liftsIn : null;
+}
+
 function scheduledStatusAt(events: WeeklyEvent[], mow: number): "open" | "closed" {
   const exact = events.find((e) => e.minuteOfWeek === mow);
   if (exact) return exact.type === "open" ? "open" : "closed";
@@ -852,19 +883,15 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
     // morning after — that instant is the holiday's end at local midnight, not
     // the next scheduled `open` event. Looking only for the next non-holiday
     // open reported the reopening up to a full session late.
-    const holidayEnds = msUntilLocalDayStart(now, tradingHours.timezone, holidaySet, false, local);
-    const reopensMidSession =
-      holidayEnds !== null &&
-      scheduledStatusAt(
-        events,
-        minuteOfWeekOf(toLocalParts(new Date(now.getTime() + holidayEnds), tradingHours.timezone)),
-      ) === "open";
+    const midSession = midSessionReopen(events, holidaySet, now, tradingHours.timezone, {
+      at: local,
+      msFromNow: 0,
+    });
 
     return {
       status: "closed",
-      nextStatusChangeIn: reopensMidSession
-        ? holidayEnds
-        : findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local),
+      nextStatusChangeIn:
+        midSession ?? findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local),
     };
   }
 
@@ -932,9 +959,18 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
         nextStatusChangeIn = holidayStarts;
       }
     } else if (nextChangeEvent.type === "open" && isHoliday(holidaySet, next.at)) {
-      // Closed by schedule, and the upcoming open lands on a holiday — walk to
-      // the first open that does not.
-      const skipped = findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
+      // Closed by schedule, and the upcoming open lands on a holiday.
+      //
+      // The masked session may still be RUNNING when that holiday lifts — a
+      // Monday 18:00→17:00 session on a Monday holiday resumes at Tuesday
+      // midnight, not at the following Monday's open. Skipping straight to the
+      // next non-holiday `open` reported that reopening a week late.
+      const midSession = midSessionReopen(events, holidaySet, now, tradingHours.timezone, {
+        at: next.at,
+        msFromNow: next.ms,
+      });
+      const skipped =
+        midSession ?? findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
       if (skipped !== null) nextStatusChangeIn = skipped;
     }
   }

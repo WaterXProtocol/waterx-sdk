@@ -130,6 +130,7 @@ export {
   LazerNotEntitledError,
   OracleTickerUnservedError,
   OracleWeightCoverageError,
+  OracleWeightUnreadableError,
   OracleSourceNotImplementedError,
   aggregateTicker,
   aggregateTickerWithConstant,

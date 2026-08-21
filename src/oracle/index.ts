@@ -81,6 +81,7 @@ export {
   assertOracleWeightCoverage,
   readOracleWeightCoverage,
   OracleWeightCoverageError,
+  OracleWeightUnreadableError,
 } from "./weight-coverage.ts";
 export type { TickerWeightCoverage } from "./weight-coverage.ts";
 

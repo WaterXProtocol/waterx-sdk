@@ -61,6 +61,22 @@ describe("assertOracleWriteCoverage", () => {
     expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).toThrow(OracleTickerUnservedError);
   });
 
+  it("a DISABLED source's informational feeds do not disqualify a constant-only ticker", () => {
+    // Routing honours `enabled: false`, so a disabled source feeds nothing —
+    // its feeds map is documented as informational. Applying the flag in
+    // routing but not here made a stale entry strand a ticker that is, in
+    // practice, constant-only: reported unservable while nothing would ever
+    // feed it.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    client.config.packages.waterx_rule!.feeds.USDCUSD = { ticker: "USDCUSDT" };
+    client.config.packages.waterx_rule!.enabled = false;
+
+    expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).not.toThrow();
+    expect(partitionServableTickers(client, ["USDCUSD"]).servable).toEqual(["USDCUSD"]);
+  });
+
   it("exempts a genuinely constant-only ticker", () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
     client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };

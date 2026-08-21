@@ -148,6 +148,36 @@ describe("getMarketStatus — a holiday's midnight IS a status boundary", () => 
     });
   });
 
+  it("a session starting during a FUTURE holiday reopens when that holiday lifts", () => {
+    // Schedule-closed now, and the upcoming open lands on a holiday. The masked
+    // session is still RUNNING when the holiday lifts, so the venue resumes at
+    // that midnight — not at the following week's open, which is what skipping
+    // straight to the next non-holiday `open` returned.
+    const mondayOnly: TradingHours = {
+      timezone: "UTC",
+      sessions: [{ open: "18:00", close: "17:00", days: [1] }],
+      holidays: [{ month: 1, day: 4 }],
+    };
+    expect(changeAt(mondayOnly, "2027-01-03T12:00Z")).toEqual({
+      status: "closed",
+      when: "2027-01-05T00:00:00.000Z",
+    });
+  });
+
+  it("...but still walks to the next open when the session does NOT span the lift", () => {
+    // Same shape with a same-day session: nothing is running at midnight, so
+    // the reopen really is the next non-holiday open.
+    const dayShift: TradingHours = {
+      timezone: "UTC",
+      sessions: [{ open: "09:00", close: "17:00", days: [1] }],
+      holidays: [{ month: 1, day: 4 }],
+    };
+    expect(changeAt(dayShift, "2027-01-03T12:00Z")).toEqual({
+      status: "closed",
+      when: "2027-01-11T09:00:00.000Z",
+    });
+  });
+
   it("a 24/7 venue reports a holiday beyond the 21-day run window", () => {
     // `nextStatusChangeIn: null` is documented as \"24/7 or paused\", so falling
     // off the lookahead made a consumer cache \"open forever\" through Christmas.
