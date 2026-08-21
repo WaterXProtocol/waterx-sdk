@@ -244,11 +244,23 @@ export class OracleTickerUnservedError extends Error {
  *
  * - `refreshed` — tickers that got a collector + `oracle::aggregate` (deduped,
  *   in the caller's order).
- * - `skipped` — tickers the loaded config wires NO rule for, so there was
- *   nothing to feed. They are dropped from the PTB rather than failing the
- *   build; their on-chain price is whatever the `Oracle` already holds. A
- *   caller trading one of them should log/alert on this — the trading call is
- *   what will reject a too-stale price, and it does so on chain.
+ * - `skipped` — tickers **no SELECTED source produced a leg for**. Two
+ *   distinct causes, indistinguishable in this list, so do not diagnose from
+ *   it alone:
+ *     1. the loaded config wires no ready rule for the ticker at all; or
+ *     2. it IS wired, but only under a rule this client's `oracleSources`
+ *        omits — a fed-set/config mismatch, not malformed config.
+ *   Either way it is dropped from the PTB rather than failing the build, and
+ *   its price stays whatever the `Oracle` already holds.
+ *
+ * A skipped ticker is **not** self-correcting on chain: the stored price can
+ * still be inside the freshness window, so an action reading it succeeds at a
+ * stale price rather than aborting — and on the WLP path `update_token_value`
+ * re-stamps `last_price_refresh_timestamp` off that stored price, defeating
+ * `assert_prices_fresh` outright. Treat `skipped` as a build-time signal you
+ * must act on: the high-level `build*Tx` composers already fail closed on it
+ * (`OracleTickerUnservedError`), and a caller driving `refreshOraclePrices`
+ * directly owns that decision itself.
  */
 export interface OracleRefreshSummary {
   refreshed: string[];

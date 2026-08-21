@@ -69,7 +69,12 @@ listed source serves is **skipped**, not thrown on: `refreshOraclePrices`
 returns `{ refreshed, skipped }` and the PTB gets the legs that exist. The
 high-level `build*Tx` composers then FAIL CLOSED on an action-critical skipped
 ticker (`OracleTickerUnservedError`, opt out with `allowUnrefreshedPrices`) —
-skipping is right for a broad refresh, never for the ticker being traded
+skipping is right for a broad refresh, never for the ticker being traded.
+Action-critical = traded market + collateral for a trade, and EVERY pool asset
+for WLP mint/redeem (`mint_wlp` values the whole pool). Never rely on the chain
+to catch a stale pool price: `update_token_value` re-stamps freshness off the
+stored price, so `assert_prices_fresh` passes regardless. `skipped` also covers
+a ticker wired only under an UNSELECTED source, not just missing config
 (a ticker is servable without an update leg only when `constant_rule` is the
 ONLY rule wired for it; a dual-feed constant+source ticker is NOT, since
 feeding just the constant leg would starve the other weighted rule). A

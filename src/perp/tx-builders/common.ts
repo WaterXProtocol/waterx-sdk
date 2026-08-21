@@ -82,12 +82,15 @@ export function newTx(opts?: CommonBuildOpts): Transaction {
  * `assert_prices_fresh` passes when the next `mint_wlp` / `request_redeem` /
  * trading `execute` runs in the same PTB.
  *
- * Returns the refresh summary — callers MUST inspect `skipped` for whichever
- * of `extraTickers` their action actually depends on (see
- * {@link assertTickersRefreshed}). The pool-token bump below still runs for
- * every configured pool token regardless: `update_token_value` reads the
- * on-chain price, and the pool's own `assert_prices_fresh` is what rejects a
- * stale one.
+ * Returns the refresh summary, and callers MUST act on it — this function
+ * appends `update_token_value` for every configured pool token
+ * unconditionally, including tokens this refresh did not price. That call
+ * re-stamps `last_price_refresh_timestamp` with `clock.timestamp_ms()` off
+ * the price the `Oracle` already holds, so `assert_prices_fresh` passes
+ * afterwards either way: **the chain does NOT reject a stale pool price on
+ * this path.** Use {@link assertTickersRefreshed} for the tickers an action
+ * names, and {@link assertWlpPoolRefreshed} for anything that values the pool
+ * (mint / redeem).
  */
 export async function refreshWlpPoolOracles(
   tx: Transaction,

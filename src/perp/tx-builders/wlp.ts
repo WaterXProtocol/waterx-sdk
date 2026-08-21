@@ -148,8 +148,10 @@ export interface BuildUnstakeAndRequestRedeemWlpParams
  * Unstakes WLP from the staking pool and immediately enqueues a redeem request
  * in the same PTB. Mirror of `buildMintAndStakeWlpTx` for withdrawals.
  *
- * Refreshes every WLP pool-token oracle by default — `request_redeem` runs
- * `assert_prices_fresh` internally, so a stale oracle would abort the PTB.
+ * Refreshes every WLP pool-token oracle by default. Do NOT rely on
+ * `assert_prices_fresh` to catch a stale one: the refresh re-stamps each pool
+ * token's freshness off the price already on chain, so the build-time
+ * `assertWlpPoolRefreshed` below is the real guard.
  * Pass `skipOraclePriceRefresh: true` only when the caller is composing this
  * into a larger PTB that already pre-pumps prices. Like `buildMintWlpTx`,
  * `request_redeem` produces no `TradingRequest`, so a non-skipped refresh
