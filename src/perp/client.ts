@@ -213,7 +213,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    * "no feed configured".
    */
   pricedPoolTickers(): string[] {
-    return servableTickers(this, Object.keys(this.config.packages.wlp?.pool_tokens ?? {}));
+    return this.#pricedPoolTokens().map((token) => token.ticker);
   }
 
   /**
@@ -226,11 +226,28 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    * rule each call site has to remember.
    */
   pricedPoolTokens(): { ticker: string; tokenType: string }[] {
-    return this.pricedPoolTickers().map((ticker) => ({
-      ticker,
-      tokenType: this.getPoolTokenType(ticker),
-    }));
+    return this.#pricedPoolTokens();
   }
+
+  /**
+   * Both accessors above, computed ONCE.
+   *
+   * `servableTickers` flattens every listed source's entire feeds map into a
+   * fresh `Set` (29 entries per source on mainnet) and each ticker then costs
+   * a `getPoolTokenType` lookup. `config` and `oracleSources` are fixed at
+   * construction, so the answer cannot change — but this sits on the money
+   * path, re-derived for every `build*Tx`. Memoized lazily rather than in the
+   * constructor so a client that never touches WLP never pays for it.
+   */
+  #pricedPoolTokens(): { ticker: string; tokenType: string }[] {
+    this.#pricedPoolTokensMemo ??= servableTickers(
+      this,
+      Object.keys(this.config.packages.wlp?.pool_tokens ?? {}),
+    ).map((ticker) => ({ ticker, tokenType: this.getPoolTokenType(ticker) }));
+    return this.#pricedPoolTokensMemo;
+  }
+
+  #pricedPoolTokensMemo?: { ticker: string; tokenType: string }[];
 
   /** @see PerpConfigView.isConstantTicker */
   isConstantTicker(ticker: string): boolean {

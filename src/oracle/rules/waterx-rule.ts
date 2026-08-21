@@ -374,14 +374,53 @@ export function parseSignedEnvelope(text: string): WaterxSignedEnvelope {
   if (typeof raw.signature !== "string" || !Array.isArray(raw.payload?.items)) {
     throw new Error("WaterX quote-center returned a malformed signed envelope");
   }
+  // `timestamp_ms` is signed OVER, so defaulting a missing one to `0n` does not
+  // produce a harmless zero — it produces a batch whose signature cannot verify,
+  // surfacing as an opaque on-chain `EInvalidSignature` indistinguishable from a
+  // forgery. Reject it at the door instead, where the message can say what is
+  // actually wrong.
+  if (typeof raw.timestamp_ms !== "bigint") {
+    throw new Error("WaterX quote-center envelope is missing an integer timestamp_ms");
+  }
+  const items = raw.payload.items.map((item) => {
+    // The leaf door is structurally validated; this one was not, so a 200 with
+    // half-built items passed the wire gate and blew up mid-PTB-build inside
+    // `newItemArg` — after commands had already been appended to the caller's
+    // transaction. Both doors now reject before anything is built.
+    assertBatchItemShape(item);
+    return { ...item, num_sources: Number(item.num_sources) };
+  });
   return {
     intent: Number(raw.intent),
-    timestamp_ms: (raw.timestamp_ms ?? 0n) as bigint,
+    timestamp_ms: raw.timestamp_ms,
     signature: raw.signature,
-    payload: {
-      items: raw.payload.items.map((i) => ({ ...i, num_sources: Number(i.num_sources) })),
-    },
+    payload: { items },
   };
+}
+
+/** Every field the feed leg reads off an item, and the type it must have. */
+const BATCH_ITEM_BIGINT_FIELDS = [
+  "price_timestamp_ms",
+  "price_n",
+  "price_scale",
+  "confidence_n",
+  "confidence_scale",
+  "max_source_deviation_bps",
+] as const satisfies readonly (keyof WaterxBatchItem)[];
+
+function assertBatchItemShape(item: WaterxBatchItem): void {
+  const label = typeof item?.symbol === "string" ? item.symbol : "<unknown symbol>";
+  if (typeof item?.symbol !== "string" || typeof item.ticker !== "string") {
+    throw new Error(`WaterX quote-center item ${label} is missing symbol/ticker`);
+  }
+  if (!Array.isArray(item.sources) || typeof item.method !== "string") {
+    throw new Error(`WaterX quote-center item ${label} is missing sources/method`);
+  }
+  for (const field of BATCH_ITEM_BIGINT_FIELDS) {
+    if (typeof item[field] !== "bigint") {
+      throw new Error(`WaterX quote-center item ${label} has a non-integer ${field}`);
+    }
+  }
 }
 
 /**

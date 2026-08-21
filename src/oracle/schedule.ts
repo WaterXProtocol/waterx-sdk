@@ -168,15 +168,26 @@ function keywordDay(token: string): RawWindow[] | null {
  * alone. (`&` exists precisely to remove that ambiguity and is handled as one
  * self-contained day token.)
  *
- * The fold is therefore anchored and applied from the RIGHT: keyword tokens
- * pin their own day, and surplus range tokens merge into the LATEST day that
- * can take them. Leftmost-greedy — what both consumer copies shipped — is
- * wrong whenever the multi-session day is not the first one: for
- * `R,R,R,R,R,C,R,R` it silently gave Monday two sessions, dropped Friday,
- * reported Saturday open, and emitted a duplicate weekday. Right-anchored
- * folding assigns the pair to Sunday, and still yields Monday for the
- * lunch-break shape `0930-1200,1330-1600,C,C,C,C,C,C`, where the pair is the
- * only adjacent range run.
+ * There is no direction that is right in general. Leftmost-greedy (what both
+ * consumer copies shipped) mis-assigns `R,R,R,R,R,C,R,R`; rightmost-greedy
+ * mis-assigns the legacy FX form `0000-1700,1701-2400,O,O,O,O,0000-1700,
+ * 1701-2400`, where the surplus belongs to MONDAY but the last adjacent run
+ * is Sunday's. Either way the result is a plausible-looking weekly calendar
+ * that is simply wrong, with `slots.length === 7` so nothing throws — and a
+ * wrong calendar reports a closed venue as tradable.
+ *
+ * So this does not guess. A fold is applied only when the token list admits
+ * exactly ONE reading: exactly one maximal run of adjacent plain ranges can
+ * absorb the surplus by collapsing entirely into one day
+ * (`merges === run.length - 1`).
+ * Anything else raises {@link PythScheduleParseError} naming the ambiguity,
+ * which a caller can degrade on. The lunch-break shape
+ * `0930-1200,1330-1600,C,C,C,C,C,C` is the unambiguous case and still parses.
+ *
+ * Live Pyth is unaffected either way: every one of the 3619 schedules in the
+ * production catalog encodes multi-session days with `&` and carries exactly
+ * 7 weekly tokens, so this path is reached only by legacy or third-party
+ * payloads (verified against `/v1/symbols`, 2026-08-21).
  */
 function parseWeeklySlots(input: string): RawWindow[][] {
   const tokens = input
@@ -188,42 +199,66 @@ function parseWeeklySlots(input: string): RawWindow[][] {
   // shortfall is unparseable up front; a surplus the fold cannot actually
   // absorb (keyword tokens pin their own day and never merge) simply leaves
   // too many slots, which the count check after the walk rejects.
-  let merges = tokens.length - 7;
+  const merges = tokens.length - 7;
   if (merges < 0) {
     throw new PythScheduleParseError(
       `expected 7 weekday slots, got ${String(tokens.length)}: ${input}`,
     );
   }
 
+  // A token that could take part in a fold: a plain range, i.e. neither a
+  // keyword (pins its own day) nor an explicit `&` day (already complete).
+  const foldable = (t: string) => keywordDay(t) === null && !t.includes("&");
+
+  // Locate the maximal runs of adjacent foldable tokens. Only a run can absorb
+  // surplus, and only one reading may exist — see this function's header.
+  const runs: { start: number; length: number }[] = [];
+  for (let i = 0; i < tokens.length; ) {
+    if (!foldable(tokens[i]!)) {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    while (i < tokens.length && foldable(tokens[i]!)) i += 1;
+    if (i - start >= 2) runs.push({ start, length: i - start });
+  }
+
+  let foldAt: { start: number; length: number } | null = null;
+  if (merges > 0) {
+    // A run can only take the surplus unambiguously by collapsing ENTIRELY
+    // into one day. Absorbing fewer tokens than it holds would leave a choice
+    // of which tokens pair up (`R,R,R` with one merge is two readings), so a
+    // longer run is not a candidate at all rather than a preferred one.
+    const usable = runs.filter((run) => run.length - 1 === merges);
+    if (usable.length !== 1) {
+      throw new PythScheduleParseError(
+        `ambiguous weekday fold: ${String(tokens.length)} tokens for 7 days, ` +
+          `${String(usable.length)} ways to assign the surplus — cannot tell which day ` +
+          `owns it: ${input}`,
+      );
+    }
+    foldAt = usable[0]!;
+  }
+
   const slots: RawWindow[][] = [];
-  for (let i = tokens.length - 1; i >= 0; ) {
+  for (let i = 0; i < tokens.length; ) {
     const token = tokens[i]!;
+    if (foldAt !== null && i === foldAt.start) {
+      // The one unambiguous run: the whole run collapses into a single day.
+      slots.push(tokens.slice(i, i + foldAt.length).map((t) => parseRange(t.trim())));
+      i += foldAt.length;
+      continue;
+    }
     const keyword = keywordDay(token);
     if (keyword !== null) {
-      slots.unshift(keyword);
-      i -= 1;
-      continue;
-    }
-    if (token.includes("&")) {
+      slots.push(keyword);
+    } else if (token.includes("&")) {
       // Explicit multi-session day — already one complete slot, never folded.
-      slots.unshift(token.split("&").map((part) => parseRange(part.trim())));
-      i -= 1;
-      continue;
+      slots.push(token.split("&").map((part) => parseRange(part.trim())));
+    } else {
+      slots.push([parseRange(token)]);
     }
-    const sessions = [parseRange(token)];
-    i -= 1;
-    // Absorb preceding plain ranges while folds remain — latest day first. A
-    // malformed neighbour throws here rather than deferring: breaking out
-    // would only hand the same token to the next outer iteration, which calls
-    // the same parser and raises the same error.
-    while (merges > 0 && i >= 0) {
-      const prev = tokens[i]!;
-      if (keywordDay(prev) !== null || prev.includes("&")) break;
-      sessions.unshift(parseRange(prev));
-      i -= 1;
-      merges -= 1;
-    }
-    slots.unshift(sessions);
+    i += 1;
   }
 
   if (slots.length !== 7) {
@@ -273,7 +308,10 @@ function parseHolidays(input: string): HolidayDate[] {
     const action = slashIdx !== -1 ? raw.slice(slashIdx + 1) : undefined;
 
     // Modified hours (e.g. 1224/0000-1700): not a full closure — skip.
-    if (action !== undefined && action !== "C") continue;
+    // Closure spelling matches `keywordDay`'s tolerance (`C` / `Closed`, any
+    // case): live Pyth only ever emits `C`, but accepting one spelling here
+    // and three there is the kind of asymmetry that silently drops a holiday.
+    if (action !== undefined && !/^(c|closed)$/i.test(action)) continue;
     // Non-MMDD sentinels (e.g. Pyth's '0' placeholder for "no holidays") — skip.
     if (!/^\d{4}$/.test(mmdd)) continue;
 
@@ -330,7 +368,8 @@ function minutesToHHMM(minutes: number): string {
 // Market-status walker (pure; holiday-aware weekly schedule)
 // ============================================================================
 
-const MINUTES_PER_WEEK = 7 * 24 * 60;
+const MINUTES_PER_DAY = 24 * 60;
+const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
 /** How far the holiday walks look ahead — covers any plausible cluster of consecutive closures. */
 const LOOKAHEAD_DAYS = 21;
 const LOOKAHEAD_WEEKS = 3;
@@ -398,12 +437,26 @@ const fmtCache = new Map<string, Intl.DateTimeFormat>();
  *
  * A `WeakMap` keeps this leak-free: an entry dies with the schedule object it
  * describes, so a refreshed map's old entries are collectable.
+ *
+ * CONTRACT: a `TradingHours` is treated as IMMUTABLE. The cache is keyed on
+ * object identity, so mutating one in place (`hours.holidays = next`) keeps
+ * returning the state derived before the mutation, for the object's lifetime
+ * and with no way to invalidate. Refresh by replacing the object — which is
+ * what a service rebuilding its schedule map from a catalog fetch does anyway.
  */
 const derivedCache = new WeakMap<TradingHours, { events: WeeklyEvent[]; holidays: Set<number> }>();
 
 function derive(tradingHours: TradingHours): { events: WeeklyEvent[]; holidays: Set<number> } {
   let derived = derivedCache.get(tradingHours);
   if (!derived) {
+    // The walker is exported for a shape that crosses process boundaries
+    // (cached JSON, the consumers' own markets types), so it routinely arrives
+    // WITHOUT having passed through `parsePythSchedule` — where this check
+    // otherwise lives. Unchecked, a bad zone surfaces as a raw `RangeError`
+    // from `Intl` deep inside `toLocalParts`, escaping the try/catch callers
+    // put around the parser and failing a whole markets response over one row.
+    // Behind the cache miss, so it costs one regex per schedule object.
+    assertUsableTimezone(tradingHours.timezone);
     derived = {
       events: buildWeeklyEvents(tradingHours.sessions),
       holidays: buildHolidaySet(tradingHours.holidays),
@@ -572,12 +625,27 @@ function msUntilLocalDayStart(
 }
 
 /**
- * Build sorted weekly open/close events from sessions.
- * Handles cross-day sessions (close < open means next day).
- * Handles forex continuous (open === close means 24h session that merges with adjacent).
+ * Build the week's open/close events — derived from MERGED OPEN INTERVALS, not
+ * by cancelling event pairs.
+ *
+ * The distinction matters. Cancelling a `close`+`open` at the same
+ * minute-of-week pairwise looks equivalent and is not: it assumes the sorted
+ * list alternates. Two sessions ending at the same minute (overlapping, or
+ * duplicated across a `&` day) put two `close`s in a row, the pairwise scan
+ * then eats the following `open`, and the market reads CLOSED for a session
+ * that is open — silently, since the resulting list is still well-formed.
+ *
+ * Coverage cannot express that. Each session-day becomes a half-open interval
+ * on the week circle, overlapping and touching intervals merge, and the
+ * boundaries of what survives ARE the events. Overlaps, duplicates and
+ * forex-continuous rollovers all collapse for the same reason instead of via
+ * three special cases, and the output alternates open/close by construction —
+ * which is exactly what `computeScheduledStatus` assumes.
  */
 function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
-  const events: WeeklyEvent[] = [];
+  // Half-open [start, end) intervals in minutes-of-week, wrapping split at the
+  // week boundary so the merge below is plain linear-interval arithmetic.
+  const intervals: { start: number; end: number }[] = [];
 
   for (const session of sessions) {
     const openTime = parseHHMM(session.open);
@@ -585,64 +653,66 @@ function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
     const openMinutes = openTime.hour * 60 + openTime.minute;
     const closeMinutes = closeTime.hour * 60 + closeTime.minute;
 
-    const isContinuous = openMinutes === closeMinutes; // forex: open === close
+    // Duration in minutes: a same-day session is the plain difference; a
+    // cross-day one (close <= open) runs into the next day; equal times are
+    // the forex 24h session.
+    const duration =
+      closeMinutes > openMinutes
+        ? closeMinutes - openMinutes
+        : MINUTES_PER_DAY - openMinutes + closeMinutes;
 
     for (const day of session.days) {
-      const openMow = minuteOfWeek(day, openTime.hour, openTime.minute);
-      events.push({ minuteOfWeek: openMow, type: "open" });
-
-      if (isContinuous || closeMinutes <= openMinutes) {
-        // 24h session, or cross-day: close is at that time the NEXT day.
-        const closeDay = (day + 1) % 7;
-        const closeMow = minuteOfWeek(closeDay, closeTime.hour, closeTime.minute);
-        events.push({ minuteOfWeek: closeMow, type: "close" });
+      const start = minuteOfWeek(day, openTime.hour, openTime.minute);
+      const end = start + duration;
+      if (end <= MINUTES_PER_WEEK) {
+        intervals.push({ start, end });
       } else {
-        // Same-day session
-        const closeMow = minuteOfWeek(day, closeTime.hour, closeTime.minute);
-        events.push({ minuteOfWeek: closeMow, type: "close" });
+        intervals.push({ start, end: MINUTES_PER_WEEK });
+        intervals.push({ start: 0, end: end - MINUTES_PER_WEEK });
       }
     }
   }
 
-  // Sort by minute-of-week; ties: close before open (so a close+open at same
-  // time means the old session ends and new one begins — but for forex continuous
-  // we want them to cancel out / merge).
-  events.sort((a, b) => {
-    if (a.minuteOfWeek !== b.minuteOfWeek) return a.minuteOfWeek - b.minuteOfWeek;
-    // close before open at the same time
-    return a.type === "close" ? -1 : 1;
-  });
+  if (intervals.length === 0) return [];
 
-  // Merge: remove close+open pairs at the same minute-of-week (forex continuous)
-  return mergeAdjacentEvents(events);
-}
-
-/**
- * Remove close/open pairs that occur at the same minuteOfWeek.
- * This handles forex-style continuous sessions where adjacent sessions
- * close and open at the same time, effectively merging them.
- */
-function mergeAdjacentEvents(events: WeeklyEvent[]): WeeklyEvent[] {
-  const result: WeeklyEvent[] = [];
-  let i = 0;
-  while (i < events.length) {
-    const curr = events[i];
-    const next = events[i + 1];
-    if (
-      curr !== undefined &&
-      next !== undefined &&
-      curr.minuteOfWeek === next.minuteOfWeek &&
-      curr.type === "close" &&
-      next.type === "open"
-    ) {
-      // Close+open at same time → cancel out (merge)
-      i += 2;
+  intervals.sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: { start: number; end: number }[] = [];
+  for (const iv of intervals) {
+    const last = merged[merged.length - 1];
+    // `>=` merges touching intervals too: a close and an open at the same
+    // minute is one continuous stretch, not a zero-length gap.
+    if (last !== undefined && iv.start <= last.end) {
+      if (iv.end > last.end) last.end = iv.end;
     } else {
-      if (curr !== undefined) result.push(curr);
-      i++;
+      merged.push({ ...iv });
     }
   }
-  return result;
+
+  // The split above can leave a run ending at the week boundary and another
+  // starting at 0; on the circle those are one stretch.
+  const first = merged[0]!;
+  const last = merged[merged.length - 1]!;
+  if (merged.length > 1 && first.start === 0 && last.end === MINUTES_PER_WEEK) {
+    first.start = last.start - MINUTES_PER_WEEK;
+    merged.pop();
+  }
+
+  // Fully covered week ⇒ never closes. An empty event list is how
+  // `computeScheduledStatus` recognises 24/7 (and still applies holidays).
+  if (merged.length === 1 && merged[0]!.end - merged[0]!.start >= MINUTES_PER_WEEK) {
+    return [];
+  }
+
+  const events: WeeklyEvent[] = [];
+  for (const iv of merged) {
+    events.push({
+      minuteOfWeek: ((iv.start % MINUTES_PER_WEEK) + MINUTES_PER_WEEK) % MINUTES_PER_WEEK,
+      type: "open",
+    });
+    events.push({ minuteOfWeek: iv.end % MINUTES_PER_WEEK, type: "close" });
+  }
+  events.sort((a, b) => a.minuteOfWeek - b.minuteOfWeek || (a.type === "close" ? -1 : 1));
+  return events;
 }
 
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
@@ -794,16 +864,27 @@ function findNextNonHolidayOpen(
   const opens = events.filter((e) => e.type === "open");
   if (opens.length === 0) return null;
 
-  // Each open resolved to a real instant ONCE, then walked in chronological
-  // order. Later weeks re-resolve through `occurrence` rather than adding a
-  // fixed week of milliseconds — a calendar week spanning a DST change is not
-  // 604_800_000 ms, and the resulting instant is fed straight back into the
-  // holiday test, where an hour's drift can land on the wrong local date.
+  // Chronological order is knowable WITHOUT resolving anything: within a week
+  // the opens are ordered by how far ahead their minute-of-week sits, and the
+  // weeks are already in order. So sort by that offset once and resolve
+  // lazily — the common case answers on the first candidate instead of
+  // resolving every open for three weeks (each resolution costs 1-3
+  // `Intl.formatToParts`, and this runs per market on a markets-list request).
+  //
+  // Resolution goes through `occurrence` rather than adding a fixed week of
+  // milliseconds: a calendar week spanning a DST change is not 604_800_000 ms,
+  // and the instant feeds straight back into the holiday test, where an hour's
+  // drift can land on the wrong local date.
+  const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
+  const ordered = [...opens].sort((a, b) => {
+    const da = (a.minuteOfWeek - nowMow + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
+    const db = (b.minuteOfWeek - nowMow + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
+    return da - db;
+  });
+
   for (let week = 0; week < LOOKAHEAD_WEEKS; week++) {
-    const candidates = opens
-      .map((ev) => nextLocalMinuteOfWeek(now, timezone, ev.minuteOfWeek, week, local))
-      .sort((a, b) => a.ms - b.ms);
-    for (const candidate of candidates) {
+    for (const ev of ordered) {
+      const candidate = nextLocalMinuteOfWeek(now, timezone, ev.minuteOfWeek, week, local);
       if (!isHoliday(holidaySet, candidate.at)) return candidate.ms;
     }
   }

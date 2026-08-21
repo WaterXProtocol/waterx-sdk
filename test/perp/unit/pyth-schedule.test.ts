@@ -162,6 +162,30 @@ describe("parsePythSchedule", () => {
     expect(tradingHours.holidays).toEqual([{ month: 1, day: 1 }]);
   });
 
+  it("REFUSES to guess when two runs could equally own the surplus", () => {
+    // The legacy comma form of Pyth's FX week: 8 tokens, and BOTH the leading
+    // pair and the trailing pair are a valid two-session day. Leftmost-greedy
+    // assigns it to Monday, rightmost-greedy to Sunday, and each silently
+    // produces a plausible-but-wrong weekly calendar that still has 7 slots.
+    // A wrong calendar reports a closed venue as tradable, so this throws
+    // rather than picking a side.
+    const ambiguous = "America/New_York;0000-1700,1701-2400,O,O,O,O,0000-1700,1701-2400;";
+    expect(() => parsePythSchedule(ambiguous)).toThrow(PythScheduleParseError);
+    expect(() => parsePythSchedule(ambiguous)).toThrow(/ambiguous weekday fold/);
+  });
+
+  it("accepts long-form and lower-case holiday closures, not just `C`", () => {
+    // `keywordDay` already takes Closed/C/closed for weekdays. Accepting only
+    // the single letter here would silently reclassify a closure as modified
+    // hours and DROP it — the venue then renders open on the holiday.
+    for (const spelling of ["C", "c", "Closed", "closed"]) {
+      const { tradingHours } = parsePythSchedule(
+        `America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,C;1225/${spelling}`,
+      );
+      expect(tradingHours.holidays).toEqual([{ month: 12, day: 25 }]);
+    }
+  });
+
   it('ignores non-MMDD sentinel values in holidays (e.g. Pyth "0")', () => {
     const input =
       "America/New_York;0000-1700&1800-2400,0000-1700&1800-2400,0000-1700&1800-2400,0000-1700&1800-2400,0000-1700,C,1800-2400;0";
@@ -169,10 +193,13 @@ describe("parsePythSchedule", () => {
     expect(tradingHours.holidays).toBeUndefined();
   });
 
-  it("folds a surplus comma-joined session into the LATEST day, not the first", () => {
+  it("folds a surplus comma-joined session into the ONLY day that can take it", () => {
     // Mon–Fri 09:30–16:00, Sat closed, Sun 00:00-12:00 + 13:00-24:00 — eight
-    // tokens for seven days. Leftmost-greedy folding gave Monday two sessions,
-    // dropped Friday, reported Saturday open, and emitted a duplicate weekday.
+    // tokens for seven days. Exactly one run of adjacent ranges can absorb the
+    // surplus by collapsing whole (`0000-1200,1300-2400`); the Mon–Fri run is
+    // five tokens and would have to choose WHICH pair merges, so it is not a
+    // candidate. Leftmost-greedy folding used to give Monday two sessions,
+    // drop Friday, report Saturday open, and emit a duplicate weekday.
     const { tradingHours } = parsePythSchedule(
       "America/New_York;0930-1600,0930-1600,0930-1600,0930-1600,0930-1600,C,0000-1200,1300-2400;",
     );

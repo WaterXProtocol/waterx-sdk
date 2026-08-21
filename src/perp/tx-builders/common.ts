@@ -98,9 +98,29 @@ export async function refreshWlpPoolOracles(
   const oracleTickers = Array.from(
     new Set([...extraTickers, ...pricedTokens.map((token) => token.ticker)]),
   );
+  // Deliberately BEFORE the emptiness guard below: when a caller-supplied
+  // ticker is the unservable one, `refreshOraclePrices` names it exactly, and
+  // that beats the generic pool-wide message.
   await refreshOraclePrices(tx, client, oracleTickers, {
     updateDataProvider: opts.updateDataProvider,
   });
+
+  // No priced tokens while the pool HAS tokens means the fed set can price
+  // none of them, and nothing above caught it. That case is otherwise SILENT:
+  // `refreshOraclePrices` early-returns on an empty ticker list and the bump
+  // loop has nothing to iterate, so the PTB is built with no oracle legs at
+  // all and aborts on chain instead — at `assert_prices_fresh`, naming
+  // nothing useful. Fail while the config fault is still visible.
+  const poolTokens = client.config.packages.wlp?.pool_tokens ?? {};
+  if (pricedTokens.length === 0 && Object.keys(poolTokens).length > 0) {
+    throw new Error(
+      `oracleSource [${client.oracleSources.join(", ")}] can price NONE of the WLP pool ` +
+        `tokens [${Object.keys(poolTokens).join(", ")}] — this build would emit no ` +
+        `update_token_value leg and abort EStalePrice on chain. Check that pool_tokens is ` +
+        `keyed by oracle ticker and that a listed source carries those feeds.`,
+    );
+  }
+
   for (const { tokenType } of pricedTokens) {
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
   }

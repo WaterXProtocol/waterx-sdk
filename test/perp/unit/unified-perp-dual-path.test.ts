@@ -16,12 +16,12 @@ import {
   perpDualPathCases,
 } from "../helpers/unified/perp-dual-path-cases.ts";
 
+// `(tx, client, ...)`-shaped helpers rather than client-first builders, so the
+// dual-path equivalence contract does not apply to them.
 const NON_CLIENT_FIRST = new Set([
   "extractReturnBytes",
-  "openPythSponsorFund",
-  "reimbursePythSponsor",
   "refreshOraclePrices",
-  "updatePythPrices",
+  "refreshWlpPoolOracles",
   // Async gRPC sweep helpers — covered in tx-builders.test.ts with mocked getBalance/listCoins.
   "appendConsolidateToUsd",
   "appendConsolidateAddressCredit",
@@ -45,7 +45,7 @@ const expectedPerpBuilders = fnNames({
   ...perpStaking,
   ...perpReferral,
   ...perpTx,
-}).filter((n) => !NON_CLIENT_FIRST.has(n) && n !== "PythCache");
+}).filter((n) => !NON_CLIENT_FIRST.has(n));
 const expectedAccountBuilders = fnNames({ ...accountOps }).filter((n) => !NON_CLIENT_FIRST.has(n));
 
 describe("unified Client — perp dual-path PTB equivalence", () => {

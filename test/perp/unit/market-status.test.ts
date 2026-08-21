@@ -9,6 +9,7 @@ import { MS_PER_HOUR } from "../../../src/constants.ts";
 import {
   getMarketStatus,
   parsePythSchedule,
+  PythScheduleParseError,
   type MarketStatusResult,
   type TradingHours,
 } from "../../../src/oracle/schedule.ts";
@@ -58,6 +59,70 @@ const FOREX_HOURS: TradingHours = {
 // ---------------------------------------------------------------------------
 // Test Suite
 // ---------------------------------------------------------------------------
+
+describe("getMarketStatus — overlapping and duplicated sessions", () => {
+  // Events used to be derived by cancelling a `close`+`open` pair at the same
+  // minute-of-week. That assumes the sorted list alternates. Two sessions
+  // ENDING at the same minute put two closes in a row, the pairwise scan then
+  // ate the following open, and the market read CLOSED for a session that is
+  // open — silently, because the surviving list is still well-formed.
+  // Coverage-merging cannot express that.
+  const OVERLAPPING: TradingHours = {
+    timezone: "America/New_York",
+    sessions: [
+      { open: "09:00", close: "12:00", days: [1] },
+      { open: "10:00", close: "12:00", days: [1] }, // ends at the same minute
+      { open: "12:00", close: "16:00", days: [1] }, // starts there
+    ],
+  };
+
+  it("stays OPEN through a session that begins where two others end", () => {
+    // 13:00 Monday sits inside 12:00-16:00.
+    expect(getMarketStatus(OVERLAPPING, false, etDate(2026, 3, 2, 13, 0)).status).toBe("open");
+  });
+
+  it("treats the whole overlapping span as one continuous session", () => {
+    // 09:00 through 16:00 is covered by the union, so the only close is 16:00.
+    for (const hour of [9, 10, 11, 12, 14, 15]) {
+      expect(getMarketStatus(OVERLAPPING, false, etDate(2026, 3, 2, hour, 30)).status).toBe("open");
+    }
+    expect(getMarketStatus(OVERLAPPING, false, etDate(2026, 3, 2, 16, 30)).status).toBe("closed");
+    expect(getMarketStatus(OVERLAPPING, false, etDate(2026, 3, 2, 8, 30)).status).toBe("closed");
+  });
+
+  it("collapses an exactly duplicated session to the same result as one copy", () => {
+    const once: TradingHours = {
+      timezone: "America/New_York",
+      sessions: [{ open: "09:30", close: "16:00", days: [1, 2, 3, 4, 5] }],
+    };
+    const twice: TradingHours = {
+      timezone: "America/New_York",
+      sessions: [
+        { open: "09:30", close: "16:00", days: [1, 2, 3, 4, 5] },
+        { open: "09:30", close: "16:00", days: [1, 2, 3, 4, 5] },
+      ],
+    };
+    for (const hour of [8, 10, 15, 17]) {
+      const at = etDate(2026, 3, 2, hour, 0);
+      expect(getMarketStatus(twice, false, at)).toEqual(getMarketStatus(once, false, at));
+    }
+  });
+});
+
+describe("getMarketStatus — rehydrated schedules", () => {
+  it("rejects an unusable timezone instead of throwing a raw RangeError", () => {
+    // `TradingHours` crosses process boundaries (cached JSON, BE markets
+    // types), so it reaches the walker WITHOUT having gone through
+    // `parsePythSchedule` — where the timezone check lives. An uncaught
+    // `RangeError` out of `Intl` would take down a whole markets response over
+    // one bad row, and escape the try/catch callers put around the parser.
+    const bad: TradingHours = {
+      timezone: "Not/AReal_Zone",
+      sessions: [{ open: "09:30", close: "16:00", days: [1, 2, 3, 4, 5] }],
+    };
+    expect(() => getMarketStatus(bad, false, new Date())).toThrow(PythScheduleParseError);
+  });
+});
 
 describe("getMarketStatus — degenerate event lists", () => {
   it("a venue with NO sessions is closed, not open", () => {

@@ -42,7 +42,15 @@ export async function fetchPythProHistory(opts: {
   url.searchParams.set("resolution", opts.resolution);
   url.searchParams.set("from", String(opts.fromSec));
   url.searchParams.set("to", String(opts.toSec));
-  const res = await fetchWithPolicy(url.toString(), {}, { apiKey: opts.apiKey, ...opts.fetch });
+  // `opts.fetch` is the full `FetchPolicy`, which itself has an `apiKey`, so
+  // spreading it AFTER the explicit one let `{ fetch: { apiKey: undefined } }`
+  // silently strip the Bearer this endpoint requires — a 403 with no clue why.
+  // The dedicated argument wins; the policy supplies it only as a fallback.
+  const res = await fetchWithPolicy(
+    url.toString(),
+    {},
+    { ...opts.fetch, apiKey: opts.apiKey ?? opts.fetch?.apiKey },
+  );
   if (!res.ok) {
     throw new Error(`Pyth Pro history fetch failed: ${res.status} ${await res.text()}`);
   }

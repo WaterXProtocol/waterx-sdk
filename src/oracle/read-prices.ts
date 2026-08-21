@@ -148,7 +148,7 @@ export async function readLazerPrices(opts: {
 }
 
 /**
- * Read prices for `symbols` (oracle tickers — the `"quote_center"` arm of
+ * Read prices for `tickers` (the `"quote_center"` arm of
  * `resolveOracleReadPlan`) through {@link pullWaterxQuotes}, the rule-owned
  * route ladder the write path uses: per-symbol Merkle leaves by default, the
  * batch envelope only against a quote-center with no leaf route. Public read,
@@ -170,15 +170,22 @@ export async function readLazerPrices(opts: {
  */
 export async function readQuoteCenterPrices(opts: {
   endpoint: string;
-  symbols: string[];
+  /**
+   * Oracle TICKERS, per the repo convention — this is the consumer boundary,
+   * fed directly by `readPlanTickers(plan)`, and naming the same values
+   * `symbols` here made every call site cross a rename. Below this point the
+   * wire helpers keep `symbols`: that mirrors the literal `?symbols=` query
+   * parameter and the `symbol` field the quote-center returns.
+   */
+  tickers: string[];
   fetch?: FetchPolicy;
 }): Promise<Map<string, OraclePriceEntry>> {
   const out = new Map<string, OraclePriceEntry>();
-  if (opts.symbols.length === 0) return out;
+  if (opts.tickers.length === 0) return out;
 
-  const { items } = await pullWaterxQuotes(opts.endpoint, opts.symbols, opts.fetch);
+  const { items } = await pullWaterxQuotes(opts.endpoint, opts.tickers, opts.fetch);
 
-  const requested = new Set(opts.symbols);
+  const requested = new Set(opts.tickers);
   for (const item of items) {
     if (!requested.has(item.symbol)) continue;
     out.set(item.symbol, {

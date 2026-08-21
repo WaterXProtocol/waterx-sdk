@@ -216,11 +216,15 @@ export function aggregateTickerWithConstant(
  * source's feeds is caught here.
  *
  * Each source's fetch + build runs against its own infra, guaranteeing
- * per-rule PTB atomicity. A credential pre-check runs first: any non-empty
- * group whose rule declares a `credential` the host does not carry while
- * `host.pyth.api_key` is unset throws `LazerApiKeyMissing` BEFORE any
- * off-chain fetch or PTB mutation — zero wasted network calls, zero stray
- * moveCalls. Only once that check passes do the off-chain fetches run — in
+ * per-rule PTB atomicity. A credential pre-check runs early: any group that
+ * still needs to fetch, whose rule declares a `credential` the host does not
+ * carry while `host.pyth.api_key` is unset, throws `LazerApiKeyMissing`
+ * BEFORE any ORACLE fetch or PTB mutation — zero wasted oracle calls, zero
+ * stray moveCalls. (With an `updateDataProvider` configured, its per-source
+ * lookups run first so the check can be scoped to the groups the cache did
+ * NOT serve; a consumer-implemented provider may do I/O of its own, so the
+ * guarantee is about oracle fetches, not about every possible round trip.)
+ * Only once that check passes do the off-chain fetches run — in
  * parallel across sources — and ALL settle before the first PTB mutation;
  * on-chain reads inside `buildUpdateCalls` can still fail mid-append for
  * other reasons — callers discard the tx on any throw.
@@ -307,15 +311,21 @@ export async function refreshOraclePrices(
     );
   }
 
-  // Credential pre-check, hoisted ABOVE the off-chain fetches and PTB build
-  // below (the position the retired fee-source pre-check held). It consults
-  // only `rule.credential` — known before any fetch or PTB mutation — so a
-  // keyless build against an auth-first source (Lazer) in the fed set throws
-  // with ZERO wasted network calls and zero PTB commands, rather than waiting
-  // for that group's own fetch guard to fire after sibling groups' fetches
-  // already ran. Fully generic: the kind→value mapping is the port's
+  // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below
+  // (the position the retired fee-source pre-check held). It consults only
+  // `rule.credential` — known without fetching anything — so a keyless build
+  // against an auth-first source (Lazer) in the fed set throws with ZERO
+  // wasted ORACLE calls and zero PTB commands, rather than waiting for that
+  // group's own fetch guard to fire after sibling groups' fetches already ran.
+  // Fully generic: the kind→value mapping is the port's
   // (`oracleCredentialsFromHost`) and the ERROR is the rule's own, so this
   // loop names neither a credential kind nor a rule.
+  //
+  // It does NOT run before absolutely everything, and cannot: scoping it to
+  // the groups that still need to fetch means knowing which ones the cache
+  // served, and `UpdateDataProvider` is consumer-implemented, so its lookup
+  // may do I/O. That is the trade — a provider round trip may precede the
+  // throw, an oracle fetch never does — and it buys the scoping below.
   //
   // The check is scoped to the groups that will actually FETCH. An
   // `updateDataProvider` is a per-SOURCE cache (`get(source, tickers)`), so a

@@ -22,6 +22,13 @@ export * from "./tx-builders/wlp.ts";
 export * from "./tx-builders/rewards.ts";
 export * from "./tx-builders/credit.ts";
 
-// Oracle helper re-exported for callers composing custom PTBs (the
+// Oracle helpers re-exported for callers composing custom PTBs (the
 // shared-refresh composition — see `CommonBuildOpts.skipOraclePriceRefresh`).
 export { refreshOraclePrices } from "../oracle/index.ts";
+
+// The WLP pool-freshness leg. Public because any custom WLP PTB needs it and
+// hand-rolling it is a trap: the refresh set and the `update_token_value` set
+// must be identical AND filtered through the fed set (see
+// `PerpClient.pricedPoolTokens`), which the obvious
+// `Object.keys(pool_tokens)` form gets wrong in both directions.
+export { refreshWlpPoolOracles } from "./tx-builders/common.ts";

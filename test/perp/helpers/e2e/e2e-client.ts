@@ -6,7 +6,7 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
-import { parseOracleSourceList, type OracleSource } from "../../../../src/oracle/index.ts";
+import { oracleSourceFromEnv } from "../../../../scripts/load-repo-env.ts";
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
 import { resolveE2eNetwork, type E2eNetwork } from "./e2e-network.ts";
@@ -89,22 +89,13 @@ let clientInitPromise: Promise<PerpClient> | undefined;
  * etc. without triggering a `PerpClient.create` (and its `loadConfig`, which
  * now requires a config URL). The config load happens only on first call.
  */
-/**
- * The e2e fed set, from `ORACLE_SOURCE` at this harness boundary (the SDK
- * never reads env). Default `waterx_rule` — keyless, live on both networks.
- */
-function resolveE2eOracleSources(): OracleSource[] {
-  const raw = process.env.ORACLE_SOURCE?.trim();
-  return raw ? parseOracleSourceList(raw) : ["waterx_rule"];
-}
-
 export function clientInit(): Promise<PerpClient> {
   if (!clientInitPromise) {
     clientInitPromise = (async () => {
       const grpcUrl = resolveE2eGrpcUrlOverride();
       const pythApiKey = process.env.PYTH_API_KEY?.trim() || undefined;
       const c = await PerpClient.create(networkToClientKey(e2eNetwork), {
-        oracleSource: resolveE2eOracleSources(),
+        oracleSource: oracleSourceFromEnv(),
         cache: true,
         waterxConfigUrl: resolveE2eWaterxConfigUrl(),
         ...(pythApiKey ? { pythApiKey } : {}),

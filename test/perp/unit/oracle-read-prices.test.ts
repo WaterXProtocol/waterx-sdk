@@ -199,7 +199,7 @@ describe("readQuoteCenterPrices", () => {
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
-      symbols: ["BTCUSD"],
+      tickers: ["BTCUSD"],
     });
 
     const url = new URL(String(spy.mock.calls[0]![0]));
@@ -219,7 +219,7 @@ describe("readQuoteCenterPrices", () => {
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
-      symbols: ["BTCUSD", "XAUUSD"],
+      tickers: ["BTCUSD", "XAUUSD"],
     });
 
     expect(requestedPaths(spy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
@@ -235,7 +235,7 @@ describe("readQuoteCenterPrices", () => {
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
-      symbols: ["XAUUSD"],
+      tickers: ["XAUUSD"],
     });
 
     expect(out.get("XAUUSD")).toEqual({
@@ -250,7 +250,7 @@ describe("readQuoteCenterPrices", () => {
 
     const out = await readQuoteCenterPrices({
       endpoint: "https://qc.example",
-      symbols: ["BTCUSD"],
+      tickers: ["BTCUSD"],
     });
 
     expect([...out.keys()]).toEqual(["BTCUSD"]);
@@ -259,7 +259,7 @@ describe("readQuoteCenterPrices", () => {
   it("returns an empty map without fetching for an empty symbol list", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
     expect(
-      (await readQuoteCenterPrices({ endpoint: "https://qc.example", symbols: [] })).size,
+      (await readQuoteCenterPrices({ endpoint: "https://qc.example", tickers: [] })).size,
     ).toBe(0);
     expect(spy).not.toHaveBeenCalled();
   });
@@ -269,7 +269,7 @@ describe("readQuoteCenterPrices", () => {
 
     await readQuoteCenterPrices({
       endpoint: "https://app.example/api/quote-center",
-      symbols: ["BTCUSD"],
+      tickers: ["BTCUSD"],
     });
 
     expect(new URL(String(spy.mock.calls[0]![0])).pathname).toBe(

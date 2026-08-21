@@ -118,6 +118,10 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
   `update_token_value` for MUST be identical (`update_token_value` reads
   `oracle::get_price`, which aborts `EStalePrice` without a same-PTB aggregate), so
   deriving both from one list makes that divergence unrepresentable.
+- **`refreshWlpPoolOracles(tx, client, extraTickers, opts)`** — the WLP
+  pool-freshness leg, now public. Three call sites had hand-rolled it over raw
+  `Object.keys(pool_tokens)`, which gets the fed-set filtering wrong in both
+  directions.
 - **`pullWaterxQuotes(endpoint, symbols, fetch?)`** — the quote-center route ladder
   (per-symbol Merkle leaves by default, one batch envelope only against a
   quote-center with no leaf route) as a single rule-owned export. The write path
@@ -126,6 +130,38 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
 
 ### Fixed
 
+- **The weekday fold no longer guesses.** A comma-joined schedule with more than 7
+  tokens is ambiguous whenever two runs of adjacent ranges could each own the
+  surplus — leftmost-greedy and rightmost-greedy each produce a plausible but WRONG
+  weekly calendar, with 7 slots so nothing throws, and a wrong calendar reports a
+  closed venue as tradable. A fold now applies only when exactly one run can absorb
+  the surplus by collapsing whole; anything else raises `PythScheduleParseError`.
+  (Live Pyth is unaffected: all 3619 catalog schedules carry exactly 7 tokens and
+  encode multi-session days with `&`.)
+- **Weekly events are derived from merged open INTERVALS**, not by cancelling
+  `close`+`open` event pairs. The pairwise form assumed the sorted list alternates;
+  two sessions ending at the same minute put two closes in a row, the scan ate the
+  following open, and the market read CLOSED for a session that is open.
+- **`getMarketStatus` validates the timezone.** `TradingHours` crosses process
+  boundaries (cached JSON, consumers' own types), so it reaches the walker without
+  passing through `parsePythSchedule`. A bad zone raised a raw `RangeError` from
+  `Intl`, escaping the try/catch callers put around the parser; it now raises
+  `PythScheduleParseError`.
+- **Holiday closures accept `C` / `c` / `Closed` / `closed`**, matching `keywordDay`.
+  Accepting one spelling here and three there silently reclassified a closure as
+  modified hours and DROPPED it, rendering the venue open on the holiday.
+- **`parseSignedEnvelope` rejects a missing `timestamp_ms` and malformed items.**
+  `timestamp_ms` is signed over, so defaulting it to `0n` produced an unverifiable
+  batch that surfaced as an opaque on-chain `EInvalidSignature`; unvalidated items
+  threw inside `newItemArg` mid-PTB-build, after commands were appended.
+- **An explicit `apiKey` / `timeoutMs` is no longer overridable by the policy
+  spread.** `{ apiKey, ...opts.fetch }` let `{ fetch: { apiKey: undefined } }` strip
+  the Bearer that Pyth Pro history requires (403 with no clue why); the catalog
+  reader had the same hazard with its deliberately generous timeout.
+- **WLP builds fail at BUILD when the fed set can price no pool token.** Previously
+  the refresh early-returned on an empty ticker list and the bump loop had nothing
+  to iterate, so the PTB was built with no oracle legs and aborted `EStalePrice`
+  on chain instead.
 - **`refreshOraclePrices` skipped the credential check for the WHOLE fed set** when
   an `updateDataProvider` was configured. A provider is keyed by SOURCE
   (`get(source, tickers)`), so a consumer caching one source and holding no
@@ -141,6 +177,9 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
   `constant_rule` pins it). The old helper keyed off "any rule's feeds block exists",
   so a pool token that only an UNLISTED source served was handed to a refresh that
   then threw `no feed configured` mid-build.
+- **`readQuoteCenterPrices` takes `tickers`, not `symbols`** — the repo convention
+  for trading pairs, and what `readPlanTickers(plan)` already returns. The wire
+  helpers below it keep `symbols`, mirroring the literal `?symbols=` parameter.
 - **`readLazerPrices`'s `network` is now REQUIRED.** It selects the Lazer endpoint AND
   the channel, and a plan's integer feed ids are network-specific, so the previous
   silent `"MAINNET"` default could read mainnet infra with testnet ids and no error.

@@ -60,10 +60,14 @@ export async function fetchPythSymbolCatalog(opts?: {
   fetch?: FetchPolicy;
 }): Promise<PythSymbolRecord[]> {
   const url = joinEndpointPath(PYTH_PRO_API_ENDPOINT, "v1/symbols");
+  // Same ordering hazard as the history reader: spreading the caller's policy
+  // over the default let `{ timeoutMs: undefined }` revert the deliberately
+  // generous catalog budget to the 15s money-path default, which this ~4.6MB
+  // body does not fit. An explicit value still wins; absence does not.
   const res = await fetchWithPolicy(
     url.toString(),
     {},
-    { timeoutMs: CATALOG_TIMEOUT_MS, ...opts?.fetch },
+    { ...opts?.fetch, timeoutMs: opts?.fetch?.timeoutMs ?? CATALOG_TIMEOUT_MS },
   );
   if (!res.ok) {
     throw new Error(`Pyth symbol catalog fetch failed: ${res.status} ${await res.text()}`);
