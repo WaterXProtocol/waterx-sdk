@@ -35,16 +35,16 @@ export interface OracleHost {
   /** gRPC client for any on-chain reads an update path needs. */
   readonly grpcClient: SuiGrpcClient;
   /**
-   * The FED SET for `refreshOraclePrices`'s update legs — the REQUIRED
-   * Derived from the deployment config (`deriveOracleSources`).
-   * Every listed source's data is fetched and fed in one build; the chain's
+   * The FED SET for `refreshOraclePrices`'s update legs, derived from the
+   * deployment config (`deriveOracleSources`) — never a create option and
+   * never an env var.
+   *
+   * Every derived source's data is fetched and fed in one build; the chain's
    * per-ticker weight tables decide which contributions count (feeding an
-   * unweighted rule is dropped on-chain; starving a weighted one aborts), so
-   * during weight migrations the list stays a SUPERSET of every ticker's
-   * weighted set. Routing is driven by this value ALONE: never by a config
-   * JSON `enabled` flag and never by `process.env` — the SDK never reads it;
-   * consumers (BE/FE) wire this option from their own env var
-   * (`ORACLE_SOURCE`, comma-separated).
+   * unweighted rule is dropped on-chain; starving a weighted one aborts).
+   * Deriving the maximal wired set is therefore the fail-safe direction, and
+   * it keeps the fed set a SUPERSET of every ticker's weighted set through a
+   * weight migration for free.
    */
   readonly oracleSources: readonly OracleSource[];
 

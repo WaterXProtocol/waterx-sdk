@@ -158,20 +158,6 @@ export interface ClientCreateOptions {
   /** Memoize the fetched config JSON. */
   cache?: boolean;
   /**
-   * The perp line's oracle price-update source (perp-line only — the
-   * prediction line has no oracle leg), forwarded to `PerpClient.create`.
-   * REQUIRED — there is NO default source: every deployment names its source
-   * explicitly (wire it from your own env var, e.g. `ORACLE_SOURCE`).
-   * Source-neutral by design: a source need not be Pyth (see `'waterx_rule'`).
-   *
-   * - `'pyth_lazer_rule'` — Pyth Lazer signed updates (pair with `pythApiKey`
-   *   and a config carrying `packages.pyth_lazer_rule`); infra in the
-   *   source's own `LAZER_INFRA` table.
-   * - `'waterx_rule'` — the first-party WaterX quote-center (Nautilus-TEE,
-   *   ed25519 signed batches; no credential, no per-update fee); infra in the
-   *   source's own `WATERX_INFRA` table. Pair with `waterxEndpoint` /
-   *   `waterxFetch` when the browser needs a proxy.
-  /**
    * Pyth Lazer access token, forwarded to the perp line. Required when the
    * deployment's config wires `pyth_lazer_rule`, unused otherwise. A SECRET —
    * pass it at init from your own env var; it is never read from the config

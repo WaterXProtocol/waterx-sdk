@@ -9,6 +9,7 @@ import { Transaction, type TransactionArgument } from "@mysten/sui/transactions"
 import { appendConsolidateForSpend } from "../../account/funding/consolidate.ts";
 import {
   OracleTickerUnservedError,
+  partitionServableTickers,
   refreshOraclePrices,
   type OracleRefreshSummary,
   type UpdateDataProvider,
@@ -109,12 +110,14 @@ export function assertTickersRefreshed(
   summary: OracleRefreshSummary,
   required: string[],
   opts: CommonBuildOpts | undefined,
+  /** Appended to the error, to say why THESE tickers were load-bearing. */
+  why?: string,
 ): void {
   if (opts?.allowUnrefreshedPrices) return;
   const skipped = new Set(summary.skipped);
   const unserved = [...new Set(required)].filter((ticker) => skipped.has(ticker));
   if (unserved.length > 0) {
-    throw new OracleTickerUnservedError(unserved, client.oracleSources);
+    throw new OracleTickerUnservedError(unserved, client.oracleSources, why);
   }
 }
 
@@ -142,26 +145,16 @@ export function assertWlpPoolRefreshed(
   summary: OracleRefreshSummary,
   opts: CommonBuildOpts | undefined,
 ): void {
-  if (opts?.allowUnrefreshedPrices) return;
-  const poolTickers = Object.keys(client.config.packages.wlp?.pool_tokens ?? {});
-  if (poolTickers.length === 0) return;
-
-  const priceable = new Set(client.pricedPoolTickers());
-  const skipped = new Set(summary.skipped);
-  // Two distinct faults, both fatal, reported together: an asset no rule in
-  // this config wires AT ALL (so it never even reached the refresh), and one
-  // the refresh reached but no LISTED source could serve.
-  const unpriceable = poolTickers.filter((t) => !priceable.has(t));
-  const unserved = poolTickers.filter((t) => skipped.has(t));
-  if (unpriceable.length === 0 && unserved.length === 0) return;
-
-  throw new OracleTickerUnservedError(
-    [...new Set([...unpriceable, ...unserved])],
-    client.oracleSources,
-    unpriceable.length > 0
-      ? `WLP pool asset(s) ${unpriceable.join(", ")} have no fully-wired oracle rule in ` +
-          "this config at all, so they never reached the refresh. "
-      : "They are WLP pool assets, and mint/redeem values the WHOLE pool. ",
+  // Every pool asset is required — that IS the WLP-specific part. The general
+  // assert does the rest; there is no second class of fault to detect, because
+  // `refreshWlpPoolOracles` requests the whole pool, so anything this client
+  // cannot price is necessarily in `summary.skipped` already.
+  assertTickersRefreshed(
+    client,
+    summary,
+    Object.keys(client.config.packages.wlp?.pool_tokens ?? {}),
+    opts,
+    "They are WLP pool assets, and mint/redeem values the WHOLE pool. ",
   );
 }
 
@@ -178,25 +171,30 @@ export async function refreshWlpPoolOracles(
   tx: Transaction,
   client: PerpClient,
   extraTickers: string[],
-  opts: {
-    lpType?: string;
-    updateDataProvider?: UpdateDataProvider;
-    /** Build options, for the `allowUnrefreshedPrices` opt-out. */
-    build?: CommonBuildOpts;
-  },
+  /** The build's options — `lpType`, plus `allowUnrefreshedPrices` / `updateDataProvider`. */
+  opts: CommonBuildOpts & { lpType?: string },
 ): Promise<OracleRefreshSummary> {
   // EVERY pool asset is requested, not a pre-filtered subset. Filtering here
   // was the bug: a token the fed set cannot price was dropped from BOTH the
   // refresh and the bump, so nothing on chain objected (see
   // `assertWlpPoolRefreshed` for why `assert_prices_fresh` lets that through)
-  // and the mint was valued off a stale price. Ask for all of them, let the
-  // refresh skip what it must, then fail the build on the gap.
+  // and the mint was valued off a stale price. Ask for all of them, fail the
+  // build on any gap, then bump.
   const poolTokens = client.config.packages.wlp?.pool_tokens ?? {};
-  const oracleTickers = Array.from(new Set([...extraTickers, ...Object.keys(poolTokens)]));
+  // `refreshOraclePrices` dedupes its own input, so a plain concat is enough.
+  const oracleTickers = [...extraTickers, ...Object.keys(poolTokens)];
+
+  // BEFORE the fetch. `refreshOraclePrices` no longer throws on an unservable
+  // ticker (it skips and reports), so nothing is gained by waiting for it —
+  // and waiting costs the full off-chain fetch plus every collector/aggregate
+  // moveCall appended to a caller-supplied `tx`, all discarded on the throw.
+  // The predicate is pure config, so this is the same answer the summary would
+  // have given, for free.
+  assertWlpPoolRefreshed(client, plannedSummary(client, oracleTickers), opts);
+
   const summary = await refreshOraclePrices(tx, client, oracleTickers, {
     updateDataProvider: opts.updateDataProvider,
   });
-  assertWlpPoolRefreshed(client, summary, opts.build);
 
   // Past the assert, every pool asset was aggregated in THIS PTB, so every
   // bump's `oracle::get_price` resolves.
@@ -204,6 +202,19 @@ export async function refreshWlpPoolOracles(
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
   }
   return summary;
+}
+
+/**
+ * What {@link refreshOraclePrices} WOULD report for `tickers`, computed from
+ * config alone.
+ *
+ * Same predicate, same partition — so a pre-flight assert cannot disagree with
+ * the summary the refresh later returns, and a build destined to fail can fail
+ * before spending a network round trip or mutating the caller's transaction.
+ */
+function plannedSummary(client: PerpClient, tickers: string[]): OracleRefreshSummary {
+  const { servable, unservable } = partitionServableTickers(client, tickers);
+  return { refreshed: servable, skipped: unservable };
 }
 
 /**
@@ -238,9 +249,8 @@ export async function wrapRequestAndExecute(
 
   if (!opts?.skipOraclePriceRefresh) {
     const summary = await refreshWlpPoolOracles(tx, client, [req.ticker, collateralTicker], {
+      ...opts,
       lpType: req.lpType,
-      updateDataProvider: opts?.updateDataProvider,
-      build: opts,
     });
     // The action-critical pair for a trade: the market being traded and the
     // collateral it is margined in. `refreshWlpPoolOracles` already failed

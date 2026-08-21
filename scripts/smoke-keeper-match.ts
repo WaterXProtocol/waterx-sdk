@@ -53,7 +53,6 @@ import {
   MarketData,
   marketData as marketDataCall,
 } from "../src/generated/waterx_perp_view/view.ts";
-import { refreshOraclePrices } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
 import {
@@ -66,7 +65,7 @@ import {
   buildClosePositionTx,
   buildPlaceOrderTx,
   matchOrders,
-  updateTokenValue,
+  refreshWlpPoolOracles,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
 import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
@@ -298,15 +297,10 @@ async function main(): Promise<void> {
 
     // Pool freshness: refresh every pool token's oracle + base ticker, then
     // bump each pool token's last_price_refresh_timestamp so the in-call
-    // `assert_prices_fresh` passes.
-    const pricedTokens = client.pricedPoolTokens();
-    const oracleTickers = Array.from(
-      new Set([BTC, "USDCUSD", ...pricedTokens.map((token) => token.ticker)]),
-    );
-    await refreshOraclePrices(matchTx, client, oracleTickers);
-    for (const { tokenType } of pricedTokens) {
-      updateTokenValue(client, matchTx, { tokenType });
-    }
+    // `assert_prices_fresh` passes. One call — hand-rolling it is the trap
+    // `refreshWlpPoolOracles` exists to close (the refresh set and the bump
+    // set must not diverge, and neither may be pre-filtered).
+    await refreshWlpPoolOracles(matchTx, client, [BTC, "USDCUSD"], {});
 
     matchOrders(client, matchTx, {
       ticker: BTC,

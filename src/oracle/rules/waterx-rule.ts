@@ -103,7 +103,7 @@ export const WATERX_INFRA: Record<Network, { endpoint: string }> = {
 /**
  * The waterx source's quote-center base for `network` — the ONE accessor
  * consumers (BE/FE read planes) use when, and only when, their own
- * `ORACLE_SOURCE` resolves to `'waterx_rule'`. Under any other source the
+ * the config wires `waterx_rule`. Under any other source the
  * read endpoint is that source's own configuration — never this one.
  */
 export function waterxQuoteCenterEndpoint(network: Network): string {
@@ -225,15 +225,19 @@ function isWaterxLeafPayloadShape(payload: unknown): payload is WaterxLeafPayloa
 }
 
 /** Every u64 field of a leaf — each one is signed, so each must be present and exact. */
-const LEAF_U64_FIELDS = [
+/**
+ * The signed u64 fields every quote-center ITEM carries — the BCS bytes the
+ * enclave signed over. A leaf adds `signed_timestamp_ms` on top (see
+ * {@link isSignedLeafShape}); the batch envelope's items do not carry it.
+ */
+const BATCH_ITEM_U64_FIELDS = [
   "price_timestamp_ms",
   "price_n",
   "price_scale",
   "confidence_n",
   "confidence_scale",
   "max_source_deviation_bps",
-  "signed_timestamp_ms",
-] as const;
+] as const satisfies readonly (keyof WaterxBatchItem)[];
 
 /**
  * FULL structural check on a leaf, not just the fields the feed leg happens to
@@ -263,8 +267,15 @@ function isHexOfBytes(hex: unknown, bytes: number): boolean {
   return body.length === bytes * 2 && HEX_ONLY.test(body);
 }
 
-function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
-  const l = leaf as Record<string, unknown> | null;
+/**
+ * The ITEM half — every field the feed leg rebuilds into the BCS the enclave
+ * signed. Shared by BOTH wire doors: a leaf is an item plus its signature and
+ * proof material ({@link isSignedLeafShape}), and the batch envelope's items go
+ * through the same gate ({@link assertBatchItemShape}). One definition, so a
+ * new signed field cannot be validated at one door and waved through the other.
+ */
+function isBatchItemShape(item: unknown): item is WaterxBatchItem {
+  const l = item as Record<string, unknown> | null;
   if (typeof l !== "object" || l === null) return false;
   if (typeof l.symbol !== "string" || l.symbol === "") return false;
   if (typeof l.ticker !== "string" || l.ticker === "") return false;
@@ -285,10 +296,18 @@ function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
   // `sources` is a vector<u64>: exact bigints, like every other signed integer.
   if (!Array.isArray(l.sources) || l.sources.length === 0) return false;
   if (l.sources.some((s) => typeof s !== "bigint" || s < 0n)) return false;
-  for (const field of LEAF_U64_FIELDS) {
+  for (const field of BATCH_ITEM_U64_FIELDS) {
     const v = l[field];
     if (typeof v !== "bigint" || v < 0n) return false;
   }
+  return true;
+}
+
+function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
+  if (!isBatchItemShape(leaf)) return false;
+  const l = leaf as unknown as Record<string, unknown>;
+  const signedAt = l.signed_timestamp_ms;
+  if (typeof signedAt !== "bigint" || signedAt < 0n) return false;
   // ed25519 is always 64 bytes and the root is always a 32-byte keccak256; a
   // wrong-length signature is an on-chain abort, so it is rejected here.
   if (!isHexOfBytes(l.signature, 64)) return false;
@@ -398,28 +417,19 @@ export function parseSignedEnvelope(text: string): WaterxSignedEnvelope {
   };
 }
 
-/** Every field the feed leg reads off an item, and the type it must have. */
-const BATCH_ITEM_BIGINT_FIELDS = [
-  "price_timestamp_ms",
-  "price_n",
-  "price_scale",
-  "confidence_n",
-  "confidence_scale",
-  "max_source_deviation_bps",
-] as const satisfies readonly (keyof WaterxBatchItem)[];
-
-function assertBatchItemShape(item: WaterxBatchItem): void {
-  const label = typeof item?.symbol === "string" ? item.symbol : "<unknown symbol>";
-  if (typeof item?.symbol !== "string" || typeof item.ticker !== "string") {
-    throw new Error(`WaterX quote-center item ${label} is missing symbol/ticker`);
-  }
-  if (!Array.isArray(item.sources) || typeof item.method !== "string") {
-    throw new Error(`WaterX quote-center item ${label} is missing sources/method`);
-  }
-  for (const field of BATCH_ITEM_BIGINT_FIELDS) {
-    if (typeof item[field] !== "bigint") {
-      throw new Error(`WaterX quote-center item ${label} has a non-integer ${field}`);
-    }
+/**
+ * The envelope door's throwing form of {@link isBatchItemShape} — same gate the
+ * leaf door applies, so neither shape can carry a half-built item into a PTB.
+ */
+function assertBatchItemShape(item: unknown): asserts item is WaterxBatchItem {
+  if (!isBatchItemShape(item)) {
+    const symbol = (item as { symbol?: unknown } | null)?.symbol;
+    const label = typeof symbol === "string" ? symbol : "<unknown symbol>";
+    throw new Error(
+      `WaterX quote-center envelope item ${label} is malformed — expected symbol, ticker, ` +
+        `method, a u8 num_sources, a non-empty u64 sources vector, and integer ` +
+        `${BATCH_ITEM_U64_FIELDS.join(", ")}.`,
+    );
   }
 }
 

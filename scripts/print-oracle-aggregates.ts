@@ -120,10 +120,8 @@ function parseArgs(argv: string[]): {
   --testnet         Use TESTNET (pnpm oracle:aggregates:testnet).
   --mainnet         Use MAINNET (default when no network flag).
   --oracle-source   Price-update source(s) — comma-separated list = the fed set
-                    (default waterx_rule). Overrides ORACLE_SOURCE.
 
   Network precedence: --testnet / --mainnet → WATERX_E2E_NETWORK → mainnet.
-  Oracle source: --oracle-source → ORACLE_SOURCE → waterx_rule. Both accept a comma list.
   Lazer token: PYTH_API_KEY (required when the fed set includes pyth_lazer_rule).
 
   Dry-runs each ticker via gRPC simulateTransaction (no private key, no on-chain execution).
@@ -514,15 +512,14 @@ async function main() {
   const client = await PerpClient.create(network, {
     cache: true,
     waterxConfigUrl,
-    // The SDK's oracleSource is required (no default) — this diagnostic script
-    // defaults its own flag to waterx_rule (keyless) so bare invocations keep
-    // working.
+    // The fed set is derived from the loaded config, so a bare invocation
+    // reports exactly what that deployment feeds.
     ...(pythApiKey !== undefined ? { pythApiKey } : {}),
   });
 
   if (client.oracleSources.includes("pyth_lazer_rule") && !pythApiKey) {
     throw new Error(
-      "oracleSource is pyth_lazer_rule but PYTH_API_KEY is unset — set it in the env (or .env.local)",
+      "the config wires pyth_lazer_rule but PYTH_API_KEY is unset — set it in the env (or .env.local)",
     );
   }
 

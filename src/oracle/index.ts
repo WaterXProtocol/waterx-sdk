@@ -64,10 +64,10 @@ export type { OraclePriceEntry } from "./read-prices.ts";
 // `instanceof`-able, same rationale as above). Deliberately NOT called at
 // client creation — see `validate.ts`'s header.
 export {
-  OracleFedSetError,
   OracleTickerUnservedError,
   assertOracleWriteCoverage,
   missingOracleCredentials,
+  partitionServableTickers,
   servableTickers,
 } from "./validate.ts";
 export type { OracleCredentialKind } from "./validate.ts";

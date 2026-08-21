@@ -31,9 +31,9 @@ export type PriceUpdateRuleKind =
  * {@link OracleSource} union derives from (the value-list→union derive
  * idiom of `unified-client.ts`'s `NON_CLIENT_FIRST`, plus `Object.freeze`
  * so the immutability is RUNTIME truth: `as const` alone would let a JS
- * consumer push into the array and desync the membership Set built from it
- * in `source-list.ts`). Runtime membership checks and the `ORACLE_SOURCE`
- * env parser live there, on `isOracleSource` / `parseOracleSourceList`.
+ * consumer push into the array, and `deriveOracleSources` (`source-list.ts`)
+ * walks exactly this list to decide the fed set — a pushed entry would name a
+ * source with no rule module behind it.
  * Only sources belong here: `supra_rule` and `constant_rule` are auxiliary
  * rules fed alongside whichever sources are selected (see
  * `aggregateTicker`), not sources themselves — the `satisfies` keeps
@@ -41,8 +41,9 @@ export type PriceUpdateRuleKind =
  * list is an (incorrect) editorial decision this comment exists to prevent.
  *
  * `pyth_rule` (Pyth Core, Hermes VAA) was RETIRED in 5.0.0 — it is no longer
- * a `PriceUpdateRuleKind` at all; `parseOracleSourceList` names the
- * retirement when an env string still carries it.
+ * a `PriceUpdateRuleKind` at all. Its config block is still published in the
+ * live deployments and is inert precisely because it is absent from this
+ * list: `deriveOracleSources` can never select it.
  */
 export const ORACLE_SOURCES = Object.freeze([
   "pyth_lazer_rule",

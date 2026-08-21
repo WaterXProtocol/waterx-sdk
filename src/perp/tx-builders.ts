@@ -28,7 +28,9 @@ export { refreshOraclePrices } from "../oracle/index.ts";
 
 // The WLP pool-freshness leg. Public because any custom WLP PTB needs it and
 // hand-rolling it is a trap: the refresh set and the `update_token_value` set
-// must be identical AND filtered through the fed set (see
-// `PerpClient.pricedPoolTokens`), which the obvious
-// `Object.keys(pool_tokens)` form gets wrong in both directions.
+// must be IDENTICAL and must cover the WHOLE pool. Pre-filtering either one to
+// what the fed set can price silently drops an asset from both halves, and
+// nothing on chain objects — `assert_prices_fresh` only checks each token's
+// timestamp against a threshold, so a recent-enough stale price passes and
+// `mint_wlp` values the payout off it.
 export { refreshWlpPoolOracles } from "./tx-builders/common.ts";

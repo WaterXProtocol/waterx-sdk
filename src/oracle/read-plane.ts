@@ -34,7 +34,7 @@ import type { OracleSource } from "./price-update-rule.ts";
  *
  * A ticker absent from a plan is simply not servable by THIS source's read
  * plane — callers decide how to degrade (typically: ask the next source in
- * their `ORACLE_SOURCE` list, then omit). Because every source reads its own
+ * their fed set, then omit). Because every source reads its own
  * feeds, write set == read set — there is no separate read-coverage
  * diagnostic to carry.
  */

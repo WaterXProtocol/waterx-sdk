@@ -29,6 +29,7 @@ import {
   executeTrading,
   mintWlp,
   placeOrderRequest,
+  refreshWlpPoolOracles,
   requestRedeemWlp,
   setReferralCode,
 } from "../src/perp/index.ts";
@@ -344,8 +345,9 @@ async function main(): Promise<void> {
   // 7. mintWlp — exercises WlpAum object + oracle refresh of every pool token.
   await runCase(client, "mintWlp(USDC)", async () => {
     const tx = new Transaction();
-    const poolTickers = client.pricedPoolTickers();
-    await refreshOraclePrices(tx, client, poolTickers);
+    // Refresh AND bump every pool token — mint_wlp values the whole pool, so
+    // a pre-filtered refresh (or a missing update_token_value) mis-sizes it.
+    await refreshWlpPoolOracles(tx, client, [], {});
     mintWlp(client, tx, {
       accountId: FAKE_ACCOUNT_ID,
       depositTokenType: USDC_TYPE,

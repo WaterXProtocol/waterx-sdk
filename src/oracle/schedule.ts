@@ -189,6 +189,29 @@ function keywordDay(token: string): RawWindow[] | null {
  * 7 weekly tokens, so this path is reached only by legacy or third-party
  * payloads (verified against `/v1/symbols`, 2026-08-21).
  */
+/**
+ * A token that can take part in a fold: a plain range, i.e. neither a keyword
+ * (pins its own day) nor an explicit `&` day (already one complete slot).
+ */
+function isFoldable(token: string): boolean {
+  return keywordDay(token) === null && !token.includes("&");
+}
+
+/** Maximal runs of adjacent foldable tokens — the only places surplus can go. */
+function foldableRuns(tokens: string[]): { start: number; length: number }[] {
+  const runs: { start: number; length: number }[] = [];
+  for (let i = 0; i < tokens.length; ) {
+    if (!isFoldable(tokens[i]!)) {
+      i += 1;
+      continue;
+    }
+    const start = i;
+    while (i < tokens.length && isFoldable(tokens[i]!)) i += 1;
+    if (i - start >= 2) runs.push({ start, length: i - start });
+  }
+  return runs;
+}
+
 function parseWeeklySlots(input: string): RawWindow[][] {
   const tokens = input
     .split(",")
@@ -206,30 +229,16 @@ function parseWeeklySlots(input: string): RawWindow[][] {
     );
   }
 
-  // A token that could take part in a fold: a plain range, i.e. neither a
-  // keyword (pins its own day) nor an explicit `&` day (already complete).
-  const foldable = (t: string) => keywordDay(t) === null && !t.includes("&");
-
-  // Locate the maximal runs of adjacent foldable tokens. Only a run can absorb
-  // surplus, and only one reading may exist — see this function's header.
-  const runs: { start: number; length: number }[] = [];
-  for (let i = 0; i < tokens.length; ) {
-    if (!foldable(tokens[i]!)) {
-      i += 1;
-      continue;
-    }
-    const start = i;
-    while (i < tokens.length && foldable(tokens[i]!)) i += 1;
-    if (i - start >= 2) runs.push({ start, length: i - start });
-  }
-
+  // Scanning for runs is only meaningful when there IS a surplus to place, and
+  // every schedule in the live catalog has exactly 7 tokens — so on real input
+  // this whole block is skipped.
   let foldAt: { start: number; length: number } | null = null;
   if (merges > 0) {
     // A run can only take the surplus unambiguously by collapsing ENTIRELY
     // into one day. Absorbing fewer tokens than it holds would leave a choice
     // of which tokens pair up (`R,R,R` with one merge is two readings), so a
     // longer run is not a candidate at all rather than a preferred one.
-    const usable = runs.filter((run) => run.length - 1 === merges);
+    const usable = foldableRuns(tokens).filter((run) => run.length - 1 === merges);
     if (usable.length !== 1) {
       throw new PythScheduleParseError(
         `ambiguous weekday fold: ${String(tokens.length)} tokens for 7 days, ` +
@@ -245,7 +254,7 @@ function parseWeeklySlots(input: string): RawWindow[][] {
     const token = tokens[i]!;
     if (foldAt !== null && i === foldAt.start) {
       // The one unambiguous run: the whole run collapses into a single day.
-      slots.push(tokens.slice(i, i + foldAt.length).map((t) => parseRange(t.trim())));
+      slots.push(tokens.slice(i, i + foldAt.length).map((t) => parseRange(t)));
       i += foldAt.length;
       continue;
     }
@@ -261,11 +270,10 @@ function parseWeeklySlots(input: string): RawWindow[][] {
     i += 1;
   }
 
-  if (slots.length !== 7) {
-    throw new PythScheduleParseError(
-      `expected 7 weekday slots, got ${String(slots.length)}: ${input}`,
-    );
-  }
+  // No count check here: the walk emits one slot per token except at the one
+  // fold, which collapses exactly `merges + 1` of them, so `slots.length` is
+  // `tokens.length - merges` — 7 by the arithmetic above. The unparseable
+  // cases (too few tokens, an ambiguous surplus) already threw.
   return slots;
 }
 
@@ -536,6 +544,21 @@ function minuteOfWeek(day: number, hour: number, minute: number): number {
  * The converged reading is returned for the same reason — callers that test
  * the target date (the holiday walks) would otherwise recompute it.
  */
+/**
+ * Minutes forward from `fromMow` to the next occurrence of `targetMow`.
+ *
+ * Never 0: an event whose minute-of-week is exactly `now` has already
+ * happened, so the NEXT one is a full week out. Both the resolver below and
+ * the candidate ordering in `findNextNonHolidayOpen` go through this — they
+ * used to compute it separately (`delta <= 0 ? +WEEK` vs a bare `% WEEK`) and
+ * disagreed on precisely that boundary, so the candidates were walked in an
+ * order the resolver did not share.
+ */
+function minutesUntilNextMow(fromMow: number, targetMow: number): number {
+  const delta = targetMow - fromMow;
+  return delta <= 0 ? delta + MINUTES_PER_WEEK : delta;
+}
+
 function nextLocalMinuteOfWeek(
   now: Date,
   timezone: string,
@@ -544,8 +567,10 @@ function nextLocalMinuteOfWeek(
   from?: LocalParts,
 ): { ms: number; at: LocalParts } {
   const local = from ?? toLocalParts(now, timezone);
-  let delta = targetMow - minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
-  if (delta <= 0) delta += MINUTES_PER_WEEK;
+  const delta = minutesUntilNextMow(
+    minuteOfWeek(local.dayOfWeek, local.hour, local.minute),
+    targetMow,
+  );
 
   let ms = (delta + occurrence * MINUTES_PER_WEEK) * MS_PER_MINUTE;
   // One correction, then one verifying read — a single fold settles any
@@ -679,8 +704,8 @@ function buildWeeklyEvents(sessions: TradingHours["sessions"]): WeeklyEvent[] {
   const merged: { start: number; end: number }[] = [];
   for (const iv of intervals) {
     const last = merged[merged.length - 1];
-    // `>=` merges touching intervals too: a close and an open at the same
-    // minute is one continuous stretch, not a zero-length gap.
+    // `<=` (not `<`) merges TOUCHING intervals too: a close and an open at the
+    // same minute is one continuous stretch, not a zero-length gap.
     if (last !== undefined && iv.start <= last.end) {
       if (iv.end > last.end) last.end = iv.end;
     } else {
@@ -721,7 +746,7 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
   // An EMPTY event list has two opposite meanings, and collapsing them to
   // "open" reported a permanently-closed venue as tradable:
   //   - no sessions at all  ⇒ the venue never opens;
-  //   - sessions that fully cancel in `mergeAdjacentEvents` (a 24/7 schedule)
+  //   - sessions whose merged coverage spans the whole week (a 24/7 schedule)
   //     ⇒ the venue never closes — but its HOLIDAYS still mask it, which the
   //     old early return skipped by leaving before the holiday check.
   // The no-sessions arm reads no clock at all, so `local` is derived below it.
@@ -877,8 +902,8 @@ function findNextNonHolidayOpen(
   // drift can land on the wrong local date.
   const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
   const ordered = [...opens].sort((a, b) => {
-    const da = (a.minuteOfWeek - nowMow + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
-    const db = (b.minuteOfWeek - nowMow + MINUTES_PER_WEEK) % MINUTES_PER_WEEK;
+    const da = minutesUntilNextMow(nowMow, a.minuteOfWeek);
+    const db = minutesUntilNextMow(nowMow, b.minuteOfWeek);
     return da - db;
   });
 

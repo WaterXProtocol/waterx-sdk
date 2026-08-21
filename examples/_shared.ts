@@ -3,7 +3,6 @@
  *
  *   - `buildClient(network?)` — async PerpClient constructor (testnet default);
  *     reads the config URL from `WATERX_CONFIG_URL` (required — the SDK has no default)
- *     source the loaded config configures feeds for — see `configuredOracleSources`)
  *   - `loadActiveKeypair()` — read the local Sui CLI's active ed25519 keypair
  *   - `sim(client, tx, label, sender?)` — dry-run a PTB via simulateTransaction
  *   - `execute(client, signer, tx, label)` — sign + dispatch on-chain

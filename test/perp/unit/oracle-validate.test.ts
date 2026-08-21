@@ -1,53 +1,73 @@
 /**
  * `validate.ts` — the boot-time asserts consumers (FE `assertServerOracleEnv`,
  * BE `sdk.module` feeds assert / config superRefine) fold onto. Coverage is a
- * single write-plane assert (write set == read set by design); credentials are
- * an env-shaped audit keyed off each rule's own `credential` declaration.
+ * single write-plane assert over the tickers a deployment cares about (write
+ * set == read set by design), sharing ONE predicate with the per-build path;
+ * credentials are an env-shaped audit keyed off each rule's own `credential`
+ * declaration.
  */
 import { describe, expect, it } from "vitest";
 
 import {
   assertOracleWriteCoverage,
   missingOracleCredentials,
-  OracleFedSetError,
+  OracleTickerUnservedError,
+  partitionServableTickers,
 } from "../../../src/oracle/validate.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 describe("assertOracleWriteCoverage", () => {
-  it("passes when every listed source has a non-empty feeds block", () => {
+  it("passes when the fed set can price every requested ticker", () => {
     const client = createUnitTestClient({ oracleSource: ["waterx_rule", "pyth_lazer_rule"] });
-    expect(() => assertOracleWriteCoverage(client)).not.toThrow();
+    expect(() => assertOracleWriteCoverage(client, ["BTCUSD", "ETHUSD"])).not.toThrow();
   });
 
-  it("throws OracleFedSetError naming a listed source with an EMPTY feeds block", () => {
-    const client = createUnitTestClient({ oracleSource: ["waterx_rule", "pyth_lazer_rule"] });
-    client.config.packages.pyth_lazer_rule!.feeds = {};
+  it("throws naming EVERY unservable ticker, not just the first", () => {
+    // An operator fixing a config wants the whole list in one pass.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
 
     let caught: unknown;
     try {
-      assertOracleWriteCoverage(client);
+      assertOracleWriteCoverage(client, ["BTCUSD", "NOPEUSD", "ALSONOPEUSD"]);
     } catch (e) {
       caught = e;
     }
-    expect(caught).toBeInstanceOf(OracleFedSetError);
-    expect((caught as OracleFedSetError).source).toBe("pyth_lazer_rule");
-    expect((caught as Error).message).toMatch(/pyth_lazer_rule.*no\s+feeds/s);
+    expect(caught).toBeInstanceOf(OracleTickerUnservedError);
+    expect((caught as OracleTickerUnservedError).tickers).toEqual(["NOPEUSD", "ALSONOPEUSD"]);
   });
 
-  it("throws for a listed source whose package block is absent entirely", () => {
+  it("is the boot-time twin of the per-build skip — same predicate, same verdict", () => {
+    // The gap this closes: `refreshOraclePrices` SKIPS an unservable ticker,
+    // and only a composer that depends on it turns that into an error. A
+    // market nobody trades today would stay silently unpriceable.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    delete client.config.packages.waterx_rule;
+    const tickers = ["BTCUSD", "NOPEUSD"];
 
-    expect(() => assertOracleWriteCoverage(client)).toThrow(OracleFedSetError);
+    const { unservable } = partitionServableTickers(client, tickers);
+    expect(unservable).toEqual(["NOPEUSD"]);
+    expect(() => assertOracleWriteCoverage(client, tickers)).toThrow(OracleTickerUnservedError);
+    // ...and the servable half passes cleanly.
+    expect(() => assertOracleWriteCoverage(client, ["BTCUSD"])).not.toThrow();
   });
 
-  it("ignores sources the deployment did not list", () => {
-    // Only the FED SET is asserted — an unrelated source's empty block is not
-    // this deployment's problem.
-    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    client.config.packages.pyth_lazer_rule!.feeds = {};
+  it("a constant-pinned ticker that ANOTHER rule also feeds is NOT servable", () => {
+    // Constant-ONLY is the exemption, not constant-pinned — otherwise the
+    // boot assert would bless a ticker the build goes on to skip.
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    client.config.packages.waterx_rule!.feeds.USDCUSD = { ticker: "USDCUSDT" };
 
-    expect(() => assertOracleWriteCoverage(client)).not.toThrow();
+    expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).toThrow(OracleTickerUnservedError);
+  });
+
+  it("exempts a genuinely constant-only ticker", () => {
+    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
+    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    delete client.config.packages.waterx_rule!.feeds.USDCUSD;
+
+    expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).not.toThrow();
   });
 });
 

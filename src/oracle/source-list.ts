@@ -42,8 +42,6 @@ import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
 export function deriveOracleSources(config: OracleConfig): OracleSource[] {
   return ORACLE_SOURCES.filter((source) => {
     const block = config.packages[source];
-    return (
-      !!block?.published_at && Object.keys((block as { feeds?: object }).feeds ?? {}).length > 0
-    );
+    return !!block?.published_at && Object.keys(block.feeds ?? {}).length > 0;
   });
 }

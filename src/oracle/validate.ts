@@ -2,11 +2,10 @@
  * `validate.ts` — boot-time oracle-deployment asserts consumers (FE/BE) fold
  * onto instead of each hand-rolling them:
  *
- * - {@link assertOracleWriteCoverage} — the "this fed set can actually write"
- *   guard: every listed source must have a non-empty feeds block in the
- *   loaded config. Because every source reads through its own feeds
- *   namespace, write set == read set — passing this ALSO validates the read
- *   plane (there is deliberately no separate read-coverage assert).
+ * - {@link assertOracleWriteCoverage} — the "this fed set can actually price
+ *   the tickers I care about" guard. Because every source reads through its
+ *   own feeds namespace, write set == read set — passing this ALSO validates
+ *   the read plane (there is deliberately no separate read-coverage assert).
  * - {@link missingOracleCredentials} — the env-shaped credential audit: which
  *   listed sources cannot run with the credentials this deployment supplied.
  *   Boot-time mirror of `refreshOraclePrices`'s own per-build credential
@@ -20,7 +19,12 @@
  */
 
 import type { OracleHost } from "./host.ts";
-import type { OracleCredentialKind, OracleCredentials, OracleSource } from "./price-update-rule.ts";
+import {
+  ORACLE_SOURCES,
+  type OracleCredentialKind,
+  type OracleCredentials,
+  type OracleSource,
+} from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 
 // The credential-kind union is the PORT's (`price-update-rule.ts`, next to
@@ -28,12 +32,6 @@ import { resolveOracleRule } from "./rule-registry.ts";
 // the validation surface they already use.
 export type { OracleCredentialKind };
 
-/**
- * Thrown by {@link assertOracleWriteCoverage} for a listed source whose
- * feeds block is missing or empty in the loaded config — that source can
- * serve NO ticker, so listing it is config drift, not a working fed set.
- * `instanceof`-able; `source` names the offender for operator dashboards.
- */
 /**
  * A build depends on a ticker this client's fed set cannot price.
  *
@@ -60,56 +58,114 @@ export class OracleTickerUnservedError extends Error {
   }
 }
 
-export class OracleFedSetError extends Error {
-  /** The listed source with no servable tickers. */
-  readonly source: OracleSource;
-
-  constructor(source: OracleSource) {
-    super(
-      `oracle source '${source}' is listed in ORACLE_SOURCE but the loaded config gives it no ` +
-        `feeds — it can serve no ticker (write OR read). Fix the deployment's config (publish ` +
-        `the source's feeds block) or drop the source from the list.`,
-    );
-    this.name = "OracleFedSetError";
-    this.source = source;
+/**
+ * Assert this deployment's fed set can price every ticker in `tickers`.
+ *
+ * Throws {@link OracleTickerUnservedError} naming ALL the unservable ones (not
+ * just the first — an operator fixing a config wants the whole list).
+ *
+ * This is the boot-time twin of the per-build behaviour, and it guards the gap
+ * that per-build handling deliberately leaves open: `refreshOraclePrices`
+ * SKIPS a ticker no source serves, and only a composer that happens to depend
+ * on that ticker turns the skip into an error. A market nobody trades today
+ * would therefore stay silently unpriceable until someone did. Pass the ticker
+ * set your deployment cares about (typically every market) and find out at
+ * boot instead.
+ *
+ * It does NOT check "every listed source has feeds" any more: the fed set is
+ * derived from exactly that condition (see `deriveOracleSources`), so that
+ * assert became unreachable for any real client — it could only fire for a
+ * config mutated after construction, which is a test fixture, not a
+ * deployment. Write set == read set by construction (each source reads its own
+ * feeds), so this single assert still covers both planes.
+ */
+export function assertOracleWriteCoverage(host: OracleHost, tickers: readonly string[]): void {
+  const { unservable } = partitionServableTickers(host, tickers);
+  if (unservable.length > 0) {
+    throw new OracleTickerUnservedError(unservable, host.oracleSources);
   }
 }
 
+/** Tickers the client's LISTED sources carry a feed for. */
+function fedSetTickers(host: OracleHost): Set<string> {
+  return new Set(
+    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host)),
+  );
+}
+
 /**
- * Assert every source in `host.oracleSources` can serve at least one ticker
- * under the loaded config (its `supportedTickers(host)` is non-empty).
- * Throws {@link OracleFedSetError} naming the first empty source.
+ * Tickers ANY rule in this config carries a feed for — listed or not.
  *
- * Write set == read set by construction (each source reads its own feeds),
- * so this single assert covers both planes — the old read-coverage check is
- * resolved-by-design, not merely dropped.
+ * The fed set answers "can THIS client price it"; this answers "does the chain
+ * plausibly weight a price-update rule for it", which is what decides whether
+ * a constant leg alone is the whole picture. `supra_rule` counts (it is a
+ * weighted leg even though it is not an `OracleSource`) but only when it is
+ * actually wired — an unwired block's feeds map is documented as
+ * informational, and honouring a stale one would strand constant-only tickers
+ * for no benefit.
  */
-export function assertOracleWriteCoverage(host: OracleHost): void {
-  for (const source of host.oracleSources) {
-    const rule = resolveOracleRule(source);
-    if (rule.supportedTickers(host).length === 0) {
-      throw new OracleFedSetError(source);
+function tickersWithAnySourceFeed(host: OracleHost): Set<string> {
+  const out = new Set<string>();
+  for (const source of ORACLE_SOURCES) {
+    for (const ticker of resolveOracleRule(source).supportedTickers(host)) out.add(ticker);
+  }
+  if (host.getSupraRule() !== undefined) {
+    for (const ticker of Object.keys(host.config.packages.supra_rule?.feeds ?? {})) out.add(ticker);
+  }
+  return out;
+}
+
+/**
+ * THE acceptance predicate, in partition form — the single definition of
+ * "will `refreshOraclePrices` put a price on chain for this ticker".
+ *
+ * A ticker is servable when some LISTED source's feeds carry it, or when it is
+ * CONSTANT-ONLY: `constant_rule` pins it and no other rule in the config feeds
+ * it. The stricter constant test matters — a constant-pinned ticker that some
+ * other rule also feeds gets aggregated from a constant-only collector, and if
+ * the chain weights that other rule the aggregate aborts `EMissingPriceSource`.
+ * (`aggregateTicker` only appends a supra leg when a price-update source
+ * already fed the collector, so a constant-only collector can never carry one.)
+ *
+ * `covered` lets a caller that has ALREADY resolved which of its tickers its
+ * fed set serves — `refreshOraclePrices`, off its rule groups — pass that in
+ * rather than have it recomputed. Both callers therefore share one rule, which
+ * is the point: a consumer pre-filtering with {@link servableTickers} cannot
+ * hand the build a ticker it will silently skip.
+ *
+ * Order-preserving. The `anyFeed` set is built at most once per call, and only
+ * when a constant-pinned ticker actually needs it.
+ */
+export function partitionServableTickers(
+  host: OracleHost,
+  tickers: readonly string[],
+  covered?: ReadonlySet<string>,
+): { servable: string[]; unservable: string[] } {
+  const fed = covered ?? fedSetTickers(host);
+  const servable: string[] = [];
+  const unservable: string[] = [];
+  let anyFeed: Set<string> | undefined;
+
+  for (const ticker of tickers) {
+    if (fed.has(ticker)) {
+      servable.push(ticker);
+    } else if (host.isConstantTicker(ticker)) {
+      anyFeed ??= tickersWithAnySourceFeed(host);
+      (anyFeed.has(ticker) ? unservable : servable).push(ticker);
+    } else {
+      unservable.push(ticker);
     }
   }
+  return { servable, unservable };
 }
 
 /**
  * The subset of `tickers` this deployment's fed set can actually price — the
- * SAME acceptance rule `refreshOraclePrices` enforces, so a caller that
- * pre-filters with this can never hand it a ticker it will reject: a ticker is
- * servable when some LISTED source's feeds carry it, or when `constant_rule`
- * pins it (a constant ticker needs no update leg from any source).
- *
- * Order-preserving, and keyed off `host.oracleSources` rather than "any rule
- * that exists" — a pool token only `waterx_rule` serves is NOT servable to a
- * lazer-only client, and pretending otherwise is exactly how a refresh throws
- * mid-build.
+ * servable half of {@link partitionServableTickers}, which is literally the
+ * rule `refreshOraclePrices` applies.
  */
 export function servableTickers(host: OracleHost, tickers: readonly string[]): string[] {
-  const fedSet = new Set(
-    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host)),
-  );
-  return tickers.filter((ticker) => fedSet.has(ticker) || host.isConstantTicker(ticker));
+  return partitionServableTickers(host, tickers).servable;
 }
 
 /**

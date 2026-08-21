@@ -3,6 +3,7 @@
  */
 import { ORACLE_SOURCES, type OracleSource } from "../../../src/oracle/price-update-rule.ts";
 import type { FetchPolicy } from "../../../src/oracle/update-fetch.ts";
+import { deriveOracleSources } from "../../../src/oracle/source-list.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import type { WaterXConfig } from "../../../src/perp/config.ts";
 import { MOCK_TESTNET_CONFIG } from "./fixtures/mock-testnet-config.ts";
@@ -27,6 +28,17 @@ export function withOracleSources<C extends WaterXConfig>(
     const block = next.packages[source];
     if (!wanted.has(source) && block !== undefined) block.feeds = {};
   }
+  // Self-checking: the parameter promises a fed set, so verify the config
+  // actually produces it. Without this, a fixture that loses a feed entry
+  // silently yields a differently-fed client and the affected tests assert
+  // against the wrong set with no signal.
+  const derived = deriveOracleSources(next);
+  if (derived.length !== wanted.size || derived.some((s) => !wanted.has(s))) {
+    throw new Error(
+      `withOracleSources: asked for [${[...wanted].join(", ")}] but the shaped config ` +
+        `derives [${derived.join(", ")}] — is the fixture missing a published package or feeds?`,
+    );
+  }
   return next;
 }
 
@@ -49,10 +61,6 @@ export function createUnitTestClient(
   } = {},
 ): PerpClient {
   // Clone so tests that mutate `client.config` (e.g. delete wlp) do not poison the shared fixture.
-  // Unwire every source the test did not ask for; the client then derives
-  // exactly the requested set. Deleting the block (rather than emptying
-  // `feeds`) keeps "not deployed" and "deployed but serving nothing"
-  // distinguishable for the tests that care about the difference.
   const config = withOracleSources(
     MOCK_TESTNET_CONFIG,
     opts.oracleSource === undefined

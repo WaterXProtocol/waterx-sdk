@@ -44,9 +44,8 @@ export async function buildMintWlpTx(
 
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
+      ...params,
       lpType: params.lpType,
-      updateDataProvider: params.updateDataProvider,
-      build: params,
     });
   }
 
@@ -90,9 +89,8 @@ export async function buildMintAndStakeWlpTx(
 
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [params.depositTicker], {
+      ...params,
       lpType: params.lpType,
-      updateDataProvider: params.updateDataProvider,
-      build: params,
     });
   }
 
@@ -146,9 +144,8 @@ export async function buildUnstakeAndRequestRedeemWlpTx(
 
   if (!params.skipOraclePriceRefresh) {
     await refreshWlpPoolOracles(tx, client, [], {
+      ...params,
       lpType: params.lpType,
-      updateDataProvider: params.updateDataProvider,
-      build: params,
     });
   }
 

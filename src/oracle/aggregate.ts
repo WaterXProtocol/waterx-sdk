@@ -28,7 +28,6 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import { aggregate as aggregateCall, newCollector } from "../generated/waterx_oracle/oracle.ts";
 import type { OracleHost } from "./host.ts";
 import {
-  ORACLE_SOURCES,
   oracleCredentialsFromHost,
   type OracleSource,
   type PriceUpdateRule,
@@ -48,6 +47,7 @@ import {
   type WaterxSignedEnvelope,
   type WaterxSignedLeaf,
 } from "./rules/waterx-rule.ts";
+import { partitionServableTickers } from "./validate.ts";
 
 /**
  * Resolve one group's off-chain update payload for {@link refreshOraclePrices}:
@@ -200,6 +200,22 @@ export function aggregateTickerWithConstant(
 }
 
 /**
+ * What {@link refreshOraclePrices} actually put on chain.
+ *
+ * `skipped` holds the requested tickers NO listed source can price (and that
+ * `constant_rule` does not pin). They got no collector and no aggregate, so
+ * their on-chain price is whatever a previous transaction left — which is why
+ * every caller whose ACTION depends on a ticker must check this rather than
+ * assume the refresh covered its whole request.
+ */
+export interface OracleRefreshSummary {
+  /** Tickers aggregated in this PTB — includes constant-pinned ones. */
+  refreshed: string[];
+  /** Requested tickers no listed source serves. */
+  skipped: string[];
+}
+
+/**
  * Refresh multiple tickers in one PTB. For each ticker {@link aggregateTicker}
  * feeds whichever rules it is configured for (Lazer if the lazer update leg
  * served it, Waterx if the waterx leg fetched signed data for it — see below —
@@ -241,45 +257,6 @@ export function aggregateTickerWithConstant(
  * weight migration prices it from the remaining weighted rules instead of
  * failing.
  */
-/**
- * `constant_rule` pins this ticker AND no other rule in the config carries a
- * feed for it — so a collector fed by the constant leg alone is the complete
- * picture, and no price-update source owes it anything.
- *
- * Checked across EVERY known source, not just the listed ones: the question is
- * what the on-chain aggregator is likely to weight, which does not depend on
- * what this client happens to have listed.
- */
-function isConstantOnlyTicker(host: OracleHost, ticker: string): boolean {
-  if (!host.isConstantTicker(ticker)) return false;
-  for (const source of ORACLE_SOURCES) {
-    if (resolveOracleRule(source).supportedTickers(host).includes(ticker)) return false;
-  }
-  // supra_rule is an auxiliary feed helper rather than an `OracleSource`, so it
-  // is not in the loop above — but a supra feed is still a non-constant leg the
-  // aggregator can weight, so a ticker carrying one is not constant-only.
-  // Read straight off the config slice, exactly as `isConstantTicker` does.
-  const supraFeeds = host.config.packages.supra_rule?.feeds;
-  if (supraFeeds !== undefined && Object.hasOwn(supraFeeds, ticker)) return false;
-  return true;
-}
-
-/**
- * What {@link refreshOraclePrices} actually put on chain.
- *
- * `skipped` holds the requested tickers NO listed source can price (and that
- * `constant_rule` does not pin). They got no collector and no aggregate, so
- * their on-chain price is whatever a previous transaction left — which is why
- * every caller whose ACTION depends on a ticker must check this rather than
- * assume the refresh covered its whole request.
- */
-export interface OracleRefreshSummary {
-  /** Tickers aggregated in this PTB — includes constant-pinned ones. */
-  refreshed: string[];
-  /** Requested tickers no listed source serves. */
-  skipped: string[];
-}
-
 export async function refreshOraclePrices(
   tx: Transaction,
   host: OracleHost,
@@ -361,8 +338,11 @@ export async function refreshOraclePrices(
   // Catches a MISSING feed only; a present-but-WRONG feed id is deliberately
   // left to abort on-chain at dry-run.
   const covered = new Set(groups.flatMap((group) => group.tickers));
-  const skipped = tickers.filter((t) => !covered.has(t) && !isConstantOnlyTicker(host, t));
-  const refreshed = tickers.filter((t) => !skipped.includes(t));
+  const { servable: refreshed, unservable: skipped } = partitionServableTickers(
+    host,
+    tickers,
+    covered,
+  );
 
   // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below
   // (the position the retired fee-source pre-check held). It consults only

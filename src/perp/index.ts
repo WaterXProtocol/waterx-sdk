@@ -128,7 +128,6 @@ export {
   FetchPolicyError,
   LazerApiKeyMissingError,
   LazerNotEntitledError,
-  OracleFedSetError,
   OracleTickerUnservedError,
   OracleSourceNotImplementedError,
   aggregateTicker,

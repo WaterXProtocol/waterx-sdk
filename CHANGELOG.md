@@ -152,6 +152,29 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
 
 ### Fixed
 
+- **One acceptance predicate, not two.** `servableTickers` still used the loose
+  "constant-pinned" test while `refreshOraclePrices` had moved to the strict
+  "constant-ONLY" one — while both were documented as identical, and
+  `servableTickers` was newly exported telling consumers to pre-filter with it. Both
+  now go through `partitionServableTickers`, so a pre-filter cannot bless a ticker
+  the build will skip.
+- **`assertOracleWriteCoverage(host, tickers)`** now asserts the fed set can price the
+  tickers a deployment cares about. Its old check ("every listed source has feeds")
+  became unreachable the moment the fed set was derived from exactly that condition,
+  so it gave false assurance while the gap that DID open — a skipped ticker nobody
+  builds against yet — had no boot-time guard. `OracleFedSetError` is removed;
+  `OracleTickerUnservedError` covers both boot and build.
+- **The WLP unserved-ticker check runs BEFORE the oracle fetch.** It was ordered after
+  it so a more precise error could win, but `refreshOraclePrices` no longer throws —
+  so the wait bought nothing and cost a full off-chain fetch plus discarded moveCalls
+  on the caller's transaction.
+- **`findNextNonHolidayOpen` orders candidates with the same arithmetic that resolves
+  them.** The lazy ordering used `% WEEK` while the resolver used `delta <= 0 → +WEEK`;
+  they disagreed for an open landing exactly on the current minute.
+- **The batch-envelope wire door reuses the leaf door's structural guard.** The
+  envelope copy was weaker (no `num_sources` domain, no non-empty `sources`, no
+  non-empty strings) and carried a second field list to keep in sync.
+
 - **A ticker no listed source serves is now SKIPPED, not thrown on.**
   `refreshOraclePrices` returns `OracleRefreshSummary { refreshed, skipped }`; a
   sweep over 30 markets no longer loses 29 because the 30th is unconfigured.
