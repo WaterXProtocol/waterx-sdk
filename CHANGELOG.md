@@ -153,6 +153,34 @@ All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + t
 
 ### Fixed
 
+- **`assertOracleWeightCoverage(host, tickers)`** — the ON-CHAIN half of fed-set
+  coverage, and the only place the invariant is actually enforced. A ticker can pass
+  every config check and still abort: `XAGUSD` / `WTIUSD` / `BRENTUSD` are in
+  `waterx_rule.feeds` (servable) while their mainnet aggregators still weight the
+  retired `PythRule@1`. Aggregating one emits a collector with no WEIGHTED
+  contribution, so `remove_outliers` aborts `EMissingPriceSource` and takes the whole
+  PTB down — every other ticker with it. Verified against live mainnet: it flags all
+  five `PythRule@1` markets, where the config-only assert caught only the two that
+  were already failing loudly.
+- **`allowUnrefreshedPrices` no longer returns a guaranteed-aborting transaction.**
+  The bump loop iterated every `pool_tokens` entry regardless of the summary, so the
+  opt-out emitted `update_token_value` for a skipped asset — which aborts
+  `EStalePrice`. It now bumps only what was aggregated, making the escape hatch usable
+  on exactly the deployments that need it.
+- **A holiday's local midnight is a status boundary.** Only holidays landing on an
+  `open` event were handled, so an open venue closed at its scheduled time rather than
+  when the holiday started, and a holiday-closed venue reopened at the next `open`
+  event rather than when the holiday lifted mid-session — each up to a full session
+  late. Both directions now resolve against the holiday boundary.
+- **The next-holiday scan covers a year, not 21 days.** A 24/7 venue with a `1225`
+  holiday queried on Dec 1 returned `nextStatusChangeIn: null`, which the result type
+  documents as "24/7 or paused" — so a consumer caching on it held "open forever"
+  through the closure.
+- **The quote-center leaf route is chunked at the enclave's 32-symbol cap.** Leaves are
+  independently verifiable per symbol, so splitting is free; unchunked, a universe
+  prefetch took a non-retryable `400` reading only "leaf fetch failed: 400". The batch
+  ENVELOPE route cannot be split (one signature covers the batch) and now says so
+  instead of surfacing that bare 400.
 - **One acceptance predicate, not two.** `servableTickers` still used the loose
   "constant-pinned" test while `refreshOraclePrices` had moved to the strict
   "constant-ONLY" one — while both were documented as identical, and

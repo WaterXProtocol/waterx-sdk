@@ -109,6 +109,68 @@ describe("getMarketStatus — overlapping and duplicated sessions", () => {
   });
 });
 
+describe("getMarketStatus — a holiday's midnight IS a status boundary", () => {
+  /** Continuous 18:00→17:00 UTC daily, closed all of Jan 5. */
+  const CONTINUOUS: TradingHours = {
+    timezone: "UTC",
+    sessions: [{ open: "18:00", close: "17:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    holidays: [{ month: 1, day: 5 }],
+  };
+  const changeAt = (hours: TradingHours, iso: string) => {
+    const at = new Date(iso);
+    const { status, nextStatusChangeIn } = getMarketStatus(hours, false, at);
+    return {
+      status,
+      when:
+        nextStatusChangeIn == null
+          ? null
+          : new Date(at.getTime() + nextStatusChangeIn).toISOString(),
+    };
+  };
+
+  it("an OPEN venue closes when the holiday starts, not at the scheduled close", () => {
+    // The session would run to 17:00 on the 5th, but the holiday masks the
+    // venue from 00:00. Only the open-lands-on-a-holiday case used to be
+    // handled, so this reported the close 17h late.
+    expect(changeAt(CONTINUOUS, "2027-01-04T20:00Z")).toEqual({
+      status: "open",
+      when: "2027-01-05T00:00:00.000Z",
+    });
+  });
+
+  it("a holiday-CLOSED venue reopens when the holiday lifts, even mid-session", () => {
+    // At 00:00 on the 6th the 18:00→17:00 session is already running, so the
+    // venue resumes then — not at the next scheduled `open` event (18:00),
+    // which is what looking only for non-holiday opens returned.
+    expect(changeAt(CONTINUOUS, "2027-01-05T10:00Z")).toEqual({
+      status: "closed",
+      when: "2027-01-06T00:00:00.000Z",
+    });
+  });
+
+  it("a 24/7 venue reports a holiday beyond the 21-day run window", () => {
+    // `nextStatusChangeIn: null` is documented as \"24/7 or paused\", so falling
+    // off the lookahead made a consumer cache \"open forever\" through Christmas.
+    const always: TradingHours = {
+      timezone: "UTC",
+      sessions: [{ open: "00:00", close: "00:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+      holidays: [{ month: 12, day: 25 }],
+    };
+    expect(changeAt(always, "2026-12-01T12:00Z")).toEqual({
+      status: "open",
+      when: "2026-12-25T00:00:00.000Z",
+    });
+  });
+
+  it("a genuinely 24/7 venue with NO holidays still reports null", () => {
+    const always: TradingHours = {
+      timezone: "UTC",
+      sessions: [{ open: "00:00", close: "00:00", days: [0, 1, 2, 3, 4, 5, 6] }],
+    };
+    expect(changeAt(always, "2026-12-01T12:00Z")).toEqual({ status: "open", when: null });
+  });
+});
+
 describe("getMarketStatus — rehydrated schedules", () => {
   it("a session naming NO days is a venue that never opens, not a 24/7 one", () => {
     // `buildWeeklyEvents` returns an empty event list for BOTH "no coverage"

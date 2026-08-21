@@ -85,8 +85,16 @@ export class PythScheduleParseError extends Error {
 
 /**
  * Parse a Pyth schedule string. Throws {@link PythScheduleParseError} on
- * malformed input — callers guard with try/catch and fall back to "no
- * schedule" (24/7) so a single bad feed doesn't break a whole market list.
+ * malformed input — callers guard with try/catch so one bad feed does not break
+ * a whole market list.
+ *
+ * DEGRADE CLOSED, not open. The obvious fallback — treat an unparseable
+ * schedule as "no schedule (24/7)" — is the wrong direction: the shapes that
+ * actually fail here are venues WITH sessions (a lunch-break equity schedule in
+ * the legacy comma encoding, an ambiguous weekday fold), and calling those 24/7
+ * reports a closed venue as tradable. That is the failure class this module
+ * exists to prevent. Prefer marking the market unavailable, or reusing the last
+ * schedule that parsed; use 24/7 only where a wrong "open" is harmless.
  */
 export function parsePythSchedule(input: string): ParsedPythSchedule {
   const segments = input.split(";");
@@ -135,7 +143,7 @@ interface RawWindow {
  * up much later inside `getMarketStatus` as an untyped `RangeError` — past the
  * try/catch this module's docs tell callers to put around `parsePythSchedule`,
  * so one malformed record in the ~3.6k-entry catalog took down a whole markets
- * response instead of degrading that one feed to 24/7. Constructing the
+ * response instead of degrading that one feed. Constructing the
  * formatter here is also what keeps `fmtCache` bounded to REAL zones: a bogus
  * name throws before it can be cached.
  */
@@ -183,6 +191,9 @@ function keywordDay(token: string): RawWindow[] | null {
  * Anything else raises {@link PythScheduleParseError} naming the ambiguity,
  * which a caller can degrade on. The lunch-break shape
  * `0930-1200,1330-1600,C,C,C,C,C,C` is the unambiguous case and still parses.
+ * Note a genuinely ambiguous legacy string (a Tokyo-style lunch break repeated
+ * across five weekdays: one 10-token run against 5 merges) throws — see this
+ * function's caller docs for why the fallback must not be "24/7".
  *
  * Live Pyth is unaffected either way: every one of the 3619 schedules in the
  * production catalog encodes multi-session days with `&` and carries exactly
@@ -379,7 +390,19 @@ function minutesToHHMM(minutes: number): string {
 const MINUTES_PER_DAY = 24 * 60;
 const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
 /** How far the holiday walks look ahead — covers any plausible cluster of consecutive closures. */
-const LOOKAHEAD_DAYS = 21;
+/**
+ * How far to scan for the next holiday BOUNDARY.
+ *
+ * Distinct from {@link LOOKAHEAD_WEEKS}, which bounds how far the OPEN-event
+ * walk looks. The next holiday itself can be most of a year out —
+ * a 24/7 venue queried on Dec 1 with only a `1225` holiday used to fall off
+ * the 21-day window and report `nextStatusChangeIn: null`, which the result
+ * type documents as "24/7 or paused". A consumer caching on that holds "open
+ * forever" straight through the closure. Holidays are `MMDD`, so a year is a
+ * complete answer, and the scan is integer date arithmetic that converts only
+ * the winning day.
+ */
+const HOLIDAY_LOOKAHEAD_DAYS = 366;
 const LOOKAHEAD_WEEKS = 3;
 
 export interface MarketStatusResult {
@@ -655,7 +678,7 @@ function msUntilLocalDayStart(
   // A UTC date is used purely as a calendar counter over the LOCAL date, so
   // month lengths and leap years come out right without touching `Intl`.
   const probe = new Date(Date.UTC(from.year, from.month - 1, from.day));
-  for (let daysAhead = 1; daysAhead <= LOOKAHEAD_DAYS; daysAhead++) {
+  for (let daysAhead = 1; daysAhead <= HOLIDAY_LOOKAHEAD_DAYS; daysAhead++) {
     probe.setUTCDate(probe.getUTCDate() + 1);
     const candidate = { month: probe.getUTCMonth() + 1, day: probe.getUTCDate() };
     if (isHoliday(holidaySet, candidate) === wantHoliday) {
@@ -770,6 +793,27 @@ interface WeeklyCoverage {
   alwaysOpen: boolean;
 }
 
+/**
+ * The SCHEDULED status at a minute-of-week — holidays not considered.
+ *
+ * Boundary rule: an open minute IS open (inclusive), a close minute IS closed
+ * (exclusive). Extracted because the holiday logic needs to ask the same
+ * question about a FUTURE instant (is the venue mid-session when a holiday
+ * lifts?), and answering it two different ways is how the two disagreed.
+ */
+/** `minuteOfWeek` for an already-converted local reading. */
+function minuteOfWeekOf(parts: LocalParts): number {
+  return minuteOfWeek(parts.dayOfWeek, parts.hour, parts.minute);
+}
+
+function scheduledStatusAt(events: WeeklyEvent[], mow: number): "open" | "closed" {
+  const exact = events.find((e) => e.minuteOfWeek === mow);
+  if (exact) return exact.type === "open" ? "open" : "closed";
+  const afterIdx = events.findIndex((e) => e.minuteOfWeek > mow);
+  const prev = events[((afterIdx === -1 ? 0 : afterIdx) - 1 + events.length) % events.length];
+  return prev?.type === "open" ? "open" : "closed";
+}
+
 function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketStatusResult {
   const { events, alwaysOpen, holidays: holidaySet } = derive(tradingHours);
 
@@ -803,15 +847,24 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
   const nowMow = minuteOfWeek(local.dayOfWeek, local.hour, local.minute);
 
   if (isHoliday(holidaySet, local)) {
+    // The venue reopens the moment it is BOTH off-holiday and scheduled-open.
+    // When the holiday lifts mid-session — a daily 18:00→17:00 venue on the
+    // morning after — that instant is the holiday's end at local midnight, not
+    // the next scheduled `open` event. Looking only for the next non-holiday
+    // open reported the reopening up to a full session late.
+    const holidayEnds = msUntilLocalDayStart(now, tradingHours.timezone, holidaySet, false, local);
+    const reopensMidSession =
+      holidayEnds !== null &&
+      scheduledStatusAt(
+        events,
+        minuteOfWeekOf(toLocalParts(new Date(now.getTime() + holidayEnds), tradingHours.timezone)),
+      ) === "open";
+
     return {
       status: "closed",
-      nextStatusChangeIn: findNextNonHolidayOpen(
-        events,
-        holidaySet,
-        now,
-        tradingHours.timezone,
-        local,
-      ),
+      nextStatusChangeIn: reopensMidSession
+        ? holidayEnds
+        : findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local),
     };
   }
 
@@ -834,24 +887,7 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
     nextIdx = 0;
   }
 
-  // The "previous" event tells us current status
-  const prevIdx = (nextIdx - 1 + events.length) % events.length;
-  const prevEvent = events[prevIdx];
-
-  // Check if nowMow is exactly on an event boundary
-  const exactEvent = events.find((e) => e.minuteOfWeek === nowMow);
-  let currentStatus: "open" | "closed";
-
-  if (exactEvent) {
-    // At exact boundary:
-    // - If it's an open event → we're open, next event is the close after this
-    // - If it's a close event → we're closed, next event is the open after this
-    currentStatus = exactEvent.type === "open" ? "open" : "closed";
-  } else {
-    // Between events: previous event tells us state
-    // After an open → we're open; after a close → we're closed
-    currentStatus = prevEvent?.type === "open" ? "open" : "closed";
-  }
+  const currentStatus = scheduledStatusAt(events, nowMow);
 
   // Find the next event that represents a STATUS CHANGE — if we're open, the
   // next 'close'; if closed, the next 'open' — scanning forward from `nextIdx`
@@ -878,11 +914,29 @@ function computeScheduledStatus(tradingHours: TradingHours, now: Date): MarketSt
   );
   let nextStatusChangeIn = next.ms;
 
-  // Holidays only mask `open` events; today-is-a-holiday already returned
-  // above. If the upcoming open lands on a holiday, walk forward.
-  if (nextChangeEvent.type === "open" && holidaySet.size > 0 && isHoliday(holidaySet, next.at)) {
-    const skipped = findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
-    if (skipped !== null) nextStatusChangeIn = skipped;
+  if (holidaySet.size > 0) {
+    if (currentStatus === "open") {
+      // A holiday's local midnight is itself a status change: an open venue
+      // closes when the holiday STARTS, even mid-session, which is earlier than
+      // the scheduled close whenever a holiday falls inside the session. Only
+      // the `open`-lands-on-a-holiday case used to be handled, so an open venue
+      // the night before a holiday reported its close hours late.
+      const holidayStarts = msUntilLocalDayStart(
+        now,
+        tradingHours.timezone,
+        holidaySet,
+        true,
+        local,
+      );
+      if (holidayStarts !== null && holidayStarts < nextStatusChangeIn) {
+        nextStatusChangeIn = holidayStarts;
+      }
+    } else if (nextChangeEvent.type === "open" && isHoliday(holidaySet, next.at)) {
+      // Closed by schedule, and the upcoming open lands on a holiday — walk to
+      // the first open that does not.
+      const skipped = findNextNonHolidayOpen(events, holidaySet, now, tradingHours.timezone, local);
+      if (skipped !== null) nextStatusChangeIn = skipped;
+    }
   }
 
   return { status: currentStatus, nextStatusChangeIn };

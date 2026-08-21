@@ -73,6 +73,17 @@ export {
 } from "./validate.ts";
 export type { OracleCredentialKind } from "./validate.ts";
 
+// The ON-CHAIN half of the same question. `validate.ts` reasons from config
+// alone (necessary, not sufficient); this reads the aggregator weights, which
+// is the only way to catch a ticker that is servable by config yet weighted to
+// a rule the fed set cannot supply — the shape that aborts a WHOLE PTB.
+export {
+  assertOracleWeightCoverage,
+  readOracleWeightCoverage,
+  OracleWeightCoverageError,
+} from "./weight-coverage.ts";
+export type { TickerWeightCoverage } from "./weight-coverage.ts";
+
 // Pyth Lazer rule (signed-update generation; `feedLazerRule` stays internal to `aggregate.ts`)
 // `LazerApiKeyMissingError` is re-exported (not just the type) for the same
 // `instanceof` reason as `FetchPolicyError` above.

@@ -204,9 +204,18 @@ export async function refreshWlpPoolOracles(
     updateDataProvider: opts.updateDataProvider,
   });
 
-  // Past the assert, every pool asset was aggregated in THIS PTB, so every
-  // bump's `oracle::get_price` resolves.
-  for (const tokenType of Object.values(poolTokens)) {
+  // Bump only what was actually AGGREGATED, not every pool entry.
+  //
+  // `update_token_value` calls `oracle::get_price`, which aborts `EStalePrice`
+  // unless this PTB aggregated that ticker. Normally the asserts above
+  // guarantee it — but `allowUnrefreshedPrices` skips them by design, and
+  // bumping a skipped asset then produced a transaction guaranteed to abort,
+  // which made the escape hatch unusable on exactly the deployments that need
+  // it. Driving the loop off the summary makes the opt-out mean what it says:
+  // build with whatever prices the chain already holds, and touch nothing else.
+  const aggregated = new Set(summary.refreshed);
+  for (const [ticker, tokenType] of Object.entries(poolTokens)) {
+    if (!aggregated.has(ticker)) continue;
     updateTokenValue(client, tx, { tokenType, lpType: opts.lpType });
   }
   return summary;

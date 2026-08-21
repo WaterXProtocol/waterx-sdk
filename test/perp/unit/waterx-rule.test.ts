@@ -28,6 +28,8 @@ import {
   type PriceUpdateRule,
 } from "../../../src/oracle/index.ts";
 import {
+  fetchWaterxSignedLeaves,
+  fetchWaterxSignedUpdate,
   parseSignedEnvelope,
   parseSignedLeaves,
   WaterxRule,
@@ -375,6 +377,46 @@ describe("WaterxRule — port", () => {
     });
     expect(handle).toBeUndefined();
     expect(moveCalls(tx)).toHaveLength(0);
+  });
+});
+
+describe("quote-center batch cap", () => {
+  it("chunks the leaf route at 32 symbols and concatenates the results", async () => {
+    // Leaves are independently verifiable per symbol, so splitting the request
+    // changes nothing about the PTB. Unchunked, one more feed on a 31-feed
+    // deployment takes a non-retryable 400 reading only "leaf fetch failed: 400".
+    const symbols = Array.from({ length: 40 }, (_, i) => `T${String(i)}USD`);
+    // Per-CALL response: each chunk gets leaves for exactly the symbols it asked
+    // for, so the concatenation is verifiable rather than assumed.
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
+      const asked = new URL(String(url)).searchParams.get("symbols")!.split(",");
+      const text = rawLeavesText(asked);
+      return { ok: true, status: 200, text: async () => text } as unknown as Response;
+    }) as unknown as typeof fetch);
+
+    const pulled = await fetchWaterxSignedLeaves("https://qc.example", symbols);
+    expect("leaves" in pulled && pulled.leaves.map((l) => l.symbol)).toEqual(symbols);
+
+    const batches = spy.mock.calls.map(
+      (c) => new URL(String(c[0])).searchParams.get("symbols")!.split(",").length,
+    );
+    expect(batches).toEqual([32, 8]);
+  });
+
+  it("does not chunk at or below the cap — one request, as before", async () => {
+    const symbols = Array.from({ length: 32 }, (_, i) => `T${String(i)}USD`);
+    const spy = mockLeafRoute(symbols);
+    await fetchWaterxSignedLeaves("https://qc.example", symbols);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses an over-cap ENVELOPE fetch with a message naming the cap", async () => {
+    // One signature covers the whole batch, so this route genuinely cannot be
+    // split; the failure should say that instead of surfacing a bare 400.
+    const symbols = Array.from({ length: 40 }, (_, i) => `T${String(i)}USD`);
+    await expect(fetchWaterxSignedUpdate("https://qc.example", symbols)).rejects.toThrow(
+      /signs at most 32 per request/,
+    );
   });
 });
 

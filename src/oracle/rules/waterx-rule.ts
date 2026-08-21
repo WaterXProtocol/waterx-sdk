@@ -572,6 +572,18 @@ export async function fetchWaterxSignedUpdate(
   fellBackFrom?: string,
 ): Promise<WaterxSignedEnvelope> {
   const context = fellBackFrom ? ` (fell back from ${fellBackFrom})` : "";
+  // Unlike leaves, this route cannot be chunked: the response is ONE signature
+  // over the whole batch, so two envelopes are two different snapshots and the
+  // payload shape holds one. Say so explicitly rather than let the enclave
+  // answer a non-retryable 400 that reads as a generic fetch failure.
+  if (symbols.length > WATERX_MAX_BATCH_SYMBOLS) {
+    throw new Error(
+      `WaterX quote-center batch fetch needs ${String(symbols.length)} symbols but the enclave ` +
+        `signs at most ${String(WATERX_MAX_BATCH_SYMBOLS)} per request, and a batch envelope ` +
+        `cannot be split (one signature covers the whole batch). Request fewer tickers, or use ` +
+        `a quote-center that serves the per-symbol leaf route, which IS chunked.${context}`,
+    );
+  }
   const res = await fetchQuoteCenter(endpoint, "v1/quotes/update", symbols, "fetch", fetchOpts);
   if (!res.ok) {
     throw new Error(
@@ -619,6 +631,51 @@ export type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
  * caches) pull through this instead of re-rolling the fetch + parse gate.
  */
 export async function fetchWaterxSignedLeaves(
+  endpoint: string,
+  symbols: string[],
+  fetchOpts?: FetchPolicy,
+): Promise<LeafPull> {
+  // Chunked against the enclave's per-request cap. Leaves are independently
+  // verifiable per symbol — each carries its own proof against a signed root —
+  // so splitting the request changes nothing about what the PTB can do with
+  // them. Unchunked, a universe prefetch or an all-markets refresh takes a
+  // non-retryable 400 the moment a deployment crosses the cap, surfacing as a
+  // bare "leaf fetch failed: 400" with nothing pointing at batch size.
+  const chunks = chunkSymbols(symbols);
+
+  // Probe with the first chunk: a quote-center with no leaf route answers 404
+  // for every chunk, so there is no point spending the rest to learn it.
+  const first = await fetchLeafChunk(endpoint, chunks[0] ?? [], fetchOpts);
+  if ("unavailable" in first || chunks.length <= 1) return first;
+
+  const rest = await Promise.all(
+    chunks.slice(1).map((chunk) => fetchLeafChunk(endpoint, chunk, fetchOpts)),
+  );
+  const leaves = [...first.leaves];
+  for (const pull of rest) {
+    if ("unavailable" in pull) return pull;
+    leaves.push(...pull.leaves);
+  }
+  return { leaves };
+}
+
+/**
+ * The quote-center enclave signs at most this many symbols per request
+ * (`MAX_BATCH_SIZE` in `quote-service`). Over the cap it answers a
+ * non-retryable 400.
+ */
+export const WATERX_MAX_BATCH_SYMBOLS = 32;
+
+function chunkSymbols(symbols: string[]): string[][] {
+  if (symbols.length <= WATERX_MAX_BATCH_SYMBOLS) return [symbols];
+  const out: string[][] = [];
+  for (let i = 0; i < symbols.length; i += WATERX_MAX_BATCH_SYMBOLS) {
+    out.push(symbols.slice(i, i + WATERX_MAX_BATCH_SYMBOLS));
+  }
+  return out;
+}
+
+async function fetchLeafChunk(
   endpoint: string,
   symbols: string[],
   fetchOpts?: FetchPolicy,
