@@ -80,7 +80,8 @@ export function newTx(opts?: CommonBuildOpts): Transaction {
  * Refresh every WLP pool-token oracle (+ caller-supplied extra tickers) and
  * bump each pool token's `last_price_refresh_timestamp` so the pool's
  * `assert_prices_fresh` passes when the next `mint_wlp` / `request_redeem` /
- * trading `execute` runs in the same PTB.
+ * trading `execute` runs in the same PTB. Note that bump is a REQUIREMENT of
+ * the on-chain call, not a safety property — see below.
  *
  * Returns the refresh summary, and callers MUST act on it — this function
  * appends `update_token_value` for every configured pool token
@@ -115,11 +116,18 @@ export async function refreshWlpPoolOracles(
 /**
  * Fail the build when any ACTION-CRITICAL ticker went unpriced.
  *
- * `required` is the subset of the refresh the appended action reads — the
- * traded market + its collateral, or a WLP deposit/redeem ticker — never the
- * whole refreshed set: a pool token no source prices is the pool's own
- * `assert_prices_fresh` problem, and failing the build on it would take down
- * every unrelated trade.
+ * `required` is the subset of the refresh the appended action actually READS —
+ * for a trade, the traded market + its collateral. Deliberately not the whole
+ * refreshed set: a WLP pool token the trade never prices against is simply not
+ * this action's dependency, and failing the build on it would take down every
+ * unrelated trade in the deployment.
+ *
+ * That scoping rests on the action's dependencies, NOT on the chain catching
+ * it — the chain does not. `refreshWlpPoolOracles` re-stamps every pool
+ * token's freshness off the price already stored in the `Oracle`, so
+ * `assert_prices_fresh` passes for an unpriced pool token either way. Anything
+ * that values the whole pool therefore needs
+ * {@link assertWlpPoolRefreshed} instead of this function.
  *
  * No-op under `allowUnrefreshedPrices`. Runs AFTER the refresh appended its
  * commands, so `tx` is already dirty on throw — the same discard-tx-on-throw

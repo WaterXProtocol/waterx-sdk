@@ -344,10 +344,11 @@ describe("tx-builders (v3)", () => {
   });
 
   it("a pool token that goes unpriced does NOT fail an unrelated trade (only action-critical tickers do)", async () => {
-    // The fail-closed check must stay scoped to the traded market + collateral.
-    // A WLP pool token no source prices is the pool's own
-    // `assert_prices_fresh` problem on chain — failing the build on it would
-    // take down every unrelated trade in the deployment.
+    // The fail-closed check must stay scoped to the traded market + collateral,
+    // because a WLP pool token is not something the TRADE prices against —
+    // failing the build on it would take down every unrelated trade in the
+    // deployment. (Not because the chain catches it: it does not. That is why
+    // mint/redeem, which DO value the whole pool, assert it at build time.)
     //
     // SUIUSD is wired ONLY under lazer while the fed set is waterx, so it
     // reaches the refresh (getCollateralAssets keeps it — a rule IS

@@ -37,8 +37,13 @@ export interface BuildMintWlpParams extends MintWlpParams, CommonBuildOpts {
 /**
  * Mints WLP from a deposit asset already in the wxa account's stored
  * balance. Refreshes every pool-token oracle + bumps each pool token's
- * `last_price_refresh_timestamp` so `assert_prices_fresh` inside
- * `mint_wlp` passes.
+ * `last_price_refresh_timestamp` so `assert_prices_fresh` inside `mint_wlp`
+ * passes.
+ *
+ * That bump is unconditional, so it passes for a pool token this refresh did
+ * NOT price — which is exactly why `assertWlpPoolRefreshed` runs below.
+ * `mint_wlp` takes `&WlpAum` and sizes the payout against the whole pool, so
+ * every pool asset must really have been refreshed, not merely re-stamped.
  *
  * The refresh costs no on-chain fee — Pyth Core, the only source that ever
  * charged one, is gone — so this is safe inside an Enoki-sponsored
