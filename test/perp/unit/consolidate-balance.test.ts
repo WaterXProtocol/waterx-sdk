@@ -94,7 +94,6 @@ describe("consolidate-balance utils", () => {
     const config = structuredClone(MOCK_TESTNET_CONFIG);
     delete config.packages.waterx_credit;
     const client = new PerpClient("TESTNET", config, {
-      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
@@ -134,7 +133,6 @@ describe("consolidate-balance utils", () => {
     const config = structuredClone(MOCK_TESTNET_CONFIG);
     delete config.packages.native_custody;
     const client = new PerpClient("TESTNET", config, {
-      oracleSource: "pyth_rule",
       grpcUrl: "https://fullnode.test.invalid:443",
     });
     await expect(probeParkedBackingAssets(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual([]);

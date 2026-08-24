@@ -6,7 +6,7 @@
  * API it exercises cannot go stale unnoticed. Edit the two together.
  *
  * Walks the whole first-integration arc:
- *   1. build a client        (waterxConfigUrl + oracleSource are REQUIRED)
+ *   1. build a client        (waterxConfigUrl is REQUIRED; the fed set is derived)
  *   2. ensure a wxa account  (created when WATERX_ACCOUNT_ID is unset)
  *   3. place a market order  (oracle refresh happens inside build*Tx)
  *   4. read the positions back
@@ -46,7 +46,7 @@ const TICKER = process.env.WATERX_TICKER ?? "BTCUSD";
 run(async () => {
   // --- 1. client -----------------------------------------------------------
   // buildClient() supplies the two REQUIRED create options (waterxConfigUrl,
-  // oracleSource) from its own env — the SDK never reads env itself, so every
+  // config URL) from its own env — the SDK never reads env itself, so every
   // consumer wires them at its own boundary exactly like this.
   const client = await buildClient();
   const { keypair } = loadActiveKeypair();
@@ -89,7 +89,7 @@ run(async () => {
   // --- 3. order ------------------------------------------------------------
   // Market order = no triggerPrice; `acceptablePrice` is the slippage cap.
   // buildPlaceOrderTx is async because it prepends the oracle refresh legs
-  // for whichever source `oracleSource` selected.
+  // for whichever sources the config wires.
   const tx = await buildPlaceOrderTx(client, {
     ticker: TICKER,
     collateralType: client.creditType(),

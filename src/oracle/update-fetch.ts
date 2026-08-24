@@ -1,14 +1,13 @@
 /**
  * `fetchWithPolicy` — resilience wrapper around `fetch` for the oracle money
  * path's off-chain update-data fetches. Every order/position/collateral
- * tx-build depends on one of these REST calls landing (Hermes VAA for
- * `pyth_rule`, Lazer signed updates for `pyth_lazer_rule`); a bare `fetch`
- * with a single attempt and no retry means one Hermes 429/5xx or timeout
- * fails every trade. `fetchPriceFeedsUpdateData` (`./pyth.ts`),
- * `PythLazerRule.fetchUpdateData`'s Lazer POST (`./rules/pyth-lazer-rule.ts`),
- * and `loadConfig` (`../perp/config.ts`) all delegate here instead of calling
- * `fetch` directly — this is the ONE place a retry/timeout/auth policy is
- * implemented for these fetches.
+ * tx-build depends on one of these REST calls landing (the Lazer signed
+ * update for `pyth_lazer_rule`, the quote-center pull for `waterx_rule`); a
+ * bare `fetch` with a single attempt and no retry means one upstream 429/5xx
+ * or timeout fails every trade. Those two rule fetches, the read executors
+ * (`./read-prices.ts`), the Pyth Pro catalog/history readers, and `loadConfig`
+ * (`../perp/config.ts`) all delegate here instead of calling `fetch` directly
+ * — this is the ONE place a retry/timeout/auth policy is implemented.
  *
  * Policy semantics:
  * - Bearer auth is attached iff `policy.apiKey` is a non-empty string —
@@ -122,19 +121,13 @@ export function rethrowExhaustedFetch(
  * Join an API `path` onto an `endpoint` PRESERVING the endpoint's own base
  * path. `new URL(path, endpoint)` is the footgun this replaces: a
  * leading-slash path is *absolute* and silently discards the endpoint's path
- * — harmless for a bare-origin endpoint (`https://hermes.pyth.network`) but
- * it dropped the `/hermes` prefix of the Pyth Pro compat endpoint and 404'd
- * every feed (see `fetchPriceFeedsUpdateData`). Every oracle fetch that
- * targets `<endpoint><fixed path>` must build its URL here.
+ * — harmless for a bare-origin endpoint, but it is exactly what a consumer's
+ * `waterxEndpoint` proxy route (`https://app.example/api/quote-center`) is
+ * made of, and dropping it silently bypasses the proxy. Every oracle fetch
+ * that targets `<endpoint><fixed path>` must build its URL here.
  */
-/** One canonical trailing-slash trim — `joinEndpointPath` (URL building) and
- * `pyth.ts`'s `memoKey` (endpoint identity) must never drift apart on it. */
-export function trimTrailingSlashes(endpoint: string): string {
-  return endpoint.replace(/\/+$/, "");
-}
-
 export function joinEndpointPath(endpoint: string, path: string): URL {
-  return new URL(`${trimTrailingSlashes(endpoint)}/${path.replace(/^\/+/, "")}`);
+  return new URL(`${endpoint.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`);
 }
 
 function isRetryableStatus(status: number): boolean {

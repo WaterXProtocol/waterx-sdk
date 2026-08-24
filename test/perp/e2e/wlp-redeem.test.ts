@@ -15,7 +15,7 @@ import {
 import {
   assertSimulateSuccessOrSkipOracleAndState,
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
 } from "../helpers/e2e/simulate-assertions.ts";
 
 describe(`wlp redeem/cancel (${e2eNetwork})`, () => {
@@ -31,7 +31,7 @@ describe(`wlp redeem/cancel (${e2eNetwork})`, () => {
     try {
       await appendWlpPoolOracleRefresh(tx, client);
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       throw e;
     }
     requestRedeemWlp(client, tx, {

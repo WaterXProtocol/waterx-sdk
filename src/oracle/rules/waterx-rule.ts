@@ -53,10 +53,10 @@ import type { WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
-  type BuildUpdateOpts,
   type PriceUpdateRule,
   type RuleUpdateData,
 } from "../price-update-rule.ts";
+import type { OraclePriceEntry } from "../read-prices.ts";
 import {
   FetchPolicyError,
   fetchWithPolicy,
@@ -64,9 +64,12 @@ import {
   type FetchPolicy,
 } from "../update-fetch.ts";
 
-/** Intent the quote-center signs a whole BATCH payload under — exported so
- *  read-plane consumers can mirror the rule's own envelope intent check (a
- *  mispointed endpoint must be rejected by reads exactly as tx-builds reject it). */
+/** Intent the quote-center signs a whole BATCH payload under. Exported to NAME
+ *  the signing scheme only — consumers no longer mirror the intent gate
+ *  themselves: every quote-center pull (tx-build fetch, read executor, BE
+ *  prefetch) goes through {@link fetchWaterxSignedUpdate} /
+ *  {@link fetchWaterxSignedLeaves}, which enforce it, so a mispointed endpoint
+ *  is rejected identically on every path. */
 export const BATCH_PRICE_INTENT = 1;
 
 /**
@@ -82,12 +85,11 @@ export const MERKLE_ROOT_INTENT = 2;
 
 /**
  * WaterX quote-center external infra — owned by THIS source, by network.
- * Mirrors `PYTH_CORE_INFRA` (oracle/pyth.ts) and `LAZER_INFRA`
- * (rules/pyth-lazer-rule.ts): per-network constants for infrastructure the
- * source's operator runs, co-located with the only rule that reads them — no
- * other oracle source ever touches a quote-center endpoint. Public read (no
- * auth), so there is no api_key. `endpoint` has no trailing slash — the rule
- * appends the path.
+ * Mirrors `LAZER_INFRA` (rules/pyth-lazer-rule.ts): per-network constants for
+ * infrastructure the source's operator runs, co-located with the only rule
+ * that reads them — no other oracle source ever touches a quote-center
+ * endpoint. Public read (no auth), so there is no api_key. `endpoint` has no
+ * trailing slash — the rule appends the path.
  *
  * These are the DEFAULTS behind the caller's `client.waterx` access slice
  * (`waterxEndpoint` / `waterxFetch` create options) — the browser-CORS proxy
@@ -101,13 +103,45 @@ export const WATERX_INFRA: Record<Network, { endpoint: string }> = {
 /**
  * The waterx source's quote-center base for `network` — the ONE accessor
  * consumers (BE/FE read planes) use when, and only when, their own
- * `ORACLE_SOURCE` resolves to `'waterx_rule'`. Mirrors
- * `pythCoreHermesEndpoint`. Under any other source the read endpoint is that
- * source's own configuration — never this one.
+ * the config wires `waterx_rule`. Under any other source the
+ * read endpoint is that source's own configuration — never this one.
  */
 export function waterxQuoteCenterEndpoint(network: Network): string {
   return WATERX_INFRA[network].endpoint;
 }
+
+/**
+ * Off-chain mirror of the on-chain `waterx_rule` `FeedConfig.max_age` DEFAULT
+ * (90s): a price older than this ABSTAINS on-chain, so a read plane serving it
+ * as live would show a price no trade could execute against. The single
+ * source of truth for consumers' post-cache freshness filters — import this,
+ * never re-declare the number. (A deployment that overrides `max_age`
+ * per-feed on-chain diverges from this mirror; none does today.)
+ */
+export const WATERX_MAX_PRICE_AGE_MS = 90_000;
+
+/**
+ * `true` iff a quote-center read entry is still within
+ * {@link WATERX_MAX_PRICE_AGE_MS} of `nowMs` — the freshness predicate
+ * consumers apply to `readQuoteCenterPrices` output (post-cache), matching
+ * the on-chain abstain boundary instead of each inventing a policy.
+ */
+export function isFreshWaterxEntry(entry: OraclePriceEntry, nowMs: number): boolean {
+  const age = nowMs - entry.publishTimeMs;
+  // A FUTURE timestamp is not fresh — it is a broken clock or a malformed
+  // payload, and a bare `age <= MAX` treats it as the freshest possible price.
+  // One tolerance of clock skew is allowed in the other direction, since the
+  // quote-center and the caller keep independent clocks; beyond that, reject.
+  if (age < -WATERX_CLOCK_SKEW_TOLERANCE_MS) return false;
+  return age <= WATERX_MAX_PRICE_AGE_MS;
+}
+
+/**
+ * How far ahead of the reader's clock a quote-center timestamp may sit before
+ * it is treated as broken rather than merely skewed. Two independent clocks
+ * drift; a price minutes in the future does not.
+ */
+export const WATERX_CLOCK_SKEW_TOLERANCE_MS = 5_000;
 
 /**
  * One item inside a signed batch payload, mirroring the quote-center
@@ -187,14 +221,29 @@ export interface WaterxEnvelopePayload {
  */
 export type WaterxUpdatePayload = WaterxLeafPayload | WaterxEnvelopePayload;
 
+/**
+ * Structural gate for the ENVELOPE payload shape — symmetric with
+ * {@link isWaterxLeafPayloadShape}, which validates every leaf.
+ *
+ * This runs on payloads that never went through {@link parseSignedEnvelope}:
+ * a consumer's `UpdateDataProvider` hands back whatever its cache holds, and a
+ * value revived from JSON can have lost its bigints or been written half-built.
+ * A gate that checked only `signature: string` + `Array.isArray(items)` let
+ * those through, and the failure landed mid-PTB-build inside `newItemArg` —
+ * after legs were already appended to the caller's `tx`. Every item is checked
+ * with the SAME guard the wire door uses.
+ */
 function isWaterxEnvelopePayloadShape(payload: unknown): payload is WaterxEnvelopePayload {
   const env = (payload as { envelope?: unknown })?.envelope as WaterxSignedEnvelope | undefined;
   return (
     typeof env === "object" &&
     env !== null &&
-    typeof env.signature === "string" &&
+    // ed25519 over the batch — a wrong-length signature is an on-chain abort.
+    isHexOfBytes(env.signature, 64) &&
     typeof env.timestamp_ms === "bigint" &&
-    Array.isArray(env.payload?.items)
+    env.timestamp_ms >= 0n &&
+    Array.isArray(env.payload?.items) &&
+    env.payload.items.every(isBatchItemShape)
   );
 }
 
@@ -204,15 +253,19 @@ function isWaterxLeafPayloadShape(payload: unknown): payload is WaterxLeafPayloa
 }
 
 /** Every u64 field of a leaf — each one is signed, so each must be present and exact. */
-const LEAF_U64_FIELDS = [
+/**
+ * The signed u64 fields every quote-center ITEM carries — the BCS bytes the
+ * enclave signed over. A leaf adds `signed_timestamp_ms` on top (see
+ * {@link isSignedLeafShape}); the batch envelope's items do not carry it.
+ */
+const BATCH_ITEM_U64_FIELDS = [
   "price_timestamp_ms",
   "price_n",
   "price_scale",
   "confidence_n",
   "confidence_scale",
   "max_source_deviation_bps",
-  "signed_timestamp_ms",
-] as const;
+] as const satisfies readonly (keyof WaterxBatchItem)[];
 
 /**
  * FULL structural check on a leaf, not just the fields the feed leg happens to
@@ -242,8 +295,15 @@ function isHexOfBytes(hex: unknown, bytes: number): boolean {
   return body.length === bytes * 2 && HEX_ONLY.test(body);
 }
 
-function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
-  const l = leaf as Record<string, unknown> | null;
+/**
+ * The ITEM half — every field the feed leg rebuilds into the BCS the enclave
+ * signed. Shared by BOTH wire doors: a leaf is an item plus its signature and
+ * proof material ({@link isSignedLeafShape}), and the batch envelope's items go
+ * through the same gate ({@link assertBatchItemShape}). One definition, so a
+ * new signed field cannot be validated at one door and waved through the other.
+ */
+function isBatchItemShape(item: unknown): item is WaterxBatchItem {
+  const l = item as Record<string, unknown> | null;
   if (typeof l !== "object" || l === null) return false;
   if (typeof l.symbol !== "string" || l.symbol === "") return false;
   if (typeof l.ticker !== "string" || l.ticker === "") return false;
@@ -264,10 +324,18 @@ function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
   // `sources` is a vector<u64>: exact bigints, like every other signed integer.
   if (!Array.isArray(l.sources) || l.sources.length === 0) return false;
   if (l.sources.some((s) => typeof s !== "bigint" || s < 0n)) return false;
-  for (const field of LEAF_U64_FIELDS) {
+  for (const field of BATCH_ITEM_U64_FIELDS) {
     const v = l[field];
     if (typeof v !== "bigint" || v < 0n) return false;
   }
+  return true;
+}
+
+function isSignedLeafShape(leaf: unknown): leaf is WaterxSignedLeaf {
+  if (!isBatchItemShape(leaf)) return false;
+  const l = leaf as unknown as Record<string, unknown>;
+  const signedAt = l.signed_timestamp_ms;
+  if (typeof signedAt !== "bigint" || signedAt < 0n) return false;
   // ed25519 is always 64 bytes and the root is always a 32-byte keccak256; a
   // wrong-length signature is an on-chain abort, so it is rejected here.
   if (!isHexOfBytes(l.signature, 64)) return false;
@@ -353,14 +421,44 @@ export function parseSignedEnvelope(text: string): WaterxSignedEnvelope {
   if (typeof raw.signature !== "string" || !Array.isArray(raw.payload?.items)) {
     throw new Error("WaterX quote-center returned a malformed signed envelope");
   }
+  // `timestamp_ms` is signed OVER, so defaulting a missing one to `0n` does not
+  // produce a harmless zero — it produces a batch whose signature cannot verify,
+  // surfacing as an opaque on-chain `EInvalidSignature` indistinguishable from a
+  // forgery. Reject it at the door instead, where the message can say what is
+  // actually wrong.
+  if (typeof raw.timestamp_ms !== "bigint") {
+    throw new Error("WaterX quote-center envelope is missing an integer timestamp_ms");
+  }
+  const items = raw.payload.items.map((item) => {
+    // The leaf door is structurally validated; this one was not, so a 200 with
+    // half-built items passed the wire gate and blew up mid-PTB-build inside
+    // `newItemArg` — after commands had already been appended to the caller's
+    // transaction. Both doors now reject before anything is built.
+    assertBatchItemShape(item);
+    return { ...item, num_sources: Number(item.num_sources) };
+  });
   return {
     intent: Number(raw.intent),
-    timestamp_ms: (raw.timestamp_ms ?? 0n) as bigint,
+    timestamp_ms: raw.timestamp_ms,
     signature: raw.signature,
-    payload: {
-      items: raw.payload.items.map((i) => ({ ...i, num_sources: Number(i.num_sources) })),
-    },
+    payload: { items },
   };
+}
+
+/**
+ * The envelope door's throwing form of {@link isBatchItemShape} — same gate the
+ * leaf door applies, so neither shape can carry a half-built item into a PTB.
+ */
+function assertBatchItemShape(item: unknown): asserts item is WaterxBatchItem {
+  if (!isBatchItemShape(item)) {
+    const symbol = (item as { symbol?: unknown } | null)?.symbol;
+    const label = typeof symbol === "string" ? symbol : "<unknown symbol>";
+    throw new Error(
+      `WaterX quote-center envelope item ${label} is malformed — expected symbol, ticker, ` +
+        `method, a u8 num_sources, a non-empty u64 sources vector, and integer ` +
+        `${BATCH_ITEM_U64_FIELDS.join(", ")}.`,
+    );
+  }
 }
 
 /**
@@ -471,18 +569,34 @@ async function fetchQuoteCenter(
 }
 
 /**
- * Pull one enclave-signed batch envelope covering `symbols`. `fellBackFrom`, when
- * set, names the leaf-route failure that sent us here, so a deployment whose
- * quote-center serves NEITHER route reports both statuses instead of only the
- * second one.
+ * Pull one enclave-signed batch envelope covering `symbols` — the fallback
+ * update shape AND the read executor's transport
+ * (`readQuoteCenterPrices` in `../read-prices.ts`). Public seam (WL-2345):
+ * consumers that need the raw envelope (BE prefetch caches, read planes)
+ * call this instead of re-rolling the fetch + intent/shape gate.
+ * `fellBackFrom`, when set, names the leaf-route failure that sent us here,
+ * so a deployment whose quote-center serves NEITHER route reports both
+ * statuses instead of only the second one.
  */
-async function fetchWaterxSignedUpdate(
+export async function fetchWaterxSignedUpdate(
   endpoint: string,
   symbols: string[],
   fetchOpts?: FetchPolicy,
   fellBackFrom?: string,
 ): Promise<WaterxSignedEnvelope> {
   const context = fellBackFrom ? ` (fell back from ${fellBackFrom})` : "";
+  // Unlike leaves, this route cannot be chunked: the response is ONE signature
+  // over the whole batch, so two envelopes are two different snapshots and the
+  // payload shape holds one. Say so explicitly rather than let the enclave
+  // answer a non-retryable 400 that reads as a generic fetch failure.
+  if (symbols.length > WATERX_MAX_BATCH_SYMBOLS) {
+    throw new Error(
+      `WaterX quote-center batch fetch needs ${String(symbols.length)} symbols but the enclave ` +
+        `signs at most ${String(WATERX_MAX_BATCH_SYMBOLS)} per request, and a batch envelope ` +
+        `cannot be split (one signature covers the whole batch). Request fewer tickers, or use ` +
+        `a quote-center that serves the per-symbol leaf route, which IS chunked.${context}`,
+    );
+  }
   const res = await fetchQuoteCenter(endpoint, "v1/quotes/update", symbols, "fetch", fetchOpts);
   if (!res.ok) {
     throw new Error(
@@ -501,7 +615,7 @@ async function fetchWaterxSignedUpdate(
 }
 
 /** A leaf pull either produced leaves, or the route isn't there to pull from. */
-type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
+export type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
 
 /**
  * Pull per-symbol signed Merkle leaves — the DEFAULT update-data shape (see the
@@ -525,8 +639,56 @@ type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
  * from its feed registry). That is config drift between this SDK's `feeds` and
  * the quote-center's registry, and the fallback surfaces it honestly: the
  * envelope route 404s on the same symbol, and its error names both attempts.
+ *
+ * Public seam (WL-2345): consumers holding per-symbol leaves (BE prefetch
+ * caches) pull through this instead of re-rolling the fetch + parse gate.
  */
-async function fetchWaterxSignedLeaves(
+export async function fetchWaterxSignedLeaves(
+  endpoint: string,
+  symbols: string[],
+  fetchOpts?: FetchPolicy,
+): Promise<LeafPull> {
+  // Chunked against the enclave's per-request cap. Leaves are independently
+  // verifiable per symbol — each carries its own proof against a signed root —
+  // so splitting the request changes nothing about what the PTB can do with
+  // them. Unchunked, a universe prefetch or an all-markets refresh takes a
+  // non-retryable 400 the moment a deployment crosses the cap, surfacing as a
+  // bare "leaf fetch failed: 400" with nothing pointing at batch size.
+  const chunks = chunkSymbols(symbols);
+
+  // Probe with the first chunk: a quote-center with no leaf route answers 404
+  // for every chunk, so there is no point spending the rest to learn it.
+  const first = await fetchLeafChunk(endpoint, chunks[0] ?? [], fetchOpts);
+  if ("unavailable" in first || chunks.length <= 1) return first;
+
+  const rest = await Promise.all(
+    chunks.slice(1).map((chunk) => fetchLeafChunk(endpoint, chunk, fetchOpts)),
+  );
+  const leaves = [...first.leaves];
+  for (const pull of rest) {
+    if ("unavailable" in pull) return pull;
+    leaves.push(...pull.leaves);
+  }
+  return { leaves };
+}
+
+/**
+ * The quote-center enclave signs at most this many symbols per request
+ * (`MAX_BATCH_SIZE` in `quote-service`). Over the cap it answers a
+ * non-retryable 400.
+ */
+export const WATERX_MAX_BATCH_SYMBOLS = 32;
+
+function chunkSymbols(symbols: string[]): string[][] {
+  if (symbols.length <= WATERX_MAX_BATCH_SYMBOLS) return [symbols];
+  const out: string[][] = [];
+  for (let i = 0; i < symbols.length; i += WATERX_MAX_BATCH_SYMBOLS) {
+    out.push(symbols.slice(i, i + WATERX_MAX_BATCH_SYMBOLS));
+  }
+  return out;
+}
+
+async function fetchLeafChunk(
   endpoint: string,
   symbols: string[],
   fetchOpts?: FetchPolicy,
@@ -724,12 +886,107 @@ export function feedWaterxRule(
   })(tx);
 }
 
+/**
+ * THE quote-center route ladder, owned by the rule that owns the protocol:
+ * pull per-symbol Merkle leaves (the default), and fall back to one batch
+ * envelope only when this quote-center has no leaf route (see
+ * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
+ * why nothing else falls back).
+ *
+ * Both the write path ({@link pullWaterxData}, which layers coverage policy on
+ * top) and the READ executor (`readQuoteCenterPrices` in `../read-prices.ts`,
+ * which only decodes prices) go through here, so which route wins, which
+ * status falls back, and how the fallback context is threaded are stated once.
+ * `items` is the flat symbol-bearing view both callers actually want —
+ * `WaterxSignedLeaf extends WaterxBatchItem`, so leaves widen to it for free —
+ * while `payload` keeps the shape-specific form the on-chain feed leg needs.
+ */
+export async function pullWaterxQuotes(
+  endpoint: string,
+  symbols: string[],
+  fetchOpts?: FetchPolicy,
+): Promise<{
+  route: "leaves" | "envelope";
+  payload: WaterxUpdatePayload;
+  items: readonly WaterxBatchItem[];
+}> {
+  const pulled = await fetchWaterxSignedLeaves(endpoint, symbols, fetchOpts);
+  if ("leaves" in pulled) {
+    return { route: "leaves", payload: { leaves: pulled.leaves }, items: pulled.leaves };
+  }
+  const envelope = await fetchWaterxSignedUpdate(endpoint, symbols, fetchOpts, pulled.unavailable);
+  return { route: "envelope", payload: { envelope }, items: envelope.payload.items };
+}
+
+/**
+ * THE quote-center pull — the one pipeline both coverage policies share:
+ * package guard → own-key feeds partition → leaf route (default) → batch
+ * envelope only when this quote-center has no leaf route (see
+ * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
+ * why nothing else falls back).
+ *
+ * `coverage` decides only what a GAP means, never how the pull runs:
+ *
+ * - `"strict"` — every requested ticker must be config-listed AND served, or
+ *   this THROWS (the per-ticker unlisted message, before any network call;
+ *   then {@link assertCoverage} naming the route). `missing` is always `[]`.
+ * - `"partial"` — an unlisted or unserved ticker lands in `missing` and the
+ *   payload covers the rest, narrowed through the rule's own
+ *   {@link WaterxRule.narrowUpdateData} so leaf-vs-envelope divisibility has
+ *   exactly one definition.
+ */
+async function pullWaterxData(
+  host: OracleHost,
+  tickers: string[],
+  coverage: "strict" | "partial",
+): Promise<{ data: RuleUpdateData; missing: string[] }> {
+  // Package-level check first: a config without the deployment must say so,
+  // not fail per ticker as if only that feed were missing.
+  const { feeds } = requireWaterxPackage(host);
+  // One partition pass, own-keys-only: a prototype-key ticker ("toString")
+  // must read as unlisted, not pass as an inherited Function and reach the
+  // network.
+  const missing: string[] = [];
+  const listed: string[] = [];
+  for (const ticker of tickers) {
+    (ownEntry(feeds, ticker) === undefined ? missing : listed).push(ticker);
+  }
+  // Unlisted tickers never reach the network on EITHER policy — the
+  // quote-center 404s a whole batch on one unknown symbol. Strict surfaces
+  // the per-ticker message; partial just records the gap and pulls the rest.
+  if (coverage === "strict" && missing.length > 0) {
+    throw new Error(`No waterx_rule feed listed for ticker: ${missing[0]}`);
+  }
+  if (listed.length === 0) return { data: null, missing };
+
+  const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
+  const { route, payload, items } = await pullWaterxQuotes(endpoint, listed, fetchOpts);
+  const served = new Set(items.map((item) => item.symbol));
+
+  if (coverage === "strict") {
+    assertCoverage(route, listed, served);
+    return { data: { kind: "waterx_rule", payload }, missing };
+  }
+
+  const covered: string[] = [];
+  for (const ticker of listed) (served.has(ticker) ? covered : missing).push(ticker);
+  // Divisibility is the rule's own knowledge, so the subset decision is
+  // delegated rather than re-encoded here: leaves subset per symbol, an
+  // envelope is indivisible and passes whole (or `null` when it covers none).
+  return {
+    data:
+      covered.length > 0
+        ? WaterxRule.narrowUpdateData(host, { kind: "waterx_rule", payload }, covered)
+        : null,
+    missing,
+  };
+}
+
 export const WaterxRule: PriceUpdateRule = {
   kind: "waterx_rule",
 
-  // Verification is an in-Move ed25519 check with no Coin argument — no
-  // update fee — see `PriceUpdateRule.requiresFeeSource`.
-  requiresFeeSource: false,
+  // No credential: the quote-center read surface is public (no `credential`
+  // declared — see `PriceUpdateRule.credential`).
 
   /** Tickers with a `waterx_rule.feeds` entry (keyed by oracle ticker). */
   supportedTickers(host: OracleHost): string[] {
@@ -738,45 +995,12 @@ export const WaterxRule: PriceUpdateRule = {
 
   /**
    * Pulls per-symbol Merkle leaves for `tickers`, falling back to one batch
-   * envelope only when this quote-center has no leaf route (see
-   * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
-   * why nothing else falls back). Either way, returns only what covers ALL of
-   * `tickers` — see {@link assertCoverage}.
+   * envelope only when this quote-center has no leaf route. Returns only what
+   * covers ALL of `tickers` — the strict arm of {@link pullWaterxData}.
    */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
-    // Package-level check first: a config without the deployment must say so,
-    // not fail per ticker as if only that feed were missing.
-    const { feeds } = requireWaterxPackage(host);
-    for (const ticker of tickers) {
-      // ownEntry: a prototype-key ticker ("toString") must throw here as
-      // unlisted, not pass as an inherited Function and reach the network.
-      if (ownEntry(feeds, ticker) === undefined) {
-        throw new Error(`No waterx_rule feed listed for ticker: ${ticker}`);
-      }
-    }
-    const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
-    const pulled = await fetchWaterxSignedLeaves(endpoint, tickers, fetchOpts);
-    if ("leaves" in pulled) {
-      assertCoverage(
-        "leaves",
-        tickers,
-        pulled.leaves.map((l) => l.symbol),
-      );
-      return { kind: "waterx_rule", payload: { leaves: pulled.leaves } };
-    }
-    const envelope = await fetchWaterxSignedUpdate(
-      endpoint,
-      tickers,
-      fetchOpts,
-      pulled.unavailable,
-    );
-    assertCoverage(
-      "envelope",
-      tickers,
-      envelope.payload.items.map((i) => i.symbol),
-    );
-    return { kind: "waterx_rule", payload: { envelope } };
+    return (await pullWaterxData(host, tickers, "strict")).data;
   },
 
   /**
@@ -818,6 +1042,30 @@ export const WaterxRule: PriceUpdateRule = {
   },
 
   /**
+   * The on-chain F-014 single-use replay key, rule-owned (see
+   * `PriceUpdateRule.updateIdentityBySymbol`): each leaf's identity is its
+   * OWN `signed_timestamp_ms`; an envelope's one `timestamp_ms` is the
+   * identity of EVERY symbol it covers (one batch signature ⇒ one submission
+   * burns the mark for all of them). A consumer's serve-at-most-once cache
+   * keys off this map for BOTH payload shapes — including the leaf-first
+   * default an envelope-only identity check would miss.
+   */
+  updateIdentityBySymbol(data: RuleUpdateData): Map<string, bigint> | null {
+    // Narrowed ONCE: a serve-at-most-once cache calls this per serve, and the
+    // accessors each re-run the full structural payload validation.
+    const payload = waterxPayloadOf(data);
+    if (!payload) return null;
+    return "leaves" in payload
+      ? new Map(payload.leaves.map((leaf) => [leaf.symbol, leaf.signed_timestamp_ms]))
+      : new Map(
+          payload.envelope.payload.items.map((item) => [
+            item.symbol,
+            payload.envelope.timestamp_ms,
+          ]),
+        );
+  },
+
+  /**
    * No shared verify step: both `waterx_rule` collect entries bundle verify AND
    * feed into one per-collector call, appended by
    * {@link feedWaterxRuleWithProof} / {@link feedWaterxRule} in the per-ticker
@@ -825,12 +1073,40 @@ export const WaterxRule: PriceUpdateRule = {
    * reaches the feed leg via `aggregate.ts`'s per-ticker map (built from the
    * group's fetched data), not a `RuleUpdateHandle`.
    */
-  buildUpdateCalls(
-    _tx: Transaction,
-    _host: OracleHost,
-    _data: RuleUpdateData,
-    _opts?: BuildUpdateOpts,
-  ): void {
+  buildUpdateCalls(_tx: Transaction, _host: OracleHost, _data: RuleUpdateData): void {
     return;
   },
 };
+
+/**
+ * Coverage-policy seam over the rule's quote-center pull (WL-2345): fetch
+ * signed waterx update data for `tickers` with the caller choosing what a
+ * coverage gap means.
+ *
+ * - `coverage: "strict"` (default) — exactly `WaterxRule.fetchUpdateData`:
+ *   every requested ticker must be config-listed AND served, or the fetch
+ *   THROWS (`assertCoverage`); `missing` is always `[]`. Trade-path semantics
+ *   — `refreshOraclePrices` keeps consuming the rule's own strict fetch, so
+ *   `aggregate.ts`'s uncarried-ticker throw (04117a1) still can't be reached
+ *   by a payload that under-covers its group.
+ * - `coverage: "partial"` — universe-prefetch semantics (a BE cache warming
+ *   every known ticker at once): a ticker with no `waterx_rule.feeds` entry,
+ *   or one the quote-center response does not serve, lands in `missing`
+ *   instead of throwing, and `data` covers the rest. On the leaf route the
+ *   payload is the covering leaf SUBSET; on the envelope route the envelope
+ *   is kept iff it covers ≥1 requested ticker (it is indivisible — an
+ *   envelope serving none is `data: null`). `data: null` + all-missing when
+ *   nothing is servable.
+ *
+ * Consumers must not hand a partial payload to a build for tickers in
+ * `missing` — those tickers are simply not servable by waterx right now (log
+ * the gap; the chain's weight tables decide whether that starves anything).
+ */
+export async function fetchWaterxUpdateData(
+  host: OracleHost,
+  tickers: string[],
+  opts?: { coverage?: "strict" | "partial" },
+): Promise<{ data: RuleUpdateData; missing: string[] }> {
+  if (tickers.length === 0) return { data: null, missing: [] };
+  return pullWaterxData(host, tickers, opts?.coverage ?? "strict");
+}

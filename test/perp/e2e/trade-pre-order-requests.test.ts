@@ -8,7 +8,7 @@ import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
 
@@ -27,10 +27,9 @@ describe(`trade pre-order requests (${e2eNetwork})`, () => {
         preOrderId: 999_999_998n,
         collateralTicker: "USDCUSD",
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       throw e;
     }
     tx.setSender(DUMMY_ACCOUNT);
@@ -59,10 +58,9 @@ describe(`trade pre-order requests (${e2eNetwork})`, () => {
         },
         collateralTicker: "USDCUSD",
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       throw e;
     }
     tx.setSender(DUMMY_ACCOUNT);

@@ -15,12 +15,6 @@ const PACKAGES: Array<{ name: string; root: string; path?: string }> = [
   { name: "waterx_account", root: CONTRACTS_ROOT },
   { name: "waterx_oracle", root: CONTRACTS_ROOT },
   { name: "waterx_staking", root: CONTRACTS_ROOT },
-  { name: "pyth_rule", root: CONTRACTS_ROOT, path: "waterx_oracle_rule/pyth_rule" },
-  {
-    name: "pyth_sponsor_rule",
-    root: CONTRACTS_ROOT,
-    path: "waterx_oracle_rule/pyth_sponsor_rule",
-  },
   {
     name: "constant_rule",
     root: CONTRACTS_ROOT,

@@ -118,6 +118,37 @@ describe("loadConfig validation", () => {
     );
   });
 
+  it("a perp config needs NO oracle-rule package blocks (no rule is required by presence in 5.0.0)", async () => {
+    // Strip every optional rule block — which rules run is the client's
+    // `oracleSource` option, never the config's package set.
+    const bare = structuredClone(MOCK_TESTNET_CONFIG);
+    delete bare.packages.pyth_lazer_rule;
+    delete bare.packages.waterx_rule;
+    delete bare.packages.constant_rule;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => bare })),
+    );
+    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
+    expect(cfg.packages.waterx_perp.published_at).toMatch(/^0x/);
+  });
+
+  it("a config still carrying the RETIRED pyth_rule / pyth_sponsor_rule blocks loads unchanged", async () => {
+    // The schema dropped both types in 5.0.0; extra JSON keys are ignored, so
+    // deployments need no republish before upgrading.
+    const withRetired = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
+      packages: Record<string, unknown>;
+    };
+    withRetired.packages.pyth_rule = { published_at: "0xdead", config: "0xbeef", feeds: {} };
+    withRetired.packages.pyth_sponsor_rule = { published_at: "0xdead", pyth_sponsor: "0xbeef" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => withRetired })),
+    );
+    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
+    expect(cfg.packages.waterx_perp.published_at).toMatch(/^0x/);
+  });
+
   it("fetches and parses canonical-shaped testnet JSON", async () => {
     const cfg = await loadConfig("TESTNET", {
       waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,

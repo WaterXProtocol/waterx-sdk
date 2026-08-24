@@ -12,7 +12,7 @@ has no default). e.g.
 export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
 ```
 
-**Oracle fed set:** `buildClient()` reads `ORACLE_SOURCE` (a comma-separated list) and
+**Oracle fed set:** derived from the config `buildClient()` loads —
 forwards `PYTH_API_KEY` as `pythApiKey`; see its docstring in
 [`_shared.ts`](./_shared.ts) for the defaults. The set must cover each ticker's on-chain
 weighted rules or the build aborts `EMissingPriceSource` — check them with

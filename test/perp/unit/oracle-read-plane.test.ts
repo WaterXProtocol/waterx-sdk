@@ -1,71 +1,67 @@
 /**
- * `resolveOracleReadPlan` — the per-source READ-plane resolver: hex-id
- * mapping for the pyth sources (Lazer reads through `pyth_rule.feeds`, its
- * integer write ids never reach a read surface), the `unreadable` gap for
- * lazer-written tickers with no hex entry, and the waterx served-set /
- * absent-feeds-claims-all contract.
+ * `resolveOracleReadPlan` — the per-source READ-plane resolver (5.0.0 two-arm
+ * shape): integer Lazer ids from `pyth_lazer_rule.feeds`, the waterx
+ * served-set contract, and `readPlanTickers` over both planes. Every source
+ * reads its OWN feeds namespace, so write set == read set by construction —
+ * there is no hermes plane, no endpoint resolver, and no `unreadable`
+ * diagnostic anymore.
  */
 import { describe, expect, it } from "vitest";
 
 import type { OracleHost } from "../../../src/oracle/host.ts";
-import { PYTH_PRO_HERMES_ENDPOINT, pythCoreHermesEndpoint } from "../../../src/oracle/pyth.ts";
-import {
-  resolveHermesReadEndpoint,
-  resolveOracleReadPlan,
-} from "../../../src/oracle/read-plane.ts";
+import { readPlanTickers, resolveOracleReadPlan } from "../../../src/oracle/read-plane.ts";
 
 function hostWith(packages: Record<string, unknown>): OracleHost {
   return { config: { packages } } as unknown as OracleHost;
 }
 
-const HEX_FEEDS = {
-  BTCUSD: { feed_id: "0xfeedbtc", price_info_object: "0x1" },
-  ETHUSD: { feed_id: "0xfeedeth", price_info_object: "0x2" },
-};
-
 describe("resolveOracleReadPlan", () => {
-  it("pyth_rule: maps servable tickers to hex feed ids; write==read so nothing is unreadable", () => {
-    const host = hostWith({ pyth_rule: { feeds: HEX_FEEDS } });
+  it("pyth_lazer_rule: maps servable tickers to their own INTEGER Lazer ids", () => {
+    const host = hostWith({ pyth_lazer_rule: { feeds: { BTCUSD: 1, ETHUSD: 2 } } });
 
-    const plan = resolveOracleReadPlan(host, "pyth_rule", ["BTCUSD", "ETHUSD", "XAUUSD"]);
+    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "ETHUSD", "XAUUSD"]);
 
-    expect(plan.plane).toBe("hermes");
-    if (plan.plane !== "hermes") throw new Error("unreachable");
+    expect(plan.plane).toBe("lazer");
+    if (plan.plane !== "lazer") throw new Error("unreachable");
     expect([...plan.feedIdByTicker]).toEqual([
-      ["BTCUSD", "0xfeedbtc"],
-      ["ETHUSD", "0xfeedeth"],
+      ["BTCUSD", 1],
+      ["ETHUSD", 2],
     ]);
-    expect(plan.unreadable).toEqual([]);
   });
 
-  it("pyth_lazer_rule: reads through pyth_rule's HEX namespace, not its own integer ids", () => {
-    const host = hostWith({
-      pyth_rule: { feeds: HEX_FEEDS },
-      pyth_lazer_rule: { feeds: { BTCUSD: 1, ETHUSD: 2 } },
-    });
-
-    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "ETHUSD"]);
-
-    expect(plan.plane).toBe("hermes");
-    if (plan.plane !== "hermes") throw new Error("unreachable");
-    expect(plan.feedIdByTicker.get("BTCUSD")).toBe("0xfeedbtc");
-    expect(plan.unreadable).toEqual([]);
-  });
-
-  it("pyth_lazer_rule: a lazer-WRITTEN ticker with no hex entry is reported unreadable, not silently dropped", () => {
-    // The Core-retirement trap: the SDK's update leg serves the ticker fine
-    // (lazer feed exists) but no Hermes read can price it — the plan must
-    // surface the gap so consumers fail loudly instead of omitting a price.
-    const host = hostWith({
-      pyth_rule: { feeds: { BTCUSD: HEX_FEEDS.BTCUSD } },
-      pyth_lazer_rule: { feeds: { BTCUSD: 1, SOLUSD: 6 } },
-    });
+  it("pyth_lazer_rule: a ticker outside the feeds block is simply absent from the plan", () => {
+    // No `unreadable` diagnostic — write set == read set, so a ticker the
+    // source can't read is exactly a ticker it can't write; callers degrade
+    // by asking the next source in their own list.
+    const host = hostWith({ pyth_lazer_rule: { feeds: { BTCUSD: 1 } } });
 
     const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "SOLUSD"]);
 
-    if (plan.plane !== "hermes") throw new Error("unreachable");
+    if (plan.plane !== "lazer") throw new Error("unreachable");
     expect([...plan.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
-    expect(plan.unreadable).toEqual(["SOLUSD"]);
+  });
+
+  it("pyth_lazer_rule: an absent package block serves nothing", () => {
+    const plan = resolveOracleReadPlan(hostWith({}), "pyth_lazer_rule", ["BTCUSD"]);
+
+    if (plan.plane !== "lazer") throw new Error("unreachable");
+    expect(plan.feedIdByTicker.size).toBe(0);
+  });
+
+  it("pyth_lazer_rule: an Object.prototype key name is NOT feeds-listed", () => {
+    // feeds["toString"] via a bare bracket read is an inherited Function
+    // (≠ undefined) — own-key lookups must read it as simply not-listed
+    // rather than mapping a Function as a "feed id".
+    const host = hostWith({ pyth_lazer_rule: { feeds: { BTCUSD: 1 } } });
+
+    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", [
+      "BTCUSD",
+      "toString",
+      "constructor",
+    ]);
+
+    if (plan.plane !== "lazer") throw new Error("unreachable");
+    expect([...plan.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
   });
 
   it("waterx_rule: serves exactly the feeds-listed tickers", () => {
@@ -73,7 +69,7 @@ describe("resolveOracleReadPlan", () => {
 
     const plan = resolveOracleReadPlan(host, "waterx_rule", ["XAUUSD", "EURUSD"]);
 
-    expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"], unreadable: [] });
+    expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"] });
   });
 
   it("waterx_rule: an Object.prototype key name is NOT feeds-listed — `in`-operator hole closed", () => {
@@ -84,70 +80,39 @@ describe("resolveOracleReadPlan", () => {
 
     const plan = resolveOracleReadPlan(host, "waterx_rule", ["XAUUSD", "toString"]);
 
-    expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"], unreadable: [] });
-  });
-
-  it("hermes arms: an Object.prototype key name is neither served nor unreadable — no bracket-walk hole either", () => {
-    // `writeFeeds?.[ticker]` walked the prototype chain exactly like `in`:
-    // feeds["toString"] is an inherited Function (≠ undefined), so a
-    // prototype-key ticker was classified `unreadable` for the pyth sources.
-    // Own-key lookups must read it as simply not-listed.
-    const host = hostWith({
-      pyth_rule: { feeds: HEX_FEEDS },
-      pyth_lazer_rule: { feeds: { BTCUSD: 1 } },
-    });
-
-    const pyth = resolveOracleReadPlan(host, "pyth_rule", ["BTCUSD", "toString", "constructor"]);
-    if (pyth.plane !== "hermes") throw new Error("unreachable");
-    expect([...pyth.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
-    expect(pyth.unreadable).toEqual([]);
-
-    const lazer = resolveOracleReadPlan(host, "pyth_lazer_rule", ["BTCUSD", "toString"]);
-    if (lazer.plane !== "hermes") throw new Error("unreachable");
-    expect([...lazer.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
-    expect(lazer.unreadable).toEqual([]);
+    expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"] });
   });
 
   it("waterx_rule: an absent feeds block serves NOTHING — never a silent quote-center takeover", () => {
     // Claiming unlisted tickers would reroute every read to the quote-center
     // (it serves symbols regardless of on-chain config) and swallow tickers a
-    // later-listed source could price; the misconfig is caught loudly by the
-    // consumer's feeds assert at client creation instead.
+    // later-listed source could price; the misconfig is caught loudly by
+    // `assertOracleWriteCoverage` at boot instead.
     const plan = resolveOracleReadPlan(hostWith({}), "waterx_rule", ["BTCUSD", "ETHUSD"]);
 
-    expect(plan).toEqual({ plane: "quote_center", tickers: [], unreadable: [] });
+    expect(plan).toEqual({ plane: "quote_center", tickers: [] });
   });
 });
 
-describe("resolveHermesReadEndpoint", () => {
-  it("pyth_rule in the fed set wins — the Core source's own keyless endpoint, per network", () => {
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_rule"])).toBe(
-      pythCoreHermesEndpoint("TESTNET"),
-    );
-    expect(resolveHermesReadEndpoint("MAINNET", ["waterx_rule", "pyth_rule"])).toBe(
-      pythCoreHermesEndpoint("MAINNET"),
-    );
+describe("readPlanTickers", () => {
+  it("lazer plane: the feed-map keys, in plan order", () => {
+    const host = hostWith({ pyth_lazer_rule: { feeds: { BTCUSD: 1, ETHUSD: 2 } } });
+    const plan = resolveOracleReadPlan(host, "pyth_lazer_rule", ["ETHUSD", "BTCUSD", "XAUUSD"]);
+
+    expect(readPlanTickers(plan)).toEqual(["ETHUSD", "BTCUSD"]);
   });
 
-  it("without pyth_rule, resolves the documented Pyth Pro base — total, never a throw", () => {
-    // The Pro base is IDENTICAL for every subscriber (auth is the Bearer key,
-    // not the URL) — so a lazer/waterx-only fed set always has a first-class
-    // read endpoint without any deployment-supplied URL.
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_lazer_rule"])).toBe(
-      PYTH_PRO_HERMES_ENDPOINT,
-    );
-    expect(resolveHermesReadEndpoint("MAINNET", ["waterx_rule"])).toBe(PYTH_PRO_HERMES_ENDPOINT);
+  it("quote_center plane: the served ticker list verbatim", () => {
+    const host = hostWith({ waterx_rule: { feeds: { XAUUSD: {}, BTCUSD: {} } } });
+    const plan = resolveOracleReadPlan(host, "waterx_rule", ["BTCUSD", "XAUUSD", "EURUSD"]);
+
+    expect(readPlanTickers(plan)).toEqual(["BTCUSD", "XAUUSD"]);
   });
 
-  it("a deployment override (proxy / self-hosted mirror) beats the Pro base, never the Core branch", () => {
-    const override = "https://app.example/api/hermes";
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_lazer_rule", "waterx_rule"], override)).toBe(
-      override,
+  it("empty plans yield empty ticker lists on both planes", () => {
+    expect(readPlanTickers(resolveOracleReadPlan(hostWith({}), "pyth_lazer_rule", ["A"]))).toEqual(
+      [],
     );
-    // With pyth_rule listed the Core endpoint still wins — the override is a
-    // Pro-side knob, not a Core replacement.
-    expect(resolveHermesReadEndpoint("TESTNET", ["pyth_rule"], override)).toBe(
-      pythCoreHermesEndpoint("TESTNET"),
-    );
+    expect(readPlanTickers(resolveOracleReadPlan(hostWith({}), "waterx_rule", ["A"]))).toEqual([]);
   });
 });

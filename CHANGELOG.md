@@ -16,6 +16,272 @@ from the version number alone.
 
 ## [Unreleased]
 
+_The next release is **5.0.0** (MAJOR): the `pyth_rule` (Pyth Core / Hermes) source is
+RETIRED and the WL-2345 consumer seams are built directly on the post-retirement
+surface. `package.json` deliberately still carries the CURRENT version — the release
+workflow bumps it at publish — so the tarball consumers build against during the gated
+window is named for the pre-bump version; hand them the tarball PATH rather than a
+version to pin. Release tagging dates this section. All of it lands in one gated PR (#89).
+[WL-2345](https://bucketprotocol.atlassian.net/browse/WL-2345) ·
+[WL-2355](https://bucketprotocol.atlassian.net/browse/WL-2355)._
+
+### BREAKING — the oracle fed set is derived, not declared
+
+- **`oracleSource` is REMOVED** as a create option, and `ORACLE_SOURCE` is no longer read
+  by any consumer. The fed set is derived from the deployment config: a source is fed
+  when its block is published AND carries at least one feed. Mainnet derives
+  `[pyth_lazer_rule, waterx_rule]`, testnet `[waterx_rule]` — verified against both live
+  configs.
+  - **Why.** The chain arbitrates: feeding an unweighted rule is dropped on-chain, while
+    starving a weighted one aborts `EMissingPriceSource`. The failure is one-sided, so a
+    hand-typed list can only err in the fatal direction — the classic being one copied
+    between networks, naming a source that deployment does not carry. The config cannot,
+    because it _is_ what wires the rules.
+  - **Retired blocks are inert.** `pyth_rule` and `pyth_sponsor_rule` are still present in
+    the live configs; neither is an `ORACLE_SOURCES` member, so neither can be derived.
+  - **Not filtered by credentials.** A keyless client whose config wires Lazer still fails
+    loudly with `LazerApiKeyMissing`; silently dropping the source would starve a rule the
+    chain may weight and turn a build error into an opaque on-chain abort.
+  - Construction now throws only when the config wires NO price-update source at all.
+- **`parseOracleSourceList` / `isOracleSource` are REMOVED** — there is no env string to
+  parse. **Added: `deriveOracleSources(config)`**, pure and config-only, for boot asserts
+  that need the fed set before a client exists (pairs with `missingOracleCredentials`).
+
+### BREAKING — removal ledger (WL-2355: `pyth_rule` / Pyth Core retirement)
+
+Consumers must not import any of these; every removal is listed so the FE/BE fold PRs
+can grep against it:
+
+- **Whole source**: `PythCoreRule`, `PythCoreUpdatePayload`, `feedPythRule`, and the
+  generated `waterx_pyth_rule` / `pyth_sponsor_rule` bindings (`pythRuleCalls`,
+  `pythSponsorRuleCalls` namespaces).
+- **Hermes plumbing** (`src/oracle/pyth.ts` deleted whole): `PythCache`,
+  `fetchPriceFeedsUpdateData`, `endpointSupportedFeedIds`, `probeMissingFeeds`,
+  `HermesEndpointRejectedAllFeedsError`, `MISSING_FEED_MEMO_TTL_MS`,
+  `buildPythPriceUpdateCalls`, `updatePythPrices`, `pythCoreHermesEndpoint`,
+  `pythProHermesEndpoint`, `PYTH_PRO_HERMES_ENDPOINT`.
+- **Fee/sponsor machinery**: `OracleFeeSource`, `OracleFeeSourceUnavailableError`,
+  `openPythSponsorFund`, `reimbursePythSponsor`, `BuildUpdateOpts.cache`/`feeSource`,
+  `CommonBuildOpts.useSponsor`/`allowGasFee` (and `pythCache`), the WLP builders' fee
+  params, and `refreshOraclePrices`' `cache`/`feeSource` opts. All remaining update
+  legs are fee-free, so `build*Tx` composes into Enoki-sponsored transactions with no
+  fee flag.
+- **Read plane**: the hermes plane and `resolveHermesReadEndpoint` are gone (never
+  released — superseded in-flight); `OracleReadPlan` is the two-arm
+  `lazer | quote_center` union and the `unreadable` diagnostic no longer exists
+  (write set == read set by construction).
+- **Aggregation**: `aggregateTickerWithPyth` and `aggregateTicker`'s
+  `priceInfoObjectId` arg; constant-only detection is `host.isConstantTicker(t)` alone
+  (the dual-feed carve-out is moot without a Pyth leg).
+- **Client/host surface**: `OracleHost.getPythFeed`, `PerpClient.getPythFeed`,
+  `PerpConfigView.getPythFeed`.
+- **Config**: `ORACLE_SOURCES` is `["pyth_lazer_rule", "waterx_rule"]`, and since
+  `pyth_rule` is not a member the block still present in the live configs can never be
+  derived into a fed set (see the fed-set section above); the `PythRulePackage` /
+  `PythSponsorRulePackage` schema types AND their `OraclePackages` slots are DELETED
+  (these types describe what the SDK reads, and it reads neither — a deployed config
+  JSON may still carry the blocks, since extra keys are ignored, so no republish is
+  needed); `validateConfig`'s perp required-package list drops `"pyth_rule"`.
+- **Port**: `BuildUpdateOpts` and `buildUpdateCalls`'s `opts` parameter are gone —
+  nothing a rule needs at build time is caller-tunable, so there is no bag to thread.
+- **`getCollateralAssets` is removed** in favour of `PerpClient.pricedPoolTickers()`
+  (see Changed) — it answered an oracle-coverage question from `utils/`, where the
+  rule registry cannot be reached.
+- **Scripts**: `scripts/set-pyth-tolerance.ts` / `scripts/pyth-tolerance-show.ts`
+  deleted; smoke/dev scripts default to `waterx_rule` (env-overridable via
+  `ORACLE_SOURCE` where they already read env).
+- `getMarketTickers` stays in `utils/config.ts`; the WLP pool-token question moved to
+  `PerpClient.pricedPoolTickers()` (see Changed) — nothing named `getCollateralAssets`
+  survives, so a consumer grepping the ledger finds one answer, not two.
+
+### Added — consumer seams (WL-2345)
+
+All exported from `@waterx/sdk/oracle` and re-exported on `@waterx/sdk/perp` + the root:
+
+- **Read planes + executors**: `readPlanTickers(plan)`; `readLazerPrices` (Lazer
+  `POST /v1/latest_price` parsed read — pinned to the live-probed wire shape, `403` →
+  `LazerNotEntitledError` with the verbatim entitlement body) and
+  `readQuoteCenterPrices` (quote-center envelope read) returning
+  `Map<id|ticker, OraclePriceEntry>` (`{ price, publishTimeMs, conf }`).
+- **Boot-time validation** (`validate.ts`): `assertOracleWriteCoverage(host, tickers)`
+  (throws `OracleTickerUnservedError` naming every ticker the fed set cannot price;
+  write set == read set, so the old read-coverage assert is resolved-by-design) and
+  `missingOracleCredentials(sources, { pythApiKey })` (`OracleCredentialKind`).
+- **Rule port additions**: `PriceUpdateRule.credential` — ONE
+  `OracleCredentialRequirement` carrying both the `kind` a rule needs and the error it
+  raises when that credential is absent, so the two can never drift and the
+  orchestrator never constructs another rule's error (`PythLazerRule` declares
+  `pyth_api_key` + its own `LazerApiKeyMissingError`) — and
+  `PriceUpdateRule.updateIdentityBySymbol`, the rule-owned on-chain F-014 single-use
+  replay key (`WaterxRule`: leaves → `symbol → signed_timestamp_ms`; envelope →
+  `symbol → timestamp_ms`). `refreshOraclePrices` gains a hoisted credential
+  pre-check: a keyless build whose fed set includes an auth-first source throws that
+  rule's error BEFORE any fetch or PTB mutation. `OracleCredentialKind` /
+  `OracleCredentials` / `oracleCredentialsFromHost` map a kind to its value in one
+  place, so neither enforcement point branches on a kind.
+- **Waterx seams**: `fetchWaterxSignedUpdate` / `fetchWaterxSignedLeaves` (the raw
+  quote-center fetchers, now public), `fetchWaterxUpdateData(host, tickers,
+{ coverage: "strict" | "partial" })` (strict == the rule's own trade-path fetch;
+  partial reports unlisted/uncovered tickers in `missing` for universe prefetch),
+  `WATERX_MAX_PRICE_AGE_MS` (90s on-chain `max_age` mirror), `isFreshWaterxEntry`,
+  and the `LeafPull` type.
+- **Market hours** (`schedule.ts`): `parsePythSchedule` / `PythScheduleParseError`
+  (the reconciled superset of the FE/BE parsers — `Open`/`O`/`open`,
+  `Closed`/`C`/`closed`, `&`- and comma-joined multi-session days, `MMDD` and
+  `MMDD/C` holidays) and the pure `getMarketStatus` walker (BE signature verbatim),
+  with the `TradingSession` / `TradingHours` / `HolidayDate` / `ParsedPythSchedule` /
+  `MarketStatusResult` types.
+- **Pyth Pro read surfaces**: `fetchPythSymbolCatalog` (`GET /v1/symbols`, keyless —
+  replaces the Hermes `/v2/price_feeds` catalog for schedules AND the hex↔integer
+  feed-id map; `PythSymbolRecord`) and `fetchPythProHistory`
+  (`GET /v1/{channel}/history`, Bearer — TradingView-UDF chart bars).
+
+- **`PerpClient.pricedPoolTokens()`** — {@link pricedPoolTickers} already joined to
+  each token's Move type. The set a WLP flow refreshes and the set it bumps
+  `update_token_value` for MUST be identical (`update_token_value` reads
+  `oracle::get_price`, which aborts `EStalePrice` without a same-PTB aggregate), so
+  deriving both from one list makes that divergence unrepresentable.
+- **`refreshWlpPoolOracles(tx, client, extraTickers, opts)`** — the WLP
+  pool-freshness leg, now public. Three call sites had hand-rolled it over raw
+  `Object.keys(pool_tokens)`, which gets the fed-set filtering wrong in both
+  directions.
+- **`pullWaterxQuotes(endpoint, symbols, fetch?)`** — the quote-center route ladder
+  (per-symbol Merkle leaves by default, one batch envelope only against a
+  quote-center with no leaf route) as a single rule-owned export. The write path
+  and `readQuoteCenterPrices` both go through it, so the read plane cannot drift
+  off the write plane.
+
+### Fixed
+
+- **`assertOracleWeightCoverage(host, tickers)`** — the ON-CHAIN half of fed-set
+  coverage, and the only place the invariant is actually enforced. A ticker can pass
+  every config check and still abort: `XAGUSD` / `WTIUSD` / `BRENTUSD` are in
+  `waterx_rule.feeds` (servable) while their mainnet aggregators still weight the
+  retired `PythRule@1`. Aggregating one emits a collector with no WEIGHTED
+  contribution, so `remove_outliers` aborts `EMissingPriceSource` and takes the whole
+  PTB down — every other ticker with it. Verified against live mainnet: it flags all
+  five `PythRule@1` markets, where the config-only assert caught only the two that
+  were already failing loudly.
+- **`allowUnrefreshedPrices` no longer returns a guaranteed-aborting transaction.**
+  The bump loop iterated every `pool_tokens` entry regardless of the summary, so the
+  opt-out emitted `update_token_value` for a skipped asset — which aborts
+  `EStalePrice`. It now bumps only what was aggregated, making the escape hatch usable
+  on exactly the deployments that need it.
+- **A holiday's local midnight is a status boundary.** Only holidays landing on an
+  `open` event were handled, so an open venue closed at its scheduled time rather than
+  when the holiday started, and a holiday-closed venue reopened at the next `open`
+  event rather than when the holiday lifted mid-session — each up to a full session
+  late. Both directions now resolve against the holiday boundary.
+- **The next-holiday scan covers a year, not 21 days.** A 24/7 venue with a `1225`
+  holiday queried on Dec 1 returned `nextStatusChangeIn: null`, which the result type
+  documents as "24/7 or paused" — so a consumer caching on it held "open forever"
+  through the closure.
+- **The quote-center leaf route is chunked at the enclave's 32-symbol cap.** Leaves are
+  independently verifiable per symbol, so splitting is free; unchunked, a universe
+  prefetch took a non-retryable `400` reading only "leaf fetch failed: 400". The batch
+  ENVELOPE route cannot be split (one signature covers the batch) and now says so
+  instead of surfacing that bare 400.
+- **One acceptance predicate, not two.** `servableTickers` still used the loose
+  "constant-pinned" test while `refreshOraclePrices` had moved to the strict
+  "constant-ONLY" one — while both were documented as identical, and
+  `servableTickers` was newly exported telling consumers to pre-filter with it. Both
+  now go through `partitionServableTickers`, so a pre-filter cannot bless a ticker
+  the build will skip.
+- **`assertOracleWriteCoverage(host, tickers)`** now asserts the fed set can price the
+  tickers a deployment cares about. Its old check ("every listed source has feeds")
+  became unreachable the moment the fed set was derived from exactly that condition,
+  so it gave false assurance while the gap that DID open — a skipped ticker nobody
+  builds against yet — had no boot-time guard. `OracleFedSetError` is removed;
+  `OracleTickerUnservedError` covers both boot and build.
+- **The WLP unserved-ticker check runs BEFORE the oracle fetch.** It was ordered after
+  it so a more precise error could win, but `refreshOraclePrices` no longer throws —
+  so the wait bought nothing and cost a full off-chain fetch plus discarded moveCalls
+  on the caller's transaction.
+- **`findNextNonHolidayOpen` orders candidates with the same arithmetic that resolves
+  them.** The lazy ordering used `% WEEK` while the resolver used `delta <= 0 → +WEEK`;
+  they disagreed for an open landing exactly on the current minute.
+- **The batch-envelope wire door reuses the leaf door's structural guard.** The
+  envelope copy was weaker (no `num_sources` domain, no non-empty `sources`, no
+  non-empty strings) and carried a second field list to keep in sync.
+
+- **A ticker no listed source serves is now SKIPPED, not thrown on.**
+  `refreshOraclePrices` returns `OracleRefreshSummary { refreshed, skipped }`; a
+  sweep over 30 markets no longer loses 29 because the 30th is unconfigured.
+  Safety moved to where the ACTION is known: the `build*Tx` composers fail closed
+  via `OracleTickerUnservedError` on the tickers their specific call depends on
+  (traded market + collateral; **every pool asset** for WLP), with
+  `allowUnrefreshedPrices: true` as the explicit opt-out.
+- **WLP no longer silently drops an unpriceable pool asset.** `refreshWlpPoolOracles`
+  used to pre-filter pool tokens through the fed set, so an unservable one was
+  dropped from BOTH the refresh and the `update_token_value` bump — and nothing on
+  chain objected, because `assert_prices_fresh` only checks each token's
+  `last_price_refresh_timestamp` against `price_refresh_threshold_ms`, which a
+  recent-enough stale price passes. `mint_wlp` sizes the payout off the whole
+  pool's `tvl_usd`, so that mis-valued the mint. It now requests every pool asset
+  and fails the build on any gap.
+- **The constant exemption is strict.** A ticker `constant_rule` pins is exempt only
+  when NO other rule in the config carries a feed for it. Constant-pinned plus a
+  feed under an unlisted source is no longer silently aggregated constant-only —
+  that aborted `EMissingPriceSource` whenever the aggregator weighted the other
+  rule. Code and comment previously disagreed on this; the strict reading fails safe.
+- **The weekday fold no longer guesses.** A comma-joined schedule with more than 7
+  tokens is ambiguous whenever two runs of adjacent ranges could each own the
+  surplus — leftmost-greedy and rightmost-greedy each produce a plausible but WRONG
+  weekly calendar, with 7 slots so nothing throws, and a wrong calendar reports a
+  closed venue as tradable. A fold now applies only when exactly one run can absorb
+  the surplus by collapsing whole; anything else raises `PythScheduleParseError`.
+  (Live Pyth is unaffected: all 3619 catalog schedules carry exactly 7 tokens and
+  encode multi-session days with `&`.)
+- **Weekly events are derived from merged open INTERVALS**, not by cancelling
+  `close`+`open` event pairs. The pairwise form assumed the sorted list alternates;
+  two sessions ending at the same minute put two closes in a row, the scan ate the
+  following open, and the market read CLOSED for a session that is open.
+- **`getMarketStatus` validates the timezone.** `TradingHours` crosses process
+  boundaries (cached JSON, consumers' own types), so it reaches the walker without
+  passing through `parsePythSchedule`. A bad zone raised a raw `RangeError` from
+  `Intl`, escaping the try/catch callers put around the parser; it now raises
+  `PythScheduleParseError`.
+- **Holiday closures accept `C` / `c` / `Closed` / `closed`**, matching `keywordDay`.
+  Accepting one spelling here and three there silently reclassified a closure as
+  modified hours and DROPPED it, rendering the venue open on the holiday.
+- **`parseSignedEnvelope` rejects a missing `timestamp_ms` and malformed items.**
+  `timestamp_ms` is signed over, so defaulting it to `0n` produced an unverifiable
+  batch that surfaced as an opaque on-chain `EInvalidSignature`; unvalidated items
+  threw inside `newItemArg` mid-PTB-build, after commands were appended.
+- **An explicit `apiKey` / `timeoutMs` is no longer overridable by the policy
+  spread.** `{ apiKey, ...opts.fetch }` let `{ fetch: { apiKey: undefined } }` strip
+  the Bearer that Pyth Pro history requires (403 with no clue why); the catalog
+  reader had the same hazard with its deliberately generous timeout.
+- **WLP builds fail at BUILD when the fed set can price no pool token.** Previously
+  the refresh early-returned on an empty ticker list and the bump loop had nothing
+  to iterate, so the PTB was built with no oracle legs and aborted `EStalePrice`
+  on chain instead.
+- **`refreshOraclePrices` skipped the credential check for the WHOLE fed set** when
+  an `updateDataProvider` was configured. A provider is keyed by SOURCE
+  (`get(source, tickers)`), so a consumer caching one source and holding no
+  credential for another got the second source's live fetch fired before the
+  missing-credential error surfaced. Cache lookups (network-free by contract) now
+  resolve first, and only the groups that MISSED are credential-checked.
+
+### Changed
+
+- **`PerpClient.pricedPoolTickers()`** replaces the `getCollateralAssets(config)`
+  utility: it filters WLP pool tokens by `servableTickers` — `refreshOraclePrices`'s
+  OWN acceptance predicate (some LISTED source's feeds carry the ticker, or
+  `constant_rule` pins it). The old helper keyed off "any rule's feeds block exists",
+  so a pool token that only an UNLISTED source served was handed to a refresh that
+  then threw `no feed configured` mid-build.
+- **`readQuoteCenterPrices` takes `tickers`, not `symbols`** — the repo convention
+  for trading pairs, and what `readPlanTickers(plan)` already returns. The wire
+  helpers below it keep `symbols`, mirroring the literal `?symbols=` parameter.
+- **`readLazerPrices`'s `network` is now REQUIRED.** It selects the Lazer endpoint AND
+  the channel, and a plan's integer feed ids are network-specific, so the previous
+  silent `"MAINNET"` default could read mainnet infra with testnet ids and no error.
+- `CommonBuildOpts.skipOraclePriceRefresh` now documents the shared-refresh
+  composition (`newTx` → `refreshOraclePrices(allTickers)` → N builders with
+  `skipOraclePriceRefresh: true`) and why per-builder refreshes must not repeat a
+  waterx symbol in one PTB (F-014 high-water mark).
+
 ## [4.3.3] - 2026-08-18
 
 _Released as a PATCH carrying one **BREAKING** type change: `WaterxUpdatePayload` is now
@@ -177,11 +443,11 @@ consumers pin exact and adapt in the same change set._
     v2 package `0xefbfd064…` and requests `fixed_rate@1000ms`. The rule was
     republished v2-bound (waterx-contract) after a 2026-08-05 mainnet probe
     found the v1 path dead twice over: the ORIGINAL package `0x7b502c…` aborts
-    `EDifferentVersion` in `state::current_cap` for *any* payload — the shared
+    `EDifferentVersion` in `state::current_cap` for _any_ payload — the shared
     `State` has been migrated past that code — and the v1 entry aborts
     `EInvalidChannel` in `channel::from_v2` on `fixed_rate@1000ms`, which is
     the only channel WaterX's Pyth Pro grant still permits (200ms →
-    *"violates rate limit. Minimum allowed channel is 1000ms"*).
+    _"violates rate limit. Minimum allowed channel is 1000ms"_).
   - **testnet** is unchanged (`parse_and_verify_le_ecdsa_update`,
     `fixed_rate@200ms`): its Lazer package is still the v1-only publish with no
     `update_v2` module, and its rule is v1-bound, so the v1 entry is the only

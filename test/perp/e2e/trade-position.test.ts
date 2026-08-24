@@ -78,7 +78,6 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           size: row.e2ePtb.increaseSize,
           acceptablePrice: ap,
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
     });
     await assertDiscoveredTradingSim(ctx, sim, d);
@@ -112,7 +111,6 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           size: dec,
           acceptablePrice: ap,
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
     });
     if (sim === undefined) return;
@@ -139,7 +137,6 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           positionId: d.positionId,
           collateralAmount: 1_000_000n,
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
     });
     await assertDiscoveredTradingSim(ctx, sim, d);
@@ -166,7 +163,6 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           positionId: d.positionId,
           amount: withdrawAmt,
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
     });
     await assertDiscoveredTradingSim(ctx, sim, d);
@@ -194,7 +190,6 @@ describe(`trade on discovered position (${e2eNetwork})`, () => {
           positionId: d.positionId,
           acceptablePrice: ap,
           skipOraclePriceRefresh: false,
-          useSponsor: true,
         }),
     });
     if (sim === undefined) return;

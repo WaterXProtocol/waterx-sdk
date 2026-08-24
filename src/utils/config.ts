@@ -1,21 +1,12 @@
 import type { WaterXConfig } from "../perp/config.ts";
-import { ownEntry } from "./record.ts";
 
 /** Returns all registered market tickers (e.g. "BTCUSD") from waterx-config. */
 export function getMarketTickers(config: WaterXConfig): string[] {
   return Object.keys(config.packages.waterx_perp.markets);
 }
 
-/**
- * Returns WLP pool-token tickers that also have a registered pyth_rule feed —
- * the canonical testnet config keys `pool_tokens` by coin symbol (e.g. `"USD"`)
- * while `pyth_rule.feeds` is keyed by oracle ticker (e.g. `"USDCUSD"`), so a
- * naive `Object.keys(pool_tokens)` blows up at `refreshOraclePrices` for any
- * key without a feed. Filter so the auto-refresh path stays tolerant.
- */
-export function getCollateralAssets(config: WaterXConfig): string[] {
-  const feeds = config.packages.pyth_rule?.feeds ?? {};
-  return Object.keys(config.packages.wlp.pool_tokens).filter(
-    (t) => ownEntry(feeds, t) !== undefined,
-  );
-}
+// "Which WLP pool tokens can this deployment PRICE" is an oracle-coverage
+// question, not a config read: it depends on the client's fed set, not just
+// the JSON. It lives on `PerpClient.pricedPoolTickers()` (over
+// `oracle/validate.ts`'s `servableTickers`) — `utils/` is the shared base and
+// must not import `oracle/`.

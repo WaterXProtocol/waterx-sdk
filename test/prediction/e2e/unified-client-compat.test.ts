@@ -28,7 +28,6 @@ describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
   beforeAll(async () => {
     unified = await Client.create({
       network,
-      oracleSource: "pyth_rule",
       cache: true,
       waterxConfigUrl: readE2eClientOverrides().waterxConfigUrl,
     });

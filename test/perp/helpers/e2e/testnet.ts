@@ -6,7 +6,6 @@ export {
   clientTxBuildersSimulate,
   DUMMY_SENDER,
   e2eNetwork,
-  pythFeedIdsForE2e,
   rawPrice,
   resolveE2eNetwork,
   type E2eNetwork,

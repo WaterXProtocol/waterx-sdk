@@ -168,13 +168,13 @@ interface StepResult {
 
 /**
  * Transient infra failures that are NOT an SDK/account regression — almost
- * always the testnet Hermes beta endpoint (oracle price VAAs) returning
+ * always an oracle source endpoint (Lazer / quote-center) returning
  * 5xx/429, or a flaky fullnode connection. These steps are retried instead of
  * failing the chain. SDK aborts (`MoveAbort`, `EUnauthorized`, BCS errors)
  * deliberately do NOT match — those stay red.
  */
 const TRANSIENT_RE =
-  /Hermes price fetch failed: (?:429|5\d\d)|Service Temporarily Unavailable|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|503|502|504|UNAVAILABLE|DEADLINE_EXCEEDED/i;
+  /(?:Lazer price (?:fetch|read)|WaterX quote-center(?: leaf)? fetch) failed: (?:429|5\d\d)|Service Temporarily Unavailable|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|503|502|504|UNAVAILABLE|DEADLINE_EXCEEDED/i;
 
 const MAX_TRANSIENT_RETRIES = 2;
 const RETRY_BACKOFF_MS = 5000;
@@ -240,7 +240,7 @@ async function runStep(step: Step, env: NodeJS.ProcessEnv, dryRun: boolean): Pro
 
 /**
  * Run a step, retrying up to `MAX_TRANSIENT_RETRIES` times when it fails with a
- * recognized transient infra error (Hermes 5xx/429, network blips). Genuine SDK
+ * recognized transient infra error (oracle-source 5xx/429, network blips). Genuine SDK
  * failures fail immediately.
  */
 async function runStepWithRetry(

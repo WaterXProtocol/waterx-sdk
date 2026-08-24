@@ -8,7 +8,7 @@ import { client, e2eNetwork, rawPrice } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
   simulateWithTransientRetry,
-  skipHermesIfFeedUnavailable,
+  skipIfOracleFetchUnavailable,
   skipIfTransientInfrastructureError,
   skipSimulateIfOracleTransient,
 } from "../helpers/e2e/simulate-assertions.ts";
@@ -26,10 +26,9 @@ describe(`trade orders (${e2eNetwork})`, () => {
         collateralType,
         orderId: 999_999_999n,
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }
@@ -54,10 +53,9 @@ describe(`trade orders (${e2eNetwork})`, () => {
         newSize: rawPrice(0.001),
         newTriggerPrice: tp,
         skipOraclePriceRefresh: false,
-        useSponsor: true,
       });
     } catch (e) {
-      if (skipHermesIfFeedUnavailable(ctx, e)) return;
+      if (skipIfOracleFetchUnavailable(ctx, e)) return;
       if (skipIfTransientInfrastructureError(ctx, e)) return;
       throw e;
     }

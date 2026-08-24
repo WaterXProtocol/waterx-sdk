@@ -2,17 +2,15 @@
  * Mint WLP from the wxa account's USD balance AND stake it atomically — the
  * "deposit USD and earn rewards" flow.
  *
- * By default does a FULL oracle refresh (Hermes fetch + on-chain Pyth push +
+ * By default does a FULL oracle refresh (the fed set's signed update legs +
  * aggregate + TokenPoolInfo.value_usd bump) via `buildMintAndStakeWlpTx`'s
- * default refresh path, so it works regardless of how stale the on-chain Pyth
- * price is.
+ * default refresh path, so it works regardless of the on-chain price's age.
  *
- * `SKIP_PRICE_UPDATE=1` switches to the aggregate-only path: skip the Hermes
- * fetch + Pyth push and only re-aggregate the price already on-chain (mint_wlp
- * still needs a same-PTB `oracle::aggregate` or it aborts EStalePrice). That
- * only succeeds while the on-chain USDCUSD Pyth price is within the pyth_rule
- * tolerance window — otherwise the aggregate fails ETotalWeightNotEnough and
- * you must run the default full refresh instead.
+ * `SKIP_PRICE_UPDATE=1` switches to the aggregate-only path: skip the
+ * off-chain pull entirely and re-aggregate USDCUSD off its on-chain
+ * `constant_rule` pin (mint_wlp still needs a same-PTB `oracle::aggregate` or
+ * it aborts EStalePrice). USDCUSD is constant-pinned, so this needs no
+ * off-chain data at all.
  *
  * Required env:
  *   WATERX_SMOKE_ACCOUNT_ID (or WATERX_ACCOUNT_ID)  wxa account id
@@ -21,7 +19,7 @@
  *   DEPOSIT_AMOUNT     raw USD units to deposit (default 30_000_000 = 30 USD)
  *   MIN_LP_AMOUNT      slippage floor in raw WLP units (default 0)
  *   STAKE_ALIAS        staking pool alias (default "WLP")
- *   SKIP_PRICE_UPDATE=1  aggregate-only (no Pyth push) — needs a fresh on-chain price
+ *   SKIP_PRICE_UPDATE=1  aggregate-only (re-aggregates the constant_rule pin)
  *   EXECUTE=1          sign + execute (otherwise simulate only)
  *
  * Run:
@@ -30,7 +28,7 @@
  */
 import { Transaction } from "@mysten/sui/transactions";
 
-import { aggregateTickerWithPyth } from "../src/oracle/index.ts";
+import { aggregateTickerWithConstant } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
@@ -54,7 +52,6 @@ async function main(): Promise<void> {
   const doExecute = process.env.EXECUTE === "1";
 
   const client = await PerpClient.create("TESTNET", {
-    oracleSource: "pyth_rule",
     cache: true,
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
@@ -68,7 +65,7 @@ async function main(): Promise<void> {
   console.log(`min lp raw:    ${minLpAmount}`);
   console.log(`stake alias:   ${stakeAlias}`);
   console.log(
-    `price update:  ${skipPriceUpdate ? "SKIPPED (aggregate-only, no Pyth push)" : "full refresh (Hermes + Pyth push)"}`,
+    `price update:  ${skipPriceUpdate ? "SKIPPED (aggregate-only, constant pin)" : "full refresh (fed set)"}`,
   );
   console.log(`mode:          ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
@@ -80,23 +77,14 @@ async function main(): Promise<void> {
 
   const tx = new Transaction();
   if (skipPriceUpdate) {
-    // Re-aggregate the on-chain USDCUSD price (no Hermes / no Pyth push) so
-    // mint_wlp's oracle::get_price sees a same-PTB aggregate. Only works while
-    // that on-chain price is within pyth_rule tolerance.
-    const feed = client.getPythFeed(TICKER);
-    aggregateTickerWithPyth(tx, client, {
-      ticker: TICKER,
-      priceInfoObjectId: feed.price_info_object,
-    });
+    // Re-aggregate USDCUSD off its on-chain constant_rule pin (no off-chain
+    // data needed) so mint_wlp's oracle::get_price sees a same-PTB aggregate.
+    aggregateTickerWithConstant(tx, client, { ticker: TICKER });
   }
 
   await buildMintAndStakeWlpTx(client, {
     tx,
     skipOraclePriceRefresh: skipPriceUpdate,
-    // mint_wlp produces no TradingRequest to reimburse a sponsor fund
-    // against — standalone smoke script pays its own gas. No-op when
-    // skipPriceUpdate is true (no refresh to pay a fee for).
-    allowGasFee: true,
     accountId,
     depositTokenType: usdType,
     depositTicker: TICKER,

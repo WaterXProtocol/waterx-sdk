@@ -48,7 +48,7 @@ pnpm smoke:chain
 # (DEFAULT_SMOKE_ACCOUNT_ID + DEFAULT_SMOKE_SIGNER) — a pre-funded fixture
 # account owned by the smoke signer — so the dry chain passes with zero setup
 # and zero secrets. This is what the `smoke-chain-dry` CI job runs (no keystore).
-# Transient Hermes/network errors are retried (not failed).
+# Transient oracle/network errors are retried (not failed).
 pnpm smoke:chain:dry
 
 # with optional steps
