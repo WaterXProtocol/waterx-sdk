@@ -2,9 +2,20 @@
 
 Guidance for Claude Code when working in `waterx-sdk` (v3).
 
-## Changelog
+## Changelog & releases
 
-This repo keeps a [Keep a Changelog](https://keepachangelog.com/)–style [`CHANGELOG.md`](CHANGELOG.md). **Every PR with a user-visible change must add an entry under `## [Unreleased]`** (Added / Changed / Deprecated / Removed / Fixed / Security), referencing the PR number. Release tagging moves `[Unreleased]` into a dated, SemVer-numbered section (also bump `package.json` `version`).
+This repo keeps a [Keep a Changelog](https://keepachangelog.com/)–style [`CHANGELOG.md`](CHANGELOG.md). **Every PR with a user-visible change must add an entry under `## [Unreleased]`** (Added / Changed / Deprecated / Removed / Fixed / Security), referencing the PR number.
+
+### Release flow
+
+Publishing and changelog-cutting are two SEPARATE steps, in this order — **npm first, git second**. The publish workflow bumps `package.json` itself, so **never hand-bump the version**.
+
+1. **Publish from GitHub Actions.** Run the `Publish package` workflow (`.github/workflows/publish.yml`, `workflow_dispatch`) and pick `major` / `minor` / `patch` / `prerelease`. It runs `pnpm lint` + `pnpm typecheck` + `pnpm build`, then `npm version <type> --no-git-tag-version` + `npm publish --provenance`, then pushes a `chore: bump sdk version` commit back to `main`. It creates **no git tag** — steps 2–3 are by hand afterwards. The actor is allowlisted by GitHub user id inside the workflow.
+2. **Cut the changelog** — one commit, `chore(release): X.Y.Z`, touching `CHANGELOG.md` only. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and open a fresh empty `## [Unreleased]` above it. The **date is the npm registry publish timestamp in UTC** (`npm view @waterx/sdk time --json`), not the day you cut it — every prior section is dated that way. Lead the section with a one-paragraph italic note that NAMES every breaking change; the versioning policy at the top of the file requires this, since a PATCH may carry one. Before cutting, read `git diff vPREV..HEAD -- CHANGELOG.md` for entries that landed under an ALREADY-DATED header and move them up (4.3.2 had to).
+3. **Tag that release commit** — annotated, `v`-prefixed: `git tag -a vX.Y.Z -m "…"` then `git push origin vX.Y.Z`. Every tag points at its `chore(release)` commit, not at the workflow's bump commit. The note is for MAINTAINERS: what shipped, the npm publish timestamp, the commit npm actually published from (`npm view @waterx/sdk@X.Y.Z gitHead` — the merge commit, one before the bump), and any breaking change.
+4. **Publish the GitHub Release** on that tag — `gh release create vX.Y.Z --title "X.Y.Z" --notes-file …`, titled with the BARE version (no `v`). This body is for CONSUMERS, not the git log: the PRs it came from as links, a `> ⚠️` blockquote naming any breaking change, then `## Highlights` and a migration table. Read `gh release view v4.3.3` for the house style.
+
+**Versioning is SemVer-shaped but is NOT a SemVer compatibility promise** — see the policy note atop `CHANGELOG.md`. Every consumer is first-party and pins exact, so a MINOR or PATCH may ship a break provided its section names it.
 
 ## Project Overview
 
