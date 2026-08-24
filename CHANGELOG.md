@@ -16,12 +16,16 @@ from the version number alone.
 
 ## [Unreleased]
 
-_The next release is **5.0.0** (MAJOR): the `pyth_rule` (Pyth Core / Hermes) source is
-RETIRED and the WL-2345 consumer seams are built directly on the post-retirement
-surface. `package.json` deliberately still carries the CURRENT version — the release
-workflow bumps it at publish — so the tarball consumers build against during the gated
-window is named for the pre-bump version; hand them the tarball PATH rather than a
-version to pin. Release tagging dates this section. All of it lands in one gated PR (#89).
+## [5.0.0] - 2026-08-24
+
+_MAJOR: the `pyth_rule` (Pyth Core / Hermes) source is RETIRED, the oracle fed set is
+DERIVED from the deployment config instead of declared by the caller, and the WL-2345
+consumer seams are built directly on that post-retirement surface. Two BREAKING sections
+follow — read both before upgrading. A consumer that passed `oracleSource`, read
+`ORACLE_SOURCE`, held a `PythCoreRule`, or imported anything off `src/oracle/pyth.ts`
+must adapt in the same change set; the removal ledger below is grep-ready for exactly
+that. No config republish is needed — the retired `pyth_rule` / `pyth_sponsor_rule`
+blocks may stay in a deployed JSON and are simply never derived. Landed in one gated PR (#89).
 [WL-2345](https://bucketprotocol.atlassian.net/browse/WL-2345) ·
 [WL-2355](https://bucketprotocol.atlassian.net/browse/WL-2355)._
 
