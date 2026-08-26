@@ -1,10 +1,11 @@
 /**
  * `pyth-pro-history.ts` — Pyth Pro chart history
  * (`GET /v1/{channel}/history`), the TradingView-UDF-shaped bar source that
- * replaces Benchmarks for chart backfill. Bearer-REQUIRED (unlike the symbol
+ * replaced Benchmarks for chart backfill. Bearer-REQUIRED (unlike the symbol
  * catalog): consumers call this server-side with their `PYTH_API_KEY` and
- * keep their own fallback policy (e.g. Benchmarks on 403/5xx while its
- * keyless window lasts).
+ * keep their own fallback policy — though Benchmarks itself is no longer a
+ * candidate: the 2026-08-26 Core retirement cutover removed it outright
+ * (404 on every path, Bearer or not).
  *
  * The `symbol` must be FULLY QUALIFIED (`Crypto.BTC/USD`,
  * `Equity.US.AAPL/USD` — the catalog's `symbol` field); a bare pair 404s.

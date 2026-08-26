@@ -11,9 +11,11 @@
  *
  * Policy semantics:
  * - Bearer auth is attached iff `policy.apiKey` is a non-empty string —
- *   absent/empty is byte-identical to today's keyless request (no
- *   `Authorization` header at all). This is the Phase-0 invariant of the
- *   Pyth Pro migration: existing keyless deployments see no behavior change.
+ *   absent/empty sends no `Authorization` header at all. Keyless callers
+ *   still exist (the Pyth Pro symbol catalog reads keyless), so the
+ *   credential-presence rule stays — even though the keyless Core Hermes
+ *   flow that originally motivated it as a migration invariant was retired
+ *   at the 2026-08-26 cutover.
  * - Retries on network errors, HTTP 429, and HTTP 5xx, with exponential
  *   backoff (`retryDelayMs * 2^attempt`, capped at `MAX_BACKOFF_MS`). A 429
  *   carrying a numeric `Retry-After` header uses the SERVER'S delay instead,

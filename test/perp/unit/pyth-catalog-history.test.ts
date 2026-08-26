@@ -114,7 +114,7 @@ describe("fetchPythProHistory", () => {
     expect(out).toEqual(UDF_BODY);
   });
 
-  it("throws with status + body on non-2xx (the caller's Benchmarks-fallback trigger)", async () => {
+  it("throws with status + body on non-2xx (the caller's fallback trigger)", async () => {
     mockFetchResponse({ status: 403, text: "Not entitled: history" });
 
     await expect(
