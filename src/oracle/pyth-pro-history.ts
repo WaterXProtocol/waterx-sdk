@@ -16,11 +16,33 @@ import { PYTH_PRO_API_ENDPOINT } from "./symbol-catalog.ts";
 import { fetchWithPolicy, joinEndpointPath, type FetchPolicy } from "./update-fetch.ts";
 
 /**
+ * Thrown by {@link fetchPythProHistory} on a non-2xx response. The message
+ * keeps the historical shape (`Pyth Pro history fetch failed: <status>
+ * <body>`), but consumers should branch on `instanceof PythProHistoryError`
+ * + `.status` (e.g. `403` for the entitlement fallback) instead of parsing
+ * the message. A retry-exhausted transport failure (429/5xx budget spent,
+ * network error) is NOT wrapped — it stays `fetchWithPolicy`'s own
+ * `FetchPolicyError`.
+ */
+export class PythProHistoryError extends Error {
+  /** HTTP status of the failed response (e.g. `403` unentitled, `404` unknown symbol). */
+  readonly status: number;
+
+  constructor(status: number, body: string) {
+    super(`Pyth Pro history fetch failed: ${status} ${body}`);
+    this.name = "PythProHistoryError";
+    this.status = status;
+  }
+}
+
+/**
  * Fetch one history window. Returns the endpoint's TradingView-UDF-style JSON
  * body VERBATIM (`unknown` — e.g. `{ s: "ok", t: [...], o: [...], h: [...],
  * l: [...], c: [...] }`): bar-shape interpretation stays with the charting
- * consumer, the SDK only owns transport + auth. Throws on non-2xx with the
- * response status and body attached.
+ * consumer, the SDK only owns transport + auth. Throws
+ * {@link PythProHistoryError} on non-2xx with the body attached — branch on
+ * `instanceof` + `.status` (a 403 here is the caller's fallback trigger),
+ * not on the message text.
  */
 export async function fetchPythProHistory(opts: {
   /** Aggregation channel path segment, e.g. `"fixed_rate@1000ms"`. */
@@ -52,7 +74,7 @@ export async function fetchPythProHistory(opts: {
     { ...opts.fetch, apiKey: opts.apiKey ?? opts.fetch?.apiKey },
   );
   if (!res.ok) {
-    throw new Error(`Pyth Pro history fetch failed: ${res.status} ${await res.text()}`);
+    throw new PythProHistoryError(res.status, await res.text());
   }
   return res.json();
 }

@@ -154,7 +154,8 @@ export type {
 } from "./schedule.ts";
 
 // Pyth Pro symbol catalog (keyless; schedule strings + hex↔integer id map)
-// and Bearer-keyed chart history.
+// and Bearer-keyed chart history. `PythProHistoryError` is re-exported for
+// the same `instanceof` reason as `FetchPolicyError` above.
 export { fetchPythSymbolCatalog } from "./symbol-catalog.ts";
 export type { PythSymbolRecord } from "./symbol-catalog.ts";
-export { fetchPythProHistory } from "./pyth-pro-history.ts";
+export { fetchPythProHistory, PythProHistoryError } from "./pyth-pro-history.ts";
