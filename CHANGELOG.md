@@ -16,6 +16,13 @@ from the version number alone.
 
 ## [Unreleased]
 
+### Added
+
+- **`PythProHistoryError`** — typed error thrown by `fetchPythProHistory` on a
+  non-2xx response, carrying `.status`. The message format is unchanged, so
+  existing message-parsing consumers keep working; consumers can migrate from
+  message parsing to `instanceof` + `.status` (#92).
+
 ## [5.0.0] - 2026-08-24
 
 _MAJOR: the `pyth_rule` (Pyth Core / Hermes) source is RETIRED, the oracle fed set is
