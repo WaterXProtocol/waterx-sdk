@@ -147,6 +147,7 @@ export {
   deriveOracleSources,
   missingOracleCredentials,
   parsePythSchedule,
+  PythProHistoryError,
   PythScheduleParseError,
   // THE quote-center route ladder (leaves-first, envelope only where there is
   // no leaf route). Both SDK planes go through it, so a consumer running its

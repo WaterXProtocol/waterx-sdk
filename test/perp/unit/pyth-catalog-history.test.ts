@@ -8,8 +8,9 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchPythProHistory } from "../../../src/oracle/pyth-pro-history.ts";
+import { fetchPythProHistory, PythProHistoryError } from "../../../src/oracle/pyth-pro-history.ts";
 import { fetchPythSymbolCatalog } from "../../../src/oracle/symbol-catalog.ts";
+import { FetchPolicyError } from "../../../src/oracle/update-fetch.ts";
 import { mockFetchResponse } from "../helpers/fixtures/quote-center.ts";
 
 afterEach(() => vi.restoreAllMocks());
@@ -114,18 +115,58 @@ describe("fetchPythProHistory", () => {
     expect(out).toEqual(UDF_BODY);
   });
 
-  it("throws with status + body on non-2xx (the caller's Benchmarks-fallback trigger)", async () => {
+  it("throws PythProHistoryError carrying .status on a 403, message shape unchanged", async () => {
     mockFetchResponse({ status: 403, text: "Not entitled: history" });
 
-    await expect(
-      fetchPythProHistory({
-        channel: "fixed_rate@1000ms",
-        symbol: "Crypto.BTC/USD",
-        resolution: "60",
-        fromSec: 0,
-        toSec: 1,
-        apiKey: "k",
-      }),
-    ).rejects.toThrow(/Pyth Pro history fetch failed: 403 Not entitled: history/);
+    const err: unknown = await fetchPythProHistory({
+      channel: "fixed_rate@1000ms",
+      symbol: "Crypto.BTC/USD",
+      resolution: "60",
+      fromSec: 0,
+      toSec: 1,
+      apiKey: "k",
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(PythProHistoryError);
+    expect((err as PythProHistoryError).status).toBe(403);
+    // The message keeps the EXACT pre-typed-error shape — consumers still
+    // substring/regex it today, so the typed error must be purely additive
+    // until they migrate to `instanceof` + `.status`.
+    expect((err as Error).message).toBe("Pyth Pro history fetch failed: 403 Not entitled: history");
+  });
+
+  it("carries the status for a 404 too (unknown/bare symbol)", async () => {
+    mockFetchResponse({ status: 404, text: "not found" });
+
+    const err: unknown = await fetchPythProHistory({
+      channel: "fixed_rate@1000ms",
+      symbol: "BTCUSD",
+      resolution: "60",
+      fromSec: 0,
+      toSec: 1,
+      apiKey: "k",
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(PythProHistoryError);
+    expect((err as PythProHistoryError).status).toBe(404);
+  });
+
+  it("does NOT wrap a retry-exhausted transport failure — FetchPolicyError propagates", async () => {
+    // 5xx is retryable, so fetchWithPolicy exhausts its budget and throws its
+    // OWN error before fetchPythProHistory ever sees a Response.
+    mockFetchResponse({ status: 500, text: "upstream sad" });
+
+    const err: unknown = await fetchPythProHistory({
+      channel: "fixed_rate@1000ms",
+      symbol: "Crypto.BTC/USD",
+      resolution: "60",
+      fromSec: 0,
+      toSec: 1,
+      apiKey: "k",
+      fetch: { retries: 0, retryDelayMs: 0 },
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(FetchPolicyError);
+    expect(err).not.toBeInstanceOf(PythProHistoryError);
   });
 });
