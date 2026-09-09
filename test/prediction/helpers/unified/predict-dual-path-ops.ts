@@ -1,3 +1,4 @@
+import type { PredictClient } from "../../../../src/prediction/client.ts";
 import { DEFAULT_FORCE_CLAIM_CHUNK_SIZE } from "../../../../src/prediction/constants.ts";
 import {
   adminPlaceOrderFor,
@@ -29,9 +30,11 @@ import {
   type PredictDualPathCase,
 } from "./predict-dual-path-shared.ts";
 
-export function predictOpsDualPathCases(client: {
-  config: { packages: { waterx_prediction: { published_at: string } } };
-}): PredictDualPathCase[] {
+// Takes the CLIENT, not a structural slice of its config: the package id is
+// reached through `packageId()`, which is the line's own accessor, so this
+// helper does not depend on which package keys the parsed document's type
+// happens to promise.
+export function predictOpsDualPathCases(client: PredictClient): PredictDualPathCase[] {
   const acc = minimalPlaceOrderParams(client as never);
   return [
     caseMutate(

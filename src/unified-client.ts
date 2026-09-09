@@ -285,18 +285,20 @@ export class WaterXClient {
       cache: opts.cache,
       ...predictRest,
     };
-    // One document serves both lines only when every input that decides WHICH
-    // document, and HOW it is fetched, matches. Comparing just network+URL
-    // silently dropped a caller's `predict: { fetchImpl, timeoutMs }` — their
-    // stub never ran and the load hit the real network. `cache` is deliberately
-    // NOT compared: it gates whether the loader reads its cache early, not
-    // which document comes back, so sharing across a `cache` difference only
-    // saves a fetch.
+    // One document serves both lines only when every input to the LOAD matches
+    // — which document, how it is fetched, AND the cache policy. Comparing
+    // just network+URL silently dropped a caller's
+    // `predict: { fetchImpl, timeoutMs }` (their stub never ran). And `cache`
+    // is not merely an optimization: against a seeded cache, sharing across
+    // `{ cache: true, predict: { cache: false } }` hands prediction the CACHED
+    // snapshot its `cache: false` explicitly declined. Normalized, since an
+    // unset `cache` and `false` are the same policy.
     const sameDocument =
       resolvedPerpNetwork === resolvedPredictNetwork &&
       perpOpts.waterxConfigUrl === predictOpts.waterxConfigUrl &&
       perpOpts.fetchImpl === predictOpts.fetchImpl &&
-      perpOpts.timeoutMs === predictOpts.timeoutMs;
+      perpOpts.timeoutMs === predictOpts.timeoutMs &&
+      Boolean(perpOpts.cache) === Boolean(predictOpts.cache);
     const [perpConfig, predictConfig] = sameDocument
       ? await loadConfig(resolvedPerpNetwork, perpOpts).then((c) => [c, c] as const)
       : await Promise.all([

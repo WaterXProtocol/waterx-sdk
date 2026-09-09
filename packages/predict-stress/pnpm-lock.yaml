@@ -276,8 +276,13 @@ packages:
   '@types/node@25.9.2':
     resolution: {integrity: sha512-G05zqtJhcDLb8uslf5EjCxXg9G1KQxiV8OS0R26IC//Eoyitzqe8z37I7cqvnZlrlSfgocQRfSn/AHBZJJFyGw==}
 
+  '@waterx/config@0.1.1-staging.1':
+    resolution: {integrity: sha512-6aKK93ZdCWM3MN7X7YKQOgZThiI73bDsYIg1aV3jDSIXNZc6ka1l/KApbvk0U7P1Z2J4M+u3MCuoev+hrR9gdQ==}
+    engines: {node: '>=18'}
+
   '@waterx/sdk@file:../..':
     resolution: {directory: ../.., type: directory}
+    engines: {node: '>=22'}
     peerDependencies:
       '@mysten/bcs': ^1.9.0
       '@mysten/sui': ^2.9.0
@@ -329,6 +334,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  zod@3.25.76:
+    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
 
@@ -513,11 +521,16 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
+  '@waterx/config@0.1.1-staging.1':
+    dependencies:
+      zod: 3.25.76
+
   '@waterx/sdk@file:../..(@mysten/bcs@1.9.2)(@mysten/sui@2.17.0(typescript@6.0.3))':
     dependencies:
       '@mysten/bcs': 1.9.2
       '@mysten/sui': 2.17.0(typescript@6.0.3)
       '@noble/hashes': 2.2.0
+      '@waterx/config': 0.1.1-staging.1
 
   dotenv@17.4.2: {}
 
@@ -582,3 +595,5 @@ snapshots:
   valibot@1.4.1(typescript@6.0.3):
     optionalDependencies:
       typescript: 6.0.3
+
+  zod@3.25.76: {}

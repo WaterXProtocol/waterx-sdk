@@ -66,9 +66,16 @@ export function resolveWaterxConfigUrl(
   if (isLegacyConfigFileUrl(value)) {
     warnLegacyFileUrlOnce(value);
     // Preserve the long-standing swap so a legacy value still follows the
-    // caller's network rather than the one baked into the string.
+    // caller's network rather than the one baked into the string. Swap on the
+    // PATH — the same slice detection keys off — then re-attach any
+    // query/fragment: anchoring `$` against the whole value silently skipped
+    // the swap for `…/testnet.json?ref=x`, handing a MAINNET caller the
+    // TESTNET document, which is the exact failure this module exists to stop.
+    const cut = value.search(/[?#]/);
+    const path = cut === -1 ? value : value.slice(0, cut);
+    const suffix = cut === -1 ? "" : value.slice(cut);
     const other = net === "mainnet" ? "testnet" : "mainnet";
-    return value.replace(new RegExp(`/${other}\\.json$`, "i"), `/${net}.json`);
+    return path.replace(new RegExp(`/${other}\\.json$`, "i"), `/${net}.json`) + suffix;
   }
 
   return `${value.replace(/\/+$/, "")}/${net}.json`;

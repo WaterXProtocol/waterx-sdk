@@ -107,6 +107,13 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   `staging-v2` serve v2, and the four co-exist for now, so this is the error a
   mispointed deployment actually hits. A malformed _v2_ document still gets the
   parser's field-level errors, which are the more useful answer there.
+- **The last-known-good fallback is TRANSIENT-only.** `loadConfig` falls back to
+  the cached snapshot for a network error, timeout, 429 or 5xx. A deterministic
+  failure — 403/404, malformed JSON, a schema violation, a network mismatch, or
+  a missing required package — now propagates whether or not a snapshot exists.
+  Serving stale state there let a process repointed at a retired or pre-v2
+  endpoint keep building against dead object ids forever, and consolidating the
+  loaders had newly exposed the prediction line to it.
 - **`REQUIRED_PACKAGES` is the SHARED core only.** The loader asserts
   `bucket_framework` / `waterx_account` / `waterx_referral` plus the entry each
   published `oracle_rules.<rule>` block names; the per-line sets
@@ -115,6 +122,10 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   PARTIAL deployment therefore loads: a document that ships perp before
   prediction no longer blocks a perp-only app on an absent
   `waterx_prediction_gift` it never reads.
+- **`PerpLineConfig` / `PredictionLineConfig`** name a document that additionally
+  carries a line's packages — the guarantee each line client establishes at
+  construction. `WaterXConfig` promises only what the LOADER checks, so
+  `parseConfigDocument` no longer types package keys it does not verify.
 - **New `@waterx/sdk/config` export subpath** for the shared loader and its
   types. `@waterx/sdk/account` consumers can now name `WaterXConfig` without
   reaching into `@waterx/sdk/perp`, and both line barrels re-export the same

@@ -19,7 +19,7 @@
 import { parseWaterxConfig, type WaterxConfig as ParsedWaterxConfig } from "@waterx/config";
 
 import type { Network } from "./constants.ts";
-import { fetchWithPolicy, rethrowExhaustedFetch } from "./oracle/update-fetch.ts";
+import { FetchPolicyError, fetchWithPolicy, rethrowExhaustedFetch } from "./oracle/update-fetch.ts";
 import { ownEntry, requireEntry } from "./utils/record.ts";
 
 /** One `packages.<name>` entry — package identity only, no object ids. */
@@ -81,10 +81,23 @@ export const PREDICTION_PACKAGES = Object.freeze([
  * {@link assertRequiredPackages} establishes.
  */
 export type WaterXConfig = ParsedWaterxConfig & {
-  packages: Record<
-    RequiredPackage | (typeof PERP_PACKAGES)[number] | (typeof PREDICTION_PACKAGES)[number],
-    PackageEntry
-  >;
+  packages: Record<RequiredPackage, PackageEntry>;
+};
+
+/**
+ * A document additionally carrying the PERP line's packages — what `PerpClient`
+ * holds once its {@link assertLinePackages} call has run. Kept separate from
+ * {@link WaterXConfig} because the LOADER does not establish it: a document
+ * serving only the prediction line parses fine, so promising these keys on
+ * every parse result would type a guarantee that does not exist.
+ */
+export type PerpLineConfig = WaterXConfig & {
+  packages: Record<(typeof PERP_PACKAGES)[number], PackageEntry>;
+};
+
+/** As {@link PerpLineConfig}, for the PREDICTION line's packages. */
+export type PredictionLineConfig = WaterXConfig & {
+  packages: Record<(typeof PREDICTION_PACKAGES)[number], PackageEntry>;
 };
 
 /**
@@ -221,6 +234,42 @@ export function clearConfigCache(): void {
   configCache.clear();
 }
 
+/** A non-ok config response, carrying the status so the fallback can classify it. */
+class HttpConfigError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "HttpConfigError";
+    this.status = status;
+  }
+}
+
+/**
+ * Whether a failed load may be retried into the last-known-good snapshot.
+ *
+ * TRANSIENT (fall back): no HTTP status at all — a network error, DNS failure,
+ * or timeout — or a status the server may recover from (429, any 5xx).
+ * DETERMINISTIC (propagate): every other status (notably 403/404), and every
+ * failure after the bytes arrived — malformed JSON, schema violation, network
+ * mismatch, missing required package. Those describe THIS url/document and do
+ * not self-heal, so masking them behind a stale snapshot hides a permanent
+ * deployment problem.
+ */
+function isTransientLoadFailure(err: unknown): boolean {
+  const status =
+    err instanceof HttpConfigError
+      ? err.status
+      : err instanceof FetchPolicyError
+        ? err.status
+        : undefined;
+  if (err instanceof HttpConfigError || err instanceof FetchPolicyError) {
+    return status === undefined || status === 429 || status >= 500;
+  }
+  // Anything raised after a 200 arrived (JSON.parse, the strict parser,
+  // assertRequiredPackages) is a property of the document, not of the moment.
+  return false;
+}
+
 export async function loadConfig(
   network: Network,
   opts: LoadConfigOptions = {},
@@ -246,33 +295,22 @@ export async function loadConfig(
     throw new Error("loadConfig: no global `fetch` available; pass opts.fetchImpl");
   }
 
-  // Same resilience policy as the oracle money-path fetches (see
-  // `fetchWithPolicy`): bounded retry with backoff instead of one bare
-  // attempt. A refresh failure (network exhaustion, a non-ok response, OR a
-  // 200 response that fails to parse — see below) falls back to the last
-  // successfully-parsed config for this network+URL when one exists — a
-  // config-endpoint blip must not crash a long-running process that already
-  // has a working deployment snapshot. First load (nothing cached yet) has
-  // no fallback and still throws. Intentionally no log line on the fallback
-  // path — the SDK never logs (see every other oracle error in this
-  // codebase); a caller that cares can tell it got a stale snapshot by
-  // re-deriving staleness itself if it needs to.
+  // Resilience, but ONLY for a transient failure. A config-endpoint blip must
+  // not crash a long-running process that already holds a working snapshot for
+  // this network+URL — so a network exhaustion / timeout / 429 / 5xx falls back
+  // to the last successfully-parsed config.
   //
-  // Deliberate limitation (not fixed here — a follow-up): this treats EVERY
-  // failure mode identically, including a DETERMINISTIC one (404/403 — the
-  // URL moved, or access was revoked) once a `configCache` snapshot exists.
-  // Unlike a transient blip, a deterministic failure will never self-heal on
-  // the next retry, so a long-running process with a stale snapshot will
-  // keep serving it FOREVER and silently mask what is actually a permanent
-  // deployment problem. Disambiguating "blip" from "moved/revoked" (e.g. via
-  // a max-staleness budget, or treating non-retryable 4xx specially) is
-  // intentionally deferred rather than folded into this change.
+  // A DETERMINISTIC failure never falls back: a 404/403 (the URL moved, or
+  // access was revoked), malformed JSON, a schema violation, a network
+  // mismatch, or a missing required package all mean THIS URL will not
+  // self-heal on the next attempt. Serving the stale snapshot there would let
+  // a process repointed at a retired or pre-v2 endpoint keep building against
+  // dead object ids forever, silently — the failure mode that matters most now
+  // that pre-v2 and v2 endpoints co-exist, and that both product lines share
+  // this loader. Those propagate, cache or no cache.
   //
-  // fetch → ok-check → JSON → strict parse all run in ONE try, so any failure
-  // along that chain (network exhaustion, a non-ok response, malformed JSON,
-  // a schema violation, a network mismatch, or a missing required package)
-  // lands in the same catch and takes the same single last-known-good lookup
-  // below.
+  // First load (nothing cached) throws either way. No log line on the fallback
+  // path — the SDK never logs; a caller that cares can re-derive staleness.
   let config: WaterXConfig;
   try {
     const response = await fetchWithPolicy(
@@ -281,11 +319,14 @@ export async function loadConfig(
       { timeoutMs: opts.timeoutMs ?? 10_000, retries: 2, fetchImpl },
     );
     if (!response.ok) {
-      throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
+      throw new HttpConfigError(
+        `loadConfig: HTTP ${response.status} fetching ${url}`,
+        response.status,
+      );
     }
     config = parseConfigDocument(await response.json(), network);
   } catch (err) {
-    const stale = configCache.get(cacheKey);
+    const stale = isTransientLoadFailure(err) ? configCache.get(cacheKey) : undefined;
     if (stale) return stale;
     // Reframe a status-carrying FetchPolicyError into this function's own
     // message shape, mirroring the non-retried `!response.ok` throw above and

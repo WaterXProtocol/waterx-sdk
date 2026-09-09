@@ -215,7 +215,7 @@ describe("loadConfig", () => {
     expect(calls).toBe(3);
   });
 
-  it("returns the last-known-good config when a later refresh fails persistently", async () => {
+  it("falls back to last-known-good when a refresh fails TRANSIENTLY (503)", async () => {
     vi.useFakeTimers();
     let calls = 0;
     const fetchImpl = (async () => {
@@ -298,13 +298,11 @@ describe("loadConfig", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
-  it("returns the last-known-good config when a refresh's 200 response has malformed JSON", async () => {
-    // A 200 with a garbage body is a refresh failure exactly like a non-ok
-    // status — it must not crash a caller that already has a working
-    // config for this URL. `.json()` throwing is NOT a retryable condition
-    // (fetchWithPolicy already returned successfully; parsing is loadConfig's
-    // own concern), so this exercises the json()/parse try/catch directly,
-    // not the retry loop.
+  it("does NOT fall back on malformed JSON — a bad document is deterministic", async () => {
+    // A 200 carrying garbage describes THIS url, not a passing blip: the next
+    // attempt returns the same garbage. Serving the stale snapshot would let a
+    // process repointed at a retired or pre-v2 endpoint build against dead
+    // object ids forever. Only transport-level failures fall back.
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
@@ -317,11 +315,26 @@ describe("loadConfig", () => {
       };
     }) as unknown as typeof fetch;
 
-    const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
-    const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
-
-    expect(second).toBe(first);
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl })).rejects.toThrow(
+      /Unexpected token/,
+    );
     expect(calls).toBe(2);
+  });
+
+  it("does NOT fall back on a deterministic HTTP status (404) — the URL moved", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return calls === 1
+        ? ok(MOCK_TESTNET_CONFIG_RAW)
+        : { ok: false, status: 404, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl })).rejects.toThrow(
+      /HTTP 404/,
+    );
   });
 
   it("rethrows on first load when the 200 response has malformed JSON (no last-known-good to fall back to)", async () => {
@@ -338,19 +351,16 @@ describe("loadConfig", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("returns the last-known-good config when a refresh's 200 response fails the strict parse", async () => {
+  it("does NOT fall back when a refresh's 200 response fails the strict parse", async () => {
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
       if (calls === 1) return ok(MOCK_TESTNET_CONFIG_RAW);
-      // A 200 with a shape the parser rejects (no packages / objects at all).
       return ok({ schema_version: 2, network: "testnet" });
     }) as unknown as typeof fetch;
 
-    const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
-    const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
-
-    expect(second).toBe(first);
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl })).rejects.toThrow();
     expect(calls).toBe(2);
   });
 

@@ -238,7 +238,7 @@ describe("umbrella WaterXClient", () => {
     const unified = await WaterXClient.create({
       network: "TESTNET",
       waterxConfigUrl: "https://waterx.test/testnet.json",
-      perp: { cache: true },
+      cache: true,
       predict: { grpcUrl: "https://rpc.test:443" },
     });
 
@@ -255,6 +255,36 @@ describe("umbrella WaterXClient", () => {
     // The umbrella's builders are grafted onto the constructed line clients.
     expect(typeof unified.perp.buildPlaceOrderTx).toBe("function");
     expect(typeof unified.predict.placeOrder).toBe("function");
+  });
+
+  it("loads per line when the two lines' cache policies differ", async () => {
+    // `cache` is part of each line's load contract, not just an optimization:
+    // sharing the perp load with a `cache: false` predict would hand it a
+    // CACHED snapshot it explicitly declined.
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
+
+    await WaterXClient.create({
+      network: "TESTNET",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
+      cache: true,
+      predict: { cache: false },
+    });
+
+    expect(loadConfig).toHaveBeenCalledTimes(2);
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", expect.objectContaining({ cache: true }));
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", expect.objectContaining({ cache: false }));
+  });
+
+  it("still shares one load when an unset cache meets an explicit false", async () => {
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
+
+    await WaterXClient.create({
+      network: "TESTNET",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
+      predict: { cache: false },
+    });
+
+    expect(loadConfig).toHaveBeenCalledTimes(1);
   });
 
   it("WaterXClient.create forwards every oracle option to the perp line", async () => {
