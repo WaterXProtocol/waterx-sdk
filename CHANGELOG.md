@@ -124,8 +124,11 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   `waterx_prediction_gift` it never reads.
 - **`PerpLineConfig` / `PredictionLineConfig`** name a document that additionally
   carries a line's packages — the guarantee each line client establishes at
-  construction. `WaterXConfig` promises only what the LOADER checks, so
-  `parseConfigDocument` no longer types package keys it does not verify.
+  construction, and the type `client.config` now HAS: `BaseLineClient` is generic
+  over its config (defaulting to `WaterXConfig`) and each line narrows it, with
+  `assertLinePackages` narrowing from its package-name tuple. `WaterXConfig`
+  promises only what the LOADER checks, so `parseConfigDocument` no longer types
+  package keys it does not verify.
 - **New `@waterx/sdk/config` export subpath** for the shared loader and its
   types. `@waterx/sdk/account` consumers can now name `WaterXConfig` without
   reaching into `@waterx/sdk/perp`, and both line barrels re-export the same

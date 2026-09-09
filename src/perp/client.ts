@@ -18,6 +18,7 @@ import {
   loadConfig,
   PERP_PACKAGES,
   type LoadConfigOptions,
+  type PerpLineConfig,
   type WaterXConfig,
 } from "../config.ts";
 import type { PythAccessConfig, PythFetchPolicy, WaterxAccessConfig } from "../oracle/config.ts";
@@ -69,7 +70,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   waterxFetch?: FetchPolicy;
 }
 
-export class PerpClient extends BaseLineClient {
+export class PerpClient extends BaseLineClient<PerpLineConfig> {
   /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
   pyth: PythAccessConfig;
   /**
@@ -87,10 +88,12 @@ export class PerpClient extends BaseLineClient {
   private readonly view: PerpConfigView;
 
   constructor(network: Network, config: WaterXConfig, opts: CreateClientOptions) {
-    super(network, config, opts);
+    // BEFORE `super`, so the narrowing reaches it — this is what makes
+    // `client.config` a `PerpLineConfig` instead of a docstring claim.
     // Line-scoped, not enforced by the loader: a prediction-only deployment
     // document still loads for prediction consumers.
     assertLinePackages(config, PERP_PACKAGES, "perp");
+    super(network, config, opts);
     // Access-only slice: the api_key + fetch policy are caller-supplied at
     // init (a secret has no place in the canonical waterx-config JSON). All
     // endpoint/object-id infra is per-source, owned by the rule modules —

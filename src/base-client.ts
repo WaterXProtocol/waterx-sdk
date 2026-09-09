@@ -8,9 +8,11 @@
  * lookup. The config-schema half (per-line typed lookups like `getMarket` /
  * `marketRegistry`) legitimately differs and lives on each subclass.
  *
- * Both lines read the SAME parsed `waterx-config` document ({@link WaterXConfig}
- * — one consolidated document carries every package), so `config` is typed
- * once here rather than per line.
+ * Both lines read the SAME parsed `waterx-config` document — one consolidated
+ * document carries every package. `Cfg` defaults to {@link WaterXConfig}, what
+ * the LOADER establishes; each line narrows it to the document its own
+ * construction additionally asserts (`PerpLineConfig` / `PredictionLineConfig`),
+ * so `client.config` exposes exactly the packages that client guarantees.
  */
 
 import type { SuiClientTypes } from "@mysten/sui/client";
@@ -27,15 +29,15 @@ export const DEFAULT_GRPC_URLS: Record<Network, string> = {
   TESTNET: "https://fullnode.testnet.sui.io:443",
 };
 
-export abstract class BaseLineClient {
+export abstract class BaseLineClient<Cfg extends WaterXConfig = WaterXConfig> {
   /** gRPC client — all RPC including `simulateTransaction`. */
   grpcClient: SuiGrpcClient;
   /** Network identifier in upper case (`MAINNET` / `TESTNET`). */
   network: Network;
   /** The parsed canonical `waterx-config` document (see `src/config.ts`). */
-  config: WaterXConfig;
+  config: Cfg;
 
-  protected constructor(network: Network, config: WaterXConfig, opts: { grpcUrl?: string } = {}) {
+  protected constructor(network: Network, config: Cfg, opts: { grpcUrl?: string } = {}) {
     this.network = network;
     this.config = config;
     this.grpcClient = new SuiGrpcClient({

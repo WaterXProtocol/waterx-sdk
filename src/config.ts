@@ -105,11 +105,11 @@ export type PredictionLineConfig = WaterXConfig & {
  * document serving only the other line still loads for consumers that never
  * touch the missing packages.
  */
-export function assertLinePackages(
+export function assertLinePackages<const Names extends readonly string[]>(
   config: WaterXConfig,
-  names: readonly string[],
+  names: Names,
   line: string,
-): void {
+): asserts config is WaterXConfig & { packages: Record<Names[number], PackageEntry> } {
   const missing = names.filter((name) => ownEntry(config.packages, name) === undefined);
   if (missing.length > 0) {
     throw new Error(

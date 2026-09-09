@@ -6,6 +6,7 @@ import {
   loadConfig,
   PREDICTION_PACKAGES,
   type LoadConfigOptions,
+  type PredictionLineConfig,
   type WaterXConfig,
 } from "../config.ts";
 import { requireEntry } from "../utils/record.ts";
@@ -17,7 +18,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   settlement?: string;
 }
 
-export class PredictClient extends BaseLineClient {
+export class PredictClient extends BaseLineClient<PredictionLineConfig> {
   /** Default settlement alias for prediction registry lookups. */
   settlement: string;
 
@@ -26,8 +27,10 @@ export class PredictClient extends BaseLineClient {
     config: WaterXConfig,
     opts: { grpcUrl?: string; settlement?: string } = {},
   ) {
-    super(network, config, opts);
+    // BEFORE `super`, so the narrowing reaches it — see the matching note in
+    // `PerpClient`.
     assertLinePackages(config, PREDICTION_PACKAGES, "prediction");
+    super(network, config, opts);
     this.settlement = opts.settlement ?? "USD";
   }
 
