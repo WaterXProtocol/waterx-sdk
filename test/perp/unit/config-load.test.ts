@@ -8,6 +8,8 @@ import {
   parseConfigDocument,
   REQUIRED_PACKAGES,
 } from "../../../src/config.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
+import { PredictClient } from "../../../src/prediction/client.ts";
 import {
   MOCK_TESTNET_CONFIG,
   MOCK_TESTNET_CONFIG_RAW,
@@ -72,13 +74,25 @@ describe("parseConfigDocument (strict v2 parse + required packages)", () => {
     expect(() => parseConfigDocument(legacy, "TESTNET")).toThrow();
   });
 
-  it("rejects a document missing a package the SDK reads unconditionally, naming it", () => {
+  it("rejects a document missing a package EVERY consumer reads, naming it", () => {
     const doc = rawDoc();
-    delete doc.packages.wlp;
-    delete doc.packages.waterx_prediction_gift;
+    delete doc.packages.waterx_account;
+    delete doc.packages.waterx_referral;
     expect(() => parseConfigDocument(doc, "TESTNET")).toThrow(
-      /packages\.\{wlp, waterx_prediction_gift\} missing/,
+      /packages\.\{waterx_account, waterx_referral\} missing/,
     );
+  });
+
+  it("loads a document missing the OTHER line's packages — a partial deployment is usable", () => {
+    // A network that ships perp before prediction must not block perp
+    // consumers: the per-line set is asserted by that line's client instead.
+    const doc = rawDoc();
+    delete doc.packages.waterx_prediction;
+    delete doc.packages.waterx_prediction_gift;
+    const cfg = parseConfigDocument(doc, "TESTNET");
+    expect(cfg.packages.waterx_perp.published_at).toMatch(/^0x/);
+    expect(() => new PerpClient("TESTNET", cfg, {})).not.toThrow();
+    expect(() => new PredictClient("TESTNET", cfg)).toThrow(/prediction line/);
   });
 
   it("rejects a rule block whose named package entry is absent", () => {
@@ -156,15 +170,15 @@ describe("loadConfig", () => {
     await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow();
   });
 
-  it("throws when a required package is missing", async () => {
+  it("throws when a package every consumer reads is missing", async () => {
     const doc = rawDoc();
-    delete doc.packages.waterx_perp;
+    delete doc.packages.bucket_framework;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ok(doc)),
     );
     await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
-      /packages\.\{waterx_perp\} missing/,
+      /packages\.\{bucket_framework\} missing/,
     );
   });
 

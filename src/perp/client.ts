@@ -13,7 +13,13 @@
 
 import { WORMHOLE_DEFAULTS, type WormholeInfraConfig } from "../account/config.ts";
 import { BaseLineClient } from "../base-client.ts";
-import { loadConfig, type LoadConfigOptions, type WaterXConfig } from "../config.ts";
+import {
+  assertLinePackages,
+  loadConfig,
+  PERP_PACKAGES,
+  type LoadConfigOptions,
+  type WaterXConfig,
+} from "../config.ts";
 import type { PythAccessConfig, PythFetchPolicy, WaterxAccessConfig } from "../oracle/config.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../oracle/price-update-rule.ts";
 import { deriveOracleSources } from "../oracle/source-list.ts";
@@ -82,6 +88,9 @@ export class PerpClient extends BaseLineClient {
 
   constructor(network: Network, config: WaterXConfig, opts: CreateClientOptions) {
     super(network, config, opts);
+    // Line-scoped, not enforced by the loader: a prediction-only deployment
+    // document still loads for prediction consumers.
+    assertLinePackages(config, PERP_PACKAGES, "perp");
     // Access-only slice: the api_key + fetch policy are caller-supplied at
     // init (a secret has no place in the canonical waterx-config JSON). All
     // endpoint/object-id infra is per-source, owned by the rule modules —

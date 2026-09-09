@@ -85,7 +85,7 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 ## Simulate / e2e: network + discovery
 
 - **Network:** `scripts/run-e2e.ts` / **`test/perp/helpers/e2e/e2e-client.ts`**: **`--testnet`** / **`--mainnet`** (CLI) → **`WATERX_E2E_NETWORK`** → **`testnet`** default when unspecified (`pnpm test` runs Vitest without `run-e2e.ts`, so it relies on this fallback).
-- **Config URL:** `WATERX_CONFIG_URL` is a CDN BASE root; `run-e2e.ts` composes `/<network>.json` for the CLI network (a legacy value ending in `testnet.json` / `mainnet.json` is still accepted and swapped, with a one-time warning).
+- **Config URL:** `WATERX_CONFIG_URL` is a CDN BASE root, passed through to the harness untouched; each harness composes `/<network>.json` itself from `WATERX_E2E_NETWORK` (which is what `run-e2e.ts` sets). A legacy value ending in `testnet.json` / `mainnet.json` is still accepted and swapped to the requested network, with a one-time warning.
 - **Mainnet wxa discovery:** there is **no** built-in canonical mainnet account. Behavior differs by path:
   - **Custody/credit** (`resolveCustodyWxaRow`): env / owner hints only — no WLP/USDC all-market fallback after hints miss (that path exceeded the 180s `beforeAll` hookTimeout on public gRPC). Set **`WATERX_E2E_WXA_ACCOUNT_ID`** + **`WATERX_E2E_WXA_OWNER`** for stateful suites.
   - **WLP stored-balance candidates** (`collectWxaAccountIdCandidates`): env hints **plus** redeem-queue recipients; still **skips** all-market position scan + funded probe. Testnet keeps canonical wxa + full market/probe fallback.

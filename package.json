@@ -23,6 +23,16 @@
         "default": "./dist/cjs/src/sdk.js"
       }
     },
+    "./config": {
+      "import": {
+        "types": "./dist/src/config.d.ts",
+        "default": "./dist/src/config.js"
+      },
+      "require": {
+        "types": "./dist/cjs/src/config.d.ts",
+        "default": "./dist/cjs/src/config.js"
+      }
+    },
     "./account": {
       "import": {
         "types": "./dist/src/account/index.d.ts",

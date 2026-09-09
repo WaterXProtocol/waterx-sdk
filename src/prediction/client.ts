@@ -1,7 +1,13 @@
 import type { Transaction } from "@mysten/sui/transactions";
 
 import { BaseLineClient } from "../base-client.ts";
-import { loadConfig, type LoadConfigOptions, type WaterXConfig } from "../config.ts";
+import {
+  assertLinePackages,
+  loadConfig,
+  PREDICTION_PACKAGES,
+  type LoadConfigOptions,
+  type WaterXConfig,
+} from "../config.ts";
 import { requireEntry } from "../utils/record.ts";
 import type { Network } from "./constants.ts";
 
@@ -21,6 +27,7 @@ export class PredictClient extends BaseLineClient {
     opts: { grpcUrl?: string; settlement?: string } = {},
   ) {
     super(network, config, opts);
+    assertLinePackages(config, PREDICTION_PACKAGES, "prediction");
     this.settlement = opts.settlement ?? "USD";
   }
 

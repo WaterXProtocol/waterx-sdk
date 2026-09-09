@@ -99,8 +99,8 @@ direction. The retired `oracle_rules.pyth` (Pyth Core) block is still published 
 inert — `pyth_rule` is not an `ORACLE_SOURCES` member. `supra_rule` is likewise gone: v2
 carries no `oracle_holder` and no `enabled` flag, so the SDK never feeds a supra leg. There is
 **no cross-source fallback**: a ticker no derived source serves is **SKIPPED**
-by `refreshOraclePrices` (reported in `OracleRefreshSummary.skipped`,
-constant-ONLY tickers exempt), and the `build*Tx` composers then fail closed
+by `refreshOraclePrices` (reported in `OracleRefreshSummary.skipped`;
+constant-PINNED tickers are exempt — they need no source leg), and the `build*Tx` composers then fail closed
 with `OracleTickerUnservedError` on the tickers their action needs (traded
 ticker + collateral; EVERY pool asset for WLP) unless `allowUnrefreshedPrices`
 is set. Construction throws only when the config wires NO source at all. A

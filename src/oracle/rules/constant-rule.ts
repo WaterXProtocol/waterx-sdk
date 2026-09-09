@@ -7,6 +7,7 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import { rulePackageId } from "../../config.ts";
 import { feed as constantRuleFeed } from "../../generated/waterx_constant_rule/constant_rule.ts";
 import type { OracleHost } from "../host.ts";
 
@@ -17,7 +18,7 @@ export function feedConstantRule(
 ): void {
   const rule = host.config.oracle_rules.constant;
   constantRuleFeed({
-    package: host.config.packages[rule.package].published_at,
+    package: rulePackageId(host.config, rule),
     arguments: { collector, config: tx.object(rule.rule_config_object) },
   })(tx);
 }

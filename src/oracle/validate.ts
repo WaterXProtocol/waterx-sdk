@@ -68,12 +68,15 @@ export class OracleTickerUnservedError extends Error {
  * set your deployment cares about (typically every market) and find out at
  * boot instead.
  *
- * It does NOT check "every listed source has feeds" any more: the fed set is
- * derived from exactly that condition (see `deriveOracleSources`), so that
- * assert became unreachable for any real client — it could only fire for a
- * config mutated after construction, which is a test fixture, not a
- * deployment. Write set == read set by construction (each source reads its own
- * feeds), so this single assert still covers both planes.
+ * SCOPE, post-v2 — read this before relying on it. The quote-center serves the
+ * whole `symbols` universe, so `waterx_rule` (always wired: its block is
+ * schema-required) makes every symbol servable. What this assert still catches
+ * is a requested ticker OUTSIDE `symbols` and not constant-pinned — e.g. a
+ * market or pool token the document never introduced as a symbol. What it can
+ * NO LONGER catch is a symbol the document lists but the quote-center does not
+ * actually serve; that surfaces at the first build's fetch instead. Verifying
+ * the on-chain half is `assertOracleWeightCoverage` (`weight-coverage.ts`),
+ * which reads the aggregators.
  */
 export function assertOracleWriteCoverage(host: OracleHost, tickers: readonly string[]): void {
   const { unservable } = partitionServableTickers(host, tickers);

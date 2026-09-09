@@ -20,6 +20,7 @@ import { parseWaterxConfig, type WaterxConfig as ParsedWaterxConfig } from "@wat
 
 import type { Network } from "./constants.ts";
 import { fetchWithPolicy, rethrowExhaustedFetch } from "./oracle/update-fetch.ts";
+import { ownEntry, requireEntry } from "./utils/record.ts";
 
 /** One `packages.<name>` entry — package identity only, no object ids. */
 export type PackageEntry = ParsedWaterxConfig["packages"][string];
@@ -31,32 +32,41 @@ export type NativeCustodyAsset = ParsedWaterxConfig["objects"]["custody"]["asset
 export type RewarderEntry = ParsedWaterxConfig["objects"]["staking"]["rewarders"][string][string];
 
 /**
- * Package entries the SDK reads UNCONDITIONALLY — every `objects.*` block
- * they pair with is required by the schema, so a document missing one of
- * these is a broken deployment, not an optional feature. Checked once at
- * load ({@link assertRequiredPackages}); read sites index them directly.
+ * Package entries EVERY consumer reads, whichever line it uses — the shared
+ * `waterx_account` framework and its referral/bucket dependencies.
  *
- * The oracle-rule packages are NOT listed by name: each `oracle_rules.<rule>`
- * block names its own package (`.package`), and the same check requires the
- * named entry for every rule block the document carries.
+ * Deliberately narrow. Requiring one line's packages to load a document blocks
+ * the other line's consumers on a PARTIAL deployment: a network that ships perp
+ * before prediction would otherwise fail `PerpClient.create` over an absent
+ * `waterx_prediction_gift` the perp app never reads. Per-line sets live with
+ * their clients ({@link PERP_PACKAGES} / {@link PREDICTION_PACKAGES}) and are
+ * asserted at that client's construction.
  */
 export const REQUIRED_PACKAGES = Object.freeze([
   "bucket_framework",
   "waterx_account",
   "waterx_referral",
-  "waterx_credit",
-  "native_custody",
-  "wormhole_bridge",
-  "withdrawal_queue",
+] as const);
+export type RequiredPackage = (typeof REQUIRED_PACKAGES)[number];
+
+/** Packages the PERP line reads (asserted by `PerpClient`, not by the loader). */
+export const PERP_PACKAGES = Object.freeze([
   "waterx_oracle",
   "waterx_perp",
   "waterx_perp_view",
   "wlp",
   "waterx_staking",
+  "waterx_credit",
+  "native_custody",
+  "wormhole_bridge",
+  "withdrawal_queue",
+] as const);
+
+/** Packages the PREDICTION line reads (asserted by `PredictClient`). */
+export const PREDICTION_PACKAGES = Object.freeze([
   "waterx_prediction",
   "waterx_prediction_gift",
 ] as const);
-export type RequiredPackage = (typeof REQUIRED_PACKAGES)[number];
 
 /**
  * The parsed `waterx-config` document with {@link REQUIRED_PACKAGES} pinned to
@@ -71,12 +81,34 @@ export type RequiredPackage = (typeof REQUIRED_PACKAGES)[number];
  * {@link assertRequiredPackages} establishes.
  */
 export type WaterXConfig = ParsedWaterxConfig & {
-  packages: Record<RequiredPackage, PackageEntry>;
+  packages: Record<
+    RequiredPackage | (typeof PERP_PACKAGES)[number] | (typeof PREDICTION_PACKAGES)[number],
+    PackageEntry
+  >;
 };
 
 /**
- * Throws when a package entry the SDK reads unconditionally is absent — the
- * fixed {@link REQUIRED_PACKAGES} set, plus the entry each published
+ * Throws when a package a LINE reads is absent. Called by each line client so a
+ * document serving only the other line still loads for consumers that never
+ * touch the missing packages.
+ */
+export function assertLinePackages(
+  config: WaterXConfig,
+  names: readonly string[],
+  line: string,
+): void {
+  const missing = names.filter((name) => ownEntry(config.packages, name) === undefined);
+  if (missing.length > 0) {
+    throw new Error(
+      `waterx-config (${config.network}): packages.{${missing.join(", ")}} missing — ` +
+        `the ${line} line reads every one of these`,
+    );
+  }
+}
+
+/**
+ * Throws when a package EVERY consumer reads is absent — the shared
+ * {@link REQUIRED_PACKAGES} core, plus the entry each published
  * `oracle_rules.<rule>` block names (a cross-reference the schema cannot
  * cheaply express).
  */
@@ -87,7 +119,11 @@ export function assertRequiredPackages(config: ParsedWaterxConfig): asserts conf
     rules.waterx.package,
     rules.constant.package,
     ...(rules.pyth_lazer ? [rules.pyth_lazer.package] : []),
-  ].filter((name) => config.packages[name] === undefined);
+    // `ownEntry`, not a bare bracket read: `oracle_rules.<rule>.package` is an
+    // unconstrained string from the document, so a value like "constructor"
+    // would hit Object.prototype, pass this check, and only surface later as
+    // `tx.moveCall({ package: undefined })`.
+  ].filter((name) => ownEntry(config.packages, name) === undefined);
   if (missing.length > 0) {
     throw new Error(
       `waterx-config (${config.network}): packages.{${missing.join(", ")}} missing — ` +
@@ -262,4 +298,14 @@ export async function loadConfig(
 
   configCache.set(cacheKey, config);
   return config;
+}
+
+/**
+ * The published package entry a rule block names (`oracle_rules.<rule>.package`).
+ * Own-key resolved, so a prototype-named package fails here rather than as an
+ * `undefined` moveCall target. Presence is guaranteed by
+ * {@link assertRequiredPackages} at load; this is the read path.
+ */
+export function rulePackageId(config: WaterXConfig, ruleBlock: { package: string }): string {
+  return requireEntry(config.packages, ruleBlock.package, "packages").published_at;
 }

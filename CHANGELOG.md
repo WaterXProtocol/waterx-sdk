@@ -107,6 +107,18 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   `staging-v2` serve v2, and the four co-exist for now, so this is the error a
   mispointed deployment actually hits. A malformed _v2_ document still gets the
   parser's field-level errors, which are the more useful answer there.
+- **`REQUIRED_PACKAGES` is the SHARED core only.** The loader asserts
+  `bucket_framework` / `waterx_account` / `waterx_referral` plus the entry each
+  published `oracle_rules.<rule>` block names; the per-line sets
+  (`PERP_PACKAGES`, `PREDICTION_PACKAGES`) are asserted by `PerpClient` /
+  `PredictClient` at construction, via the exported `assertLinePackages`. A
+  PARTIAL deployment therefore loads: a document that ships perp before
+  prediction no longer blocks a perp-only app on an absent
+  `waterx_prediction_gift` it never reads.
+- **New `@waterx/sdk/config` export subpath** for the shared loader and its
+  types. `@waterx/sdk/account` consumers can now name `WaterXConfig` without
+  reaching into `@waterx/sdk/perp`, and both line barrels re-export the same
+  loader surface (the perp barrel previously exported strictly more).
 - **`@waterx/config` is a regular dependency** (`0.1.1-staging.1`), not a peer: it is
   imported unconditionally and has no shared-instance concern.
 

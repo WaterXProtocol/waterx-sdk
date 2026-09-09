@@ -4,7 +4,9 @@ export type { CreateClientOptions } from "./client.ts";
 // Deployment config — ONE loader over the canonical `waterx-config` document,
 // shared by both lines (`src/config.ts`); the parsed document IS `client.config`.
 export {
+  PERP_PACKAGES,
   REQUIRED_PACKAGES,
+  assertLinePackages,
   assertRequiredPackages,
   clearConfigCache,
   loadConfig,

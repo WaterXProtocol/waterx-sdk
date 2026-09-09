@@ -40,7 +40,7 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXConfig } from "../../config.ts";
+import { rulePackageId, type WaterXConfig } from "../../config.ts";
 import type { Network } from "../../constants.ts";
 import {
   collectBatchLatest,
@@ -515,7 +515,7 @@ function requireWaterx(config: WaterXConfig): {
   packageId: string;
 } {
   const rule = config.oracle_rules.waterx;
-  return { rule, packageId: config.packages[rule.package].published_at };
+  return { rule, packageId: rulePackageId(config, rule) };
 }
 
 /**

@@ -178,14 +178,26 @@ async function main(): Promise<void> {
   // this works in CI, where the config repo isn't checked out alongside. The
   // local file is parsed STRICTLY (schema + network pin + required packages),
   // exactly like the fetched one — never cast a raw JSON document to the type.
-  let config: WaterXConfig;
+  let config: WaterXConfig | undefined;
   let client: PerpClient;
+  // Presence alone is the wrong test: a sibling checkout sitting on a pre-v2
+  // branch exists but no longer parses, and selecting it by `existsSync` made
+  // the script unrunnable until the developer deleted the checkout. Try it,
+  // fall through to HTTP when it is not a v2 document.
   if (existsSync(CONFIG_PATH)) {
-    console.log(`Loading config from ${CONFIG_PATH}`);
-    config = parseConfigDocument(JSON.parse(readFileSync(CONFIG_PATH, "utf8")), "TESTNET");
+    try {
+      config = parseConfigDocument(JSON.parse(readFileSync(CONFIG_PATH, "utf8")), "TESTNET");
+      console.log(`Loading config from ${CONFIG_PATH}`);
+    } catch (err) {
+      console.log(
+        `Local config ${CONFIG_PATH} is not a v2 document (${err instanceof Error ? err.message : String(err)}) — falling back to HTTP`,
+      );
+    }
+  }
+  if (config) {
     client = new PerpClient("TESTNET", config, {});
   } else {
-    console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
+    console.log(`Fetching canonical config over HTTP`);
     client = await PerpClient.create("TESTNET", {
       cache: true,
       waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),

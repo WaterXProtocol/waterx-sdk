@@ -12,7 +12,7 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
-import type { WaterXConfig } from "../../config.ts";
+import { rulePackageId, type WaterXConfig } from "../../config.ts";
 import type { Network } from "../../constants.ts";
 import { ownEntry } from "../../utils/record.ts";
 import type { PythFetchPolicy } from "../config.ts";
@@ -167,7 +167,7 @@ function requireLazer(config: WaterXConfig): {
       "pyth_lazer_rule is not wired in this config (no oracle_rules.pyth_lazer block)",
     );
   }
-  return { rule, packageId: config.packages[rule.package].published_at };
+  return { rule, packageId: rulePackageId(config, rule) };
 }
 
 /**
