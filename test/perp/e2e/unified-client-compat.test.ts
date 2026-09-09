@@ -38,7 +38,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
     unified = await Client.create({
       network: e2eNetwork === "mainnet" ? "MAINNET" : "TESTNET",
       cache: true,
-      waterxConfigUrl: resolveE2eWaterxConfigUrl(),
+      waterxConfigUrl: resolveE2eWaterxConfigUrl(e2eNetwork),
       ...(grpcUrl ? { grpcUrl } : {}),
     });
     expect(unified.perp.config.network).toBe(legacyPerpClient.config.network);

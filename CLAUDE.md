@@ -49,10 +49,18 @@ is **no env-var fallback and no built-in default**. `loadConfig` (in **`src/conf
 ONE loader for BOTH lines) reads the URL solely from `opts.waterxConfigUrl`, fetches it
 **as-is** (no `<network>.json` / git ref appended), and **throws** when it is unset.
 
-Callers that want an env-driven URL read it themselves and pass it through, e.g.
-`PerpClient.create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL })`.
-The repo test/smoke harnesses do exactly this at their boundary (e2e client,
-`scripts/smoke-remote.ts`); the SDK itself never touches `process.env`.
+Callers that want an env-driven URL read it themselves and pass it through. The
+repo harnesses share ONE env convention (`scripts/waterx-config-url.ts`):
+**`WATERX_CONFIG_URL` is a CDN BASE root, no file name**, and the boundary composes
+`${base}/${network}.json` — so one exported value drives both networks and a mainnet
+run can never load a testnet document. Transitional compat: a value ending in
+`.json` is treated as a complete legacy file URL and used as-is (still swapping
+`testnet.json` ↔ `mainnet.json` to follow the caller's network), warning once.
+Reference bases: prod `https://config.waterx.app`, v2 staging
+`https://staging-v2.waterx-config.pages.dev`; never `raw.githubusercontent.com`
+(429, and the config repo forbids it). Every harness goes through
+`waterxConfigUrlForNetwork(network)` / `resolveWaterxConfigUrl(raw, network)`; the
+SDK itself never touches `process.env` and `loadConfig` still takes a COMPLETE URL.
 
 The body is parsed STRICTLY by **`@waterx/config`** (`parseWaterxConfig` — schema-derived
 types, id patterns, `network` pin) and then checked once for the package entries the SDK
@@ -141,7 +149,7 @@ client.perp.getMarket("BTCUSD"); // throwing helper
 client.perp.wlpType(); // `${wlp.original_id}::wlp::WLP`
 client.perp.pricedPoolTickers(); // WLP pool tokens THIS fed set can price
 
-const perp = await PerpClient.create("TESTNET", { waterxConfigUrl: process.env.WATERX_CONFIG_URL });
+const perp = await PerpClient.create("TESTNET", { waterxConfigUrl }); // a COMPLETE url
 ```
 
 `src/constants.ts` holds only shared, line-agnostic primitives (`Network`,

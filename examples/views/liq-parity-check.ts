@@ -10,7 +10,7 @@
  * unlike `position::is_liquidatable`), so parity is EXACT: `sdkRaw === chainRaw`
  * bit-identical, zero tolerance.
  *
- *   WATERX_CONFIG_URL=<waterx-config raw json> pnpm exec tsx examples/views/liq-parity-check.ts
+ *   WATERX_CONFIG_URL=<waterx-config CDN base> pnpm exec tsx examples/views/liq-parity-check.ts
  *
  * 2026-07-30 testnet run: 69 positions across all markets, failures=0,
  * fetchFailures=0 — bit-identical on every position.

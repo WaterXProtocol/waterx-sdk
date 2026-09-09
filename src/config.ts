@@ -98,9 +98,35 @@ export function assertRequiredPackages(config: ParsedWaterxConfig): asserts conf
  * a missing package entry.
  */
 export function parseConfigDocument(doc: unknown, network: Network): WaterXConfig {
+  assertNotPreV2Document(doc);
   const config = parseWaterxConfig(doc, network.toLowerCase() as Lowercase<Network>);
   assertRequiredPackages(config);
   return config;
+}
+
+/**
+ * Reject a pre-v2 network config with an ACTIONABLE message before the schema
+ * parser reports it as a pile of field errors.
+ *
+ * Only fires for a document that is recognizably a network config of the old
+ * per-package shape (it carries `packages.waterx_perp` or
+ * `packages.waterx_prediction`) yet declares no `schema_version` — i.e. a
+ * `main`/`staging` document, where the fix is to repoint at a v2 endpoint
+ * rather than to edit anything. Anything else falls through to the parser,
+ * whose field-level errors are the more useful answer for a malformed v2
+ * document.
+ */
+function assertNotPreV2Document(doc: unknown): void {
+  if (!doc || typeof doc !== "object") return;
+  const d = doc as { schema_version?: unknown; packages?: Record<string, unknown> };
+  if (d.schema_version !== undefined) return;
+  const packages = d.packages;
+  if (!packages || typeof packages !== "object") return;
+  if (!("waterx_perp" in packages) && !("waterx_prediction" in packages)) return;
+  throw new Error(
+    "pre-v2 waterx-config is no longer supported — point at a v2 endpoint " +
+      "(a document declaring `schema_version: 2`, e.g. the `main-v2` / `staging-v2` deployments).",
+  );
 }
 
 // ============================================================================

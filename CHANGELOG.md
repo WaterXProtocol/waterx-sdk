@@ -99,8 +99,40 @@ v2 promotion, so consumers pin the `staging-v2` mirror until then (#93)._
   Replacements: `WaterXConfig`, `PackageEntry`, `PerpMarketEntry`, `NativeCustodyAsset`,
   `RewarderEntry`, `RequiredPackage` from `src/config.ts`; `PythAccessConfig` /
   `PythFetchPolicy` / `WaterxAccessConfig` from `src/oracle/config.ts`.
+- **A pre-v2 document fails with an actionable message.** A network config that
+  carries `packages.waterx_perp` / `packages.waterx_prediction` but declares no
+  `schema_version` now throws `pre-v2 waterx-config is no longer supported —
+point at a v2 endpoint` before the schema parser reports it as a pile of field
+  errors. `main` / `staging` serve the pre-v2 shape while `main-v2` /
+  `staging-v2` serve v2, and the four co-exist for now, so this is the error a
+  mispointed deployment actually hits. A malformed _v2_ document still gets the
+  parser's field-level errors, which are the more useful answer there.
 - **`@waterx/config` is a regular dependency** (`0.1.1-staging.1`), not a peer: it is
   imported unconditionally and has no shared-instance concern.
+
+### Changed
+
+- **`WATERX_CONFIG_URL` is now a CDN BASE root** (no file name) across every repo
+  harness — scripts, e2e/integration helpers, examples, CI — with the boundary
+  composing `${base}/${network}.json` (`scripts/waterx-config-url.ts`). One
+  exported value drives both networks, so `run-e2e.ts --mainnet` no longer
+  rewrites the string and a mainnet run cannot silently load a testnet document
+  because the value ended in `testnet.json`. Reference bases: prod
+  `https://config.waterx.app`, v2 staging
+  `https://staging-v2.waterx-config.pages.dev`; `raw.githubusercontent.com` is
+  out of the docs entirely (it 429s and the config repo forbids it).
+  - **Transitional compatibility:** a value ending in `.json` is still read as a
+    complete legacy file URL and used as-is — including the long-standing
+    `testnet.json` ↔ `mainnet.json` swap — emitting a one-time deprecation
+    warning. An already-exported `.env.local` or an old-shape repo variable keeps
+    working.
+  - **The SDK is unaffected.** It still never reads `process.env`, and
+    `loadConfig`'s `waterxConfigUrl` opt still takes a COMPLETE URL — composing
+    it is the env boundary's job, which is why the helper lives outside `src/`.
+  - `waterxConfigUrlFromEnv()` is **removed** in favour of
+    `waterxConfigUrlForNetwork(network)`: under base semantics a URL cannot be
+    resolved without knowing the network, so the network is now required at the
+    call site rather than implied by the string.
 
 ### Added
 

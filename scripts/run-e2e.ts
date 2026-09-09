@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
  * Wrapper around `vitest run --project e2e` with `--testnet` / `--mainnet`.
- * Sets `WATERX_E2E_NETWORK` (and rewrites `WATERX_CONFIG_URL` `testnet.json` ↔
- * `mainnet.json` when needed) and strips network flags before forwarding to Vitest.
+ * Sets `WATERX_E2E_NETWORK` (and resolves `WATERX_CONFIG_URL` — a CDN base — to
+ * the network's document) and strips network flags before forwarding to Vitest.
  *
  * Forward all other argv to Vitest (paths, `-t`, `--coverage`, reporters, etc.).
  *

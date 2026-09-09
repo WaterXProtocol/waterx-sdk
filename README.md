@@ -122,7 +122,7 @@ walkthrough as one runnable file** — being real code, it is covered by `pnpm l
 `pnpm typecheck`, so the API it exercises cannot go stale unnoticed:
 
 ```bash
-export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev/testnet.json
+export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev          # CDN base; the harness appends /<network>.json
 export PYTH_API_KEY=...                          # required iff the config wires pyth_lazer_rule
 pnpm exec tsx examples/quickstart.ts             # simulate-only; WATERX_EXECUTE=1 to sign + send
 ```

@@ -29,7 +29,7 @@ describe(`unified Client prediction compat (${predictE2eNetwork})`, () => {
     unified = await Client.create({
       network,
       cache: true,
-      waterxConfigUrl: readE2eClientOverrides().waterxConfigUrl,
+      waterxConfigUrl: readE2eClientOverrides(network).waterxConfigUrl,
     });
     legacyPredict = await createE2eClient();
   }, 120_000);

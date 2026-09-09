@@ -40,7 +40,7 @@ import { WaterXClient } from "@waterx/sdk";
 
 const client = await WaterXClient.create({
   network: "TESTNET",
-  waterxConfigUrl: process.env.WATERX_CONFIG_URL, // REQUIRED — no default, no env fallback
+  waterxConfigUrl, // REQUIRED, a COMPLETE url — no default, no env fallback
   pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
 });
 ```

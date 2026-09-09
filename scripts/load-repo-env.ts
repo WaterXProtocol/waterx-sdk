@@ -13,6 +13,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
+import { resolveWaterxConfigUrl, type ConfigUrlNetwork } from "./waterx-config-url.ts";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Repository root (directory containing `package.json`). */
@@ -37,33 +39,16 @@ export function loadRepoEnvFiles(opts?: { repoRoot?: string }): void {
 }
 
 /**
- * Read the canonical config URL from `WATERX_CONFIG_URL` at this script (harness)
- * boundary, to pass as the SDK's `waterxConfigUrl` opt. `loadConfig` itself no
- * longer reads env — scripts must supply the URL — so every CLI/smoke script
- * sources it here. Call {@link loadRepoEnvFiles} first so `.env` values are
- * visible. Returns `undefined` when unset (client `create` then throws).
+ * The `waterx-config` document URL for `network`, resolved from
+ * `WATERX_CONFIG_URL` at this script (harness) boundary and passed to the SDK
+ * as the `waterxConfigUrl` opt — `loadConfig` never reads env itself.
+ *
+ * The env var is a CDN BASE root; this appends `/<network>.json`. A legacy
+ * complete-file value still works during the transition (one-time warning) —
+ * see {@link resolveWaterxConfigUrl} for the full convention. Call
+ * {@link loadRepoEnvFiles} first so `.env` values are visible. Returns
+ * `undefined` when unset, so client creation throws its own error.
  */
-export function waterxConfigUrlFromEnv(): string | undefined {
-  const url = process.env.WATERX_CONFIG_URL?.trim();
-  return url || undefined;
-}
-
-/**
- * Swap a `WATERX_CONFIG_URL` ending in `testnet.json` ↔ `mainnet.json` when the
- * CLI/harness network disagrees with the env URL (e.g. `.env.local` points at
- * testnet but `run-e2e.ts --mainnet`).
- */
-export function waterxConfigUrlForNetwork(
-  network: "testnet" | "mainnet" | "TESTNET" | "MAINNET",
-): string | undefined {
-  const raw = waterxConfigUrlFromEnv();
-  if (!raw) return undefined;
-  const n = network.toLowerCase();
-  if (n === "mainnet" && /\/testnet\.json$/i.test(raw)) {
-    return raw.replace(/\/testnet\.json$/i, "/mainnet.json");
-  }
-  if (n === "testnet" && /\/mainnet\.json$/i.test(raw)) {
-    return raw.replace(/\/mainnet\.json$/i, "/testnet.json");
-  }
-  return raw;
+export function waterxConfigUrlForNetwork(network: ConfigUrlNetwork): string | undefined {
+  return resolveWaterxConfigUrl(process.env.WATERX_CONFIG_URL, network);
 }

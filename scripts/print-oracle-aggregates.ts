@@ -128,8 +128,8 @@ function parseArgs(argv: string[]): {
   signed leaves/envelope). There is NO cross-source fallback — a missing feed or
   refresh failure fails the ticker.
 
-  Requires WATERX_CONFIG_URL (or .env). With --mainnet, a URL ending in testnet.json is
-  rewritten to mainnet.json (and vice versa for --testnet).
+  Requires WATERX_CONFIG_URL (or .env) — a CDN base; /<network>.json is appended
+  for the selected network (a legacy full-file value is swapped instead).
 
   -h, --help        Show this message.`);
       process.exit(0);

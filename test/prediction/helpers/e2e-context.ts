@@ -21,7 +21,7 @@ export interface E2eContext {
 /** E2E client for the active network (`WATERX_E2E_NETWORK` → testnet default). */
 export function createE2eClient(): Promise<PredictClient> {
   return PredictClientClass.create(predictE2eNetworkKey(), {
-    ...readE2eClientOverrides(),
+    ...readE2eClientOverrides(predictE2eNetworkKey()),
     cache: true,
   });
 }

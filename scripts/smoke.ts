@@ -36,7 +36,7 @@ import {
   setReferralCode,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 const CONFIG_PATH = resolve(import.meta.dirname, "..", "..", "waterx-config", "testnet.json");
 
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
     console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
     client = await PerpClient.create("TESTNET", {
       cache: true,
-      waterxConfigUrl: waterxConfigUrlFromEnv(),
+      waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
     });
     config = client.config;
   }

@@ -6,6 +6,8 @@
  */
 import { getAccountData, getAccountIds, PredictClient } from "~predict/index.ts";
 
+import { resolveWaterxConfigUrl } from "../../../scripts/waterx-config-url.ts";
+
 /** First wallet arg; skips `pnpm` separator `--` in argv. */
 function ownerFromArgv(argv: string[]): string | undefined {
   return argv.slice(2).find((arg) => arg !== "--" && arg.startsWith("0x"));
@@ -18,9 +20,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // `loadConfig` no longer reads env — source the URL at this script boundary.
+  // `loadConfig` never reads env — compose the URL from the CDN base here.
   const client = await PredictClient.testnet({
-    waterxConfigUrl: process.env.E2E_CONFIG_URL ?? process.env.WATERX_CONFIG_URL,
+    waterxConfigUrl: resolveWaterxConfigUrl(
+      process.env.E2E_CONFIG_URL ?? process.env.WATERX_CONFIG_URL,
+      "TESTNET",
+    ),
   });
   const ids = await getAccountIds(client, { owner });
 

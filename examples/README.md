@@ -4,12 +4,12 @@ Single-file, runnable TypeScript examples for every public SDK entry point.
 Each file demonstrates **one** function. Read the top docstring to see
 required env vars; run with `pnpm exec tsx examples/<path>`.
 
-**Required:** set `WATERX_CONFIG_URL` to a canonical `waterx-config` JSON URL —
+**Required:** set `WATERX_CONFIG_URL` to a canonical `waterx-config` CDN BASE (no file name; `/<network>.json` is appended) —
 `buildClient()` reads it and passes it to the SDK as `waterxConfigUrl` (the SDK
 has no default). e.g.
 
 ```
-export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
+export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev
 ```
 
 **Oracle fed set:** derived from the config `buildClient()` loads —

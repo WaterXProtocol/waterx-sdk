@@ -2,20 +2,24 @@
  * Remote-config smoke: exercises the full async path
  * `PerpClient.create("TESTNET")` against a remote waterx-config.
  *
- *   WATERX_CONFIG_URL=https://.../testnet.json tsx scripts/smoke-remote.ts
+ *   WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev tsx scripts/smoke-remote.ts
  *
- * The config URL is read from `WATERX_CONFIG_URL` (there is no default) — set it
+ * The config base is read from `WATERX_CONFIG_URL` (there is no default) — set it
  * in the environment or in a repo `.env` file.
  */
 import { waterxQuoteCenterEndpoint } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { resolveWaterxConfigUrl } from "./waterx-config-url.ts";
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const configUrl = process.env.WATERX_CONFIG_URL;
+  const configUrl = resolveWaterxConfigUrl(process.env.WATERX_CONFIG_URL, "TESTNET");
   if (!configUrl) {
-    throw new Error("smoke-remote: set WATERX_CONFIG_URL to a config JSON URL");
+    throw new Error(
+      "smoke-remote: set WATERX_CONFIG_URL to a waterx-config CDN base " +
+        "(e.g. https://staging-v2.waterx-config.pages.dev)",
+    );
   }
   const t0 = Date.now();
   console.log(`fetching config: ${configUrl}`);

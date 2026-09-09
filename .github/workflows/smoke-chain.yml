@@ -119,9 +119,9 @@ jobs:
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
           # `loadConfig` (and smoke-remote step 0) has no built-in default; supply the
-          # staging-v2 testnet config — MUST be a schema_version 2 document (override via
-          # the `WATERX_CONFIG_URL` repo variable for a pinned v2 mirror).
-          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev/testnet.json' }}
+          # `WATERX_CONFIG_URL` is a CDN BASE root serving schema_version 2 documents (override
+          # via the repo variable; a legacy full-file value is still accepted).
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev' }}
         run: |
           if [ "$SMOKE_MODE" = "execute" ]; then
             pnpm smoke:chain

@@ -6,7 +6,7 @@
  */
 import { PerpClient } from "../src/perp/client.ts";
 import { getPoolData, getTokenPoolData } from "../src/perp/fetch.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 const FLOAT_SCALE = 1_000_000_000n; // 1e9 Float scale (src/constants.ts)
 
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
 
   const pool = await getPoolData(client);
