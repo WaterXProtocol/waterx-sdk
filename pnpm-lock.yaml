@@ -43,8 +43,8 @@ importers:
         specifier: 4.1.8
         version: 4.1.8(vitest@4.1.8)
       '@waterx/config':
-        specifier: git+https://github.com/WaterXProtocol/waterx-config.git#staging-v2&path:packages/ts
-        version: https://codeload.github.com/WaterXProtocol/waterx-config/tar.gz/c476f3d04d0aef9c8a555c0107ad0b98e9cb260b#path:packages/ts
+        specifier: 0.1.1-staging.1
+        version: 0.1.1-staging.1
       dotenv:
         specifier: 17.4.2
         version: 17.4.2
@@ -915,9 +915,8 @@ packages:
   '@vitest/utils@4.1.8':
     resolution: {integrity: sha512-uOJamYALNhfJ6iolExyQM40yIQwDqYnkKtQ5VCiSe17E33H0aQ/u+1GlRuz4LZBk6Mm3sg90G9hEbmEt37C1Zg==}
 
-  '@waterx/config@https://codeload.github.com/WaterXProtocol/waterx-config/tar.gz/c476f3d04d0aef9c8a555c0107ad0b98e9cb260b#path:packages/ts':
-    resolution: {path: packages/ts, tarball: https://codeload.github.com/WaterXProtocol/waterx-config/tar.gz/c476f3d04d0aef9c8a555c0107ad0b98e9cb260b}
-    version: 0.1.0
+  '@waterx/config@0.1.1-staging.1':
+    resolution: {integrity: sha512-6aKK93ZdCWM3MN7X7YKQOgZThiI73bDsYIg1aV3jDSIXNZc6ka1l/KApbvk0U7P1Z2J4M+u3MCuoev+hrR9gdQ==}
     engines: {node: '>=18'}
 
   acorn-jsx@5.3.2:
@@ -2580,7 +2579,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@waterx/config@https://codeload.github.com/WaterXProtocol/waterx-config/tar.gz/c476f3d04d0aef9c8a555c0107ad0b98e9cb260b#path:packages/ts':
+  '@waterx/config@0.1.1-staging.1':
     dependencies:
       zod: 3.25.76
 

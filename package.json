@@ -259,7 +259,7 @@
     "@typescript-eslint/eslint-plugin": "8.60.0",
     "@typescript-eslint/parser": "8.60.0",
     "@vitest/coverage-v8": "4.1.8",
-    "@waterx/config": "git+https://github.com/WaterXProtocol/waterx-config.git#staging-v2&path:packages/ts",
+    "@waterx/config": "0.1.1-staging.1",
     "dotenv": "17.4.2",
     "eslint": "10.4.1",
     "eslint-config-prettier": "10.1.8",
