@@ -11,6 +11,7 @@
  */
 
 import type { AccountPackages, BasePackageEntry, WormholeInfraConfig } from "../account/config.ts";
+import { isV2ConfigDocument, parseAndAdaptV2Config } from "../config-v2.ts";
 import type { OraclePackages } from "../oracle/config.ts";
 import { fetchWithPolicy, rethrowExhaustedFetch } from "../oracle/update-fetch.ts";
 import type { Network } from "./constants.ts";
@@ -305,7 +306,14 @@ export async function loadConfig(
     if (!response.ok) {
       throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
     }
-    raw = (await response.json()) as WaterXConfig;
+    const doc: unknown = await response.json();
+    // Canonical v2 documents (schema_version 2) go through the generated
+    // @waterx/config parser (strict schema validation + network pin) and are
+    // adapted to this internal view; legacy + credit-only documents keep the
+    // cast-and-spot-check path below.
+    raw = isV2ConfigDocument(doc)
+      ? parseAndAdaptV2Config(doc, network.toLowerCase() as "mainnet" | "testnet")
+      : (doc as WaterXConfig);
     validateConfig(raw, network, url);
   } catch (err) {
     const stale = configCache.get(cacheKey);

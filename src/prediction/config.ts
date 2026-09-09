@@ -5,6 +5,7 @@
  * and fetches it from GitHub raw by default.
  */
 
+import { isV2ConfigDocument, parseAndAdaptV2Config } from "../config-v2.ts";
 import type { Network } from "./constants.ts";
 
 export interface WaterxConfigPackageBase {
@@ -106,7 +107,16 @@ export async function loadConfig(
     throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
   }
 
-  const raw = (await response.json()) as WaterxPredictionConfig;
+  const doc: unknown = await response.json();
+  // Canonical v2 documents go through the strict @waterx/config parser and
+  // the shared adapter (type-only coupling to the perp view — the adapted
+  // object is a structural superset of this line's config shape).
+  const raw = isV2ConfigDocument(doc)
+    ? (parseAndAdaptV2Config(
+        doc,
+        network.toLowerCase() as "mainnet" | "testnet",
+      ) as unknown as WaterxPredictionConfig)
+    : (doc as WaterxPredictionConfig);
   validateConfig(raw, network, url);
 
   if (opts.cache) {
