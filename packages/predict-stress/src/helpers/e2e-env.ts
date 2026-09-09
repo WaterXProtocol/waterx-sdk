@@ -2,6 +2,10 @@
  * Optional `process.env` overrides for E2E / integration (no `.env` file required).
  * CI fetches WaterXProtocol/waterx-config plus on-chain discovery.
  */
+import { DEFAULT_GRPC_URLS } from "@waterx/sdk/prediction";
+import type { Network } from "@waterx/sdk/prediction/constants";
+
+import { resolveWaterxConfigUrl } from "./waterx-config-url.ts";
 
 export function optionalEnv(key: string): string | undefined {
   const v = process.env[key];
@@ -9,30 +13,26 @@ export function optionalEnv(key: string): string | undefined {
 }
 
 /**
- * `WATERX_CONFIG_URL` / `E2E_CONFIG_URL` → this harness's document URL.
- *
- * Same convention as `scripts/waterx-config-url.ts` (the canonical copy): the
- * env var is a CDN BASE root and `/<network>.json` is appended; a value ending
- * in `.json` is a legacy complete-file URL and is used as-is. Duplicated rather
- * than imported because this stress harness is a standalone workspace package
- * (`rootDir: src`) and cannot reach outside its own tree — keep the two in step.
+ * The fullnode URL the harness's client is built against — `E2E_GRPC_URL`
+ * when set, else the SDK's per-network default (the same resolution
+ * `BaseLineClient` applies to `grpcUrl`). The JSON-RPC helpers
+ * (`suix_queryEvents`) read it from here: the canonical config document
+ * carries object ids only, never an endpoint. Trailing slash stripped.
  */
-function resolveConfigUrl(raw: string | undefined): string | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  const path = value.split(/[?#]/, 1)[0] ?? value;
-  // Stress runs are testnet-only.
-  return /\.json$/i.test(path) ? value : `${value.replace(/\/+$/, "")}/testnet.json`;
+export function readE2eRpcUrl(network: Network): string {
+  return (optionalEnv("E2E_GRPC_URL") ?? DEFAULT_GRPC_URLS[network]).replace(/\/$/, "");
 }
 
-/** Client options for the prediction e2e client. `loadConfig` never reads env —
- *  it only takes the `waterxConfigUrl` opt — so this harness composes the URL
- *  from `E2E_CONFIG_URL` (line-specific), falling back to the shared
- *  `WATERX_CONFIG_URL` that CI sets, and passes it as the opt. */
-export function readE2eClientOverrides() {
+/** Client options for the prediction e2e client. `loadConfig` never reads env
+ *  — it only takes the `waterxConfigUrl` opt — so this harness composes the
+ *  document URL here: `E2E_CONFIG_URL` (line-specific) else the shared
+ *  `WATERX_CONFIG_URL`, each a CDN BASE that gets `/<network>.json` appended
+ *  (a legacy complete-file value still works — see `resolveWaterxConfigUrl`). */
+export function readE2eClientOverrides(network: Network = "TESTNET") {
   return {
-    waterxConfigUrl: resolveConfigUrl(
+    waterxConfigUrl: resolveWaterxConfigUrl(
       optionalEnv("E2E_CONFIG_URL") ?? optionalEnv("WATERX_CONFIG_URL"),
+      network,
     ),
     grpcUrl: optionalEnv("E2E_GRPC_URL"),
     settlement: optionalEnv("E2E_SETTLEMENT_ASSET") === "USD" ? ("USD" as const) : undefined,

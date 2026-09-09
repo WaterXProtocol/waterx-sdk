@@ -6,7 +6,7 @@
  * bare `fetch` with a single attempt and no retry means one upstream 429/5xx
  * or timeout fails every trade. Those two rule fetches, the read executors
  * (`./read-prices.ts`), the Pyth Pro catalog/history readers, and `loadConfig`
- * (`../perp/config.ts`) all delegate here instead of calling `fetch` directly
+ * (`../config.ts`) all delegate here instead of calling `fetch` directly
  * — this is the ONE place a retry/timeout/auth policy is implemented.
  *
  * Policy semantics:

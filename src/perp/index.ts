@@ -20,6 +20,8 @@ export type {
   WaterXConfig,
 } from "../config.ts";
 export { WORMHOLE_DEFAULTS } from "../account/config.ts";
+/** Public fullnode default per network — what a client uses when `grpcUrl` is unset. */
+export { DEFAULT_GRPC_URLS } from "../base-client.ts";
 export type { WormholeInfraConfig } from "../account/config.ts";
 export type { PythAccessConfig, PythFetchPolicy, WaterxAccessConfig } from "../oracle/config.ts";
 

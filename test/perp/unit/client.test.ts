@@ -27,7 +27,7 @@ describe("PerpClient (offline)", () => {
   });
 
   it("getMarket throws for unknown ticker", () => {
-    expect(() => client.getMarket("NOPE")).toThrow(/Unknown market ticker/);
+    expect(() => client.getMarket("NOPE")).toThrow(/missing objects\.perp\.markets\.NOPE/);
   });
 
   it("getAggregator / getPoolTokenType / wlpType", () => {
@@ -77,7 +77,9 @@ describe("PerpClient (offline)", () => {
   });
 
   it("throws for unknown aggregator and pool token", () => {
-    expect(() => client.getAggregator("NOPE")).toThrow(/No aggregator listed/);
+    expect(() => client.getAggregator("NOPE")).toThrow(
+      /missing objects\.oracle\.aggregators\.NOPE/,
+    );
     expect(() => client.getPoolTokenType("NOPE")).toThrow(/No pool token registered/);
   });
 
@@ -88,7 +90,7 @@ describe("PerpClient (offline)", () => {
     // rewarders/pools maps.
     for (const proto of ["toString", "constructor"]) {
       expect(() => client.getPoolTokenType(proto)).toThrow(/No pool token registered/);
-      expect(() => client.getAggregator(proto)).toThrow(/No aggregator listed/);
+      expect(() => client.getAggregator(proto)).toThrow(/missing objects\.oracle\.aggregators\./);
       expect(client.getRewarders(proto)).toEqual([]);
     }
   });

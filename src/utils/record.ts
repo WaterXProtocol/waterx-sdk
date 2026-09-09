@@ -21,3 +21,21 @@ export function ownEntry<T extends Record<string, unknown>>(
     ? (record[key] as T[string])
     : undefined;
 }
+
+/**
+ * {@link ownEntry}, but throwing when the key is absent — the single shape for
+ * "read a config-keyed map, fail loudly on a miss". `path` names the CONFIG
+ * location (e.g. `objects.perp.markets`), so the message points at the document
+ * a deployer must fix rather than at SDK internals.
+ */
+export function requireEntry<T extends Record<string, unknown>>(
+  record: T | undefined,
+  key: string,
+  path: string,
+): NonNullable<T[string]> {
+  const value = ownEntry(record, key);
+  if (value === undefined || value === null) {
+    throw new Error(`waterx-config missing ${path}.${key}`);
+  }
+  return value as NonNullable<T[string]>;
+}

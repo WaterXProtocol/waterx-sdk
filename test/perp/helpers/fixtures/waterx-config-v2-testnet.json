@@ -481,9 +481,7 @@
     },
     "withdrawal_queue": {
       "queue": "0x1ffa684735e601fb6454ef6dc3196d6c0bb945ee1b527094789f59027924e366",
-      "executors": [
-        "0x26266b1381bcf03ab3acc37c1e87beffb52d49f345248bc3efb9114176990ae4"
-      ]
+      "executors": ["0x26266b1381bcf03ab3acc37c1e87beffb52d49f345248bc3efb9114176990ae4"]
     },
     "prediction": {
       "global_config": "0x3e2d7bfce29e077f13f9feaf68af62410872817be476b2708540a0d5b23c5936",
@@ -502,9 +500,7 @@
     },
     "faucet": {
       "faucet": "0xa6b694d68a1807277bf2f7f304284442311c8cd4d2fe0b52b93f26abb95c290f",
-      "whitelist": [
-        "0x26266b1381bcf03ab3acc37c1e87beffb52d49f345248bc3efb9114176990ae4"
-      ]
+      "whitelist": ["0x26266b1381bcf03ab3acc37c1e87beffb52d49f345248bc3efb9114176990ae4"]
     },
     "mock_usdsui": {
       "currency_type": "0x0177241143d5b41bc8676ed3f59e3fae8f6aefd555f5e4fc255d2aff71093493",

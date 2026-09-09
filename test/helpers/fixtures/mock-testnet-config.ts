@@ -16,8 +16,6 @@
  * clone the config and populate it. Tests that want a particular fed set go
  * through `withOracleSources` (`test/perp/helpers/test-client.ts`).
  */
-import type { WaterxConfig } from "@waterx/config";
-
 import { parseConfigDocument, type WaterXConfig } from "../../../src/config.ts";
 
 /** Deterministic 64-hex placeholder object id for blocks the fixture stubs. */
@@ -203,7 +201,7 @@ export const MOCK_TESTNET_CONFIG_RAW = {
     },
   },
   evm: { bridge: { chains: {} } },
-} satisfies WaterxConfig;
+};
 
 /** The parsed + package-asserted document — what `client.config` holds. */
 export const MOCK_TESTNET_CONFIG: WaterXConfig = parseConfigDocument(

@@ -19,7 +19,7 @@ import type {
   RewarderEntry,
   WaterXConfig,
 } from "../config.ts";
-import { ownEntry } from "../utils/record.ts";
+import { ownEntry, requireEntry } from "../utils/record.ts";
 
 export class PerpConfigView {
   // Config is read through a provider, not captured by value, so a later
@@ -33,16 +33,16 @@ export class PerpConfigView {
 
   /** `objects.perp.markets[ticker]`, throws if unknown. */
   getMarket(ticker: string): PerpMarketEntry {
-    const m = ownEntry(this.config.objects.perp.markets, ticker);
-    if (!m) throw new Error(`Unknown market ticker: ${ticker}`);
-    return m;
+    return requireEntry(this.config.objects.perp.markets, ticker, "objects.perp.markets");
   }
 
   /** `objects.oracle.aggregators[ticker]`, throws if unknown. */
   getAggregator(ticker: string): string {
-    const a = ownEntry(this.config.objects.oracle.aggregators, ticker);
-    if (!a) throw new Error(`No aggregator listed for ticker: ${ticker}`);
-    return a;
+    return requireEntry(
+      this.config.objects.oracle.aggregators,
+      ticker,
+      "objects.oracle.aggregators",
+    );
   }
 
   /**

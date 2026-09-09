@@ -2,7 +2,7 @@ import type { Transaction } from "@mysten/sui/transactions";
 
 import { BaseLineClient } from "../base-client.ts";
 import { loadConfig, type LoadConfigOptions, type WaterXConfig } from "../config.ts";
-import { ownEntry } from "../utils/record.ts";
+import { requireEntry } from "../utils/record.ts";
 import type { Network } from "./constants.ts";
 
 export interface CreateClientOptions extends LoadConfigOptions {
@@ -78,7 +78,7 @@ export class PredictClient extends BaseLineClient {
 
   /** `objects.prediction.market_registries[settlement]`, throws if the alias is unknown. */
   marketRegistry(settlement = this.settlement): string {
-    return requireAlias(
+    return requireEntry(
       this.config.objects.prediction.market_registries,
       settlement,
       "objects.prediction.market_registries",
@@ -91,7 +91,7 @@ export class PredictClient extends BaseLineClient {
 
   /** `objects.prediction.settlement_coin_types[settlement]`, throws if the alias is unknown. */
   settlementCoinType(settlement = this.settlement): string {
-    return requireAlias(
+    return requireEntry(
       this.config.objects.prediction.settlement_coin_types,
       settlement,
       "objects.prediction.settlement_coin_types",
@@ -134,13 +134,6 @@ export class PredictClient extends BaseLineClient {
   referralTableId(): string {
     return this.config.objects.referral.table;
   }
-}
-
-/** Own-key read of a settlement-alias map, throwing with the config path on a miss. */
-function requireAlias(map: Record<string, string>, alias: string, path: string): string {
-  const value = ownEntry(map, alias);
-  if (value === undefined) throw new Error(`waterx-config missing ${path}.${alias}`);
-  return value;
 }
 
 /**

@@ -40,6 +40,7 @@ import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { claimReward, stake, unstake } from "../src/perp/index.ts";
+import { ownEntry } from "../src/utils/record.ts";
 import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
@@ -94,7 +95,7 @@ async function execute(
 
 /** Per-alias pool lookup — the pools map may legitimately lack an alias. */
 function poolId(client: PerpClient, alias = "WLP"): string {
-  const id = client.config.objects.staking.pools[alias];
+  const id = ownEntry(client.config.objects.staking.pools, alias);
   if (!id) throw new Error(`objects.staking.pools[${alias}] not set in config`);
   return id;
 }

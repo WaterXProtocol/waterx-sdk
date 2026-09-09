@@ -6,7 +6,7 @@
  */
 import { getAccountData, getAccountIds, PredictClient } from "~predict/index.ts";
 
-import { resolveWaterxConfigUrl } from "../../../scripts/waterx-config-url.ts";
+import { readE2eClientOverrides } from "../helpers/e2e-env.ts";
 
 /** First wallet arg; skips `pnpm` separator `--` in argv. */
 function ownerFromArgv(argv: string[]): string | undefined {
@@ -22,10 +22,7 @@ async function main(): Promise<void> {
 
   // `loadConfig` never reads env — compose the URL from the CDN base here.
   const client = await PredictClient.testnet({
-    waterxConfigUrl: resolveWaterxConfigUrl(
-      process.env.E2E_CONFIG_URL ?? process.env.WATERX_CONFIG_URL,
-      "TESTNET",
-    ),
+    ...readE2eClientOverrides(),
   });
   const ids = await getAccountIds(client, { owner });
 

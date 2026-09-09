@@ -285,13 +285,18 @@ export class WaterXClient {
       cache: opts.cache,
       ...predictRest,
     };
-    const perpConfig = await loadConfig(resolvedPerpNetwork, perpOpts);
+    // One document serves both lines whenever they resolve to the same
+    // network + URL — the identity `loadConfig` caches on. Otherwise the two
+    // loads are independent, so run them together rather than in series.
     const sameDocument =
       resolvedPerpNetwork === resolvedPredictNetwork &&
       perpOpts.waterxConfigUrl === predictOpts.waterxConfigUrl;
-    const predictConfig = sameDocument
-      ? perpConfig
-      : await loadConfig(resolvedPredictNetwork, predictOpts);
+    const [perpConfig, predictConfig] = sameDocument
+      ? await loadConfig(resolvedPerpNetwork, perpOpts).then((c) => [c, c] as const)
+      : await Promise.all([
+          loadConfig(resolvedPerpNetwork, perpOpts),
+          loadConfig(resolvedPredictNetwork, predictOpts),
+        ]);
     return new WaterXClient(
       new PerpClient(resolvedPerpNetwork, perpConfig, perpOpts),
       new PredictClient(resolvedPredictNetwork, predictConfig, predictOpts),

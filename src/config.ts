@@ -59,30 +59,35 @@ export const REQUIRED_PACKAGES = Object.freeze([
 export type RequiredPackage = (typeof REQUIRED_PACKAGES)[number];
 
 /**
- * The parsed `waterx-config` document with {@link REQUIRED_PACKAGES} asserted
- * present. Produced only by {@link parseConfigDocument} / {@link loadConfig}
- * (or {@link assertRequiredPackages} on an already-parsed document).
+ * The parsed `waterx-config` document with {@link REQUIRED_PACKAGES} pinned to
+ * present — what `client.config` holds.
+ *
+ * The intersection is load-bearing even though this repo leaves
+ * `noUncheckedIndexedAccess` off (so a bare index read is non-`undefined`
+ * regardless): `packages` is an open `Record<string, PackageEntry>`, which is
+ * NOT assignable to a type that requires a specific package key. Declaring the
+ * required ones keeps `config.packages.waterx_prediction` structurally present
+ * for such consumers, matching the runtime guarantee
+ * {@link assertRequiredPackages} establishes.
  */
 export type WaterXConfig = ParsedWaterxConfig & {
   packages: Record<RequiredPackage, PackageEntry>;
 };
 
-/** Every package name a parsed document must carry: the fixed set + each rule block's own. */
-function requiredPackageNames(config: ParsedWaterxConfig): string[] {
+/**
+ * Throws when a package entry the SDK reads unconditionally is absent — the
+ * fixed {@link REQUIRED_PACKAGES} set, plus the entry each published
+ * `oracle_rules.<rule>` block names (a cross-reference the schema cannot
+ * cheaply express).
+ */
+export function assertRequiredPackages(config: ParsedWaterxConfig): asserts config is WaterXConfig {
   const rules = config.oracle_rules;
-  return [
+  const missing = [
     ...REQUIRED_PACKAGES,
     rules.waterx.package,
     rules.constant.package,
     ...(rules.pyth_lazer ? [rules.pyth_lazer.package] : []),
-  ];
-}
-
-/** Throws when a package entry the SDK reads unconditionally is absent. */
-export function assertRequiredPackages(config: ParsedWaterxConfig): asserts config is WaterXConfig {
-  const missing = requiredPackageNames(config).filter(
-    (name) => config.packages[name] === undefined,
-  );
+  ].filter((name) => config.packages[name] === undefined);
   if (missing.length > 0) {
     throw new Error(
       `waterx-config (${config.network}): packages.{${missing.join(", ")}} missing — ` +

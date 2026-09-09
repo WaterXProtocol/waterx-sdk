@@ -56,7 +56,7 @@ describe("user/staking PTB builders (v3)", () => {
         stakeAmount: 1_000_000n,
         rewarderTypes: [],
       }),
-    ).toThrow(/pools\[toString\] is not set/);
+    ).toThrow(/missing objects\.staking\.pools\.toString/);
   });
 
   it("stake and unstake without rewarderTypes skip settlement loops", () => {
@@ -105,6 +105,6 @@ describe("user/staking PTB builders (v3)", () => {
     const tx = new Transaction();
     expect(() =>
       stake(bare, tx, { accountId, stakeAlias: "WLP", stakeType, stakeAmount: 1n }),
-    ).toThrow(/pools\[WLP\] is not set/);
+    ).toThrow(/missing objects\.staking\.pools\.WLP/);
   });
 });

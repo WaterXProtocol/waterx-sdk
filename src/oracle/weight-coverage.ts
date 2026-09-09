@@ -28,6 +28,7 @@
  * `assertOracleWriteCoverage`.
  */
 
+import { ownEntry } from "../utils/record.ts";
 import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
@@ -47,15 +48,6 @@ const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource>> = Object.freeze(
   PythLazerRule: "pyth_lazer_rule",
   WaterxRule: "waterx_rule",
 });
-
-/**
- * The auxiliary witness — fed alongside a source rather than being one.
- *
- * Its emission is CONDITIONAL, per ticker, so it cannot be treated as
- * globally available (which certified a ticker clean that then aborted):
- * `ConstantRule` rides only when `host.isConstantTicker(ticker)`.
- */
-// (Handled by `suppliableFor` inside `readOracleWeightCoverage`.)
 
 /** One ticker's on-chain weighting, as far as fed-set coverage is concerned. */
 export interface TickerWeightCoverage {
@@ -137,27 +129,34 @@ export async function readOracleWeightCoverage(
     const served = feedsByWitness.get(witness);
     // A source witness: suppliable only where that source has THIS ticker's feed.
     if (served !== undefined) return served.has(ticker);
+    // `ConstantRule` is auxiliary, not a source, and rides only per-ticker —
+    // treating it as globally available once certified a ticker clean that
+    // then aborted on chain.
     if (witness === "ConstantRule") return host.isConstantTicker(ticker);
     return false;
   };
 
-  const wanted = tickers.filter((t) => Object.hasOwn(aggregators, t));
+  // `ownEntry`, not `Object.hasOwn` + a bare bracket read: one own-key pass
+  // that carries the id with it, so the reads below need no `!`.
+  const wanted = tickers.flatMap((ticker) => {
+    const id = ownEntry(aggregators, ticker);
+    return id === undefined ? [] : [{ ticker, id }];
+  });
   // Independent reads — one round trip each would make a 30-market boot assert
   // needlessly serial.
   const objects = await Promise.all(
-    wanted.map((t) =>
+    wanted.map(({ id }) =>
       // Explicit field mask: the client's `getObject` wrapper requests none, so
       // `json` would come back undefined and every aggregator would look
       // weightless — an assert that passes exactly where it must fail.
-      host.grpcClient.getObject({ objectId: aggregators[t]!, include: { json: true } }),
+      host.grpcClient.getObject({ objectId: id, include: { json: true } }),
     ),
   );
 
-  return wanted.map((ticker, i) => {
+  return wanted.map(({ ticker, id }, i) => {
     // FAIL CLOSED on anything undecodable. Defaulting a missing object / JSON /
     // weights map to an empty list made the assert succeed without verifying a
     // single weight — the exact fail-open shape this gate exists to prevent.
-    const id = aggregators[ticker]!;
     const json = objects[i]?.object?.json;
     if (json === undefined || json === null || typeof json !== "object") {
       throw new OracleWeightUnreadableError(ticker, id, "no JSON payload in the object read");

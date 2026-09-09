@@ -20,18 +20,12 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 
 import { makeSenderRequest } from "../../account/account-request.ts";
 import * as staking from "../../generated/waterx_staking/waterx_staking.ts";
-import { ownEntry } from "../../utils/record.ts";
+import { requireEntry } from "../../utils/record.ts";
 import { toU64Arg } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 
 function pool(client: PerpClient, stakeAlias: string): string {
-  const id = ownEntry(client.config.objects.staking.pools, stakeAlias);
-  if (!id) {
-    throw new Error(
-      `objects.staking.pools[${stakeAlias}] is not set — staking is not deployed for this stake type`,
-    );
-  }
-  return id;
+  return requireEntry(client.config.objects.staking.pools, stakeAlias, "objects.staking.pools");
 }
 
 function stakingPackage(client: PerpClient): string {

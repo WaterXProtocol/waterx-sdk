@@ -510,19 +510,12 @@ export function parseSignedLeaves(text: string): WaterxSignedLeaf[] {
  * block is schema-required, so there is no guard — a document without it
  * never parses.
  */
-function waterxRuleObjects(config: WaterXConfig): {
+function requireWaterx(config: WaterXConfig): {
+  rule: WaterXConfig["oracle_rules"]["waterx"];
   packageId: string;
-  config: string;
-  enclaveConfig: string;
-  enclave: string;
 } {
   const rule = config.oracle_rules.waterx;
-  return {
-    packageId: config.packages[rule.package].published_at,
-    config: rule.rule_config_object,
-    enclaveConfig: rule.enclave.config,
-    enclave: rule.enclave.object,
-  };
+  return { rule, packageId: config.packages[rule.package].published_at };
 }
 
 /**
@@ -828,17 +821,16 @@ export function feedWaterxRuleWithProof(
   collector: TransactionArgument,
   leaf: WaterxSignedLeaf,
 ): void {
-  const wr = waterxRuleObjects(host.config);
-  const pkg = wr.packageId;
+  const { rule, packageId: pkg } = requireWaterx(host.config);
 
   const item = newItemArg(tx, pkg, leaf);
   collectSingleWithProof({
     package: pkg,
     arguments: {
       collector,
-      config: tx.object(wr.config),
-      enclaveConfig: tx.object(wr.enclaveConfig),
-      enclave: tx.object(wr.enclave),
+      config: tx.object(rule.rule_config_object),
+      enclaveConfig: tx.object(rule.enclave.config),
+      enclave: tx.object(rule.enclave.object),
       timestampMs: leaf.signed_timestamp_ms,
       item,
       // vector<vector<u8>>: sibling hashes in fold order, each re-checked as a
@@ -874,8 +866,7 @@ export function feedWaterxRule(
   collector: TransactionArgument,
   envelope: WaterxSignedEnvelope,
 ): void {
-  const wr = waterxRuleObjects(host.config);
-  const pkg = wr.packageId;
+  const { rule, packageId: pkg } = requireWaterx(host.config);
 
   const payload = newBatchPayload({ package: pkg })(tx);
   for (const item of envelope.payload.items) {
@@ -887,9 +878,9 @@ export function feedWaterxRule(
     package: pkg,
     arguments: {
       collector,
-      config: tx.object(wr.config),
-      enclaveConfig: tx.object(wr.enclaveConfig),
-      enclave: tx.object(wr.enclave),
+      config: tx.object(rule.rule_config_object),
+      enclaveConfig: tx.object(rule.enclave.config),
+      enclave: tx.object(rule.enclave.object),
       timestampMs: envelope.timestamp_ms,
       payload,
       sig: Array.from(decodeHex(envelope.signature)),

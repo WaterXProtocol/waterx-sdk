@@ -1,23 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { waterxConfigUrlForNetwork } from "../../../scripts/load-repo-env.ts";
-import {
-  isLegacyConfigFileUrl,
-  resetLegacyConfigUrlWarning,
-  resolveWaterxConfigUrl,
-} from "../../../scripts/waterx-config-url.ts";
+import { resolveWaterxConfigUrl } from "../../../scripts/waterx-config-url.ts";
 
 const BASE = "https://staging-v2.waterx-config.pages.dev";
 
 describe("resolveWaterxConfigUrl", () => {
-  beforeEach(() => {
-    resetLegacyConfigUrlWarning();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   describe("base form (the convention)", () => {
     it("appends the requested network's document to a base root", () => {
       expect(resolveWaterxConfigUrl(BASE, "testnet")).toBe(`${BASE}/testnet.json`);
@@ -37,12 +25,6 @@ describe("resolveWaterxConfigUrl", () => {
         "https://cdn.example/waterx/config/testnet.json",
       );
     });
-
-    it("does not warn — this is the supported shape", () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      resolveWaterxConfigUrl(BASE, "testnet");
-      expect(warn).not.toHaveBeenCalled();
-    });
   });
 
   describe("legacy complete-file form (transitional)", () => {
@@ -61,19 +43,10 @@ describe("resolveWaterxConfigUrl", () => {
       );
     });
 
-    it("warns exactly once across repeated resolutions", () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      resolveWaterxConfigUrl("https://cdn.example/testnet.json", "testnet");
-      resolveWaterxConfigUrl("https://cdn.example/testnet.json", "mainnet");
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0]?.[0]).toMatch(/CDN BASE root/);
-    });
-  });
-
-  describe("classification", () => {
-    it("keys off the PATH, so a query string cannot disguise either shape", () => {
-      expect(isLegacyConfigFileUrl(`${BASE}/testnet.json?v=2`)).toBe(true);
-      expect(isLegacyConfigFileUrl(`${BASE}?ref=main`)).toBe(false);
+    it("recognizes the file shape by PATH, so a query string cannot disguise it", () => {
+      expect(resolveWaterxConfigUrl("https://cdn.example/testnet.json?v=2", "testnet")).toBe(
+        "https://cdn.example/testnet.json?v=2",
+      );
     });
   });
 
