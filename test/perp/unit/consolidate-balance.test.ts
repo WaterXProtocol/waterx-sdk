@@ -6,11 +6,10 @@ import {
   rescaleRawAmount,
   sumParkedBackingAsCreditRaw,
 } from "../../../src/account/funding/balance.ts";
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
-} from "../helpers/fixtures/mock-testnet-config.ts";
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -90,18 +89,6 @@ describe("consolidate-balance utils", () => {
     expect(row.coinsRaw).toBe(200_000n);
   });
 
-  it("probeAddressCreditBalance returns zeros when waterx_credit is missing", async () => {
-    const config = structuredClone(MOCK_TESTNET_CONFIG);
-    delete config.packages.waterx_credit;
-    const client = new PerpClient("TESTNET", config, {
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-    await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual({
-      fundsRaw: 0n,
-      coinsRaw: 0n,
-    });
-  });
-
   it("probeAddressCreditBalance returns funds-only row", async () => {
     const client = createUnitTestClient();
     vi.spyOn(client, "getBalance").mockResolvedValue({
@@ -127,14 +114,5 @@ describe("consolidate-balance utils", () => {
     await expect(probeAddressCreditBalance(client, PTB_DUMMY_ACCOUNT_ID)).rejects.toThrow(
       "rpc down",
     );
-  });
-
-  it("probeParkedBackingAssets returns [] when native_custody is missing", async () => {
-    const config = structuredClone(MOCK_TESTNET_CONFIG);
-    delete config.packages.native_custody;
-    const client = new PerpClient("TESTNET", config, {
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-    await expect(probeParkedBackingAssets(client, PTB_DUMMY_ACCOUNT_ID)).resolves.toEqual([]);
   });
 });

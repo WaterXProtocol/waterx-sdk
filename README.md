@@ -12,12 +12,13 @@ The perp and prediction lines expose builder functions with **colliding names** 
 import { WaterXClient } from "@waterx/sdk";
 
 // waterxConfigUrl is REQUIRED — the SDK has no built-in default and never
-// reads env. The oracle fed set is DERIVED from that config; there is nothing
-// to pick. See "Oracle sources" below.
+// reads env. It must serve a `schema_version: 2` waterx-config document (the
+// SDK parses it strictly and rejects the legacy per-package shape). The oracle
+// fed set is DERIVED from that config; there is nothing to pick. See "Oracle
+// sources" below.
 const client = await WaterXClient.create({
   network: "TESTNET",
-  waterxConfigUrl:
-    "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+  waterxConfigUrl: "https://staging-v2.waterx-config.pages.dev/testnet.json", // a schema_version 2 document
   pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
 });
 client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
@@ -50,7 +51,8 @@ does not bundle them, so your app and the SDK share one Sui client and one BCS r
 
 - **Node ≥ 22** (declared in `engines`; CI builds and tests on 24).
 - **ESM and CJS** both resolve, including on every subpath export.
-- **One runtime dependency** (`@noble/hashes`), plus the two peers above.
+- **Two runtime dependencies** (`@noble/hashes`, and `@waterx/config` — the strict
+  parser for the deployment document), plus the two peers above.
 - **Browser supported** — see the CORS note under [Oracle sources](#oracle-sources) if you
   use `waterx_rule`.
 
@@ -59,7 +61,7 @@ Contributor setup (building this repo rather than consuming it) is under
 
 ## Quickstart (unified client)
 
-`WaterXClient.create()` loads each line's deployment config from the canonical `waterx-config` JSON (its URL passed via the **required** `waterxConfigUrl` option — the SDK has no default and never reads env) and returns a ready client. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (`client.perp` / `client.predict` are the line clients, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
+`WaterXClient.create()` loads the deployment config — the canonical `waterx-config` document (`schema_version: 2`), fetched from the **required** `waterxConfigUrl` option (the SDK has no default and never reads env), strictly parsed by `@waterx/config`, and shared by both lines — and returns a ready client. `client.perp.config` / `client.predict.config` **are** that parsed document: object ids under `objects.*`, rule wiring under `oracle_rules.*`, the ticker universe under `symbols`, package identity under `packages.*`. Builders are **build-only** — they return / mutate a `Transaction`; signing & execution stay with the caller (`client.perp` / `client.predict` are the line clients, or a frontend wallet), so multi-step Pyth injection and wallet flows keep working.
 
 ```ts
 import { WaterXClient, rawPrice } from "@waterx/sdk";
@@ -67,7 +69,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 const client = await WaterXClient.create({
   network: "TESTNET",
-  waterxConfigUrl: "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json",
+  waterxConfigUrl: "https://staging-v2.waterx-config.pages.dev/testnet.json",
   // The fed set is derived from this config — nothing to declare. Inspect it
   // with `pnpm oracle:aggregates:testnet`. See "Oracle sources".
   pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
@@ -120,18 +122,23 @@ walkthrough as one runnable file** — being real code, it is covered by `pnpm l
 `pnpm typecheck`, so the API it exercises cannot go stale unnoticed:
 
 ```bash
-export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
+export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev/testnet.json
 export PYTH_API_KEY=...                          # required iff the config wires pyth_lazer_rule
 pnpm exec tsx examples/quickstart.ts             # simulate-only; WATERX_EXECUTE=1 to sign + send
 ```
 
 **1 — Get a config URL.** Every chain-specific id comes from the canonical
-[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) JSON. There is no
-built-in default and the SDK never reads `process.env`: your app reads the URL and passes
-it in. Hardcoding object ids instead is the single most common integration mistake.
+[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) document, which must be
+the consolidated `schema_version: 2` shape — the SDK parses it strictly (`@waterx/config`)
+and rejects a legacy per-package file at load. There is no built-in default and the SDK
+never reads `process.env`: your app reads the URL and passes it in. Hardcoding object ids
+instead is the single most common integration mistake. (The `staging-v2` mirror serves v2
+today; `https://config.waterx.app/<network>.json` is the canonical CDN once the config
+repo's v2 promotion lands there.)
 
-**2 — Nothing to pick: the fed set is derived.** Every source the config wires (a
-published package with a non-empty feeds map) is fed. That is what keeps the fed set a
+**2 — Nothing to pick: the fed set is derived.** Every source the config wires
+(`oracle_rules.pyth_lazer` with feed ids for Lazer; a non-empty `symbols` universe for the
+quote-center) is fed. That is what keeps the fed set a
 **superset of every ticker's on-chain weighted rules**, which is the property that
 matters — starving a weighted rule aborts `EMissingPriceSource` at simulate, while
 feeding an unweighted one is dropped harmlessly on chain. Inspect what a network
@@ -212,8 +219,7 @@ If you only need one line, construct it directly (both factories are **async** �
 import { PerpClient } from "@waterx/sdk/perp";
 import { PredictClient } from "@waterx/sdk/prediction";
 
-const waterxConfigUrl =
-  "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json";
+const waterxConfigUrl = "https://staging-v2.waterx-config.pages.dev/testnet.json";
 // The fed set comes from the config — see "Oracle sources".
 const perp = await PerpClient.create("TESTNET", {
   waterxConfigUrl,
@@ -226,14 +232,14 @@ Read-only queries use gRPC `simulateTransaction` (no signer) — the `getX` view
 
 ## Oracle sources
 
-The fed set is **derived from the deployment config** — there is no `oracleSource` create option and no `ORACLE_SOURCE` env var. A source is fed when its block is published AND carries at least one feed, so mainnet derives `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no per-environment wiring at all. Each source remains **self-contained** — it owns its own infra + config and does **not** back-stop any other source.
+The fed set is **derived from the deployment config** — there is no `oracleSource` create option and no `ORACLE_SOURCE` env var. A source is fed when its rule can serve at least one ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, a non-empty `symbols` universe for the quote-center — so mainnet derives `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no per-environment wiring at all. Each source remains **self-contained** — it owns its own infra + config and does **not** back-stop any other source.
 
-Why derived rather than declared: the chain arbitrates. Per-ticker weights decide which contributions count, feeding an **unweighted** rule is dropped on-chain, and starving a **weighted** one aborts `EMissingPriceSource`. The failure is one-sided, so a hand-typed list can only err in the fatal direction — the classic being one copied between networks, naming a source that deployment does not carry. The config cannot, because it _is_ what wires the rules. Retired blocks are inert: `pyth_rule` and `pyth_sponsor_rule` still sit in the live configs, and neither is an `ORACLE_SOURCES` member, so neither can ever be derived.
+Why derived rather than declared: the chain arbitrates. Per-ticker weights decide which contributions count, feeding an **unweighted** rule is dropped on-chain, and starving a **weighted** one aborts `EMissingPriceSource`. The failure is one-sided, so a hand-typed list can only err in the fatal direction — the classic being one copied between networks, naming a source that deployment does not carry. The config cannot, because it _is_ what wires the rules. Retired blocks are inert: `oracle_rules.pyth` (Pyth Core) is still published, and `pyth_rule` is not an `ORACLE_SOURCES` member, so it can never be derived.
 
-| Source            | Fed when                                           | What it is                                                                                                                                                                |
-| ----------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pyth_lazer_rule` | `packages.pyth_lazer_rule` is published with feeds | Pyth Lazer signed updates — ONE `leEcdsa` verify per PTB, no per-feed fees. Auth-first, so it needs a `pythApiKey`.                                                       |
-| `waterx_rule`     | `packages.waterx_rule` is published with feeds     | The first-party WaterX quote-center (Nautilus-TEE, ed25519-signed CEX prices): one signed Merkle leaf per ticker, batch-envelope fallback. No API key, no per-update fee. |
+| Source            | Fed when                                                        | What it is                                                                                                                                                                |
+| ----------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pyth_lazer_rule` | `oracle_rules.pyth_lazer` carries at least one `lazer_feed_ids` | Pyth Lazer signed updates — ONE `leEcdsa` verify per PTB, no per-feed fees. Auth-first, so it needs a `pythApiKey`.                                                       |
+| `waterx_rule`     | the `symbols` universe is non-empty (every symbol is served)    | The first-party WaterX quote-center (Nautilus-TEE, ed25519-signed CEX prices): one signed Merkle leaf per ticker, batch-envelope fallback. No API key, no per-update fee. |
 
 `deriveOracleSources(config)` is exported if you need the answer before a client exists (e.g. to pair with `missingOracleCredentials` in a boot assert); `client.oracleSources` is the same value on a live client. (`pyth_rule` — Pyth Core / Hermes — was RETIRED in 5.0.0.)
 
@@ -267,7 +273,7 @@ Every source plugs in the same way — routing is driven **only** by what the de
 
 1. **Implement `PriceUpdateRule`** in `src/oracle/rules/<name>-rule.ts` — all port fields (`src/oracle/price-update-rule.ts`): `kind`, `credential` (set iff the off-chain fetch needs a caller credential — one object carrying the credential KIND and the rule's OWN error, which the fail-fast pre-check throws and `missingOracleCredentials` reports), `supportedTickers`, `fetchUpdateData`, `narrowUpdateData` (subset a cached whole-universe payload to one build's tickers — a divisible payload returns a per-feed subset, an indivisible one returns itself whole iff fully covered; uncovered ticker → `null` miss), `updateIdentityBySymbol` (iff the on-chain verify is replay-guarded per symbol), `buildUpdateCalls`.
 2. **Register it** in `src/oracle/rule-registry.ts` (`DEFAULT_RULES`) under a new `OracleSource` value — added to `ORACLE_SOURCES` in `price-update-rule.ts` (the union derives from that list; a registry test pins every listed value to a registered rule).
-3. **Publish the on-chain rule package** — its config entry (package ids, per-ticker `feeds`) arrives via the normal `waterx-config` deploy pipeline; type it in `OraclePackages` (`src/oracle/config.ts`).
+3. **Publish the on-chain rule package** — its `oracle_rules.<name>` block (+ the `packages.<name>` identity it names) arrives via the `waterx-config` schema and reaches the SDK as part of the strictly parsed document (`src/config.ts`); there is no SDK-side schema to extend.
 4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a **rule-owned** per-network table inside the rule's own file, mirroring `LAZER_INFRA` / `WATERX_INFRA` (never on the shared client, never in `oracle/config.ts`). Wire its read-plane served-set/ids into `resolveOracleReadPlan` (`src/oracle/read-plane.ts`).
 5. **Publish the block in the config** for the deployments that should feed it — every client on that config picks it up. No consumer code change, no env edit, no SDK re-release.
 
@@ -308,14 +314,16 @@ these surface at simulate, before you spend gas.
 | Message                                                                    | What it means, and what to do                                                                                                                                                                                                                                                                                                                                       |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `loadConfig: no config URL — pass opts.waterxConfigUrl`                    | `waterxConfigUrl` is unset; there is no default and no env fallback. Read the URL in your app and pass it to `create()`.                                                                                                                                                                                                                                            |
-| `this deployment's config wires no price-update source …`                  | The loaded config publishes no `pyth_lazer_rule` / `waterx_rule` block with feeds, so nothing could ever be priced. Raised at client creation. Check you loaded the config you meant to.                                                                                                                                                                            |
+| `this deployment's config wires no price-update source …`                  | The loaded config has no `oracle_rules.pyth_lazer` feed ids and an empty `symbols` universe, so nothing could ever be priced. Raised at client creation. Check you loaded the config you meant to.                                                                                                                                                                  |
+| `WaterxConfigError` / a schema issue from `@waterx/config` at `create()`   | `waterxConfigUrl` does not serve a `schema_version: 2` document — a legacy per-package file (the canonical CDN until its v2 promotion), or a malformed id. Point it at a v2 document; there is no cast-and-hope path.                                                                                                                                               |
+| `waterx-config (<network>): packages.{…} missing`                          | The document lacks a package entry the SDK reads unconditionally (`REQUIRED_PACKAGES` in `src/config.ts`), or an `oracle_rules.<rule>` block names a package that is not published. Every deployment must carry all of them — fix the document, not the SDK.                                                                                                        |
 | `fed set [...] has no feed for ticker(s): …` (`OracleTickerUnservedError`) | No derived source serves a ticker this build depends on. `refreshOraclePrices` itself SKIPS such tickers; the `build*Tx` composers raise this for the ones their action needs (traded ticker + collateral, or every pool asset for WLP). Add the feed, or pass `allowUnrefreshedPrices: true` to build anyway. Constant-only tickers are exempt.                    |
 | `EMissingPriceSource` (Move abort in `aggregator::remove_outliers`)        | The fed set does not cover that ticker's on-chain weighted rules — starving a weighted rule aborts, feeding an unweighted one is a no-op. Run `pnpm oracle:aggregates:testnet`, then publish the missing source's feeds in the config so it is derived.                                                                                                             |
 | `LazerApiKeyMissing: pyth_lazer_rule requires a Pyth Lazer access token`   | The config wires `pyth_lazer_rule` but `pythApiKey` was not passed. The SDK never reads `process.env` for it — pass it at client creation.                                                                                                                                                                                                                          |
 | `EAccountNotFound` (Move abort in `account::borrow_account`)               | The `accountId` does not exist on this network — usually a fixture from another deployment, or a Sui address used where a wxa account id belongs. Create one with `client.account.createAccount`.                                                                                                                                                                   |
 | `EReplayedSignature`                                                       | A `waterx_rule` signed timestamp was replayed on a **single-rule `feed_*`** entry, where it aborts. The `build*Tx` composers do NOT use those — they feed through `collect_*`, where a replay ABSTAINS (audit F-014's high-water mark means the chain already holds a price at least that fresh). If you see this, a custom PTB is calling a `feed_*` leg directly. |
 | CORS failure fetching the quote-center (browser only)                      | `waterx_rule` fetches from the page and your origin is not on the allowlist. Point `waterxEndpoint` at a same-origin proxy; its base path is preserved. Node and keeper consumers are unaffected.                                                                                                                                                                   |
-| Ticker lookups return nothing                                              | Wrong format. Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the config JSON's `markets` keys.                                                                                                                                                                                                                                      |
+| Ticker lookups return nothing                                              | Wrong format. Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the document's `objects.perp.markets` keys (and `symbols` for the oracle universe).                                                                                                                                                                                    |
 | Prices off by 10⁹, or an order fills far from the intended level           | A human-readable number was passed where a raw 1e9-scaled `u64` belongs. Wrap in `rawPrice()`. Exception: view `basePriceUsd` args take a **whole-dollar** u64 — use `parseWholeDollarU64`.                                                                                                                                                                         |
 | A ticker prices on one network but not another                             | The two networks wire **different sources**, and the fed set follows the config — mainnet derives `[pyth_lazer_rule, waterx_rule]`, testnet `[waterx_rule]`. This is the drift a hand-declared list used to cause and derivation removes. Confirm per network with `pnpm oracle:aggregates:mainnet`.                                                                |
 

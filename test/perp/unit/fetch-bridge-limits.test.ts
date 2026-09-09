@@ -108,11 +108,4 @@ describe("getBridgeLimits", () => {
     const limits = await getBridgeLimits(client);
     expect(limits.paused).toBe(true);
   });
-
-  it("throws when wormhole_bridge is not deployed on the network", async () => {
-    const noBridge = createUnitTestClient();
-    delete noBridge.config.packages.wormhole_bridge;
-
-    await expect(getBridgeLimits(noBridge)).rejects.toThrow(/not deployed/);
-  });
 });

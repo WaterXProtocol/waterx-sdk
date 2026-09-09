@@ -15,9 +15,11 @@
  * There are no separate `.perpClient` / `.predictClient` accessors.
  *
  * `client.account` is a thin namespace (no own client) bound to the perp
- * sub-client: the perp config carries the shared `waterx_account` registry plus
- * the bridge / native_custody / withdrawal_queue / credit_registry that the
- * credit & custody builders read. `waterx_account` is one shared on-chain object,
+ * sub-client: both lines read the SAME consolidated `waterx-config` document
+ * (the shared `waterx_account` registry plus the bridge / native_custody /
+ * withdrawal_queue / credit objects the credit & custody builders read), so
+ * one document is loaded once and handed to both sub-clients whenever they
+ * target the same network + URL. `waterx_account` is one shared on-chain object,
  * so an account created here serves both lines — except when the two lines target
  * different networks (`opts.perp.network !== opts.predict.network`), where
  * `client.account` follows the perp line; split-network callers should reach the
@@ -34,6 +36,7 @@ import { Transaction } from "@mysten/sui/transactions";
 // Unified account namespace: generic waterx_account framework + funding (credit + custody).
 import * as accountOps from "./account/index.ts";
 import * as perpReferral from "./account/referral.ts";
+import { loadConfig } from "./config.ts";
 import type { Network } from "./constants.ts";
 import type { PythFetchPolicy } from "./oracle/config.ts";
 import type { FetchPolicy } from "./oracle/update-fetch.ts";
@@ -242,9 +245,11 @@ export class WaterXClient {
   }
 
   /**
-   * Async factory — loads each line's deployment config (from the canonical
-   * `waterx-config` JSON) and returns a ready client. Each line can target a
-   * different network via `opts.perp.network` / `opts.predict.network`.
+   * Async factory — loads the deployment config (the canonical `waterx-config`
+   * document) and returns a ready client. One document serves both lines, so
+   * it is fetched ONCE unless the lines target a different network or URL
+   * (`opts.perp.network` / `opts.predict.network`, or per-line
+   * `waterxConfigUrl`), in which case each line loads its own.
    */
   static async create(opts: ClientCreateOptions): Promise<WaterXClient> {
     const baseNetwork: Network = opts.network ?? "TESTNET";
@@ -264,7 +269,7 @@ export class WaterXClient {
       );
     }
 
-    const perpClient = await PerpClient.create(resolvedPerpNetwork, {
+    const perpOpts = {
       grpcUrl: opts.grpcUrl,
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
@@ -273,13 +278,23 @@ export class WaterXClient {
       waterxEndpoint: opts.waterxEndpoint,
       waterxFetch: opts.waterxFetch,
       ...perpRest,
-    });
-    const predictClient = await PredictClient.create(resolvedPredictNetwork, {
+    };
+    const predictOpts = {
       grpcUrl: opts.grpcUrl,
       waterxConfigUrl: opts.waterxConfigUrl,
       cache: opts.cache,
       ...predictRest,
-    });
-    return new WaterXClient(perpClient, predictClient);
+    };
+    const perpConfig = await loadConfig(resolvedPerpNetwork, perpOpts);
+    const sameDocument =
+      resolvedPerpNetwork === resolvedPredictNetwork &&
+      perpOpts.waterxConfigUrl === predictOpts.waterxConfigUrl;
+    const predictConfig = sameDocument
+      ? perpConfig
+      : await loadConfig(resolvedPredictNetwork, predictOpts);
+    return new WaterXClient(
+      new PerpClient(resolvedPerpNetwork, perpConfig, perpOpts),
+      new PredictClient(resolvedPredictNetwork, predictConfig, predictOpts),
+    );
   }
 }

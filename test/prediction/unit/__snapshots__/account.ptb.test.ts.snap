@@ -22,7 +22,7 @@ exports[`account PTB builders > addDelegate 1`] = `
     ],
     "function": "add_delegate",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [],
   },
 ]
@@ -50,7 +50,7 @@ exports[`account PTB builders > addDelegate with expiry timestamp 1`] = `
     ],
     "function": "add_delegate",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [],
   },
 ]
@@ -65,7 +65,7 @@ exports[`account PTB builders > allow / disallow prediction protocol settlement 
     ],
     "function": "allow_protocol_asset",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
@@ -83,7 +83,7 @@ exports[`account PTB builders > allow / disallow prediction protocol settlement 
     ],
     "function": "disallow_protocol_asset",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
@@ -101,7 +101,7 @@ exports[`account PTB builders > consumeDepositDirect 1`] = `
     ],
     "function": "consume_deposit_direct",
     "module": "direct_rule",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -126,7 +126,7 @@ exports[`account PTB builders > createAccount 1`] = `
     ],
     "function": "create_account",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [],
   },
 ]
@@ -143,7 +143,7 @@ exports[`account PTB builders > deposit 1`] = `
     ],
     "function": "request_deposit",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -155,7 +155,7 @@ exports[`account PTB builders > deposit 1`] = `
     ],
     "function": "consume_deposit_direct",
     "module": "direct_rule",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -182,7 +182,7 @@ exports[`account PTB builders > removeDelegate 1`] = `
     ],
     "function": "remove_delegate",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [],
   },
 ]
@@ -199,7 +199,7 @@ exports[`account PTB builders > requestDeposit 1`] = `
     ],
     "function": "request_deposit",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -218,7 +218,7 @@ exports[`account PTB builders > requestDepositFromReceivings 1`] = `
     ],
     "function": "request_deposit_from_receivings",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -247,7 +247,7 @@ exports[`account PTB builders > requestWithdraw 1`] = `
     ],
     "function": "request_withdraw",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -275,7 +275,7 @@ exports[`account PTB builders > setDelegatePredictionPermission 1`] = `
     ],
     "function": "set_delegate_protocol_permission",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
     ],
@@ -293,7 +293,7 @@ exports[`account PTB builders > transferCoinToAccount 1`] = `
     ],
     "function": "transfer_coin",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
     ],
@@ -310,7 +310,7 @@ exports[`account PTB builders > whitelistPredictionProtocol 1`] = `
     ],
     "function": "whitelist_protocol",
     "module": "account",
-    "package": "0xff4afb7305886992843b700a363ebe4ae0dc6a727c4941043b565d0a3a7eb61d",
+    "package": "0x2d9b1eb3958fad8ff619d30d959351ecce851fcea231fa362b36d52c76b339b5",
     "typeArguments": [
       "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481::account_data::WaterXPrediction",
     ],

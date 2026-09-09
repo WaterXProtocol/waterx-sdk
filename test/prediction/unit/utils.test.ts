@@ -133,14 +133,9 @@ describe("resolve*", () => {
   });
 
   it("resolveMarketRegistry / resolveAccountRegistry require config or param", () => {
-    const stripped = createMockPredictClient({
-      packages: {
-        waterx_prediction: {
-          ...client.config.packages.waterx_prediction,
-          market_registries: {},
-        },
-      },
-    });
+    const cfg = structuredClone(client.config);
+    cfg.objects.prediction.market_registries = {};
+    const stripped = createMockPredictClient(cfg);
     expect(() => resolveMarketRegistry(stripped)).toThrow(/market_registries\.USD/);
     expect(resolveMarketRegistry(stripped, "0xm")).toBe("0xm");
     expect(resolveMarketRegistry(client)).toBe(client.marketRegistry());

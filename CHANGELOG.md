@@ -16,6 +16,92 @@ from the version number alone.
 
 ## [Unreleased]
 
+_BREAKING: the legacy per-package `waterx-config` shape is ABANDONED. `client.config` is
+now the STRICTLY PARSED `schema_version: 2` document (`@waterx/config`, one consolidated
+document for BOTH lines), and every SDK read moved to where that schema puts things —
+`objects.*` for object ids, `oracle_rules.*` for rule wiring, `symbols` for the ticker
+universe, `packages.*` for package identity only. A consumer that read
+`client.config.packages.<pkg>.<object id>`, imported the loader or any config type from
+`@waterx/sdk/perp/config` / `@waterx/sdk/prediction/config`, called `getCredit` /
+`getBridge` / `getNativeAssets` / `wormholeStateId` / `getSupraRule`, or pointed
+`waterxConfigUrl` at a legacy document must adapt in the same change set — the removal
+ledger below is grep-ready. Pointing at a legacy document now throws at `create()`; the
+canonical CDN (`config.waterx.app`) still serves the legacy shape until the config repo's
+v2 promotion, so consumers pin the `staging-v2` mirror until then (#93)._
+
+### BREAKING — the v2 `waterx-config` document is the config
+
+- **One loader, one document, both lines.** `loadConfig` / `clearConfigCache` /
+  `LoadConfigOptions` now live in `src/config.ts` (re-exported from `@waterx/sdk`,
+  `@waterx/sdk/perp`, `@waterx/sdk/prediction`). The body is parsed by `@waterx/config`'s
+  `parseWaterxConfig` (schema-derived types, 64-hex id patterns, `network` pin) and then
+  checked once for the package entries the SDK reads unconditionally
+  (`REQUIRED_PACKAGES`; each `oracle_rules.<rule>.package` must also name a published
+  entry). `parseConfigDocument(doc, network)` / `assertRequiredPackages(doc)` are exported
+  for pinned files and fixtures. The retry / last-known-good / `network:url` cache
+  semantics of the former perp loader are unchanged and now cover the prediction line too.
+  `WaterXClient.create` fetches the document ONCE when both lines resolve to the same
+  network + URL.
+- **`client.config` is `WaterXConfig` = the parsed document** (`@waterx/config`'s
+  `WaterxConfig` with `REQUIRED_PACKAGES` narrowed to present). There is no internal
+  view and no adapter. Read map for the object ids that moved:
+  `packages.waterx_account.account_registry → objects.account.registry`,
+  `packages.waterx_perp.{global_config,market_registry_wlp,markets} → objects.perp.*`,
+  `packages.wlp.{wlp_pool,wlp_aum,pool_tokens} → objects.wlp.{pool,aum,pool_tokens}`,
+  `packages.waterx_oracle.{oracle,aggregators} → objects.oracle.*`,
+  `packages.waterx_referral.referral_table → objects.referral.table`,
+  `packages.waterx_credit.{credit_type,credit_registry} → objects.credit.{credit_type,registry}`,
+  `packages.native_custody.{vault,assets} → objects.custody.*`,
+  `packages.wormhole_bridge.{bridge,wormhole_state,emitter_cap} → objects.bridge.{state,wormhole_state,emitter_cap}`,
+  `packages.withdrawal_queue.queue → objects.withdrawal_queue.queue`,
+  `packages.waterx_staking.{pools,rewarders} → objects.staking.*`,
+  `packages.waterx_prediction.* / waterx_prediction_gift.* → objects.prediction.*`,
+  `packages.pyth_lazer_rule.{feeds,config,state} → oracle_rules.pyth_lazer.{lazer_feed_ids,lazer_config_object,lazer_state_object}`,
+  `packages.waterx_rule.{config,enclave_config,enclave} → oracle_rules.waterx.{rule_config_object,enclave.config,enclave.object}`,
+  `packages.constant_rule.{feeds,config} → oracle_rules.constant.{constant_prices,rule_config_object}`.
+  `packages.<name>.{published_at,original_id,version}` are unchanged.
+- **The ticker universe is `symbols`.** `venue_feeds` / `waterx_rule.feeds` no longer
+  exist: `WaterxRule.supportedTickers` is `Object.keys(config.symbols)`, and the
+  quote-center read plan filters against it. `PriceUpdateRule.supportedTickers` now takes
+  the CONFIG (`supportedTickers(config)`), not the host — it is THE definition of
+  "wired": `deriveOracleSources(config)` lists a source exactly when it is non-empty.
+- **No `enabled` flag, no supra leg.** The v2 schema carries neither `enabled` nor
+  `supra.oracle_holder`, so the config-driven off switch and the `supra_rule::feed`
+  leg were unreachable and are REMOVED: `getSupraRule()` (client + `OracleHost`),
+  `maybeFeedSupra` / `src/oracle/rules/supra-rule.ts`, `"supra_rule"` from
+  `PriceUpdateRuleKind`, and the now-unused `src/generated/waterx_supra_rule` bindings
+  (with their `sui-codegen.config.mjs` / `scripts/codegen-summaries.ts` entries). `readOracleWeightCoverage` now reports a `SupraRule` weight as
+  unsuppliable (it is), and `partitionServableTickers` is simply "in the fed set, or
+  constant-pinned" — the old "constant-only vs another rule also feeds it" distinction
+  cannot arise when a source is listed iff it serves ≥1 ticker.
+- **Dead "package unset" guards are REMOVED** — the schema requires every `objects.*`
+  block (except `faucet` / `mock_usdsui`) and the loader asserts `REQUIRED_PACKAGES`, so
+  `getCredit()`, `getBridge()`, `getNativeAssets()`, `wormholeStateId()` (read
+  `client.config.objects.bridge.wormhole_state`) and every "referral / credit / custody /
+  bridge / withdrawal_queue / staking / wlp_aum not configured" throw are gone.
+  `creditType()`, `getNativeAsset(type)`, `getMarket`, `getAggregator`,
+  `getPoolTokenType`, `wlpType`, `getRewarders`, `isConstantTicker` remain.
+  `WormholeInfraConfig.state_id` and the `config.wormhole` / `config.grpcUrl` overrides
+  are gone (`WORMHOLE_DEFAULTS` — now in `src/account/config.ts` — is fixed per network;
+  the Wormhole `State` id is the document's `objects.bridge.wormhole_state`; the gRPC
+  URL is the `grpcUrl` create option).
+- **Removed types / modules** (grep-ready): `src/perp/config.ts`, `src/prediction/config.ts`,
+  `src/config-v2.ts`; `WaterXPackages`, `AccountPackages`, `AccountConfig`, `WxaPackages`,
+  `WxaConfig`, `OraclePackages`, `OracleConfig`, `BaseLineConfig`, `BasePackageEntry`,
+  `WaterxPredictionConfig`, `WaterxConfigPackageBase`, `WaterxPredictionPackage`,
+  `WaterxPredictionGiftPackage`, `WaterxPredictionConfigPackages`, `WaterxAccountPackage`,
+  `WxaAccountPackage`, `WaterxReferralPackage`, `WaterxCreditPackage`, `NativeCustodyPackage`,
+  `WormholeBridgePackage`, `WithdrawalQueuePackage`, `WaterxPerpPackage`,
+  `WaterxPerpMarketEntry`, `WaterxStakingPackage`, `WlpPackage`, `MockCoinPackage`,
+  `TestnetFaucetPackage`, `WaterxOraclePackage`, `WaterxRulePackage`, `WaterxRuleFeedEntry`,
+  `PythLazerRulePackage`, `WaterxConstantRulePackage`, `ConstantFeedEntry`,
+  `SupraRulePackage`, `SupraFeedEntry`. `BaseLineClient` is no longer generic.
+  Replacements: `WaterXConfig`, `PackageEntry`, `PerpMarketEntry`, `NativeCustodyAsset`,
+  `RewarderEntry`, `RequiredPackage` from `src/config.ts`; `PythAccessConfig` /
+  `PythFetchPolicy` / `WaterxAccessConfig` from `src/oracle/config.ts`.
+- **`@waterx/config` is a regular dependency** (`0.1.1-staging.1`), not a peer: it is
+  imported unconditionally and has no shared-instance concern.
+
 ### Added
 
 - **`PythProHistoryError`** — typed error thrown by `fetchPythProHistory` on a

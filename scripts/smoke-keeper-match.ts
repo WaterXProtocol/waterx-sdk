@@ -132,7 +132,7 @@ async function readMarketRaw(client: PerpClient): Promise<MarketDataView> {
   marketDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: BTC,
     },
     typeArguments: [client.wlpType()],

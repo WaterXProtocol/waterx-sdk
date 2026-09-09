@@ -8,9 +8,9 @@
  * lookup. The config-schema half (per-line typed lookups like `getMarket` /
  * `marketRegistry`) legitimately differs and lives on each subclass.
  *
- * `Cfg` is the line's parsed `waterx-config` JSON type. Only the fields needed
- * here are constrained ({@link BaseLineConfig}); each subclass narrows `Cfg` to
- * its full config type so `this.config` stays precisely typed.
+ * Both lines read the SAME parsed `waterx-config` document ({@link WaterXConfig}
+ * — one consolidated document carries every package), so `config` is typed
+ * once here rather than per line.
  */
 
 import type { SuiClientTypes } from "@mysten/sui/client";
@@ -18,6 +18,7 @@ import type { Signer } from "@mysten/sui/cryptography";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import type { Transaction } from "@mysten/sui/transactions";
 
+import type { WaterXConfig } from "./config.ts";
 import type { Network } from "./constants.ts";
 
 /** Default Sui gRPC base URLs by network (public Mysten fullnodes). */
@@ -26,39 +27,19 @@ export const DEFAULT_GRPC_URLS: Record<Network, string> = {
   TESTNET: "https://fullnode.testnet.sui.io:443",
 };
 
-/** Minimal shape of a line config that {@link BaseLineClient} reads directly. */
-export interface BaseLineConfig {
-  /** Sui gRPC base URL override (default: public Mysten fullnode for the network). */
-  grpcUrl?: string;
-  /** Package map — iterated by {@link BaseLineClient.packageIds}. */
-  packages: object;
-}
-
-function isPublishedPackage(value: unknown): value is { published_at: string } {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    "published_at" in value &&
-    typeof (value as { published_at: unknown }).published_at === "string" &&
-    (value as { published_at: string }).published_at.length > 0
-  );
-}
-
-export abstract class BaseLineClient<Cfg extends BaseLineConfig = BaseLineConfig> {
+export abstract class BaseLineClient {
   /** gRPC client — all RPC including `simulateTransaction`. */
   grpcClient: SuiGrpcClient;
   /** Network identifier in upper case (`MAINNET` / `TESTNET`). */
   network: Network;
-  /** Parsed canonical `waterx-config` JSON for this line. */
-  config: Cfg;
+  /** The parsed canonical `waterx-config` document (see `src/config.ts`). */
+  config: WaterXConfig;
 
-  protected constructor(network: Network, config: Cfg, opts: { grpcUrl?: string } = {}) {
+  protected constructor(network: Network, config: WaterXConfig, opts: { grpcUrl?: string } = {}) {
     this.network = network;
     this.config = config;
-
-    const grpcUrl = opts.grpcUrl ?? config.grpcUrl ?? DEFAULT_GRPC_URLS[network];
     this.grpcClient = new SuiGrpcClient({
-      baseUrl: grpcUrl,
+      baseUrl: opts.grpcUrl ?? DEFAULT_GRPC_URLS[network],
       network: network.toLowerCase() as "mainnet" | "testnet",
     });
   }
@@ -128,10 +109,8 @@ export abstract class BaseLineClient<Cfg extends BaseLineConfig = BaseLineConfig
 
   /** All package IDs (`published_at`) keyed by package name. */
   packageIds(): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const [name, pkg] of Object.entries(this.config.packages as Record<string, unknown>)) {
-      if (isPublishedPackage(pkg)) out[name] = pkg.published_at;
-    }
-    return out;
+    return Object.fromEntries(
+      Object.entries(this.config.packages).map(([name, pkg]) => [name, pkg.published_at]),
+    );
   }
 }

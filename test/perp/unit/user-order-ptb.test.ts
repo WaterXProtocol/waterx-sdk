@@ -11,7 +11,7 @@ import {
   updateOrderRequest,
 } from "../../../src/perp/user/order.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
-import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
+import { MOCK_USDC_TYPE } from "../../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 

@@ -38,11 +38,13 @@ async function main(): Promise<void> {
   });
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID ?? DEFAULT_ACCOUNT;
   const execute = process.env.EXECUTE === "1";
-  const usd = `${(client.config.packages as any).usd.published_at}::usd::USD`;
+  // CREDIT coin type verbatim from `objects.credit.credit_type` — the Move type
+  // is keyed by the usd package's ORIGINAL id, not `packages.usd.published_at`.
+  const usd = client.creditType();
   // Native payout asset = MOCK_USDC (a registered, non-deprecated backing asset).
+  const nativeAssets = client.config.objects.custody.assets;
   const assetType =
-    client.getNativeAssets().find((a) => /::mock_usdc::/i.test(a.type))?.type ??
-    client.getNativeAssets()[0]!.type;
+    nativeAssets.find((a) => /::mock_usdc::/i.test(a.type))?.type ?? nativeAssets[0]!.type;
 
   console.log(`Sender:     ${address}`);
   console.log(`AccountId:  ${accountId}`);

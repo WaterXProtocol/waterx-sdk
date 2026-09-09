@@ -2,13 +2,12 @@
  * Oracle aggregation — the orchestrator that composes rules into the shared
  * `Oracle`. This is the ONE file that knows about every rule: it builds a
  * `PriceCollector`, feeds whichever rules a ticker is configured for
- * (Lazer / Waterx / Supra / Constant), then `aggregate`s.
+ * (Lazer / Waterx / Constant), then `aggregate`s.
  *
  * Per ticker:
  *   collector = oracle::new_collector(ticker)
  *   [pyth_lazer_rule::feed] when the update leg produced a verified lazer Update
  *   [waterx_rule::collect_*] when the update leg fetched signed waterx data
- *   [supra_rule::feed]      when supra is enabled + wired
  *   [constant_rule::feed]   when the ticker is a constant ticker
  *   oracle::aggregate(oracle, collector)
  *
@@ -38,7 +37,6 @@ import {
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
-import { maybeFeedSupra } from "./rules/supra-rule.ts";
 import {
   feedWaterxRule,
   feedWaterxRuleWithProof,
@@ -103,8 +101,6 @@ async function resolveCachedUpdateData(
  * - **Waterx** — fed when `waterxLeaf` (default shape) or `waterxEnvelope`
  *   (fallback shape) is supplied; verify AND feed are bundled into the one
  *   collect call per collector.
- * - **Supra** — fed alongside the sources when supra is enabled + wired
- *   (abstains on-chain for symbols it has no pair for).
  * - **Constant** — fed when the ticker is a constant ticker
  *   ({@link OracleHost.isConstantTicker}).
  *
@@ -159,11 +155,6 @@ export function aggregateTicker(
     fed = true;
   }
 
-  if (fed) {
-    // Supra rides on the same collector when enabled (abstains on-chain otherwise).
-    maybeFeedSupra(tx, host, collector);
-  }
-
   if (host.isConstantTicker(args.ticker)) {
     feedConstantRule(tx, host, collector);
     fed = true;
@@ -178,7 +169,7 @@ export function aggregateTicker(
   aggregateCall({
     package: oraclePkg,
     arguments: {
-      oracle: tx.object(host.config.packages.waterx_oracle.oracle),
+      oracle: tx.object(host.config.objects.oracle.oracle),
       collector,
     },
   })(tx);
@@ -219,18 +210,21 @@ export interface OracleRefreshSummary {
  * Refresh multiple tickers in one PTB. For each ticker {@link aggregateTicker}
  * feeds whichever rules it is configured for (Lazer if the lazer update leg
  * served it, Waterx if the waterx leg fetched signed data for it — see below —
- * Supra when enabled, Constant when it's a constant ticker).
+ * Constant when it's a constant ticker).
  *
  * Before that, the on-chain price *update* leg is routed by the
  * `host.oracleSources` fed set (see `rule-registry.ts`): EVERY listed source
- * updates the tickers its own `supportedTickers(host)` serves, all in this one
+ * updates the tickers its own `supportedTickers(config)` serves, all in this one
  * PTB. There is **no cross-source fallback** — a requested ticker NO listed
- * source serves, and that is not a constant-only ticker (which needs no
- * price-update leg), fails the build immediately with a clear error naming
- * the ticker and the list. That is the deliberate "fail the tx-build, don't
- * silently reroute" contract: a wrong-but-present feed id is NOT validated
- * here (it surfaces on-chain at dry-run); a ticker MISSING from every listed
- * source's feeds is caught here.
+ * source serves, and that `constant_rule` does not pin (a pin needs no
+ * price-update leg), is SKIPPED and named in
+ * {@link OracleRefreshSummary.skipped} rather than thrown on: this is a broad
+ * primitive callers sweep whole market lists through, so losing 29 tickers to
+ * an unconfigured 30th is the wrong trade. Failing closed happens one level
+ * up, where the ACTION is known — the `build*Tx` composers raise
+ * `OracleTickerUnservedError` for the tickers their specific call depends on
+ * (see `perp/tx-builders/common.ts`). A wrong-but-present feed id is NOT
+ * validated here either; it surfaces on-chain at dry-run.
  *
  * Each source's fetch + build runs against its own infra, guaranteeing
  * per-rule PTB atomicity. A credential pre-check runs early: any group that
@@ -304,7 +298,7 @@ export async function refreshOraclePrices(
   const groups = host.oracleSources
     .map((source) => {
       const rule = resolveOracleRule(source, opts.ruleOverrides);
-      const supported = new Set(rule.supportedTickers(host));
+      const supported = new Set(rule.supportedTickers(host.config));
       return { source, rule, tickers: tickers.filter((t) => supported.has(t)) };
     })
     .filter((group) => group.tickers.length > 0);
@@ -321,19 +315,19 @@ export async function refreshOraclePrices(
   // `refreshOraclePrices` caller composing its own PTB reads `skipped` and
   // decides for itself.
   //
-  // Exemption: a CONSTANT-ONLY ticker needs no update leg from any source, so
+  // Exemption: a CONSTANT-PINNED ticker needs no update leg from any source, so
   // it counts as refreshed with just its constant feed.
   //
-  // "Constant-only" is deliberately stricter than "constant-pinned". A ticker
-  // that constant_rule pins AND some other rule also has a feed for is NOT
-  // exempt, even when that other rule is outside the fed set: the on-chain
-  // aggregator very likely weights the rule whose feed the config carries, and
-  // aggregating a constant-only collector for it aborts `EMissingPriceSource`.
-  // Exempting on `isConstantTicker` alone would be correct only while the fed
-  // set covers every ticker's weighted set — an operator-maintained property
-  // this function cannot verify without reading chain state. So the strict
-  // reading fails SAFE: the ticker is skipped, named, and the composers turn
-  // that into a build error instead of an opaque on-chain abort.
+  // Pinning alone is now a safe exemption, where it once had to be narrowed to
+  // "constant-ONLY". A source is listed exactly when it serves at least one
+  // ticker (`deriveOracleSources` over `supportedTickers`), so a pinned ticker
+  // that any configured source ALSO serves is already in the fed set and gets
+  // that source's leg alongside the constant one. A constant-only collector is
+  // therefore emitted only for a ticker no source in this config can serve —
+  // which is precisely the case the chain cannot weight to a source. The
+  // stricter test guarded a gap the v1 schema allowed (a rule carrying
+  // informational feeds while sitting outside the fed set) and that the
+  // consolidated document no longer expresses.
   //
   // Catches a MISSING feed only; a present-but-WRONG feed id is deliberately
   // left to abort on-chain at dry-run.

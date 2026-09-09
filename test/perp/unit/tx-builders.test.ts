@@ -6,7 +6,6 @@ import {
   parseSignedLeaves,
   type UpdateDataProvider,
 } from "../../../src/oracle/index.ts";
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   buildAddPreOrderTx,
   buildCancelOrderTx,
@@ -27,9 +26,8 @@ import {
 import { rawPrice } from "../../../src/utils/math.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
-  MOCK_TESTNET_CONFIG,
   MOCK_USDC_TYPE,
-} from "../helpers/fixtures/mock-testnet-config.ts";
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import {
@@ -191,7 +189,7 @@ describe("tx-builders (v3)", () => {
     // a clean escape: it bypasses refreshOraclePrices entirely, so the build
     // succeeds and freshness is left to other traffic.
     const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
+    lazerClient.config.oracle_rules.pyth_lazer!.lazer_feed_ids = {}; // serves nothing
 
     const tx = await buildMintWlpTx(lazerClient, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
@@ -214,7 +212,7 @@ describe("tx-builders (v3)", () => {
     // whole pool's tvl_usd and `assert_prices_fresh` would NOT catch a pool
     // asset left at a previous transaction's (recent-enough) price.
     const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    lazerClient.config.packages.pyth_lazer_rule!.feeds = {}; // serves nothing
+    lazerClient.config.oracle_rules.pyth_lazer!.lazer_feed_ids = {}; // serves nothing
 
     await expect(
       buildMintWlpTx(lazerClient, {
@@ -232,7 +230,7 @@ describe("tx-builders (v3)", () => {
     // The escape hatch exists because "unpriceable" can be a deliberate
     // deployment state; it must be EXPLICIT, never the default.
     const lazerClient = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    lazerClient.config.packages.pyth_lazer_rule!.feeds = {};
+    lazerClient.config.oracle_rules.pyth_lazer!.lazer_feed_ids = {};
 
     const tx = await buildMintWlpTx(lazerClient, {
       accountId: PTB_DUMMY_ACCOUNT_ID,
@@ -360,22 +358,6 @@ describe("tx-builders (v3)", () => {
         },
       }),
     ).toThrow(/evmDestinationChain must be an integer in \[0, 65535\] \(u16\)/);
-  });
-
-  it("buildRequestCreditWithdrawTx throws when withdrawal_queue is not configured", () => {
-    const cfg = structuredClone(MOCK_TESTNET_CONFIG);
-    delete cfg.packages.withdrawal_queue;
-    const noQueue = new PerpClient("TESTNET", cfg, {
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-    expect(() =>
-      buildRequestCreditWithdrawTx(noQueue, {
-        accountId: PTB_DUMMY_ACCOUNT_ID,
-        amount: 1n,
-        recipient: PTB_DUMMY_ACCOUNT_ID,
-        route: { kind: "native", assetType: MOCK_CUSTODY_ASSET_TYPE },
-      }),
-    ).toThrow(/withdrawal_queue not configured/);
   });
 
   it("buildClaimRewardsToAccountTx throws when no rewarders are configured", () => {

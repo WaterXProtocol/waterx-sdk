@@ -1,33 +1,27 @@
 // ======== Core ========
 export { PerpClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { WORMHOLE_DEFAULTS, clearConfigCache, loadConfig } from "./config.ts";
+// Deployment config — ONE loader over the canonical `waterx-config` document,
+// shared by both lines (`src/config.ts`); the parsed document IS `client.config`.
+export {
+  REQUIRED_PACKAGES,
+  assertRequiredPackages,
+  clearConfigCache,
+  loadConfig,
+  parseConfigDocument,
+} from "../config.ts";
 export type {
-  BasePackageEntry,
-  ConstantFeedEntry,
-  WaterxReferralPackage,
   LoadConfigOptions,
   NativeCustodyAsset,
-  NativeCustodyPackage,
-  PythAccessConfig,
-  PythFetchPolicy,
-  PythLazerRulePackage,
-  SupraFeedEntry,
-  SupraRulePackage,
-  TestnetFaucetPackage,
+  PackageEntry,
+  PerpMarketEntry,
+  RequiredPackage,
+  RewarderEntry,
   WaterXConfig,
-  WaterXPackages,
-  WaterxCreditPackage,
-  WaterxOraclePackage,
-  WaterxPerpMarketEntry,
-  WaterxPerpPackage,
-  WaterxStakingPackage,
-  WithdrawalQueuePackage,
-  WlpPackage,
-  WormholeBridgePackage,
-  WormholeInfraConfig,
-  WxaAccountPackage,
-} from "./config.ts";
+} from "../config.ts";
+export { WORMHOLE_DEFAULTS } from "../account/config.ts";
+export type { WormholeInfraConfig } from "../account/config.ts";
+export type { PythAccessConfig, PythFetchPolicy, WaterxAccessConfig } from "../oracle/config.ts";
 
 // ======== Constants & enums ========
 export {

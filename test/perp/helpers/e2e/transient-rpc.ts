@@ -46,14 +46,13 @@ function isNetworkTypeError(err: TypeError): boolean {
 }
 
 /**
- * Oracle feed/aggregate failures that are environment-dependent on testnet (not SDK regressions).
- * Covers on-chain rule aborts (`supra_rule`) AND off-chain source REST blips (the Lazer POST /
- * quote-center GET throw before the tx builds when the upstream returns 5xx/429 or empty data)
- * — infra transients, so callers skip instead of hard-failing.
+ * Oracle source failures that are environment-dependent (not SDK regressions):
+ * off-chain source REST blips — the Lazer POST / quote-center GET throw before
+ * the tx builds when the upstream returns 5xx/429 or empty data — infra
+ * transients, so callers skip instead of hard-failing.
  */
 export function isOracleTransientFailureMessage(msg: string): boolean {
   return (
-    msg.includes("::supra_rule::feed") ||
     msg.includes("Lazer price fetch failed") ||
     msg.includes("Lazer returned no leEcdsa update data") ||
     msg.includes("WaterX quote-center fetch failed") ||
@@ -61,7 +60,7 @@ export function isOracleTransientFailureMessage(msg: string): boolean {
   );
 }
 
-/** gRPC / Hermes / explicit network blips during e2e (not Move logic or SDK TypeErrors). */
+/** gRPC / source REST / explicit network blips during e2e (not Move logic or SDK TypeErrors). */
 export function isInfrastructureTransientError(err: unknown): boolean {
   if (isGrpcTransientError(err)) return true;
   if (err instanceof Error && err.name === "AbortError") return true;

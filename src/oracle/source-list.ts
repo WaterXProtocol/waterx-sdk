@@ -3,8 +3,10 @@
  *
  * There is no `oracleSource` option and no `ORACLE_SOURCE` env var. Which
  * sources a build feeds is a property of the DEPLOYMENT, so it is read from
- * the same canonical JSON that carries their packages and feeds: a source is
- * in the fed set when its block is published AND carries at least one feed.
+ * the same canonical document that wires the rules: a source is in the fed
+ * set when its rule can serve at least one ticker — `oracle_rules.pyth_lazer`
+ * published with `lazer_feed_ids` for Lazer, a non-empty `symbols` universe
+ * for the quote-center (its `oracle_rules.waterx` block is schema-required).
  *
  * Why derived rather than declared. The chain arbitrates — per-ticker weights
  * decide which contributions count, feeding an UNWEIGHTED rule is dropped
@@ -16,10 +18,10 @@
  * `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no
  * per-deployment configuration at all.
  *
- * Retired rules are inert here by construction: `pyth_rule` and
- * `pyth_sponsor_rule` still sit in the live configs, but neither is an
- * {@link ORACLE_SOURCES} member — there is no rule module that could feed one
- * — so their blocks are never consulted.
+ * Retired rules are inert here by construction: `oracle_rules.pyth` (Pyth
+ * Core) is still published, but `pyth_rule` is not an {@link ORACLE_SOURCES}
+ * member — there is no rule module that could feed it — so its block is
+ * never consulted.
  *
  * Deliberately NOT filtered by which credentials the caller holds. A keyless
  * client whose config wires Lazer fails loudly at build
@@ -28,27 +30,21 @@
  * on-chain abort.
  */
 
-import type { OracleConfig } from "./config.ts";
+import type { WaterXConfig } from "../config.ts";
 import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
+import { resolveOracleRule } from "./rule-registry.ts";
 
 /**
- * The fed set this deployment wires: every implementable source with a
- * published package and a non-empty feeds map, in {@link ORACLE_SOURCES}
- * order.
+ * The fed set this deployment wires: every implementable source whose rule
+ * serves at least one ticker, in {@link ORACLE_SOURCES} order. Each rule's
+ * `supportedTickers` is the single definition of "wired", so this and the
+ * per-ticker routing in `refreshOraclePrices` can never disagree.
  *
  * Pure and config-only, so consumers can call it before a client exists (e.g.
  * to pair with {@link missingOracleCredentials} in a boot assert).
  */
-export function deriveOracleSources(config: OracleConfig): OracleSource[] {
-  return ORACLE_SOURCES.filter((source) => {
-    const block = config.packages[source];
-    if (!block?.published_at || Object.keys(block.feeds ?? {}).length === 0) return false;
-    // `enabled` is the one lever the schema offers for switching a source off,
-    // and with routing derived from config it is the ONLY lever left — so it
-    // is honoured here. Absent means ON: every live config omits it, and a
-    // published block with feeds is a wired source. (`supra_rule` is
-    // default-OFF and requires an explicit `true` — it is an auxiliary leg,
-    // not a source, so the asymmetry is deliberate.)
-    return block.enabled !== false;
-  });
+export function deriveOracleSources(config: WaterXConfig): OracleSource[] {
+  return ORACLE_SOURCES.filter(
+    (source) => resolveOracleRule(source).supportedTickers(config).length > 0,
+  );
 }

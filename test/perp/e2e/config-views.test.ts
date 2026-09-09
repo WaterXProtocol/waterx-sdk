@@ -8,7 +8,7 @@ import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 
 describe(`config + view simulate (${e2eNetwork})`, () => {
   it("client loaded canonical markets", () => {
-    expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
+    expect(client.config.objects.perp.markets.BTCUSD).toBeDefined();
     expect(client.getMarket("BTCUSD").market).toMatch(/^0x/);
   });
 

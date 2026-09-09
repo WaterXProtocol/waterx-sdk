@@ -92,16 +92,16 @@ async function execute(
   return success;
 }
 
+/** Per-alias pool lookup — the pools map may legitimately lack an alias. */
 function poolId(client: PerpClient, alias = "WLP"): string {
-  const id = client.config.packages.waterx_staking?.pools?.[alias];
-  if (!id) throw new Error(`waterx_staking.pools[${alias}] not set in config`);
+  const id = client.config.objects.staking.pools[alias];
+  if (!id) throw new Error(`objects.staking.pools[${alias}] not set in config`);
   return id;
 }
 
+/** `waterx_staking` is a required package entry — read directly, no guard. */
 function stakingPkg(client: PerpClient): string {
-  const pkg = client.config.packages.waterx_staking?.published_at;
-  if (!pkg) throw new Error("waterx_staking.published_at not set in config");
-  return pkg;
+  return client.config.packages.waterx_staking.published_at;
 }
 
 interface SimplifiedBcs {
@@ -155,12 +155,10 @@ async function readRealtimeReward(
 
 async function readStakingWhitelisted(client: PerpClient): Promise<boolean> {
   const tx = new Transaction();
-  const stakingOrig = client.config.packages.waterx_staking?.original_id;
-  if (!stakingOrig) throw new Error("waterx_staking.original_id not set in config");
-  const witnessType = `${stakingOrig}::witness::WaterXStaking`;
+  const witnessType = `${client.config.packages.waterx_staking.original_id}::witness::WaterXStaking`;
   isProtocolWhitelisted({
     package: client.config.packages.waterx_account.published_at,
-    arguments: { registry: tx.object(client.config.packages.waterx_account.account_registry) },
+    arguments: { registry: tx.object(client.config.objects.account.registry) },
     typeArguments: [witnessType],
   })(tx);
   tx.setSender(DRY_RUN_SENDER);
@@ -239,10 +237,10 @@ async function main(): Promise<void> {
   const pollMs = Number(process.env.WATERX_POLL_INTERVAL_MS ?? "1500");
 
   // Bail cleanly if the WLP staking pool isn't registered in this config
-  // (canonical testnet ships with an empty waterx_staking.pools map).
-  const stakingPools = client.config.packages.waterx_staking?.pools ?? {};
+  // (canonical testnet ships with an empty objects.staking.pools map).
+  const stakingPools = client.config.objects.staking.pools;
   if (!stakingPools["WLP"]) {
-    console.log("\nwaterx_staking.pools[WLP] not registered in this config — skipping smoke.");
+    console.log("\nobjects.staking.pools[WLP] not registered in this config — skipping smoke.");
     console.log(`Available pool aliases: ${Object.keys(stakingPools).join(", ") || "(none)"}`);
     return;
   }

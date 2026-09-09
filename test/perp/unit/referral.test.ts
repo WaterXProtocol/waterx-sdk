@@ -18,13 +18,4 @@ describe("Referral PTB builders (v3)", () => {
     useReferralCode(client, tx, { code: "refcode1" });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
-
-  it("throws when referral package missing from config", () => {
-    const bare = createUnitTestClient();
-    delete (bare.config.packages as { waterx_referral?: unknown }).waterx_referral;
-    const tx = new Transaction();
-    expect(() => setReferralCode(bare, tx, { code: "x" })).toThrow(
-      /referral package not configured/,
-    );
-  });
 });

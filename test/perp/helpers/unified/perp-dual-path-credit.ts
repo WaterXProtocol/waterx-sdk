@@ -9,7 +9,7 @@ import {
   routeNative,
   routeWormhole,
 } from "../../../../src/account/funding/credit.ts";
-import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
+import { MOCK_CUSTODY_ASSET_TYPE } from "../../../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 import {
   ACCOUNT_ID,

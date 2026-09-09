@@ -27,16 +27,18 @@ export function e2eSimulateGasBudget(): number {
   return 30_000_000;
 }
 
-export function isCreditPipelineConfigured(client: PerpClient): boolean {
-  return Boolean(
-    client.config.packages.waterx_credit?.credit_registry &&
-    client.config.packages.native_custody?.vault,
-  );
+/**
+ * Move type of the first `objects.custody.assets` row — the backing asset the
+ * custody / credit suites mint against. `undefined` only when the deployment
+ * registers no backing asset yet; the custody block itself is schema-required,
+ * so "is the credit pipeline deployed" is no longer a question.
+ */
+export function primaryCustodyAssetType(client: PerpClient): string | undefined {
+  return client.config.objects.custody.assets[0]?.type;
 }
 
-export function creditPipelineSkipReason(): string {
-  return "waterx_credit / native_custody not in deployment config";
-}
+export const NO_CUSTODY_ASSET_SKIP_REASON =
+  "objects.custody.assets is empty — no backing asset to mint against";
 
 export type CustodyWxaRow = { accountId: string; owner: string };
 

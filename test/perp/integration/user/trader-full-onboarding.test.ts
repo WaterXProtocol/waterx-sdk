@@ -61,11 +61,11 @@ describe.skipIf(!isIntegrationTraderConfigured())(
 
     it("end-to-end onboarding chain", async (ctx) => {
       // ---- pre-flight: market + pool must be deployed on this network ----
-      if (!client.config.packages.waterx_perp.markets[TICKER]) {
+      if (!client.config.objects.perp.markets[TICKER]) {
         ctx.skip(`${TICKER} market not deployed`);
         return;
       }
-      if (!client.config.packages.waterx_staking?.pools?.WLP) {
+      if (!client.config.objects.staking.pools.WLP) {
         ctx.skip("WLP staking pool not deployed");
         return;
       }
@@ -171,7 +171,6 @@ describe.skipIf(!isIntegrationTraderConfigured())(
                 },
               ],
               skipOraclePriceRefresh: false,
-              useSponsor: true,
             }),
           trader,
           { cooldownTickers: [TICKER], gasBudget: integrationGasBudget("lifecycle") },
@@ -201,7 +200,6 @@ describe.skipIf(!isIntegrationTraderConfigured())(
               },
               preOrders: [],
               skipOraclePriceRefresh: false,
-              useSponsor: true,
             }),
           trader,
           { cooldownTickers: [TICKER], gasBudget: integrationGasBudget("lifecycle") },
@@ -247,7 +245,6 @@ describe.skipIf(!isIntegrationTraderConfigured())(
                 orderId: limitOrderId,
                 orderTypeTag: ORDER_TAG_WILDCARD,
                 triggerPrice: 0n,
-                useSponsor: true,
               }),
             trader,
             { cooldownTickers: [TICKER], gasBudget: integrationGasBudget("lifecycle") },

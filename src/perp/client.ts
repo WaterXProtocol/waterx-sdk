@@ -3,30 +3,23 @@
  *
  * One of the two sub-clients behind the umbrella `WaterXClient`; reachable as
  * `client.perp` (which also carries the perp builders). Initialization is async —
- * config is fetched from the canonical `waterx-config` JSON (default: GitHub raw).
- * See `PerpClient.create()`.
+ * config is fetched from the canonical `waterx-config` document (see
+ * `src/config.ts`). See `PerpClient.create()`.
  *
  * Composition: the gRPC transport half is inherited from {@link BaseLineClient}
  * (shared with `PredictClient`); the canonical-schema lookups are delegated to a
  * {@link PerpConfigView}. This class is just the wiring + factory between them.
  */
 
+import { WORMHOLE_DEFAULTS, type WormholeInfraConfig } from "../account/config.ts";
 import { BaseLineClient } from "../base-client.ts";
+import { loadConfig, type LoadConfigOptions, type WaterXConfig } from "../config.ts";
+import type { PythAccessConfig, PythFetchPolicy, WaterxAccessConfig } from "../oracle/config.ts";
 import { ORACLE_SOURCES, type OracleSource } from "../oracle/price-update-rule.ts";
 import { deriveOracleSources } from "../oracle/source-list.ts";
 import type { FetchPolicy } from "../oracle/update-fetch.ts";
 import { servableTickers } from "../oracle/validate.ts";
 import { PerpConfigView } from "./config-view.ts";
-import {
-  loadConfig,
-  WORMHOLE_DEFAULTS,
-  type LoadConfigOptions,
-  type PythAccessConfig,
-  type PythFetchPolicy,
-  type WaterxAccessConfig,
-  type WaterXConfig,
-  type WormholeInfraConfig,
-} from "./config.ts";
 import type { Network } from "./constants.ts";
 
 export interface CreateClientOptions extends LoadConfigOptions {
@@ -70,7 +63,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
   waterxFetch?: FetchPolicy;
 }
 
-export class PerpClient extends BaseLineClient<WaterXConfig> {
+export class PerpClient extends BaseLineClient {
   /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
   pyth: PythAccessConfig;
   /**
@@ -79,7 +72,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    * `pyth` above; unset fields resolve against the rule's own `WATERX_INFRA`.
    */
   waterx: WaterxAccessConfig;
-  /** Wormhole infra for the credit bridge (network defaults unless overridden). */
+  /** External Wormhole infra for the credit bridge — fixed per network (`WORMHOLE_DEFAULTS`). */
   wormhole: WormholeInfraConfig;
   /** The fed set, derived from the config — see {@link deriveOracleSources}. */
   readonly oracleSources: readonly OracleSource[];
@@ -97,7 +90,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       ...(opts.pythApiKey !== undefined ? { api_key: opts.pythApiKey } : {}),
       ...(opts.pythFetch !== undefined ? { fetch: opts.pythFetch } : {}),
     };
-    this.wormhole = config.wormhole ?? WORMHOLE_DEFAULTS[network];
+    this.wormhole = WORMHOLE_DEFAULTS[network];
     // Quote-center access slice: overrides only — a browser blocked by the
     // quote-center's CORS allowlist swaps `endpoint` for a same-origin proxy;
     // unset fields resolve inside the rule against WATERX_INFRA[network].
@@ -114,24 +107,21 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
       // anything, so every build would skip every ticker and every trade would
       // abort on chain. Fail at construction, where the config is in hand.
       throw new Error(
-        `this deployment's config wires no price-update source — expected a published ` +
-          `package with a non-empty feeds map for at least one of ` +
-          `${ORACLE_SOURCES.join(" | ")}.`,
+        `this deployment's config wires no price-update source — expected at least one of ` +
+          `${ORACLE_SOURCES.join(" | ")} to serve a ticker (oracle_rules.pyth_lazer with ` +
+          `lazer_feed_ids, or a non-empty symbols universe for the quote-center).`,
       );
     }
-    this.view = new PerpConfigView(
-      () => this.config,
-      () => this.wormhole,
-    );
+    this.view = new PerpConfigView(() => this.config);
   }
 
   /**
    * Async factory: fetches the deployment config for `network` and returns
-   * a ready-to-use client. Pass `opts.cache=true` to memoize the JSON.
+   * a ready-to-use client. Pass `opts.cache=true` to memoize the document.
    *
-   * No oracle-config guard here: selecting a source whose feeds are absent is
-   * not an error at init — it surfaces at tx-build time for the specific
-   * tickers that source can't serve (see `refreshOraclePrices`).
+   * No per-ticker oracle guard here: a ticker no derived source serves is not
+   * an error at init — it surfaces at tx-build time for the specific tickers
+   * a build depends on (see `refreshOraclePrices`).
    */
   static async create(network: Network, opts: CreateClientOptions): Promise<PerpClient> {
     const config = await loadConfig(network, opts);
@@ -176,7 +166,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
    * from both halves is silent (see `assertWlpPoolRefreshed`).
    */
   pricedPoolTickers(): string[] {
-    return servableTickers(this, Object.keys(this.config.packages.wlp?.pool_tokens ?? {}));
+    return servableTickers(this, Object.keys(this.config.objects.wlp.pool_tokens));
   }
 
   /**
@@ -200,11 +190,6 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
     return this.view.isConstantTicker(ticker);
   }
 
-  /** @see PerpConfigView.getSupraRule */
-  getSupraRule(): { published_at: string; config: string; oracle_holder: string } | undefined {
-    return this.view.getSupraRule();
-  }
-
   /** @see PerpConfigView.getPoolTokenType */
   getPoolTokenType(tickerOrName: string): string {
     return this.view.getPoolTokenType(tickerOrName);
@@ -216,9 +201,7 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
   }
 
   /** @see PerpConfigView.getRewarders */
-  getRewarders(
-    stakeAlias: string,
-  ): { alias: string; rewarder_id: string; coin_type: string; decimals: number }[] {
+  getRewarders(stakeAlias: string): ReturnType<PerpConfigView["getRewarders"]> {
     return this.view.getRewarders(stakeAlias);
   }
 
@@ -227,29 +210,9 @@ export class PerpClient extends BaseLineClient<WaterXConfig> {
     return this.view.getRewarderTypes(stakeAlias);
   }
 
-  /** @see PerpConfigView.getCredit */
-  getCredit() {
-    return this.view.getCredit();
-  }
-
   /** @see PerpConfigView.creditType */
   creditType(): string {
     return this.view.creditType();
-  }
-
-  /** @see PerpConfigView.getBridge */
-  getBridge() {
-    return this.view.getBridge();
-  }
-
-  /** @see PerpConfigView.wormholeStateId */
-  wormholeStateId(): string {
-    return this.view.wormholeStateId();
-  }
-
-  /** @see PerpConfigView.getNativeAssets */
-  getNativeAssets() {
-    return this.view.getNativeAssets();
   }
 
   /** @see PerpConfigView.getNativeAsset */

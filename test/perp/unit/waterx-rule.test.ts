@@ -68,9 +68,13 @@ function sampleLeaves(
 afterEach(() => vi.restoreAllMocks());
 
 describe("WaterxRule — port", () => {
-  it("supportedTickers = the waterx_rule.feeds keys (oracle tickers)", () => {
+  it("supportedTickers = the symbols universe keys (oracle tickers)", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    expect(WaterxRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
+    expect(WaterxRule.supportedTickers(client.config).sort()).toEqual([
+      "BTCUSD",
+      "ETHUSD",
+      "USDCUSD",
+    ]);
   });
 
   it("declares no credential (public quote-center read surface)", () => {
@@ -155,12 +159,12 @@ describe("WaterxRule — port", () => {
   });
 
   it("fetchUpdateData throws for a prototype-key ticker BEFORE fetching — never reaches the quote-center", async () => {
-    // feeds["toString"] is an inherited Function; a bare bracket-undefined
+    // symbols["toString"] is an inherited Function; a bare bracket-undefined
     // check passed it as listed and sent the name to the network.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "toString"])).rejects.toThrow(
-      /No waterx_rule feed listed for ticker: toString/,
+      /waterx_rule: ticker not in the symbols universe: toString/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -175,11 +179,11 @@ describe("WaterxRule — port", () => {
     ]);
   });
 
-  it("throws for a ticker with no waterx_rule feed (package-level, pre-fetch)", async () => {
+  it("throws for a ticker outside the symbols universe (pre-fetch)", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
-      /No waterx_rule feed/,
+      /ticker not in the symbols universe/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -548,7 +552,7 @@ describe("WaterxRule — on-chain feed", () => {
       "oracle::aggregate",
     ]);
 
-    // collect_single_with_proof carries the config / enclave_config / enclave objects.
+    // collect_single_with_proof carries the rule config / enclave config / enclave objects.
     const collect = moveCalls(tx).find((c) => c.function === "collect_single_with_proof")!;
     const objectIds = collect.arguments
       .filter((a) => a.$kind === "Input" && a.Input !== undefined)
@@ -556,10 +560,10 @@ describe("WaterxRule — on-chain feed", () => {
         const input = tx.getData().inputs[a.Input!];
         return input.UnresolvedObject?.objectId ?? input.Object?.SharedObject?.objectId;
       });
-    const wr = client.config.packages.waterx_rule!;
-    expect(objectIds).toContain(wr.config);
-    expect(objectIds).toContain(wr.enclave_config);
-    expect(objectIds).toContain(wr.enclave);
+    const wr = client.config.oracle_rules.waterx;
+    expect(objectIds).toContain(wr.rule_config_object);
+    expect(objectIds).toContain(wr.enclave.config);
+    expect(objectIds).toContain(wr.enclave.object);
   });
 
   it("re-checks the proof at the feed leg — a cached leaf never passed the parser", () => {

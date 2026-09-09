@@ -7,8 +7,11 @@ import type { PerpClient } from "../../../../src/perp/client.ts";
 import { executeTrading, increasePositionRequest } from "../../../../src/perp/user/trading.ts";
 import type { WaterXClient } from "../../../../src/unified-client.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
+import {
+  MOCK_TESTNET_CONFIG,
+  MOCK_USDC_TYPE,
+} from "../../../helpers/fixtures/mock-testnet-config.ts";
 import type { DualPathTxCase } from "../../../helpers/unified-dual-path.ts";
-import { MOCK_TESTNET_CONFIG, MOCK_USDC_TYPE } from "../fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID, PTB_DUMMY_DEPOSIT_COIN } from "../fixtures/ptb-test-dummies.ts";
 
 export const TICKER = "BTCUSD";

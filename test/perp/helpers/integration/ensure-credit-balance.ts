@@ -9,7 +9,7 @@ import type { PerpClient } from "../../../../src/perp/client.ts";
 import { getAccountBalance } from "../../../../src/perp/fetch.ts";
 import { selectWalletCoinsCoveringAmount } from "../../integration/helpers/account-bootstrap.ts";
 import { integrationGasBudget } from "../../integration/helpers/integration-gas.ts";
-import { isCreditPipelineConfigured } from "../e2e/e2e-custody.ts";
+import { primaryCustodyAssetType } from "../e2e/e2e-custody.ts";
 import type { NormalizedIntegrationTxResult } from "../e2e/integration-tx-result.ts";
 
 type ExecTx = (
@@ -27,15 +27,11 @@ export async function ensureIntegrationMinCreditBalance(args: {
   execTx: ExecTx;
   assertSuccess: (r: NormalizedIntegrationTxResult) => void;
 }): Promise<bigint> {
-  if (!isCreditPipelineConfigured(args.client)) {
-    throw new Error("Credit pipeline not configured on this deployment");
-  }
-
   const creditType = args.client.creditType();
   let bal = await getAccountBalance(args.client, args.accountId, creditType);
   if (bal >= args.minCredit) return bal;
 
-  const assetType = args.client.getNativeAssets()[0]?.type;
+  const assetType = primaryCustodyAssetType(args.client);
   if (!assetType) {
     throw new Error("No native custody backing asset in config");
   }

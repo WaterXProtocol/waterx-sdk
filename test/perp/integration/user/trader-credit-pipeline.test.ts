@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { getAccountBalance } from "../../../../src/perp/fetch.ts";
 import { buildRequestCreditWithdrawTx } from "../../../../src/perp/tx-builders.ts";
-import { isCreditPipelineConfigured } from "../../helpers/e2e/e2e-custody.ts";
+import { primaryCustodyAssetType } from "../../helpers/e2e/e2e-custody.ts";
 import { ensureIntegrationMinCreditBalance } from "../../helpers/integration/ensure-credit-balance.ts";
 import { ensureUserAccountForIntegration } from "../helpers/account-bootstrap.ts";
 import {
@@ -32,18 +32,13 @@ describe.skipIf(!isIntegrationTraderConfigured())(
 
     beforeAll(async () => {
       await clientInit();
-      if (!isCreditPipelineConfigured(client)) return;
-      assetType = client.getNativeAssets()[0]?.type ?? "";
+      assetType = primaryCustodyAssetType(client) ?? "";
       const trader = loadIntegrationTraderKeypair();
       owner = trader.getPublicKey().toSuiAddress();
       ({ accountId } = await ensureUserAccountForIntegration(client, trader, execTx));
     }, 180_000);
 
     it("mints CREDIT via mintCreditToAccount when wxa balance is low", async (ctx) => {
-      if (!isCreditPipelineConfigured(client)) {
-        ctx.skip("waterx_credit / native_custody not in deployment config");
-        return;
-      }
       if (!assetType) {
         ctx.skip("No native custody backing asset in config");
         return;
@@ -68,14 +63,6 @@ describe.skipIf(!isIntegrationTraderConfigured())(
     }, 300_000);
 
     it("buildRequestCreditWithdrawTx native route enqueues from wxa CREDIT", async (ctx) => {
-      if (!isCreditPipelineConfigured(client)) {
-        ctx.skip("waterx_credit / native_custody not in deployment config");
-        return;
-      }
-      if (!client.config.packages.withdrawal_queue?.queue) {
-        ctx.skip("withdrawal_queue.queue not in config");
-        return;
-      }
       if (!assetType) {
         ctx.skip("No native custody backing asset in config");
         return;

@@ -161,9 +161,9 @@ function parseArgs(argv: string[]): {
 }
 
 function allTickerFeeds(client: PerpClient): TickerFeed[] {
-  const aggregators = client.config.packages.waterx_oracle?.aggregators ?? {};
-  const markets = new Set(Object.keys(client.config.packages.waterx_perp?.markets ?? {}));
-  const pool = new Set(Object.keys(client.config.packages.wlp?.pool_tokens ?? {}));
+  const { aggregators } = client.config.objects.oracle;
+  const markets = new Set(Object.keys(client.config.objects.perp.markets));
+  const pool = new Set(Object.keys(client.config.objects.wlp.pool_tokens));
 
   return Object.keys(aggregators)
     .sort()
@@ -385,7 +385,7 @@ async function prefetchUpdateData(
   await Promise.all(
     client.oracleSources.map(async (source) => {
       const rule = resolveOracleRule(source);
-      const supported = new Set(rule.supportedTickers(client));
+      const supported = new Set(rule.supportedTickers(client.config));
       const served = tickers.filter((t) => supported.has(t));
       if (served.length === 0) return;
       try {
@@ -535,7 +535,7 @@ async function main() {
   }
   const modeLabel = format === "pretty" ? "pretty" : "raw";
   console.log(
-    `printing oracle aggregates for ${feeds.length} feeds (${modeLabel}, ${client.network}, oracleSource=${client.oracleSources.join(",")})...`,
+    `printing oracle aggregates for ${feeds.length} feeds (${modeLabel}, ${client.network}, oracleSources=${client.oracleSources.join(",")})...`,
   );
 
   const updateDataProvider = await prefetchUpdateData(

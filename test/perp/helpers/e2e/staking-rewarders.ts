@@ -10,7 +10,7 @@ export async function discoverStakingRewarderTypes(
   client: PerpClient,
   stakeAlias = "WLP",
 ): Promise<string[]> {
-  const poolId = client.config.packages.waterx_staking?.pools?.[stakeAlias];
+  const poolId = client.config.objects.staking.pools[stakeAlias];
   if (!poolId) return [];
 
   const list = await client.listDynamicFields(poolId);

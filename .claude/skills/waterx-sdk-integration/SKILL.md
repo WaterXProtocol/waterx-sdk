@@ -46,14 +46,17 @@ const client = await WaterXClient.create({
 ```
 
 **`waterxConfigUrl`** points at the canonical
-[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) JSON. It is fetched
+[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) document, which must be
+the consolidated `schema_version: 2` shape — the SDK parses it strictly and rejects a
+legacy per-package file at `create()`. It is fetched
 as-is — the SDK appends no `<network>.json` and no git ref. Your app reads the env var;
 the SDK never does. Look up ids through the client (`client.perp.getMarket(ticker)`,
 `client.perp.creditType()`, `client.perp.wlpType()`) rather than hardcoding them.
 
 **The oracle fed set is DERIVED from that config** — there is no `oracleSource` option
-and no `ORACLE_SOURCE` env var. A source is fed when its block is published, carries at
-least one feed, and is not explicitly `enabled: false`. Every derived source's data is
+and no `ORACLE_SOURCE` env var. A source is fed when its rule can serve at least one
+ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, a non-empty
+`symbols` universe for the quote-center. Every derived source's data is
 fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrate. Read the
 answer for a live deployment with `client.perp.oracleSources`, or before a client exists
 with `deriveOracleSources(config)`.

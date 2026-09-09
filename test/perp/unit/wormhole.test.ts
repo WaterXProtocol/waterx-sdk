@@ -16,14 +16,13 @@ import {
   vaaBytesToBase64,
   waitForVaa,
 } from "../../../src/account/funding/wormhole.ts";
-import { PerpClient } from "../../../src/perp/client.ts";
-import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
+import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const client = createUnitTestClient();
 const API = client.wormhole.wormholescan_api;
 const EVM_EMITTER = "0x1111111111111111111111111111111111111111";
-const EMITTER = toWormholescanEmitter(MOCK_TESTNET_CONFIG.packages.wormhole_bridge!.emitter_cap!);
+const EMITTER = toWormholescanEmitter(MOCK_TESTNET_CONFIG.objects.bridge.emitter_cap);
 
 describe("wormhole — emitter formatting", () => {
   it("toWormholescanEmitter left-pads EVM addresses to 32 bytes", () => {
@@ -127,12 +126,6 @@ describe("wormhole — REST (mocked fetch)", () => {
     }) as typeof fetch;
     const out = await fetchDepositVaa(client, 10002, EVM_EMITTER, 7, { fetchImpl });
     expect(out?.vaa).toBe(vaa);
-  });
-
-  it("listBridgeWithdrawalVaas requires emitter_cap in config", () => {
-    const bare = createUnitTestClient();
-    delete bare.config.packages.wormhole_bridge!.emitter_cap;
-    expect(() => listBridgeWithdrawalVaas(bare)).toThrow(/emitter_cap missing/);
   });
 
   it("listBridgeWithdrawalVaas lists via configured emitter cap", async () => {

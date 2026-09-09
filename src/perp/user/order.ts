@@ -106,9 +106,9 @@ export function placeOrderRequest(
   const [tr] = trading.placeOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
@@ -146,9 +146,9 @@ export function cancelOrderRequest(
   const [tr] = trading.cancelOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
@@ -190,9 +190,9 @@ export function updateOrderRequest(
   const [tr] = trading.updateOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
@@ -230,9 +230,9 @@ export function cancelPreOrderRequest(
   const [tr] = trading.cancelPreOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
@@ -264,9 +264,9 @@ export function addPreOrderRequest(
   const [tr] = trading.addPreOrderRequest({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: params.ticker,
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,

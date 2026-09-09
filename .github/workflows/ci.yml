@@ -190,7 +190,7 @@ jobs:
           # SDK single-fetch only — e2e skips Hermes 429/5xx via skipHermesIfFeedUnavailable.
           WATERX_E2E_NETWORK: testnet
           # `loadConfig` has no built-in default; supply the staging testnet config
-          # (override via the `WATERX_CONFIG_URL` repo variable for a pinned mirror).
+          # (override via the `WATERX_CONFIG_URL` repo variable for a pinned v2 mirror).
           WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev/testnet.json' }}
         run: pnpm exec vitest run --project e2e --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
       - name: Test report (e2e)
@@ -226,7 +226,7 @@ jobs:
         env:
           NODE_NO_WARNINGS: "1"
           # `loadConfig` has no built-in default; supply the staging testnet config
-          # (override via the `WATERX_CONFIG_URL` repo variable for a pinned mirror).
+          # (override via the `WATERX_CONFIG_URL` repo variable for a pinned v2 mirror).
           WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev/testnet.json' }}
         run: pnpm exec vitest run --project predict-e2e --reporter=dot --reporter=junit --outputFile=test-results-predict-e2e.xml
       - name: Test report (predict-e2e)
@@ -270,7 +270,8 @@ jobs:
           SUI_ACTIVE_ADDRESS: ${{ vars.SUI_SMOKE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ vars.WATERX_SMOKE_ACCOUNT_ID }}
           # `loadConfig` (and smoke-remote step 0) has no built-in default; supply the
-          # staging testnet config (override via the `WATERX_CONFIG_URL` repo variable).
+          # staging-v2 testnet config — MUST be a schema_version 2 document (override via
+          # the `WATERX_CONFIG_URL` repo variable for a pinned v2 mirror).
           WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev/testnet.json' }}
         run: pnpm smoke:chain:dry
 

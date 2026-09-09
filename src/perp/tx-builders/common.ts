@@ -157,7 +157,7 @@ export function assertWlpPoolRefreshed(
   assertTickersRefreshed(
     client,
     summary,
-    Object.keys(client.config.packages.wlp?.pool_tokens ?? {}),
+    Object.keys(client.config.objects.wlp.pool_tokens),
     opts,
     "They are WLP pool assets, and mint/redeem values the WHOLE pool. ",
   );
@@ -185,7 +185,7 @@ export async function refreshWlpPoolOracles(
   // `assertWlpPoolRefreshed` for why `assert_prices_fresh` lets that through)
   // and the mint was valued off a stale price. Ask for all of them, fail the
   // build on any gap, then bump.
-  const poolTokens = client.config.packages.wlp?.pool_tokens ?? {};
+  const poolTokens = client.config.objects.wlp.pool_tokens;
   // `refreshOraclePrices` dedupes its own input, so a plain concat is enough.
   const oracleTickers = [...extraTickers, ...Object.keys(poolTokens)];
 

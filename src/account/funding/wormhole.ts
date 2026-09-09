@@ -9,8 +9,9 @@
  *   - Withdraw (Sui → EVM): list recent VAAs emitted by the bridge's
  *     `EmitterCap` to submit on the EVM side.
  *
- * Endpoints / chain ids come from `client.wormhole` (network defaults in
- * `WORMHOLE_DEFAULTS`, overridable via `WaterXConfig.wormhole`).
+ * Endpoints / chain ids come from `client.wormhole` (`WORMHOLE_DEFAULTS`,
+ * fixed per network); the bridge's own `EmitterCap` from
+ * `config.objects.bridge.emitter_cap`.
  */
 
 import { fromBase64, toBase64, toHex } from "@mysten/bcs";
@@ -219,20 +220,16 @@ export function fetchDepositVaa(
 
 /**
  * List recent Sui→EVM VAAs from the configured bridge `EmitterCap` (burn
- * relayer). Requires `packages.wormhole_bridge.emitter_cap` in config.
+ * relayer, `objects.bridge.emitter_cap`).
  */
 export function listBridgeWithdrawalVaas(
   client: AccountClientLike,
   opts?: WormholescanOptions & { page?: number; pageSize?: number },
 ): Promise<VaaListItem[]> {
-  const emitterCap = client.config.packages.wormhole_bridge?.emitter_cap;
-  if (!emitterCap) {
-    throw new Error("wormhole_bridge.emitter_cap missing from config");
-  }
   return listVaasByEmitter(
     client.wormhole.wormholescan_api,
     client.wormhole.sui_chain_id,
-    toWormholescanEmitter(emitterCap),
+    toWormholescanEmitter(client.config.objects.bridge.emitter_cap),
     opts,
   );
 }

@@ -1,16 +1,8 @@
 export { PredictClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { clearConfigCache, loadConfig } from "./config.ts";
-export type {
-  LoadConfigOptions,
-  WaterxAccountPackage,
-  WaterxConfigPackageBase,
-  WaterxPredictionConfig,
-  WaterxPredictionConfigPackages,
-  WaterxPredictionGiftPackage,
-  WaterxPredictionPackage,
-  WaterxReferralPackage,
-} from "./config.ts";
+// Deployment config — the same loader + document as the perp line (`src/config.ts`).
+export { clearConfigCache, loadConfig, parseConfigDocument } from "../config.ts";
+export type { LoadConfigOptions, WaterXConfig } from "../config.ts";
 export * from "./constants.ts";
 export * from "./types.ts";
 export * as user from "./user/index.ts";

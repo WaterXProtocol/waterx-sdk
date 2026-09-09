@@ -2,7 +2,6 @@ import { Transaction } from "@mysten/sui/transactions";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { probeAddressCreditBalance } from "../../../src/account/funding/balance.ts";
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   appendConsolidateAddressCredit,
   appendConsolidateForSpend,
@@ -11,7 +10,6 @@ import {
 } from "../../../src/perp/tx-builders.ts";
 import { listMoveCalls } from "../../prediction/helpers/ptb.ts";
 import { coinRef, mockConsolidateBalances } from "../helpers/consolidate-mocks.ts";
-import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
 import {
   PTB_DUMMY_ACCOUNT_ID,
   PTB_DUMMY_COIN_CC,
@@ -67,16 +65,6 @@ describe("consolidate tx append helpers", () => {
       await expect(appendConsolidateToUsd(client, tx, PTB_DUMMY_ACCOUNT_ID)).resolves.toBe(0);
       expect(moveFunctions(tx)).toEqual([]);
     });
-
-    it("no-ops when native_custody is not configured", async () => {
-      const config = structuredClone(MOCK_TESTNET_CONFIG);
-      delete config.packages.native_custody;
-      const bare = new PerpClient("TESTNET", config, {
-        grpcUrl: "https://fullnode.test.invalid:443",
-      });
-      const tx = new Transaction();
-      await expect(appendConsolidateToUsd(bare, tx, PTB_DUMMY_ACCOUNT_ID)).resolves.toBe(0);
-    });
   });
 
   describe("appendConsolidateAddressCredit", () => {
@@ -121,16 +109,6 @@ describe("consolidate tx append helpers", () => {
       await expect(appendConsolidateAddressCredit(client, tx, PTB_DUMMY_ACCOUNT_ID)).resolves.toBe(
         2,
       );
-    });
-
-    it("no-ops when waterx_credit is not configured", async () => {
-      const config = structuredClone(MOCK_TESTNET_CONFIG);
-      delete config.packages.waterx_credit;
-      const bare = new PerpClient("TESTNET", config, {
-        grpcUrl: "https://fullnode.test.invalid:443",
-      });
-      const tx = new Transaction();
-      await expect(appendConsolidateAddressCredit(bare, tx, PTB_DUMMY_ACCOUNT_ID)).resolves.toBe(0);
     });
   });
 

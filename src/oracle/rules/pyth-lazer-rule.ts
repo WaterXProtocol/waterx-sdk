@@ -12,9 +12,10 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import type { WaterXConfig } from "../../config.ts";
 import type { Network } from "../../constants.ts";
 import { ownEntry } from "../../utils/record.ts";
-import type { PythFetchPolicy, PythLazerRulePackage } from "../config.ts";
+import type { PythFetchPolicy } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -151,13 +152,22 @@ export class LazerApiKeyMissingError extends Error {
   }
 }
 
-/** The `pyth_lazer_rule` deployment entry; throws when the config carries none. */
-function requireLazerPackage(host: OracleHost): PythLazerRulePackage {
-  const entry = host.config.packages.pyth_lazer_rule;
-  if (!entry) {
-    throw new Error("pyth_lazer_rule package is not deployed in this config");
+/**
+ * The `oracle_rules.pyth_lazer` block (feed ids + verify `State` + rule
+ * `Config`) and its package id; throws when this deployment does not wire
+ * Lazer at all.
+ */
+function requireLazer(config: WaterXConfig): {
+  rule: NonNullable<WaterXConfig["oracle_rules"]["pyth_lazer"]>;
+  packageId: string;
+} {
+  const rule = config.oracle_rules.pyth_lazer;
+  if (!rule) {
+    throw new Error(
+      "pyth_lazer_rule is not wired in this config (no oracle_rules.pyth_lazer block)",
+    );
   }
-  return entry;
+  return { rule, packageId: config.packages[rule.package].published_at };
 }
 
 /**
@@ -249,10 +259,10 @@ export function feedLazerRule(
   collector: TransactionArgument,
   update: TransactionArgument,
 ): void {
-  const lazer = requireLazerPackage(host);
+  const { rule, packageId } = requireLazer(host.config);
   tx.moveCall({
-    target: `${lazer.published_at}::pyth_lazer_rule::feed`,
-    arguments: [collector, tx.object(lazer.config), tx.object.clock(), update],
+    target: `${packageId}::pyth_lazer_rule::feed`,
+    arguments: [collector, tx.object(rule.lazer_config_object), tx.object.clock(), update],
   });
 }
 
@@ -266,17 +276,17 @@ export const PythLazerRule: PriceUpdateRule = {
   // the orchestrator never constructs this error on the rule's behalf.
   credential: { kind: "pyth_api_key", missing: () => new LazerApiKeyMissingError() },
 
-  /** Tickers with a `pyth_lazer_rule.feeds` entry (integer Lazer feed ids). */
-  supportedTickers(host: OracleHost): string[] {
-    return Object.keys(host.config.packages.pyth_lazer_rule?.feeds ?? {});
+  /** Tickers with an `oracle_rules.pyth_lazer.lazer_feed_ids` entry (integer Lazer feed ids). */
+  supportedTickers(config: WaterXConfig): string[] {
+    return Object.keys(config.oracle_rules.pyth_lazer?.lazer_feed_ids ?? {});
   },
 
   /** Resolves integer feed ids for `tickers`, then fetches one signed `leEcdsa` update. */
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
-    // Package-level check first: a config without the deployment must say so,
+    // Block-level check first: a config that does not wire Lazer must say so,
     // not fail per ticker as if only that feed were missing.
-    const { feeds } = requireLazerPackage(host);
+    const feeds = requireLazer(host.config).rule.lazer_feed_ids;
     const feedIds = tickers.map((ticker) => {
       // ownEntry: a prototype-key ticker ("toString") must throw here as
       // unlisted, not turn an inherited Function into a "feed id".
@@ -319,7 +329,7 @@ export const PythLazerRule: PriceUpdateRule = {
     if (!payload || tickers.length === 0) return null;
     const packedFeedIds = new Set(payload.feedIds);
     for (const ticker of tickers) {
-      const feedId = ownEntry(host.config.packages.pyth_lazer_rule?.feeds, ticker);
+      const feedId = ownEntry(host.config.oracle_rules.pyth_lazer?.lazer_feed_ids, ticker);
       if (feedId === undefined || !packedFeedIds.has(feedId)) return null;
     }
     return { kind: "pyth_lazer_rule", payload };
@@ -347,11 +357,15 @@ export const PythLazerRule: PriceUpdateRule = {
       "{ update: Uint8Array; feedIds: number[] }",
     );
     if (!payload) return undefined;
-    const lazer = requireLazerPackage(host);
+    const { rule } = requireLazer(host.config);
     const infra = LAZER_INFRA[host.network];
     const [update] = tx.moveCall({
       target: `${infra.verifier_package}::pyth_lazer::${infra.verify_entry}`,
-      arguments: [tx.object(lazer.state), tx.object.clock(), tx.pure.vector("u8", payload.update)],
+      arguments: [
+        tx.object(rule.lazer_state_object),
+        tx.object.clock(),
+        tx.pure.vector("u8", payload.update),
+      ],
     });
     return { kind: "pyth_lazer_rule", update };
   },

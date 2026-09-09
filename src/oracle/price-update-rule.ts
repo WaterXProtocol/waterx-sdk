@@ -6,9 +6,9 @@
  * stays in `aggregate.ts` — this port covers fetch + verify/push only
  * (`buildUpdateCalls` may hand the feed step a PTB value via
  * {@link RuleUpdateHandle}). Implementations: `PythLazerRule` (Lazer signed
- * updates) and `WaterxRule` (quote-center ed25519). `ConstantRule` and
- * `SupraRule` do NOT implement this port — they remain plain collector-feed
- * helpers wired directly into `aggregate.ts`.
+ * updates) and `WaterxRule` (quote-center ed25519). `ConstantRule` does NOT
+ * implement this port — it remains a plain collector-feed helper wired
+ * directly into `aggregate.ts`.
  *
  * This file defines the port only — routing IS wired: `aggregate.ts`'s
  * `refreshOraclePrices` resolves a concrete rule per `host.oracleSources`
@@ -18,13 +18,10 @@
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import type { WaterXConfig } from "../config.ts";
 import type { OracleHost } from "./host.ts";
 
-export type PriceUpdateRuleKind =
-  | "pyth_lazer_rule"
-  | "supra_rule"
-  | "constant_rule"
-  | "waterx_rule";
+export type PriceUpdateRuleKind = "pyth_lazer_rule" | "constant_rule" | "waterx_rule";
 
 /**
  * The canonical list of selectable oracle sources — the SINGLE authority the
@@ -34,11 +31,11 @@ export type PriceUpdateRuleKind =
  * consumer push into the array, and `deriveOracleSources` (`source-list.ts`)
  * walks exactly this list to decide the fed set — a pushed entry would name a
  * source with no rule module behind it.
- * Only sources belong here: `supra_rule` and `constant_rule` are auxiliary
- * rules fed alongside whichever sources are selected (see
- * `aggregateTicker`), not sources themselves — the `satisfies` keeps
- * entries inside `PriceUpdateRuleKind` but adding an auxiliary rule to this
- * list is an (incorrect) editorial decision this comment exists to prevent.
+ * Only sources belong here: `constant_rule` is an auxiliary rule fed
+ * alongside whichever sources are selected (see `aggregateTicker`), not a
+ * source itself — the `satisfies` keeps entries inside `PriceUpdateRuleKind`
+ * but adding an auxiliary rule to this list is an (incorrect) editorial
+ * decision this comment exists to prevent.
  *
  * `pyth_rule` (Pyth Core, Hermes VAA) was RETIRED in 5.0.0 — it is no longer
  * a `PriceUpdateRuleKind` at all. Its config block is still published in the
@@ -202,8 +199,8 @@ export interface OracleCredentialRequirement {
 export interface PriceUpdateRule {
   /**
    * `OracleSource`, not the wider `PriceUpdateRuleKind`: only selectable
-   * sources implement this port (`supra_rule`/`constant_rule` are plain
-   * collector-feed helpers), and the narrower type is what lets
+   * sources implement this port (`constant_rule` is a plain collector-feed
+   * helper), and the narrower type is what lets
    * `refreshOraclePrices`'s per-source carry step switch exhaustively —
    * adding a source without deciding its carry becomes a compile error.
    */
@@ -223,8 +220,12 @@ export interface PriceUpdateRule {
    */
   readonly credential?: OracleCredentialRequirement;
 
-  /** Tickers this rule can serve in this environment (from config feeds + enabled). */
-  supportedTickers(host: OracleHost): string[];
+  /**
+   * Tickers this rule can serve under this deployment config — THE definition
+   * of "wired": `deriveOracleSources` lists a source exactly when this is
+   * non-empty, so the fed set and per-ticker routing can never disagree.
+   */
+  supportedTickers(config: WaterXConfig): string[];
 
   /**
    * Fetch the off-chain payload for these tickers (no-op rules return null).

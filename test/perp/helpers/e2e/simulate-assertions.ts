@@ -92,8 +92,8 @@ export function skipSimulateIfOracleTransient(
  * empty list, so an unverifiable environment is never a licence to skip.
  *
  * What triggered it: testnet's aggregators were reconfigured to weight
- * `pyth_rule` + `pyth_lazer_rule` + `waterx_rule` at 1.0 each, so a default
- * `oracleSource: 'pyth_rule'` build cannot satisfy the set (the Lazer leg also
+ * `pyth_rule` + `pyth_lazer_rule` + `waterx_rule` at 1.0 each, so the then-default
+ * Pyth-Core-only build could not satisfy the set (the Lazer leg also
  * needs a `pythApiKey` CI does not hold). It reproduces on `main` with no PR
  * code and the same suites passed on 2026-07-27.
  *
@@ -183,7 +183,7 @@ export function skipIfTransientInfrastructureError(
 }
 
 /**
- * Retry an async step (builder, Hermes, gRPC simulate) on transient infra errors.
+ * Retry an async step (builder, source fetch, gRPC simulate) on transient infra errors.
  */
 export async function withInfrastructureRetry<T>(
   fn: () => Promise<T>,

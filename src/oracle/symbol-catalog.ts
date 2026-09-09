@@ -34,7 +34,7 @@ const CATALOG_TIMEOUT_MS = 60_000;
  * are dropped, not preserved).
  */
 export type PythSymbolRecord = {
-  /** Integer Lazer feed id — the `pyth_lazer_rule.feeds` id scheme. */
+  /** Integer Lazer feed id — the `oracle_rules.pyth_lazer.lazer_feed_ids` id scheme. */
   pyth_lazer_id: number;
   /** Legacy Hermes hex feed id, or null for Lazer-only feeds. */
   hermes_id: string | null;

@@ -133,7 +133,7 @@ function resolveTickerKey(symbolOrTicker: string): string {
 
 /** Tickers listed in order that exist on this client's deployment. */
 export function activeLifecycleTickersForClient(client: PerpClient): string[] {
-  const markets = client.config.packages.waterx_perp.markets ?? {};
+  const markets = client.config.objects.perp.markets;
   return LIFECYCLE_TEST_TICKER_ORDER.filter((t) => markets[t] != null);
 }
 

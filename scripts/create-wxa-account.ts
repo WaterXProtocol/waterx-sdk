@@ -27,7 +27,7 @@ async function main(): Promise<void> {
 
   console.log(`sender:   ${address}`);
   console.log(`alias:    ${alias}`);
-  console.log(`registry: ${client.config.packages.waterx_account.account_registry}`);
+  console.log(`registry: ${client.config.objects.account.registry}`);
   console.log(`mode:     ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
   const tx = new Transaction();

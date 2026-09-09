@@ -11,6 +11,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0
+      '@waterx/config':
+        specifier: 0.1.1-staging.1
+        version: 0.1.1-staging.1
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.4
@@ -42,9 +45,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 4.1.8
         version: 4.1.8(vitest@4.1.8)
-      '@waterx/config':
-        specifier: 0.1.1-staging.1
-        version: 0.1.1-staging.1
       dotenv:
         specifier: 17.4.2
         version: 17.4.2

@@ -101,24 +101,10 @@ describe("user/staking PTB builders (v3)", () => {
 
   it("throws when staking pool alias missing", () => {
     const bare = createUnitTestClient();
-    const stakingCfg = structuredClone(bare.config.packages.waterx_staking!);
-    delete stakingCfg.pools!.WLP;
-    bare.config = {
-      ...bare.config,
-      packages: { ...bare.config.packages, waterx_staking: stakingCfg },
-    };
+    delete bare.config.objects.staking.pools.WLP;
     const tx = new Transaction();
     expect(() =>
       stake(bare, tx, { accountId, stakeAlias: "WLP", stakeType, stakeAmount: 1n }),
-    ).toThrow(/not set/);
-  });
-
-  it("throws when waterx_staking package is not configured", () => {
-    const bare = createUnitTestClient();
-    delete (bare.config.packages as { waterx_staking?: unknown }).waterx_staking;
-    const tx = new Transaction();
-    expect(() =>
-      stake(bare, tx, { accountId, stakeAlias: "WLP", stakeType, stakeAmount: 1n }),
-    ).toThrow(/waterx_staking is not configured/);
+    ).toThrow(/pools\[WLP\] is not set/);
   });
 });

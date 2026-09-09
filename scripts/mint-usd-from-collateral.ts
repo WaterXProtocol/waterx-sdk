@@ -5,7 +5,7 @@
  * one `mint` + `consume_deposit_direct` leg per asset in a single PTB. On
  * testnet the vault assets are MOCK_USDC + MOCK_USDSUI; on mainnet they are
  * the real USDC / USDSUI coins — the asset list is read from
- * `config.packages.native_custody.assets`, so this script is network-agnostic.
+ * `config.objects.custody.assets`, so this script is network-agnostic.
  *
  * Flow (single PTB), per targeted asset C:
  *   1. split `MINT_AMOUNT` raw units off your largest Coin<C>
@@ -83,29 +83,28 @@ async function main(): Promise<void> {
     waterxConfigUrl: waterxConfigUrlFromEnv(),
   });
 
-  const custody = client.config.packages.native_custody;
-  const credit = client.config.packages.waterx_credit;
-  if (!custody?.vault || !credit?.credit_type) {
-    throw new Error("native_custody / waterx_credit not configured on this network");
-  }
+  // `objects.custody` / `objects.credit` are required by the config schema —
+  // no "is custody deployed on this network?" guard.
+  const { vault, assets } = client.config.objects.custody;
+  const creditType = client.creditType();
 
   const assetMatches = (a: { name?: string; type: string }): boolean =>
     filters.length === 0 ||
     filters.some(
       (f) => a.type.toLowerCase().includes(f) || (a.name ?? "").toLowerCase().includes(f),
     );
-  const targeted = custody.assets.filter(assetMatches);
+  const targeted = assets.filter(assetMatches);
   if (targeted.length === 0) {
     throw new Error(
       `mint-usd-from-collateral: no vault asset matched MINT_ASSETS="${process.env.MINT_ASSETS ?? ""}". ` +
-        `Available: ${custody.assets.map((a) => a.name ?? a.type).join(", ")}`,
+        `Available: ${assets.map((a) => a.name ?? a.type).join(", ")}`,
     );
   }
 
   console.log(`sender:      ${address}`);
   console.log(`account:     ${accountId}`);
-  console.log(`vault:       ${custody.vault}`);
-  console.log(`credit:      ${credit.credit_type}`);
+  console.log(`vault:       ${vault}`);
+  console.log(`credit:      ${creditType}`);
   console.log(`mint raw:    ${amount} per asset`);
   console.log(`assets:      ${targeted.map((a) => a.name ?? a.type).join(", ")}`);
   console.log(`mode:        ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);

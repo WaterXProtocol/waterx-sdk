@@ -20,7 +20,6 @@ const PACKAGES: Array<{ name: string; root: string; path?: string }> = [
     root: CONTRACTS_ROOT,
     path: "waterx_oracle_rule/constant_rule",
   },
-  { name: "supra_rule", root: CONTRACTS_ROOT, path: "waterx_oracle_rule/supra_rule" },
   { name: "waterx_rule", root: CONTRACTS_ROOT, path: "waterx_oracle_rule/waterx_rule" },
   { name: "bucket_framework", root: CONTRACTS_ROOT },
   { name: "wlp", root: CONTRACTS_ROOT, path: "coins/wlp" },

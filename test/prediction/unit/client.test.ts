@@ -2,7 +2,11 @@ import { Transaction } from "@mysten/sui/transactions";
 import { PredictClient } from "~predict/client.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TESTNET_FIXTURE_CONFIG, TESTNET_FIXTURE_IDS } from "../fixtures/testnet-config.ts";
+import {
+  MOCK_TESTNET_CONFIG,
+  MOCK_TESTNET_CONFIG_RAW,
+} from "../../helpers/fixtures/mock-testnet-config.ts";
+import { TESTNET_FIXTURE_IDS } from "../fixtures/testnet-config.ts";
 import { createMockPredictClient } from "../helpers/mock-client.ts";
 
 describe("PredictClient", () => {
@@ -14,7 +18,7 @@ describe("PredictClient", () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
-      json: async () => TESTNET_FIXTURE_CONFIG,
+      json: async () => MOCK_TESTNET_CONFIG_RAW,
     }));
 
     const client = await PredictClient.testnet({
@@ -24,7 +28,7 @@ describe("PredictClient", () => {
     });
 
     expect(client.network).toBe("TESTNET");
-    expect(client.config).toBe(TESTNET_FIXTURE_CONFIG);
+    expect(client.config).toEqual(MOCK_TESTNET_CONFIG);
     expect(client.packageId()).toBe(TESTNET_FIXTURE_IDS.packageId);
     expect(client.predictionAdminCap()).toBe(TESTNET_FIXTURE_IDS.predictionAdminCap);
     expect(client.grpcClient).toBeDefined();
@@ -32,7 +36,7 @@ describe("PredictClient", () => {
   });
 
   it("mainnet() fetches the waterxConfigUrl config (as-is)", async () => {
-    const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
+    const mainnetFixture = { ...MOCK_TESTNET_CONFIG_RAW, network: "mainnet" };
     const url = "https://waterx.test/mainnet-prediction.json";
     const fetchMock = vi.fn(async (fetchedUrl: string) => {
       expect(fetchedUrl).toBe(url);
@@ -49,13 +53,13 @@ describe("PredictClient", () => {
     });
 
     expect(client.network).toBe("MAINNET");
-    expect(client.config).toBe(mainnetFixture);
+    expect(client.config).toEqual({ ...MOCK_TESTNET_CONFIG, network: "mainnet" });
     expect(client.packageId()).toBe(TESTNET_FIXTURE_IDS.packageId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("mainnet() accepts an explicit waterxConfigUrl", async () => {
-    const mainnetFixture = { ...TESTNET_FIXTURE_CONFIG, network: "mainnet" };
+    const mainnetFixture = { ...MOCK_TESTNET_CONFIG_RAW, network: "mainnet" };
     const fetchMock = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -68,19 +72,19 @@ describe("PredictClient", () => {
     });
 
     expect(client.network).toBe("MAINNET");
-    expect(client.config).toBe(mainnetFixture);
+    expect(client.config).toEqual({ ...MOCK_TESTNET_CONFIG, network: "mainnet" });
     expect(client.packageId()).toBe(TESTNET_FIXTURE_IDS.packageId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("constructor accepts raw waterx-config and network separately", () => {
-    const client = new PredictClient("MAINNET", TESTNET_FIXTURE_CONFIG);
+  it("constructor accepts a parsed waterx-config and network separately", () => {
+    const client = new PredictClient("MAINNET", MOCK_TESTNET_CONFIG);
     expect(client.network).toBe("MAINNET");
-    expect(client.config).toBe(TESTNET_FIXTURE_CONFIG);
+    expect(client.config).toBe(MOCK_TESTNET_CONFIG);
   });
 
   it("exposes waterx-sdk-style package/object accessors", () => {
-    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const client = new PredictClient("TESTNET", MOCK_TESTNET_CONFIG);
     expect(client.packageIds()).toMatchObject({
       bucket_framework: TESTNET_FIXTURE_IDS.bucketFrameworkPackageId,
       waterx_account: TESTNET_FIXTURE_IDS.waterxAccountPackageId,
@@ -102,7 +106,7 @@ describe("PredictClient", () => {
   });
 
   it("delegates RPC helpers to grpcClient", async () => {
-    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const client = new PredictClient("TESTNET", MOCK_TESTNET_CONFIG);
     const grpc = {
       getObject: vi.fn().mockResolvedValue({ objectId: "0x1" }),
       getObjects: vi.fn().mockResolvedValue({ objects: [] }),
@@ -158,7 +162,7 @@ describe("PredictClient", () => {
   });
 
   it("simulate retries on RESOURCE_EXHAUSTED then succeeds", async () => {
-    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const client = new PredictClient("TESTNET", MOCK_TESTNET_CONFIG);
     const ok = { $kind: "Success" as const };
     const rateLimitErr = Object.assign(new Error("too many requests"), {
       code: "RESOURCE_EXHAUSTED",
@@ -178,7 +182,7 @@ describe("PredictClient", () => {
   });
 
   it("simulate retries when rate-limit message is a plain string", async () => {
-    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const client = new PredictClient("TESTNET", MOCK_TESTNET_CONFIG);
     const ok = { $kind: "Success" as const };
     const simulateTransaction = vi
       .fn()
@@ -195,7 +199,7 @@ describe("PredictClient", () => {
 
   it("simulate gives up after max rate-limit attempts", async () => {
     vi.useFakeTimers();
-    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const client = new PredictClient("TESTNET", MOCK_TESTNET_CONFIG);
     const rateLimitErr = Object.assign(new Error("too many requests"), {
       code: "RESOURCE_EXHAUSTED",
     });
@@ -212,7 +216,7 @@ describe("PredictClient", () => {
   });
 
   it("simulate rethrows non-rate-limit errors immediately", async () => {
-    const client = new PredictClient("TESTNET", TESTNET_FIXTURE_CONFIG);
+    const client = new PredictClient("TESTNET", MOCK_TESTNET_CONFIG);
     const simulateTransaction = vi.fn().mockRejectedValue(new Error("invalid transaction"));
     (
       client as unknown as { grpcClient: { simulateTransaction: typeof simulateTransaction } }

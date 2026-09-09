@@ -99,18 +99,18 @@ export function posIsLong(p: PositionDataView): boolean {
 }
 
 /**
- * Map position collateral `TypeName` string → `wlp.pool_tokens` ticker key (`USDCUSD`, …).
+ * Map position collateral `TypeName` string → `objects.wlp.pool_tokens` ticker key (`USDCUSD`, …).
  * Throws when the collateral type matches no configured pool token — silently
  * defaulting to `USDCUSD` here used to misattribute any unknown collateral.
  */
 export function resolveCollateralPoolTicker(client: PerpClient, collateralFqName: string): string {
   const target = normalizeMoveType(collateralFqName);
-  const pt = client.config.packages.wlp?.pool_tokens ?? {};
+  const pt = client.config.objects.wlp.pool_tokens;
   for (const [ticker, ty] of Object.entries(pt)) {
     if (normalizeMoveType(ty) === target) return ticker;
   }
   throw new Error(
-    `resolveCollateralPoolTicker: collateral type ${collateralFqName} matches no wlp.pool_tokens entry (${Object.keys(pt).join(", ") || "none configured"})`,
+    `resolveCollateralPoolTicker: collateral type ${collateralFqName} matches no objects.wlp.pool_tokens entry (${Object.keys(pt).join(", ") || "none configured"})`,
   );
 }
 

@@ -2,10 +2,24 @@
  * Optional `process.env` overrides for E2E / integration (no `.env` file required).
  * CI fetches WaterXProtocol/waterx-config plus on-chain discovery.
  */
+import type { Network } from "~predict/constants.ts";
+
+import { DEFAULT_GRPC_URLS } from "../../../src/base-client.ts";
 
 export function optionalEnv(key: string): string | undefined {
   const v = process.env[key];
   return v === undefined || v === "" ? undefined : v;
+}
+
+/**
+ * The fullnode URL the harness's client is built against — `E2E_GRPC_URL`
+ * when set, else the SDK's per-network default (the same resolution
+ * `BaseLineClient` applies to `grpcUrl`). The JSON-RPC helpers
+ * (`suix_queryEvents`) read it from here: the canonical config document
+ * carries object ids only, never an endpoint. Trailing slash stripped.
+ */
+export function readE2eRpcUrl(network: Network): string {
+  return (optionalEnv("E2E_GRPC_URL") ?? DEFAULT_GRPC_URLS[network]).replace(/\/$/, "");
 }
 
 /** Client options for the prediction e2e client. `loadConfig` no longer reads

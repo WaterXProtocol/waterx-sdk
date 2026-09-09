@@ -140,7 +140,7 @@ export async function isRegistryDepositPolicyRegistered(
   coinType: string,
 ): Promise<boolean> {
   const pkg = client.config.packages.waterx_account.published_at;
-  const reg = client.config.packages.waterx_account.account_registry;
+  const reg = client.config.objects.account.registry;
   const tx = new Transaction();
   isDepositPolicyRegistered({
     package: pkg,
@@ -158,7 +158,7 @@ export async function isWaterXPerpProtocolAssetAllowed(
 ): Promise<boolean> {
   const perpWitness = `${client.config.packages.waterx_perp.original_id}::account_data::WaterXPerp`;
   const pkg = client.config.packages.waterx_account.published_at;
-  const reg = client.config.packages.waterx_account.account_registry;
+  const reg = client.config.objects.account.registry;
   const tx = new Transaction();
   isProtocolAssetAllowed({
     package: pkg,
@@ -176,7 +176,7 @@ export async function getWxaAccountBalance(
   coinType: string,
 ): Promise<bigint> {
   const pkg = client.config.packages.waterx_account.published_at;
-  const reg = client.config.packages.waterx_account.account_registry;
+  const reg = client.config.objects.account.registry;
   const tx = new Transaction();
   accountBalance({
     package: pkg,
@@ -241,8 +241,7 @@ export async function getWlpCollateralPoolRow(
   poolTokenTicker: string,
 ): Promise<WlpCollateralPoolRow> {
   const want = normalizeCoinTypeForMatch(client.getPoolTokenType(poolTokenTicker));
-  const poolId = client.config.packages.wlp?.wlp_pool;
-  if (!poolId) throw new Error("getWlpCollateralPoolRow: wlp_pool missing from config");
+  const poolId = client.config.objects.wlp.pool;
   const { object } = await client.grpcClient.getObject({
     objectId: poolId,
     include: { json: true },

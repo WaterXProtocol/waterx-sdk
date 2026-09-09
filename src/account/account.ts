@@ -46,7 +46,7 @@ export function createAccount(
     tx,
     {
       packageId: client.config.packages.waterx_account.published_at,
-      registry: client.config.packages.waterx_account.account_registry,
+      registry: client.config.objects.account.registry,
     },
     { senderRequest: req as unknown as TransactionArgument, alias: params.alias },
   );
@@ -67,7 +67,7 @@ export function setAlias(client: WxaClientLike, tx: Transaction, params: SetAlia
   wxa.setAlias({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       alias: params.alias,
@@ -100,7 +100,7 @@ export function addDelegate(
   wxa.addDelegate({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       delegateAddress: params.delegateAddress,
@@ -127,7 +127,7 @@ export function removeDelegate(
   wxa.removeDelegate({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       delegateAddress: params.delegateAddress,
@@ -154,7 +154,7 @@ export function setDelegateProtocolPermission(
   wxa.setDelegateProtocolPermission({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       delegateAddress: params.delegateAddress,
@@ -188,7 +188,7 @@ export function requestDeposit(
   const [req] = wxa.requestDeposit({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       coin: params.coin as unknown as TransactionArgument,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
@@ -231,7 +231,7 @@ export function requestDepositFromReceivings(
   const [req] = wxa.requestDepositFromReceivings({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       receivings: receivings as unknown as TransactionArgument,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
@@ -277,7 +277,7 @@ export function requestDepositFromFunds(
   const [req] = wxa.requestDepositFromFunds({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       accumulatorRoot: (typeof root === "string"
         ? tx.object(root)
@@ -315,7 +315,7 @@ export function requestWithdraw(
   const [out] = wxa.requestWithdraw({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       amount: toU64(params.amount, "amount"),
@@ -345,7 +345,7 @@ export function transferToAccount(
   wxa.transferCoin({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       coin: params.coin as unknown as TransactionArgument,
     },
@@ -388,7 +388,7 @@ export function receive(
   const out = wxa.receive({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       receiving: params.receiving as unknown as TransactionArgument,

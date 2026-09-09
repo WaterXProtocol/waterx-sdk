@@ -12,7 +12,7 @@ import {
   RedeemRequestData,
   TokenPoolData,
 } from "../../../../src/generated/waterx_perp_view/view.ts";
-import { MOCK_USDC_TYPE } from "./mock-testnet-config.ts";
+import { MOCK_USDC_TYPE } from "../../../helpers/fixtures/mock-testnet-config.ts";
 import { mockSuiAddress } from "./sui-mock-fixtures.ts";
 
 const ADDR = mockSuiAddress("aa");

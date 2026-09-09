@@ -30,8 +30,8 @@ async function main(): Promise<void> {
 
   const pool = await getPoolData(client);
   console.log("=== WLP Pool ===");
-  console.log(`wlp_pool obj:    ${client.config.packages.wlp.wlp_pool}`);
-  console.log(`wlp_aum obj:     ${client.config.packages.wlp.wlp_aum}`);
+  console.log(`wlp_pool obj:    ${client.config.objects.wlp.pool}`);
+  console.log(`wlp_aum obj:     ${client.config.objects.wlp.aum}`);
   console.log(`lp_token:        ${shortType(pool.lp_token.name)}`);
   console.log(`is_active:       ${pool.is_active}`);
   console.log(`lp_decimal:      ${pool.lp_decimal}`);

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as configModule from "../../../src/config.ts";
+import type { WaterXConfig } from "../../../src/config.ts";
 import { WATERX_INFRA } from "../../../src/oracle/rules/waterx-rule.ts";
-import { PerpClient, type CreateClientOptions } from "../../../src/perp/client.ts";
-import * as configModule from "../../../src/perp/config.ts";
-import type { WaterXConfig, WlpPackage } from "../../../src/perp/config.ts";
+import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CUSTODY_ASSET_TYPE,
   MOCK_TESTNET_CONFIG,
-} from "../helpers/fixtures/mock-testnet-config.ts";
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient, withOracleSources } from "../helpers/test-client.ts";
 
 describe("PerpClient (offline)", () => {
@@ -17,7 +17,7 @@ describe("PerpClient (offline)", () => {
     expect(client.network).toBe("TESTNET");
     expect(client.config.network).toBe("testnet");
     expect(WATERX_INFRA.TESTNET.endpoint).toMatch(/^https:/);
-    expect(client.config.packages.waterx_perp.global_config).toMatch(/^0x/);
+    expect(client.config.objects.perp.global_config).toMatch(/^0x/);
   });
 
   it("getMarket returns market entry for BTCUSD", () => {
@@ -51,7 +51,7 @@ describe("PerpClient (offline)", () => {
     // OTHER rule serves is still unpriceable to this client, and handing it to
     // refreshOraclePrices would throw "no feed configured" mid-build.
     const lazerOnly = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    delete lazerOnly.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
+    delete lazerOnly.config.oracle_rules.pyth_lazer!.lazer_feed_ids.USDCUSD;
     expect(lazerOnly.pricedPoolTickers()).toEqual([]);
   });
 
@@ -59,38 +59,21 @@ describe("PerpClient (offline)", () => {
     // Constant tickers need no update leg at all, so they stay servable even
     // when the fed set carries no feed for them.
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
-    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    delete client.config.oracle_rules.pyth_lazer!.lazer_feed_ids.USDCUSD;
+    client.config.oracle_rules.constant.constant_prices.USDCUSD = { price: "1000000000" };
     expect(client.pricedPoolTickers()).toEqual(["USDCUSD"]);
   });
 
-  it("isConstantTicker reflects constant_rule.feeds", () => {
-    // Shared fixture has the package but an empty feeds map → all Pyth.
+  it("isConstantTicker reflects oracle_rules.constant.constant_prices", () => {
+    // Shared fixture carries the constant rule with an EMPTY pin map → every
+    // ticker stays on the live sources.
     expect(client.isConstantTicker("USDCUSD")).toBe(false);
     expect(client.isConstantTicker("BTCUSD")).toBe(false);
 
-    // A ticker listed in feeds is constant-routed.
-    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
+    // A pinned ticker is constant-routed; the rest are untouched.
+    client.config.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
     expect(client.isConstantTicker("USDCUSD")).toBe(true);
     expect(client.isConstantTicker("BTCUSD")).toBe(false);
-
-    // No package at all → never constant.
-    const bare = createUnitTestClient();
-    delete bare.config.packages.constant_rule;
-    expect(bare.isConstantTicker("USDCUSD")).toBe(false);
-
-    // All-or-nothing: a half-populated block (feeds listed before the rule is
-    // deployed) stays on Pyth instead of routing to a constant rule that would
-    // throw at aggregate time and abort the whole refresh PTB.
-    const halfWired = createUnitTestClient();
-    halfWired.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
-    halfWired.config.packages.constant_rule!.config = "";
-    expect(halfWired.isConstantTicker("USDCUSD")).toBe(false);
-
-    const noPkgId = createUnitTestClient();
-    noPkgId.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
-    noPkgId.config.packages.constant_rule!.published_at = "";
-    expect(noPkgId.isConstantTicker("USDCUSD")).toBe(false);
   });
 
   it("throws for unknown aggregator and pool token", () => {
@@ -108,15 +91,6 @@ describe("PerpClient (offline)", () => {
       expect(() => client.getAggregator(proto)).toThrow(/No aggregator listed/);
       expect(client.getRewarders(proto)).toEqual([]);
     }
-  });
-
-  it("throws for missing wlp package", () => {
-    const bare = createUnitTestClient();
-    bare.config = {
-      ...bare.config,
-      packages: { ...bare.config.packages, wlp: undefined as unknown as WlpPackage },
-    };
-    expect(() => bare.wlpType()).toThrow(/wlp.original_id missing/);
   });
 
   it("grpc convenience methods delegate to grpcClient", async () => {
@@ -168,53 +142,32 @@ describe("PerpClient (offline)", () => {
     expect(ids.bucket_framework).toBeTruthy();
   });
 
-  it("getCredit / creditType / getBridge / wormholeStateId", () => {
-    expect(client.getCredit().credit_registry).toMatch(/^0x/);
+  it("creditType reads objects.credit; the credit / bridge ids ride on objects.*", () => {
+    // Every id the funding base reads is a deployment value under `objects.*`
+    // — no client accessor wraps them, and none is network-defaulted.
+    expect(client.creditType()).toBe(client.config.objects.credit.credit_type);
     expect(client.creditType()).toContain("::");
-    expect(client.getBridge().published_at).toMatch(/^0x/);
-    expect(client.wormholeStateId()).toMatch(/^0x/);
+    expect(client.config.objects.credit.registry).toMatch(/^0x/);
+    expect(client.config.objects.bridge.state).toMatch(/^0x/);
+    expect(client.config.objects.bridge.wormhole_state).toMatch(/^0x/);
   });
 
-  it("wormholeStateId falls back to network defaults when bridge omits wormhole_state", () => {
-    const bare = createUnitTestClient();
-    bare.config.packages.wormhole_bridge = {
-      ...bare.config.packages.wormhole_bridge!,
-      wormhole_state: undefined as unknown as string,
-    };
-    expect(bare.wormholeStateId()).toBe(bare.wormhole.state_id);
-  });
-
-  it("getNativeAssets / getNativeAsset", () => {
-    const assets = client.getNativeAssets();
+  it("native custody assets ride on objects.custody; getNativeAsset resolves one by type", () => {
+    const assets = client.config.objects.custody.assets;
     expect(assets.length).toBeGreaterThan(0);
     expect(client.getNativeAsset(MOCK_CUSTODY_ASSET_TYPE).type).toBe(MOCK_CUSTODY_ASSET_TYPE);
     expect(() => client.getNativeAsset("0xdead::nope::NOPE")).toThrow(
       /No native custody asset registered/,
     );
   });
-
-  it("throws when credit / bridge / custody packages are absent", () => {
-    const bare = createUnitTestClient();
-    delete bare.config.packages.waterx_credit;
-    expect(() => bare.getCredit()).toThrow(/waterx_credit not configured/);
-    expect(() => bare.creditType()).toThrow(/credit_type missing/);
-
-    const noBridge = createUnitTestClient();
-    delete noBridge.config.packages.wormhole_bridge;
-    expect(() => noBridge.getBridge()).toThrow(/wormhole_bridge not configured/);
-
-    const noCustody = createUnitTestClient();
-    delete noCustody.config.packages.native_custody;
-    expect(() => noCustody.getNativeAssets()).toThrow(/native_custody not configured/);
-  });
 });
 
 describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)", () => {
   it("is empty by default and never carries endpoints or object ids", () => {
     expect(createUnitTestClient().pyth).toEqual({});
-    // Infra is per-source, rule-owned: the Core table lives in oracle/pyth.ts
-    // (`PYTH_CORE_INFRA`), the Lazer table in rules/pyth-lazer-rule.ts —
-    // nothing source-shaped rides on the client for another source to leak.
+    // Infra is per-source, rule-owned: the Lazer table lives in
+    // rules/pyth-lazer-rule.ts — nothing source-shaped rides on the client for
+    // another source to leak.
     expect(createUnitTestClient({ oracleSource: "pyth_lazer_rule" }).pyth).toEqual({});
   });
 
@@ -258,24 +211,23 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     ).toEqual(["waterx_rule"]);
   });
 
-  it("a published source with an EMPTY feeds map is not in the fed set", () => {
+  it("a published source with an EMPTY lazer_feed_ids map is not in the fed set", () => {
     // Published-but-serving-nothing is not a source; feeding it would emit an
     // update leg that can never carry a ticker.
     const config = structuredClone(MOCK_TESTNET_CONFIG);
-    config.packages.pyth_lazer_rule!.feeds = {};
+    config.oracle_rules.pyth_lazer!.lazer_feed_ids = {};
     expect(new PerpClient("TESTNET", config, {}).oracleSources).toEqual(["waterx_rule"]);
   });
 
-  it("retired rule blocks in the config are inert — they can never be derived", () => {
-    // `pyth_rule` / `pyth_sponsor_rule` are still present in the LIVE configs.
-    // Neither is an ORACLE_SOURCES member (no rule module could feed one), so
-    // their presence changes nothing.
-    const config = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
-      packages: Record<string, unknown>;
+  it("the retired oracle_rules.pyth block is inert — it can never be derived", () => {
+    // Pyth Core's block is schema-required and still published in the LIVE
+    // configs. `pyth_rule` is not an ORACLE_SOURCES member (no rule module
+    // could feed it), so populating its feed map changes nothing.
+    const config = structuredClone(MOCK_TESTNET_CONFIG);
+    config.oracle_rules.pyth.pyth_price_feeds = {
+      BTCUSD: { feed_id: "0x" + "ef".repeat(32), price_info_object: "0x" + "01".repeat(32) },
     };
-    config.packages.pyth_rule = { published_at: "0x1", feeds: { BTCUSD: {} } };
-    config.packages.pyth_sponsor_rule = { published_at: "0x2" };
-    const client = new PerpClient("TESTNET", config as unknown as WaterXConfig, {});
+    const client = new PerpClient("TESTNET", config, {});
     expect(client.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);
   });
 
@@ -284,6 +236,9 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     // that can price nothing would skip every ticker and abort every trade.
     const config = withOracleSources(MOCK_TESTNET_CONFIG, []);
     expect(() => new PerpClient("TESTNET", config, {})).toThrow(/wires no price-update source/);
+    // The message points at the two wiring locations an operator would fix.
+    expect(() => new PerpClient("TESTNET", config, {})).toThrow(/oracle_rules\.pyth_lazer/);
+    expect(() => new PerpClient("TESTNET", config, {})).toThrow(/symbols/);
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {
@@ -304,7 +259,7 @@ describe("PerpClient.create", () => {
     const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
     const client = await PerpClient.create("TESTNET", { cache: true });
     expect(loadConfig).toHaveBeenCalledWith("TESTNET", { cache: true });
-    expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
+    expect(client.config.objects.perp.markets.BTCUSD).toBeDefined();
     expect(client.network).toBe("TESTNET");
   });
 
@@ -319,9 +274,9 @@ describe("PerpClient.create", () => {
 
   it("does NOT throw at init when a wired source cannot serve every ticker", async () => {
     // Per-TICKER coverage is still tx-build's business, not init's: a source
-    // wired with a partial feeds map is a perfectly good source.
+    // wired with a partial feed map is a perfectly good source.
     const partial = structuredClone(MOCK_TESTNET_CONFIG);
-    partial.packages.pyth_lazer_rule!.feeds = { BTCUSD: 1 };
+    partial.oracle_rules.pyth_lazer!.lazer_feed_ids = { BTCUSD: 1 };
     vi.spyOn(configModule, "loadConfig").mockResolvedValue(partial);
     const client = await PerpClient.create("TESTNET", {});
     expect(client.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);

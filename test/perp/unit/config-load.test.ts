@@ -1,14 +1,107 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearConfigCache, loadConfig } from "../../../src/perp/config.ts";
-import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
+import {
+  assertRequiredPackages,
+  clearConfigCache,
+  loadConfig,
+  parseConfigDocument,
+  REQUIRED_PACKAGES,
+} from "../../../src/config.ts";
+import {
+  MOCK_TESTNET_CONFIG,
+  MOCK_TESTNET_CONFIG_RAW,
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 
-const MOCK_TESTNET_CONFIG_URL = "https://waterx.test/fixtures/mock-testnet.json";
-// Shared URL for the tests that only stub `fetch` — the URL now comes solely
-// from the `waterxConfigUrl` opt (there is no env-var fallback / default).
+// The REAL staging-v2 testnet document — parse strictness and the required-
+// package check are exercised against live-shape data, not only the trimmed mock.
+const STAGING_V2_TESTNET = JSON.parse(
+  readFileSync(
+    new URL("../helpers/fixtures/waterx-config-v2-testnet.json", import.meta.url),
+    "utf8",
+  ),
+) as Record<string, unknown>;
+
+/** A deep-cloned, mutable copy of the raw mock document (the wire shape). */
+function rawDoc(): Record<string, any> {
+  return structuredClone(MOCK_TESTNET_CONFIG_RAW) as Record<string, any>;
+}
+
 const BASE_URL = "https://waterx.test/testnet.json";
+const ok = (body: unknown) => ({ ok: true, json: async () => body });
 
-describe("loadConfig validation", () => {
+describe("parseConfigDocument (strict v2 parse + required packages)", () => {
+  it("parses the real staging-v2 testnet document and asserts every required package", () => {
+    const cfg = parseConfigDocument(STAGING_V2_TESTNET, "TESTNET");
+    expect(cfg.network).toBe("testnet");
+    expect(cfg.schema_version).toBe(2);
+    for (const name of REQUIRED_PACKAGES) expect(cfg.packages[name].published_at).toMatch(/^0x/);
+    // Each rule block names its own package; the named entry must exist.
+    expect(cfg.packages[cfg.oracle_rules.waterx.package].published_at).toMatch(/^0x/);
+    expect(cfg.packages[cfg.oracle_rules.constant.package].published_at).toMatch(/^0x/);
+    // Object ids live under `objects.*`, never under `packages.*`.
+    expect(cfg.objects.perp.markets.BTCUSD?.market).toMatch(/^0x/);
+    expect(cfg.objects.oracle.aggregators.BTCUSD).toMatch(/^0x/);
+    expect(Object.keys(cfg.symbols).length).toBeGreaterThan(0);
+  });
+
+  it("the parsed document IS the config: no legacy per-package object ids are synthesized", () => {
+    const cfg = parseConfigDocument(STAGING_V2_TESTNET, "TESTNET");
+    expect(Object.keys(cfg.packages.waterx_perp).sort()).toEqual(
+      ["original_id", "published_at", "upgrade_capability", "version"].filter(
+        (k) => k in cfg.packages.waterx_perp,
+      ),
+    );
+  });
+
+  it("rejects a network mismatch via the strict parser", () => {
+    expect(() => parseConfigDocument(STAGING_V2_TESTNET, "MAINNET")).toThrow(/network/i);
+  });
+
+  it("rejects a legacy (schema_version-less, per-package object id) document outright", () => {
+    const legacy = {
+      network: "testnet",
+      packages: {
+        bucket_framework: MOCK_TESTNET_CONFIG.packages.bucket_framework,
+        waterx_account: {
+          ...MOCK_TESTNET_CONFIG.packages.waterx_account,
+          account_registry: MOCK_TESTNET_CONFIG.objects.account.registry,
+        },
+      },
+    };
+    expect(() => parseConfigDocument(legacy, "TESTNET")).toThrow();
+  });
+
+  it("rejects a document missing a package the SDK reads unconditionally, naming it", () => {
+    const doc = rawDoc();
+    delete doc.packages.wlp;
+    delete doc.packages.waterx_prediction_gift;
+    expect(() => parseConfigDocument(doc, "TESTNET")).toThrow(
+      /packages\.\{wlp, waterx_prediction_gift\} missing/,
+    );
+  });
+
+  it("rejects a rule block whose named package entry is absent", () => {
+    const doc = rawDoc();
+    delete doc.packages.pyth_lazer_rule;
+    expect(() => parseConfigDocument(doc, "TESTNET")).toThrow(/pyth_lazer_rule/);
+  });
+
+  it("does not require the Lazer package when the deployment carries no pyth_lazer block", () => {
+    const doc = rawDoc();
+    delete doc.oracle_rules.pyth_lazer;
+    delete doc.packages.pyth_lazer_rule;
+    const cfg = parseConfigDocument(doc, "TESTNET");
+    expect(cfg.oracle_rules.pyth_lazer).toBeUndefined();
+  });
+
+  it("assertRequiredPackages narrows an already-parsed document in place", () => {
+    const parsed = structuredClone(MOCK_TESTNET_CONFIG);
+    expect(() => assertRequiredPackages(parsed)).not.toThrow();
+  });
+});
+
+describe("loadConfig", () => {
   beforeEach(() => {
     clearConfigCache();
   });
@@ -24,7 +117,7 @@ describe("loadConfig validation", () => {
   });
 
   it("fetches the waterxConfigUrl as-is", async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => MOCK_TESTNET_CONFIG }));
+    const fetchMock = vi.fn(async () => ok(MOCK_TESTNET_CONFIG_RAW));
     await loadConfig("TESTNET", {
       waterxConfigUrl: "https://explicit.test/opts.json",
       fetchImpl: fetchMock as unknown as typeof fetch,
@@ -47,133 +140,57 @@ describe("loadConfig validation", () => {
     await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(/HTTP 404/);
   });
 
-  it("throws when network mismatches", async () => {
+  it("throws when the document declares another network", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        json: async () => ({ ...MOCK_TESTNET_CONFIG, network: "mainnet" }),
-      })),
+      vi.fn(async () => ok({ ...rawDoc(), network: "mainnet" })),
+    );
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(/network/i);
+  });
+
+  it("throws on a legacy document (no schema_version) — there is no cast-and-hope path", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ok({ network: "testnet", packages: MOCK_TESTNET_CONFIG.packages })),
+    );
+    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow();
+  });
+
+  it("throws when a required package is missing", async () => {
+    const doc = rawDoc();
+    delete doc.packages.waterx_perp;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ok(doc)),
     );
     await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
-      /declares network=mainnet/,
+      /packages\.\{waterx_perp\} missing/,
     );
   });
 
-  it("accepts credit-only config shape (no waterx_perp)", async () => {
-    const creditOnly = {
-      network: "testnet",
-      packages: {
-        bucket_framework: MOCK_TESTNET_CONFIG.packages.bucket_framework,
-        waterx_account: MOCK_TESTNET_CONFIG.packages.waterx_account,
-        waterx_credit: MOCK_TESTNET_CONFIG.packages.waterx_credit,
-      },
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => creditOnly })),
-    );
-    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
-    expect(cfg.packages.waterx_credit?.credit_registry).toMatch(/^0x/);
-    expect(cfg.packages.waterx_perp).toBeUndefined();
-  });
-
-  it("throws when config has no packages object", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => ({ network: "testnet" }) })),
-    );
-    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
-      /has no packages object/,
-    );
-  });
-
-  it("accepts account-only minimal config (no perp, no credit)", async () => {
-    const minimal = {
-      network: "testnet",
-      packages: {
-        bucket_framework: MOCK_TESTNET_CONFIG.packages.bucket_framework,
-        waterx_account: MOCK_TESTNET_CONFIG.packages.waterx_account,
-      },
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => minimal })),
-    );
-    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
-    expect(cfg.packages.waterx_account.account_registry).toMatch(/^0x/);
-    expect(cfg.packages.waterx_perp).toBeUndefined();
-    expect(cfg.packages.waterx_credit).toBeUndefined();
-  });
-
-  it("throws when required package missing published_at", async () => {
-    const bad = structuredClone(MOCK_TESTNET_CONFIG);
-    (bad.packages.waterx_perp as { published_at: string }).published_at = "";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => bad })),
-    );
-    await expect(loadConfig("TESTNET", { waterxConfigUrl: BASE_URL })).rejects.toThrow(
-      /missing packages\.waterx_perp/,
-    );
-  });
-
-  it("a perp config needs NO oracle-rule package blocks (no rule is required by presence in 5.0.0)", async () => {
-    // Strip every optional rule block — which rules run is the client's
-    // `oracleSource` option, never the config's package set.
-    const bare = structuredClone(MOCK_TESTNET_CONFIG);
-    delete bare.packages.pyth_lazer_rule;
-    delete bare.packages.waterx_rule;
-    delete bare.packages.constant_rule;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => bare })),
-    );
-    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
-    expect(cfg.packages.waterx_perp.published_at).toMatch(/^0x/);
-  });
-
-  it("a config still carrying the RETIRED pyth_rule / pyth_sponsor_rule blocks loads unchanged", async () => {
-    // The schema dropped both types in 5.0.0; extra JSON keys are ignored, so
-    // deployments need no republish before upgrading.
-    const withRetired = structuredClone(MOCK_TESTNET_CONFIG) as unknown as {
-      packages: Record<string, unknown>;
-    };
-    withRetired.packages.pyth_rule = { published_at: "0xdead", config: "0xbeef", feeds: {} };
-    withRetired.packages.pyth_sponsor_rule = { published_at: "0xdead", pyth_sponsor: "0xbeef" };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ ok: true, json: async () => withRetired })),
-    );
-    const cfg = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL });
-    expect(cfg.packages.waterx_perp.published_at).toMatch(/^0x/);
-  });
-
-  it("fetches and parses canonical-shaped testnet JSON", async () => {
+  it("returns the parsed document (unknown fields stripped, every read under objects.*)", async () => {
+    const doc = rawDoc();
+    doc.some_future_field = { x: 1 };
     const cfg = await loadConfig("TESTNET", {
-      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
-      fetchImpl: (async () => ({
-        ok: true,
-        json: async () => MOCK_TESTNET_CONFIG,
-      })) as unknown as typeof fetch,
+      waterxConfigUrl: BASE_URL,
+      fetchImpl: (async () => ok(doc)) as unknown as typeof fetch,
     });
-    expect(cfg.network).toBe("testnet");
-    expect(cfg.packages.wlp?.published_at).toMatch(/^0x/);
-    expect(cfg.packages.waterx_perp.markets.BTCUSD).toBeDefined();
+    expect(cfg).toEqual(MOCK_TESTNET_CONFIG);
+    expect((cfg as Record<string, unknown>).some_future_field).toBeUndefined();
+    expect(cfg.objects.perp.markets.BTCUSD).toBeDefined();
   });
 
   it("retries a transient HTTP failure (503) then succeeds", async () => {
     // Fake timers so the real 250ms + 500ms retry backoff doesn't cost wall
-    // clock in the suite (precedent: wormhole.test.ts's waitForVaa polling
-    // tests) — `advanceTimersByTimeAsync` also pumps the microtask queue
-    // between timer advances, so the mocked fetch's own promise resolutions
-    // still interleave correctly.
+    // clock in the suite — `advanceTimersByTimeAsync` also pumps the microtask
+    // queue between timer advances, so the mocked fetch's own promise
+    // resolutions still interleave correctly.
     vi.useFakeTimers();
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
       if (calls < 3) return { ok: false, status: 503, json: async () => ({}) };
-      return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      return ok(MOCK_TESTNET_CONFIG_RAW);
     }) as unknown as typeof fetch;
 
     const pending = loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
@@ -189,7 +206,7 @@ describe("loadConfig validation", () => {
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
-      if (calls === 1) return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      if (calls === 1) return ok(MOCK_TESTNET_CONFIG_RAW);
       return { ok: false, status: 503, json: async () => ({}) };
     }) as unknown as typeof fetch;
 
@@ -198,7 +215,7 @@ describe("loadConfig validation", () => {
     await vi.advanceTimersByTimeAsync(1_000); // covers the fallback call's own 250ms + 500ms backoff
     const second = await pendingSecond;
 
-    expect(second).toEqual(first);
+    expect(second).toBe(first);
     // The fallback call still exhausted its own 3 attempts (calls 2-4)
     // before falling back — proves it's a real retry-then-fallback, not a
     // silent skip of the refresh.
@@ -209,9 +226,7 @@ describe("loadConfig validation", () => {
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
-      return calls === 1
-        ? { ok: true, json: async () => MOCK_TESTNET_CONFIG }
-        : { ok: true, json: async () => ({ ...MOCK_TESTNET_CONFIG, network: "mainnet" }) };
+      return calls === 1 ? ok(MOCK_TESTNET_CONFIG_RAW) : ok({ ...rawDoc(), network: "mainnet" });
     }) as unknown as typeof fetch;
 
     const testnet = await loadConfig("TESTNET", {
@@ -239,7 +254,7 @@ describe("loadConfig validation", () => {
       calls += 1;
       // Testnet load (call 1) succeeds and is cached; every mainnet call fails.
       return calls === 1
-        ? { ok: true, json: async () => MOCK_TESTNET_CONFIG }
+        ? ok(MOCK_TESTNET_CONFIG_RAW)
         : { ok: false, status: 503, json: async () => ({}) };
     }) as unknown as typeof fetch;
 
@@ -274,12 +289,12 @@ describe("loadConfig validation", () => {
     // status — it must not crash a caller that already has a working
     // config for this URL. `.json()` throwing is NOT a retryable condition
     // (fetchWithPolicy already returned successfully; parsing is loadConfig's
-    // own concern), so this exercises the json()/validateConfig try/catch
-    // directly, not the retry loop.
+    // own concern), so this exercises the json()/parse try/catch directly,
+    // not the retry loop.
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
-      if (calls === 1) return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      if (calls === 1) return ok(MOCK_TESTNET_CONFIG_RAW);
       return {
         ok: true,
         json: async () => {
@@ -291,7 +306,7 @@ describe("loadConfig validation", () => {
     const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
     const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
 
-    expect(second).toEqual(first);
+    expect(second).toBe(first);
     expect(calls).toBe(2);
   });
 
@@ -309,19 +324,19 @@ describe("loadConfig validation", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("returns the last-known-good config when a refresh's 200 response fails validateConfig", async () => {
+  it("returns the last-known-good config when a refresh's 200 response fails the strict parse", async () => {
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
-      if (calls === 1) return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
-      // A 200 with a shape validateConfig rejects (no packages object).
-      return { ok: true, json: async () => ({ network: "testnet" }) };
+      if (calls === 1) return ok(MOCK_TESTNET_CONFIG_RAW);
+      // A 200 with a shape the parser rejects (no packages / objects at all).
+      return ok({ schema_version: 2, network: "testnet" });
     }) as unknown as typeof fetch;
 
     const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
     const second = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
 
-    expect(second).toEqual(first);
+    expect(second).toBe(first);
     expect(calls).toBe(2);
   });
 
@@ -329,23 +344,15 @@ describe("loadConfig validation", () => {
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
-      return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      return ok(MOCK_TESTNET_CONFIG_RAW);
     }) as unknown as typeof fetch;
-    await loadConfig("TESTNET", {
-      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
-      cache: true,
-      fetchImpl,
-    });
-    await loadConfig("TESTNET", {
-      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
-      cache: true,
-      fetchImpl,
-    });
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, cache: true, fetchImpl });
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, cache: true, fetchImpl });
     expect(calls).toBe(1);
   });
 
   it("cache: true reads an entry populated by an earlier cache: false load (unified cache map)", async () => {
-    // The config cache is now a single module map written unconditionally on
+    // The config cache is a single module map written unconditionally on
     // every successful load; `opts.cache` only gates the early-return READ.
     // So a `cache: false` (default) call still populates the map, and a
     // later `cache: true` call for the same URL hits that entry instead of
@@ -354,20 +361,17 @@ describe("loadConfig validation", () => {
     let calls = 0;
     const fetchImpl = (async () => {
       calls += 1;
-      return { ok: true, json: async () => MOCK_TESTNET_CONFIG };
+      return ok(MOCK_TESTNET_CONFIG_RAW);
     }) as unknown as typeof fetch;
 
-    const first = await loadConfig("TESTNET", {
-      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
-      fetchImpl,
-    });
+    const first = await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
     const second = await loadConfig("TESTNET", {
-      waterxConfigUrl: MOCK_TESTNET_CONFIG_URL,
+      waterxConfigUrl: BASE_URL,
       cache: true,
       fetchImpl,
     });
 
-    expect(second).toEqual(first);
+    expect(second).toBe(first);
     expect(calls).toBe(1);
   });
 });

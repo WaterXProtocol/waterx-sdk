@@ -182,7 +182,7 @@ async function main(): Promise<void> {
       consumeDepositDirect({
         package: client.config.packages.waterx_account.published_at,
         arguments: {
-          registry: tx.object(client.config.packages.waterx_account.account_registry),
+          registry: tx.object(client.config.objects.account.registry),
           req: req as unknown as TransactionArgument,
         },
         typeArguments: [usdcType],

@@ -60,13 +60,4 @@ describe("getBridgeFee", () => {
     expect(fee.feeAmount).toBe(200n);
     expect(fee.netAmount).toBe(0n);
   });
-
-  it("throws when withdrawal_queue is not deployed on the network", async () => {
-    const noQueue = createUnitTestClient();
-    delete noQueue.config.packages.withdrawal_queue;
-
-    await expect(getBridgeFee(noQueue, { evmDestinationChain: CHAIN, amount: 1n })).rejects.toThrow(
-      /not deployed/,
-    );
-  });
 });

@@ -15,12 +15,10 @@ import {
   routeNative,
   routeWormhole,
 } from "../../../src/account/funding/credit.ts";
-import { PerpClient } from "../../../src/perp/client.ts";
 import {
   MOCK_CREDIT_TYPE,
   MOCK_CUSTODY_ASSET_TYPE,
-  MOCK_TESTNET_CONFIG,
-} from "../helpers/fixtures/mock-testnet-config.ts";
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 import {
   PTB_DUMMY_ACCOUNT_ID,
   PTB_DUMMY_DEPOSIT_COIN,
@@ -195,97 +193,5 @@ describe("user/credit — PTB builders (configured pipeline)", () => {
       creditType: MOCK_CREDIT_TYPE,
     });
     expect(txMint.getData().commands?.length).toBe(2);
-  });
-});
-
-describe("user/credit — missing config guards", () => {
-  function clientMissing(partial: Partial<typeof MOCK_TESTNET_CONFIG.packages>): PerpClient {
-    const cfg = structuredClone(MOCK_TESTNET_CONFIG);
-    Object.assign(cfg.packages, partial);
-    return new PerpClient("TESTNET", cfg, {
-      grpcUrl: "https://fullnode.test.invalid:443",
-    });
-  }
-
-  const tx = () => new Transaction();
-  const coin = (t: Transaction) => t.object(PTB_DUMMY_DEPOSIT_COIN);
-
-  it("redeemVaa requires initialized bridge", () => {
-    const c = clientMissing({
-      wormhole_bridge: {
-        ...MOCK_TESTNET_CONFIG.packages.wormhole_bridge!,
-        bridge: undefined,
-      },
-    });
-    expect(() => redeemVaa(c, tx(), { vaaBytes: [1] })).toThrow(/bridge missing/);
-  });
-
-  it("routeWormhole requires withdrawal_queue package", () => {
-    const c = clientMissing({ withdrawal_queue: undefined });
-    expect(() =>
-      routeWormhole(c, tx(), {
-        evmDestinationChain: 1,
-        evmRecipient: EVM_ADDR,
-        evmToken: EVM_ADDR_2,
-      }),
-    ).toThrow(/withdrawal_queue not configured/);
-  });
-
-  it("enqueueWithdrawal requires queue object id", () => {
-    const c = clientMissing({
-      withdrawal_queue: {
-        published_at: MOCK_TESTNET_CONFIG.packages.withdrawal_queue!.published_at,
-      },
-    });
-    const t = tx();
-    const route = routeNative(c, t, { assetType: MOCK_CUSTODY_ASSET_TYPE });
-    const wreq = requestCreditWithdraw(c, t, {
-      accountId,
-      amount: 1n,
-      recipient: accountId,
-      route,
-    });
-    expect(() => enqueueWithdrawal(c, t, { withdrawRequest: wreq })).toThrow(
-      /withdrawal_queue\.queue missing/,
-    );
-  });
-
-  it("custodyMint requires native_custody vault", () => {
-    const c = clientMissing({ native_custody: undefined });
-    const t = tx();
-    expect(() =>
-      custodyMint(c, t, {
-        accountId,
-        assetCoin: coin(t),
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-      }),
-    ).toThrow(/native_custody not configured/);
-  });
-
-  it("executeWithdrawalNative requires custody vault id", () => {
-    const c = clientMissing({
-      native_custody: {
-        published_at: MOCK_TESTNET_CONFIG.packages.native_custody!.published_at,
-        assets: MOCK_TESTNET_CONFIG.packages.native_custody!.assets,
-      },
-    });
-    expect(() =>
-      executeWithdrawalNative(c, tx(), {
-        key: 1n,
-        assetType: MOCK_CUSTODY_ASSET_TYPE,
-      }),
-    ).toThrow(/native_custody\.vault missing/);
-  });
-
-  it("redeemVaa requires waterx_credit.credit_registry", () => {
-    const c = clientMissing({
-      waterx_credit: {
-        published_at: MOCK_TESTNET_CONFIG.packages.waterx_credit!.published_at,
-        credit_type: MOCK_CREDIT_TYPE,
-      },
-    });
-    expect(() => redeemVaa(c, tx(), { vaaBytes: [1] })).toThrow(
-      /waterx_credit\.credit_registry missing/,
-    );
   });
 });

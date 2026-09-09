@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getMarketTickers } from "../../../src/utils/config.ts";
-import { MOCK_TESTNET_CONFIG } from "../helpers/fixtures/mock-testnet-config.ts";
+import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.ts";
 
 describe("config utils", () => {
   it("getMarketTickers returns waterx_perp market tickers", () => {
@@ -12,8 +12,8 @@ describe("config utils", () => {
 
   it("returns empty arrays when maps are empty", () => {
     const bare = structuredClone(MOCK_TESTNET_CONFIG);
-    bare.packages.waterx_perp.markets = {};
-    bare.packages.wlp!.pool_tokens = {};
+    bare.objects.perp.markets = {};
+    bare.objects.wlp.pool_tokens = {};
     expect(getMarketTickers(bare)).toEqual([]);
   });
 });

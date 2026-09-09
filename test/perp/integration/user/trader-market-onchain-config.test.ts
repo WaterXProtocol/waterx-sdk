@@ -31,7 +31,7 @@ describe("Integration: on-chain MarketData smoke (read-only)", () => {
     expect(uniq.size).toBeGreaterThan(0);
     let checked = 0;
     for (const ticker of uniq) {
-      if (!(ticker in (client.config.packages.waterx_perp.markets ?? {}))) continue;
+      if (!(ticker in client.config.objects.perp.markets)) continue;
       const md = await getMarketData(client, { ticker });
       saneMarket(md, ticker);
       checked++;

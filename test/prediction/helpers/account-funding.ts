@@ -58,38 +58,22 @@ export async function listBestWalletCoin(
   return best;
 }
 
-/** MOCK_USDC type from `packages.native_custody.assets` (testnet PSM backing). */
+/** MOCK_USDC type from `objects.custody.assets` (testnet PSM backing). */
 export function resolveMockUsdcCoinType(client: PredictClient): string | undefined {
-  const native = client.config.packages.native_custody as
-    | { assets?: { name?: string; type?: string }[] }
-    | undefined;
-  const asset = native?.assets?.find(
-    (a) => a.name === "MOCK_USDC" || a.type?.includes("::mock_usdc::"),
+  const asset = client.config.objects.custody.assets.find(
+    (a) => a.name === "MOCK_USDC" || a.type.includes("::mock_usdc::"),
   );
   return asset?.type;
 }
 
-function resolveNativeCustodyPackageId(client: PredictClient): string | undefined {
-  const native = client.config.packages.native_custody as { published_at?: string } | undefined;
-  return native?.published_at;
-}
-
-function resolveCustodyVaultId(client: PredictClient): string | undefined {
-  return (client.config.packages.native_custody as { vault?: string } | undefined)?.vault;
-}
-
-function resolveCreditRegistryId(client: PredictClient): string | undefined {
-  return (client.config.packages.waterx_credit as { credit_registry?: string } | undefined)
-    ?.credit_registry;
-}
-
+/**
+ * PSM path readiness. The custody package, its vault, and the credit registry
+ * are schema-required in the canonical document, so the only
+ * deployment-dependent piece is whether a MOCK_USDC backing asset is
+ * registered on the vault.
+ */
 export function psmConfigReady(client: PredictClient): boolean {
-  return Boolean(
-    resolveNativeCustodyPackageId(client) &&
-    resolveCustodyVaultId(client) &&
-    resolveCreditRegistryId(client) &&
-    resolveMockUsdcCoinType(client),
-  );
+  return resolveMockUsdcCoinType(client) !== undefined;
 }
 
 export interface WalletUsdDepositParams {
@@ -116,21 +100,22 @@ export interface PsmDepositParams {
 
 /**
  * PSM path: MOCK_USDC → `custody_vault::mint` → `consume_deposit_direct` into the registry account.
- * Testnet-only when `native_custody` + `waterx_credit` are present in waterx-config.
+ * Testnet-only: needs a MOCK_USDC backing asset registered on the custody vault
+ * (`objects.custody.assets`) in waterx-config.
  */
 export function appendPsmDeposit(
   client: PredictClient,
   tx: Transaction,
   params: PsmDepositParams,
 ): void {
-  const custodyPkg = resolveNativeCustodyPackageId(client);
-  const vault = resolveCustodyVaultId(client);
-  const creditRegistry = resolveCreditRegistryId(client);
+  const custodyPkg = client.config.packages.native_custody.published_at;
+  const vault = client.config.objects.custody.vault;
+  const creditRegistry = client.config.objects.credit.registry;
   const mockUsdc = resolveMockUsdcCoinType(client);
   const usd = client.settlementCoinType();
-  if (!custodyPkg || !vault || !creditRegistry || !mockUsdc) {
+  if (!mockUsdc) {
     throw new Error(
-      "PSM deposit requires packages.native_custody and packages.waterx_credit in waterx-config",
+      "PSM deposit requires a MOCK_USDC asset in objects.custody.assets of waterx-config",
     );
   }
 

@@ -14,11 +14,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork, resolveE2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
-  creditPipelineSkipReason,
   CUSTODY_SIMULATE_AMOUNT,
   custodyWxaSkipReason,
   e2eSimulateGasBudget,
-  isCreditPipelineConfigured,
+  NO_CUSTODY_ASSET_SKIP_REASON,
+  primaryCustodyAssetType,
   resolveCustodyWxaRow,
   UNREGISTERED_CUSTODY_ASSET_TYPE,
 } from "../helpers/e2e/e2e-custody.ts";
@@ -32,10 +32,8 @@ import {
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { selectWalletCoinsCoveringAmount } from "../integration/helpers/account-bootstrap.ts";
 
-const creditPipeline = isCreditPipelineConfigured(client);
-
-describe.skipIf(!creditPipeline)(`custody (${e2eNetwork})`, () => {
-  const assets = creditPipeline ? client.getNativeAssets() : [];
+describe(`custody (${e2eNetwork})`, () => {
+  const assets = client.config.objects.custody.assets;
   const primaryAsset = assets[0]?.type;
 
   it("getCustodyVaultData reads creditSupply", async () => {
@@ -85,9 +83,9 @@ describe.skipIf(!creditPipeline)(`custody (${e2eNetwork})`, () => {
   });
 });
 
-describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => {
+describe(`custody stateful mint (${e2eNetwork})`, () => {
   let wxa: { accountId: string; owner: string } | null;
-  const assetType = client.getNativeAssets()[0]?.type;
+  const assetType = primaryCustodyAssetType(client);
 
   beforeAll(async () => {
     wxa = await resolveCustodyWxaRow(client);
@@ -100,7 +98,7 @@ describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => 
       return;
     }
     if (!assetType) {
-      ctx.skip(creditPipelineSkipReason());
+      ctx.skip(NO_CUSTODY_ASSET_SKIP_REASON);
       return;
     }
 
@@ -134,9 +132,9 @@ describe.skipIf(!creditPipeline)(`custody stateful mint (${e2eNetwork})`, () => 
   }, 240_000);
 });
 
-describe.skipIf(!creditPipeline)(`custody negative simulate (${e2eNetwork})`, () => {
+describe(`custody negative simulate (${e2eNetwork})`, () => {
   let wxa: { accountId: string; owner: string } | null;
-  const assetType = client.getNativeAssets()[0]?.type;
+  const assetType = primaryCustodyAssetType(client);
 
   beforeAll(async () => {
     wxa = await resolveCustodyWxaRow(client);
@@ -204,7 +202,7 @@ describe.skipIf(!creditPipeline)(`custody negative simulate (${e2eNetwork})`, ()
   }, 240_000);
 });
 
-describe.skipIf(!creditPipeline)(`custody buildRedeemVaaTx (${e2eNetwork})`, () => {
+describe(`custody buildRedeemVaaTx (${e2eNetwork})`, () => {
   it("buildRedeemVaaTx is exported alongside custody mint path", () => {
     const tx = buildRedeemVaaTx(client, { vaaBytes: [0x01] });
     expect(tx.getData().commands?.length).toBe(2);

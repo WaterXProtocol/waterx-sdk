@@ -119,7 +119,6 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
         collateralAmount: 1_000_000n,
       },
       skipOraclePriceRefresh: true,
-      useSponsor: false,
     };
     let legacyTx;
     let facadeTx;
@@ -153,7 +152,6 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
         collateralAmount: 1_000_000n,
       },
       skipOraclePriceRefresh: false,
-      useSponsor: true,
     };
     let facadeTx;
     try {

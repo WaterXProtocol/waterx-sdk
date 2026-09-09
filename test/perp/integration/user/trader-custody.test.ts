@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { mintCreditToAccount } from "../../../../src/account/funding/custody.ts";
 import { getAccountBalance } from "../../../../src/perp/fetch.ts";
-import { isCreditPipelineConfigured } from "../../helpers/e2e/e2e-custody.ts";
+import { primaryCustodyAssetType } from "../../helpers/e2e/e2e-custody.ts";
 import {
   ensureUserAccountForIntegration,
   selectWalletCoinsCoveringAmount,
@@ -34,8 +34,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
 
     beforeAll(async () => {
       await clientInit();
-      if (!isCreditPipelineConfigured(client)) return;
-      assetType = client.getNativeAssets()[0]?.type ?? "";
+      assetType = primaryCustodyAssetType(client) ?? "";
       creditType = client.creditType();
       const trader = loadIntegrationTraderKeypair();
       owner = trader.getPublicKey().toSuiAddress();
@@ -44,10 +43,6 @@ describe.skipIf(!isIntegrationTraderConfigured())(
 
     it("mints CREDIT into the integration wxa account from wallet backing coin", async (ctx) => {
       const trader = loadIntegrationTraderKeypair();
-      if (!isCreditPipelineConfigured(client)) {
-        ctx.skip("waterx_credit / native_custody not in deployment config");
-        return;
-      }
       if (!assetType) {
         ctx.skip("No native custody backing asset in config");
         return;

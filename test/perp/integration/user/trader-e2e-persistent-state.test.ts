@@ -20,9 +20,7 @@ describe.skipIf(!isIntegrationTraderConfigured())(
 
     beforeAll(async () => {
       await clientInit();
-      configuredTickers = e2ePersistentPerpTickersForClient(
-        client.config.packages.waterx_perp.markets ?? {},
-      );
+      configuredTickers = e2ePersistentPerpTickersForClient(client.config.objects.perp.markets);
     }, 180_000);
 
     it("runE2ePersistentPreflight seeds keeper slots and wxa WLP", async () => {

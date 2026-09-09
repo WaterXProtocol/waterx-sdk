@@ -1,22 +1,23 @@
 import type { Transaction } from "@mysten/sui/transactions";
 
 import { BaseLineClient } from "../base-client.ts";
-import { loadConfig, type LoadConfigOptions, type WaterxPredictionConfig } from "./config.ts";
+import { loadConfig, type LoadConfigOptions, type WaterXConfig } from "../config.ts";
+import { ownEntry } from "../utils/record.ts";
 import type { Network } from "./constants.ts";
 
 export interface CreateClientOptions extends LoadConfigOptions {
   grpcUrl?: string;
-  /** Settlement alias in `packages.waterx_prediction.*` maps. Default: "USD". */
+  /** Settlement alias in the `objects.prediction.*` maps. Default: "USD". */
   settlement?: string;
 }
 
-export class PredictClient extends BaseLineClient<WaterxPredictionConfig> {
+export class PredictClient extends BaseLineClient {
   /** Default settlement alias for prediction registry lookups. */
   settlement: string;
 
   constructor(
     network: Network,
-    config: WaterxPredictionConfig,
+    config: WaterXConfig,
     opts: { grpcUrl?: string; settlement?: string } = {},
   ) {
     super(network, config, opts);
@@ -33,7 +34,7 @@ export class PredictClient extends BaseLineClient<WaterxPredictionConfig> {
 
   /**
    * Async factory: fetches the deployment config for `network` and returns
-   * a ready-to-use client. Pass `opts.cache=true` to memoize the JSON.
+   * a ready-to-use client. Pass `opts.cache=true` to memoize the document.
    */
   static async create(
     network: Network = "TESTNET",
@@ -72,59 +73,45 @@ export class PredictClient extends BaseLineClient<WaterxPredictionConfig> {
   }
 
   globalConfigId(): string {
-    return this.config.packages.waterx_prediction.global_config;
+    return this.config.objects.prediction.global_config;
   }
 
+  /** `objects.prediction.market_registries[settlement]`, throws if the alias is unknown. */
   marketRegistry(settlement = this.settlement): string {
-    return requireConfigValue(
-      this.config.packages.waterx_prediction.market_registries,
+    return requireAlias(
+      this.config.objects.prediction.market_registries,
       settlement,
-      `packages.waterx_prediction.market_registries.${settlement}`,
+      "objects.prediction.market_registries",
     );
   }
 
   accountRegistry(): string {
-    return this.config.packages.waterx_account.account_registry;
+    return this.config.objects.account.registry;
   }
 
+  /** `objects.prediction.settlement_coin_types[settlement]`, throws if the alias is unknown. */
   settlementCoinType(settlement = this.settlement): string {
-    return requireConfigValue(
-      this.config.packages.waterx_prediction.settlement_coin_types,
+    return requireAlias(
+      this.config.objects.prediction.settlement_coin_types,
       settlement,
-      `packages.waterx_prediction.settlement_coin_types.${settlement}`,
+      "objects.prediction.settlement_coin_types",
     );
   }
 
   predictionAdminCap(): string {
-    return requireConfigValue(
-      this.config.packages.waterx_prediction,
-      "admin_cap",
-      "packages.waterx_prediction.admin_cap",
-    );
+    return this.config.objects.prediction.admin_cap;
   }
 
   waterxAccountAdminCap(): string {
-    return requireConfigValue(
-      this.config.packages.waterx_account,
-      "admin_cap",
-      "packages.waterx_account.admin_cap",
-    );
+    return this.config.objects.account.admin_cap;
   }
 
   waterxPredictionGiftPackageId(): string {
-    return requireConfigValue(
-      this.config.packages.waterx_prediction_gift,
-      "published_at",
-      "packages.waterx_prediction_gift.published_at",
-    );
+    return this.config.packages.waterx_prediction_gift.published_at;
   }
 
   claimableLinkConfigId(): string {
-    return requireConfigValue(
-      this.config.packages.waterx_prediction_gift,
-      "claimable_link_config",
-      "packages.waterx_prediction_gift.claimable_link_config",
-    );
+    return this.config.objects.prediction.claimable_link_config;
   }
 
   /**
@@ -134,40 +121,25 @@ export class PredictClient extends BaseLineClient<WaterxPredictionConfig> {
    * defining package's *original* id — it never advances across upgrades,
    * unlike `published_at`. So the off-chain `gift_id` derivation must key
    * on this, or it diverges from the on-chain `derive_gift_address` after
-   * the first upgrade. Falls back to `published_at` when `original_id` is
-   * absent (fresh deployments where the two are equal).
+   * the first upgrade.
    */
   waterxPredictionGiftTypeOriginId(): string {
-    const origin = (
-      this.config.packages.waterx_prediction_gift as { original_id?: string } | undefined
-    )?.original_id;
-    return typeof origin === "string" && origin.length > 0
-      ? origin
-      : this.waterxPredictionGiftPackageId();
+    return this.config.packages.waterx_prediction_gift.original_id;
   }
 
   waterxReferralPackageId(): string {
-    return requireConfigValue(
-      this.config.packages.waterx_referral,
-      "published_at",
-      "packages.waterx_referral.published_at",
-    );
+    return this.config.packages.waterx_referral.published_at;
   }
 
   referralTableId(): string {
-    return requireConfigValue(
-      this.config.packages.waterx_referral,
-      "referral_table",
-      "packages.waterx_referral.referral_table",
-    );
+    return this.config.objects.referral.table;
   }
 }
 
-function requireConfigValue(map: object | undefined, key: string, path: string): string {
-  const value = (map as Record<string, unknown> | undefined)?.[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`waterx-config missing ${path}`);
-  }
+/** Own-key read of a settlement-alias map, throwing with the config path on a miss. */
+function requireAlias(map: Record<string, string>, alias: string, path: string): string {
+  const value = ownEntry(map, alias);
+  if (value === undefined) throw new Error(`waterx-config missing ${path}.${alias}`);
   return value;
 }
 

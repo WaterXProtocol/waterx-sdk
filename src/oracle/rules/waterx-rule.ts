@@ -27,7 +27,7 @@
  *
  * Both collect entries are the dual-rule path: they feed `collector.symbol()`
  * WITHOUT aggregating, so a waterx-routed ticker composes onto the same
- * collector as Pyth/Supra (compose-then-aggregate). Their abort-vs-abstain
+ * collector as Lazer (compose-then-aggregate). Their abort-vs-abstain
  * disposition is identical: a config/integrity mismatch, a bad signature or a
  * signed timestamp AHEAD of the on-chain `Clock` ABORTS; a freshness miss
  * ABSTAINS so the other weighted rules cover a lagging TEE, and so does a
@@ -40,6 +40,7 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import type { WaterXConfig } from "../../config.ts";
 import type { Network } from "../../constants.ts";
 import {
   collectBatchLatest,
@@ -49,7 +50,6 @@ import {
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
 import { ownEntry } from "../../utils/record.ts";
-import type { WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -505,13 +505,24 @@ export function parseSignedLeaves(text: string): WaterxSignedLeaf[] {
   });
 }
 
-/** The `waterx_rule` deployment entry; throws when the config carries none. */
-function requireWaterxPackage(host: OracleHost): WaterxRulePackage {
-  const entry = host.config.packages.waterx_rule;
-  if (!entry) {
-    throw new Error("waterx_rule package is not deployed in this config");
-  }
-  return entry;
+/**
+ * The `oracle_rules.waterx` block's on-chain objects + its package id. The
+ * block is schema-required, so there is no guard — a document without it
+ * never parses.
+ */
+function waterxRuleObjects(config: WaterXConfig): {
+  packageId: string;
+  config: string;
+  enclaveConfig: string;
+  enclave: string;
+} {
+  const rule = config.oracle_rules.waterx;
+  return {
+    packageId: config.packages[rule.package].published_at,
+    config: rule.rule_config_object,
+    enclaveConfig: rule.enclave.config,
+    enclave: rule.enclave.object,
+  };
 }
 
 /**
@@ -636,8 +647,8 @@ export type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
  * a version skew.
  *
  * A 404 can ALSO mean "unknown symbol" (the quote-center 404s a symbol missing
- * from its feed registry). That is config drift between this SDK's `feeds` and
- * the quote-center's registry, and the fallback surfaces it honestly: the
+ * from its feed registry). That is config drift between this SDK's `symbols`
+ * universe and the quote-center's registry, and the fallback surfaces it honestly: the
  * envelope route 404s on the same symbol, and its error names both attempts.
  *
  * Public seam (WL-2345): consumers holding per-symbol leaves (BE prefetch
@@ -817,8 +828,8 @@ export function feedWaterxRuleWithProof(
   collector: TransactionArgument,
   leaf: WaterxSignedLeaf,
 ): void {
-  const wr = requireWaterxPackage(host);
-  const pkg = wr.published_at;
+  const wr = waterxRuleObjects(host.config);
+  const pkg = wr.packageId;
 
   const item = newItemArg(tx, pkg, leaf);
   collectSingleWithProof({
@@ -826,7 +837,7 @@ export function feedWaterxRuleWithProof(
     arguments: {
       collector,
       config: tx.object(wr.config),
-      enclaveConfig: tx.object(wr.enclave_config),
+      enclaveConfig: tx.object(wr.enclaveConfig),
       enclave: tx.object(wr.enclave),
       timestampMs: leaf.signed_timestamp_ms,
       item,
@@ -863,8 +874,8 @@ export function feedWaterxRule(
   collector: TransactionArgument,
   envelope: WaterxSignedEnvelope,
 ): void {
-  const wr = requireWaterxPackage(host);
-  const pkg = wr.published_at;
+  const wr = waterxRuleObjects(host.config);
+  const pkg = wr.packageId;
 
   const payload = newBatchPayload({ package: pkg })(tx);
   for (const item of envelope.payload.items) {
@@ -877,7 +888,7 @@ export function feedWaterxRule(
     arguments: {
       collector,
       config: tx.object(wr.config),
-      enclaveConfig: tx.object(wr.enclave_config),
+      enclaveConfig: tx.object(wr.enclaveConfig),
       enclave: tx.object(wr.enclave),
       timestampMs: envelope.timestamp_ms,
       payload,
@@ -920,7 +931,7 @@ export async function pullWaterxQuotes(
 
 /**
  * THE quote-center pull — the one pipeline both coverage policies share:
- * package guard → own-key feeds partition → leaf route (default) → batch
+ * own-key `symbols` partition → leaf route (default) → batch
  * envelope only when this quote-center has no leaf route (see
  * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
  * why nothing else falls back).
@@ -940,22 +951,19 @@ async function pullWaterxData(
   tickers: string[],
   coverage: "strict" | "partial",
 ): Promise<{ data: RuleUpdateData; missing: string[] }> {
-  // Package-level check first: a config without the deployment must say so,
-  // not fail per ticker as if only that feed were missing.
-  const { feeds } = requireWaterxPackage(host);
-  // One partition pass, own-keys-only: a prototype-key ticker ("toString")
-  // must read as unlisted, not pass as an inherited Function and reach the
-  // network.
+  // One partition pass over the `symbols` universe, own-keys-only: a
+  // prototype-key ticker ("toString") must read as unlisted, not pass as an
+  // inherited Function and reach the network.
   const missing: string[] = [];
   const listed: string[] = [];
   for (const ticker of tickers) {
-    (ownEntry(feeds, ticker) === undefined ? missing : listed).push(ticker);
+    (ownEntry(host.config.symbols, ticker) === undefined ? missing : listed).push(ticker);
   }
   // Unlisted tickers never reach the network on EITHER policy — the
   // quote-center 404s a whole batch on one unknown symbol. Strict surfaces
   // the per-ticker message; partial just records the gap and pulls the rest.
   if (coverage === "strict" && missing.length > 0) {
-    throw new Error(`No waterx_rule feed listed for ticker: ${missing[0]}`);
+    throw new Error(`waterx_rule: ticker not in the symbols universe: ${missing[0]}`);
   }
   if (listed.length === 0) return { data: null, missing };
 
@@ -988,9 +996,9 @@ export const WaterxRule: PriceUpdateRule = {
   // No credential: the quote-center read surface is public (no `credential`
   // declared — see `PriceUpdateRule.credential`).
 
-  /** Tickers with a `waterx_rule.feeds` entry (keyed by oracle ticker). */
-  supportedTickers(host: OracleHost): string[] {
-    return Object.keys(host.config.packages.waterx_rule?.feeds ?? {});
+  /** Every ticker in the `symbols` universe — the quote-center serves the whole universe. */
+  supportedTickers(config: WaterXConfig): string[] {
+    return Object.keys(config.symbols);
   },
 
   /**
@@ -1090,7 +1098,7 @@ export const WaterxRule: PriceUpdateRule = {
  *   `aggregate.ts`'s uncarried-ticker throw (04117a1) still can't be reached
  *   by a payload that under-covers its group.
  * - `coverage: "partial"` — universe-prefetch semantics (a BE cache warming
- *   every known ticker at once): a ticker with no `waterx_rule.feeds` entry,
+ *   every known ticker at once): a ticker outside the `symbols` universe,
  *   or one the quote-center response does not serve, lands in `missing`
  *   instead of throwing, and `data` covers the rest. On the leaf route the
  *   payload is the covering leaf SUBSET; on the envelope route the envelope

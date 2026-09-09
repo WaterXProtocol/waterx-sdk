@@ -18,7 +18,7 @@ import {
 } from "../helpers/e2e/simulate-assertions.ts";
 import { discoverStakingRewarderTypes } from "../helpers/e2e/staking-rewarders.ts";
 
-const stakingReady = Boolean(client.config.packages.waterx_staking?.pools?.WLP);
+const stakingReady = Boolean(client.config.objects.staking.pools.WLP);
 
 describe.skipIf(!stakingReady)(`staking (${e2eNetwork})`, () => {
   let wxa: DiscoveredWxaAccount | null;
