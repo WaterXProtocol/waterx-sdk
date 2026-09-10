@@ -95,7 +95,10 @@ v2 promotion, so consumers pin the `staging-v2` mirror until then (#93)._
   `WaterxPerpMarketEntry`, `WaterxStakingPackage`, `WlpPackage`, `MockCoinPackage`,
   `TestnetFaucetPackage`, `WaterxOraclePackage`, `WaterxRulePackage`, `WaterxRuleFeedEntry`,
   `PythLazerRulePackage`, `WaterxConstantRulePackage`, `ConstantFeedEntry`,
-  `SupraRulePackage`, `SupraFeedEntry`. `BaseLineClient` is no longer generic.
+  `SupraRulePackage`, `SupraFeedEntry`. `BaseLineClient` stays generic, but over
+  its CONFIG rather than a per-line config type: it is now
+  `BaseLineClient<Cfg extends WaterXConfig = WaterXConfig>`, and each line binds
+  its own (see `PerpLineConfig` / `PredictionLineConfig` below).
   Replacements: `WaterXConfig`, `PackageEntry`, `PerpMarketEntry`, `NativeCustodyAsset`,
   `RewarderEntry`, `RequiredPackage` from `src/config.ts`; `PythAccessConfig` /
   `PythFetchPolicy` / `WaterxAccessConfig` from `src/oracle/config.ts`.
