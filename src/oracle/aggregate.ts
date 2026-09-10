@@ -374,12 +374,13 @@ export async function refreshOraclePrices(
   await Promise.all(
     needsFetch.map(async (group) => {
       // Partial coverage where the rule offers it (divisible payloads): one
-      // unserved ticker must cost ITSELF, not the batch — the deployed shape
-      // is a constant-pinned symbol (USDCUSD) listed in the `symbols`
-      // universe that the BBO plane never signs, which under the strict arm
-      // failed every sibling ticker's refresh and reported nothing. The gap
-      // flows into the post-fetch partition below: constant-pinned tickers
-      // keep their constant-only collector, the rest land in `skipped`.
+      // unserved ticker must cost ITSELF, not the batch — under the strict
+      // arm a single symbol the quote-center declined to serve failed every
+      // sibling ticker's refresh and reported nothing. The gap flows into
+      // the post-fetch partition below, where the unserved ticker is skipped
+      // OUTRIGHT (see the `unserved` comment there for why no other leg —
+      // constant pin included — may stand in for a configured source the
+      // chain might weight).
       if (group.rule.fetchUpdateDataPartial) {
         const { data, missing } = await group.rule.fetchUpdateDataPartial(host, group.tickers);
         fetched.set(group.source, data);
@@ -389,36 +390,55 @@ export async function refreshOraclePrices(
       }
     }),
   );
-  // Shrink each group to what its source actually served, so the carry step's
-  // full-coverage invariant keeps holding and no unserved ticker is fed.
-  for (const group of groups) {
-    const missing = missingBySource.get(group.source);
-    if (missing) group.tickers = group.tickers.filter((t) => !missing.has(t));
+  // A ticker ANY of its listing sources failed to serve this round is
+  // UNSERVED — and unserved means SKIPPED OUTRIGHT, never "aggregate with
+  // whatever legs are left". The chain's per-ticker weight tables are
+  // invisible to this SDK, so a missing source cannot be proven unweighted —
+  // and aggregating a collector that lacks a weighted source aborts the
+  // WHOLE PTB in `aggregator::remove_outliers` (`EMissingPriceSource`); a
+  // constant pin does not waive that requirement either. An on-chain abort
+  // of the whole transaction is strictly worse than the skip, so the gap
+  // costs the ticker, never the batch and never the PTB. The ticker leaves
+  // EVERY group (an update leg for a ticker that gets no collector would be
+  // dead weight), and lands in `skipped` below even where another source —
+  // or a constant pin — could still feed it.
+  const unserved = new Set<string>();
+  for (const missing of missingBySource.values()) {
+    for (const ticker of missing) unserved.add(ticker);
+  }
+  if (unserved.size > 0) {
+    for (const group of groups) {
+      group.tickers = group.tickers.filter((t) => !unserved.has(t));
+    }
   }
   const dataByGroup = groups.map(
     (group, i) => cachedByGroup[i] ?? fetched.get(group.source) ?? null,
   );
 
-  // The refreshed/skipped partition, over POST-FETCH coverage. A ticker no
-  // listed source can price — or that every source which lists it failed to
-  // serve this round — is SKIPPED, not thrown on, and named in the returned
-  // summary. This is a broad primitive: callers sweep whole market lists
-  // through it, and losing 29 tickers because the 30th is unserved is the
-  // wrong trade — the 29 still need their prices on chain. Safety lives one
-  // level up, where the ACTION is known: the `build*Tx` composers fail closed
-  // on the tickers their specific call actually depends on
-  // (`assertTickersRefreshed` / `assertWlpPoolRefreshed` in
-  // `perp/tx-builders/common.ts`); a bare caller composing its own PTB reads
-  // `skipped` and decides for itself. A CONSTANT-PINNED ticker needs no
-  // update leg from any source, so it counts as refreshed with just its
-  // constant feed — which is also what absorbs the deployed USDCUSD shape
-  // above.
+  // The refreshed/skipped partition. A ticker no listed source can price, or
+  // that lost a listing source this round (`unserved`), is SKIPPED — not
+  // thrown on — and named in the returned summary. This is a broad
+  // primitive: callers sweep whole market lists through it, and losing 29
+  // tickers because the 30th is unserved is the wrong trade — the 29 still
+  // need their prices on chain. Safety lives one level up, where the ACTION
+  // is known: the `build*Tx` composers fail closed on the tickers their
+  // specific call actually depends on (`assertTickersRefreshed` /
+  // `assertWlpPoolRefreshed` in `perp/tx-builders/common.ts`); a bare caller
+  // composing its own PTB reads `skipped` and decides for itself.
+  //
+  // The constant-only exemption applies ONLY at the CONFIG level (a pinned
+  // ticker no source lists at all — the deployed USDCUSD shape, absent from
+  // the `symbols` universe): there the chain cannot weight a source this
+  // deployment doesn't carry, so a constant-only collector is sound. A
+  // FETCH-time gap gets no such exemption — the source is configured, the
+  // chain may well weight it, and only the skip is provably safe.
   const covered = new Set(groups.flatMap((group) => group.tickers));
-  const { servable: refreshed, unservable: skipped } = partitionServableTickers(
-    host,
-    tickers,
-    covered,
-  );
+  const configServable = new Set(partitionServableTickers(host, tickers, covered).servable);
+  const refreshed: string[] = [];
+  const skipped: string[] = [];
+  for (const ticker of tickers) {
+    (configServable.has(ticker) && !unserved.has(ticker) ? refreshed : skipped).push(ticker);
+  }
 
   // Phase 2 — build each group's update leg sequentially, in list order, so
   // PTB command order stays deterministic. The carry step below is an

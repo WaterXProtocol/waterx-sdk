@@ -29,7 +29,7 @@ import { PerpClient } from "../../../src/perp/client.ts";
 import { WaterXClient } from "../../../src/unified-client.ts";
 import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.ts";
 import { moveTargets } from "../helpers/fixtures/ptb-inspect.ts";
-import { SIG_HEX } from "../helpers/fixtures/quote-center.ts";
+import { mockLeafRoute, SIG_HEX } from "../helpers/fixtures/quote-center.ts";
 import { createUnitTestClient, withOracleSources } from "../helpers/test-client.ts";
 
 /** Fake `PriceUpdateRule` — supports exactly `supported`, no on-chain calls. */
@@ -216,6 +216,31 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
       expect(targets).not.toContain("waterx_rule::collect_single_with_proof");
       expect(targets).not.toContain("waterx_rule::collect_batch_latest");
     }
+  });
+
+  it("a ticker one source fails to serve is skipped OUTRIGHT — another source's data does not part-aggregate it", async () => {
+    // ETHUSD is listed by BOTH sources; the quote-center serves only BTCUSD.
+    // Aggregating ETHUSD with just the Lazer leg would abort the whole PTB
+    // on-chain if the aggregator also weights WaterxRule for it
+    // (`EMissingPriceSource`) — and the weight tables are invisible to the
+    // SDK, so the skip is the only provably safe answer. The served sibling
+    // still refreshes.
+    const client = createUnitTestClient({ oracleSource: ["pyth_lazer_rule", "waterx_rule"] });
+    client.pyth = { ...client.pyth, api_key: "unit-test-token" };
+    const fakeLazer = createFakeRule("pyth_lazer_rule", ["BTCUSD", "ETHUSD"]);
+    mockLeafRoute(["BTCUSD"]);
+
+    const tx = new Transaction();
+    await expect(
+      refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"], {
+        ruleOverrides: { pyth_lazer_rule: fakeLazer },
+      }),
+    ).resolves.toEqual({ refreshed: ["BTCUSD"], skipped: ["ETHUSD"] });
+
+    const targets = moveTargets(tx);
+    // One collector, one aggregate: ETHUSD got nothing — not even the Lazer
+    // leg its group could have supplied.
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(1);
   });
 
   it("a non-constant ticker with no feed is skipped, never rerouted to another source", async () => {
