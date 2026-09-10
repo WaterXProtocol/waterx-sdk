@@ -653,6 +653,70 @@ describe("WaterxRule — on-chain feed", () => {
   });
 });
 
+describe("refreshOraclePrices — partial quote-center coverage", () => {
+  it("a constant-pinned symbol the quote-center never serves costs itself nothing: the batch refreshes, the pin feeds constant-only", async () => {
+    // The deployed shape (Hermes repro): USDCUSD is listed in the `symbols`
+    // universe, so it lands in the waterx group — but it is constant-pinned
+    // and the BBO plane never signs it, so the quote-center omits it. Under
+    // strict-only fetching that failed the WHOLE batch (assertCoverage), so
+    // not even BTCUSD refreshed and nothing was reported skipped.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    client.config.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
+    mockLeafRoute(["BTCUSD"]);
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD", "USDCUSD"],
+      skipped: [],
+    });
+
+    const targets = moveTargets(tx);
+    // BTCUSD got its signed leaf; USDCUSD got a constant-only collector.
+    expect(targets).toContain("waterx_rule::collect_single_with_proof");
+    expect(targets).toContain("constant_rule::feed");
+    // Two collectors, two aggregates — nothing was silently dropped.
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
+  });
+
+  it("a non-constant unserved ticker is SKIPPED and reported; the served sibling still refreshes", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockLeafRoute(["BTCUSD"]);
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD"],
+      skipped: ["ETHUSD"],
+    });
+
+    const targets = moveTargets(tx);
+    // Exactly one collector: the skipped ticker gets none (an empty collector
+    // would abort EMissingPriceSource on-chain), and the ACTION-level guards
+    // (`assertTickersRefreshed`) are what fail closed on a ticker a specific
+    // call depends on.
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(1);
+    expect(targets).toContain("waterx_rule::collect_single_with_proof");
+  });
+
+  it("fetchUpdateDataPartial names the gap instead of throwing, and covers the rest", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockLeafRoute(["BTCUSD"]);
+    const { data, missing } = await WaterxRule.fetchUpdateDataPartial!(client, [
+      "BTCUSD",
+      "USDCUSD",
+    ]);
+    expect(missing).toEqual(["USDCUSD"]);
+    expect(data?.kind).toBe("waterx_rule");
+  });
+
+  it("the direct strict API is unchanged: fetchUpdateData still rejects a partial serve", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockLeafRoute(["BTCUSD"]);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "USDCUSD"])).rejects.toThrow(
+      /does not cover ticker\(s\): USDCUSD/,
+    );
+  });
+});
+
 describe("WaterxRule — routing", () => {
   it("refreshOraclePrices with oracleSource waterx_rule routes through the leaf path", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
@@ -709,6 +773,10 @@ describe("WaterxRule — routing", () => {
     const emptyLeaves: PriceUpdateRule = {
       ...WaterxRule,
       fetchUpdateData: async () => ({ kind: "waterx_rule", payload: { leaves: [] } }),
+      // The spread copies the real partial-coverage fetch, which the
+      // orchestrator PREFERS — cleared so the override's strict arm above is
+      // what actually feeds the carry step this test exercises.
+      fetchUpdateDataPartial: undefined,
     };
     const tx = new Transaction();
     await expect(

@@ -1003,6 +1003,21 @@ export const WaterxRule: PriceUpdateRule = {
   },
 
   /**
+   * The partial arm of {@link pullWaterxData}: what the quote-center serves is
+   * returned (narrowed per-symbol), what it does not — an unlisted ticker, or
+   * a listed one absent from this response, e.g. a constant-pinned symbol the
+   * BBO plane never signs — lands in `missing` instead of failing the batch.
+   * See `PriceUpdateRule.fetchUpdateDataPartial` for who acts on the gap.
+   */
+  async fetchUpdateDataPartial(
+    host: OracleHost,
+    tickers: string[],
+  ): Promise<{ data: RuleUpdateData; missing: string[] }> {
+    if (tickers.length === 0) return { data: null, missing: [] };
+    return pullWaterxData(host, tickers, "partial");
+  },
+
+  /**
    * Divisibility differs by variant, which is the whole reason this method
    * belongs to the rule and not to its consumers:
    *

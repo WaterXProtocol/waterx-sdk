@@ -237,6 +237,25 @@ export interface PriceUpdateRule {
   fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData>;
 
   /**
+   * Best-effort variant of {@link fetchUpdateData}, for rules whose payload is
+   * DIVISIBLE (per-symbol leaves): `data` covers what the source served and
+   * `missing` names every requested ticker it did not — instead of the strict
+   * arm's throw. {@link refreshOraclePrices} prefers this when present, so one
+   * unserved ticker cannot fail a whole batch: the gap flows into the
+   * summary's `skipped` (or a constant-only collector, for a pinned ticker)
+   * and the ACTION-level guards — `assertTickersRefreshed` and friends —
+   * decide whether the tickers a specific call depends on are all there.
+   *
+   * Deliberately optional: an INDIVISIBLE payload (Lazer's single signed
+   * update) has no meaningful partial serve, and its rule simply does not
+   * implement this.
+   */
+  fetchUpdateDataPartial?(
+    host: OracleHost,
+    tickers: string[],
+  ): Promise<{ data: RuleUpdateData; missing: string[] }>;
+
+  /**
    * Narrow a payload previously produced by {@link fetchUpdateData} — typically
    * for a superset of tickers (e.g. a consumer's whole-universe prefetch cache)
    * — down to exactly `tickers`, without any re-fetch. Each rule owns its

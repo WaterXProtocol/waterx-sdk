@@ -303,40 +303,26 @@ export async function refreshOraclePrices(
     })
     .filter((group) => group.tickers.length > 0);
 
-  // A ticker no listed source can price is SKIPPED, not thrown on, and named
-  // in the returned summary.
-  //
-  // This is a broad primitive: callers sweep whole market lists through it, and
-  // losing 29 tickers because the 30th is unconfigured is the wrong trade — the
-  // 29 still need their prices on chain. Safety lives one level up, where the
-  // ACTION is known: the `build*Tx` composers fail closed on the tickers their
-  // specific call actually depends on (`assertTickersRefreshed` /
-  // `assertWlpPoolRefreshed` in `perp/tx-builders/common.ts`). A bare
-  // `refreshOraclePrices` caller composing its own PTB reads `skipped` and
-  // decides for itself.
-  //
-  // Exemption: a CONSTANT-PINNED ticker needs no update leg from any source, so
-  // it counts as refreshed with just its constant feed.
-  //
-  // Pinning alone is now a safe exemption, where it once had to be narrowed to
-  // "constant-ONLY". A source is listed exactly when it serves at least one
-  // ticker (`deriveOracleSources` over `supportedTickers`), so a pinned ticker
-  // that any configured source ALSO serves is already in the fed set and gets
-  // that source's leg alongside the constant one. A constant-only collector is
+  // The constant-pin exemption the partition below applies: pinning alone is
+  // a safe exemption, where it once had to be narrowed to "constant-ONLY". A
+  // source is listed exactly when it serves at least one ticker
+  // (`deriveOracleSources` over `supportedTickers`), so a pinned ticker that
+  // any configured source ALSO serves is already in the fed set and gets that
+  // source's leg alongside the constant one. A constant-only collector is
   // therefore emitted only for a ticker no source in this config can serve —
-  // which is precisely the case the chain cannot weight to a source. The
-  // stricter test guarded a gap the v1 schema allowed (a rule carrying
-  // informational feeds while sitting outside the fed set) and that the
-  // consolidated document no longer expresses.
+  // or that every listing source failed to serve this round — which is
+  // precisely the case the chain cannot weight to a source. The stricter test
+  // guarded a gap the v1 schema allowed (a rule carrying informational feeds
+  // while sitting outside the fed set) and that the consolidated document no
+  // longer expresses.
   //
   // Catches a MISSING feed only; a present-but-WRONG feed id is deliberately
   // left to abort on-chain at dry-run.
-  const covered = new Set(groups.flatMap((group) => group.tickers));
-  const { servable: refreshed, unservable: skipped } = partitionServableTickers(
-    host,
-    tickers,
-    covered,
-  );
+  //
+  // (The refreshed/skipped partition itself moves BELOW the fetches: a
+  // partial-coverage source can shrink its group there, and a ticker that
+  // loses its last source this round belongs in `skipped` too — same
+  // authority, applied once, after coverage is actually known.)
 
   // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below
   // (the position the retired fee-source pre-check held). It consults only
@@ -384,13 +370,54 @@ export async function refreshOraclePrices(
   // listed source is load-bearing; silently building without it would starve
   // its weighted tickers on-chain).
   const fetched = new Map<OracleSource, RuleUpdateData>();
+  const missingBySource = new Map<OracleSource, Set<string>>();
   await Promise.all(
     needsFetch.map(async (group) => {
-      fetched.set(group.source, await group.rule.fetchUpdateData(host, group.tickers));
+      // Partial coverage where the rule offers it (divisible payloads): one
+      // unserved ticker must cost ITSELF, not the batch — the deployed shape
+      // is a constant-pinned symbol (USDCUSD) listed in the `symbols`
+      // universe that the BBO plane never signs, which under the strict arm
+      // failed every sibling ticker's refresh and reported nothing. The gap
+      // flows into the post-fetch partition below: constant-pinned tickers
+      // keep their constant-only collector, the rest land in `skipped`.
+      if (group.rule.fetchUpdateDataPartial) {
+        const { data, missing } = await group.rule.fetchUpdateDataPartial(host, group.tickers);
+        fetched.set(group.source, data);
+        if (missing.length > 0) missingBySource.set(group.source, new Set(missing));
+      } else {
+        fetched.set(group.source, await group.rule.fetchUpdateData(host, group.tickers));
+      }
     }),
   );
+  // Shrink each group to what its source actually served, so the carry step's
+  // full-coverage invariant keeps holding and no unserved ticker is fed.
+  for (const group of groups) {
+    const missing = missingBySource.get(group.source);
+    if (missing) group.tickers = group.tickers.filter((t) => !missing.has(t));
+  }
   const dataByGroup = groups.map(
     (group, i) => cachedByGroup[i] ?? fetched.get(group.source) ?? null,
+  );
+
+  // The refreshed/skipped partition, over POST-FETCH coverage. A ticker no
+  // listed source can price — or that every source which lists it failed to
+  // serve this round — is SKIPPED, not thrown on, and named in the returned
+  // summary. This is a broad primitive: callers sweep whole market lists
+  // through it, and losing 29 tickers because the 30th is unserved is the
+  // wrong trade — the 29 still need their prices on chain. Safety lives one
+  // level up, where the ACTION is known: the `build*Tx` composers fail closed
+  // on the tickers their specific call actually depends on
+  // (`assertTickersRefreshed` / `assertWlpPoolRefreshed` in
+  // `perp/tx-builders/common.ts`); a bare caller composing its own PTB reads
+  // `skipped` and decides for itself. A CONSTANT-PINNED ticker needs no
+  // update leg from any source, so it counts as refreshed with just its
+  // constant feed — which is also what absorbs the deployed USDCUSD shape
+  // above.
+  const covered = new Set(groups.flatMap((group) => group.tickers));
+  const { servable: refreshed, unservable: skipped } = partitionServableTickers(
+    host,
+    tickers,
+    covered,
   );
 
   // Phase 2 — build each group's update leg sequentially, in list order, so
