@@ -654,28 +654,35 @@ describe("WaterxRule — on-chain feed", () => {
 });
 
 describe("refreshOraclePrices — partial quote-center coverage", () => {
-  it("a constant-pinned symbol the quote-center never serves costs itself nothing: the batch refreshes, the pin feeds constant-only", async () => {
-    // The deployed shape (Hermes repro): USDCUSD is listed in the `symbols`
-    // universe, so it lands in the waterx group — but it is constant-pinned
-    // and the BBO plane never signs it, so the quote-center omits it. Under
+  it("an unserved symbol is skipped even when constant-pinned: the sibling refreshes, the gap gets NO collector", async () => {
+    // The repro shape: USDCUSD is listed in the `symbols` universe, so it
+    // lands in the waterx group — but the quote-center omits it. Under
     // strict-only fetching that failed the WHOLE batch (assertCoverage), so
     // not even BTCUSD refreshed and nothing was reported skipped.
+    //
+    // The pin does NOT rescue it: the chain's weight tables are invisible
+    // here, so the missing waterx source cannot be proven unweighted, and a
+    // collector lacking a weighted source aborts the whole PTB on-chain
+    // (`EMissingPriceSource` in `aggregator::remove_outliers`). The only
+    // provably safe answer for a FETCH-time gap is the skip; constant-only
+    // collectors stay reserved for the CONFIG-level exemption (a pinned
+    // ticker no source lists at all — see the routing test below).
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     client.config.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
     mockLeafRoute(["BTCUSD"]);
 
     const tx = new Transaction();
     await expect(refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"])).resolves.toEqual({
-      refreshed: ["BTCUSD", "USDCUSD"],
-      skipped: [],
+      refreshed: ["BTCUSD"],
+      skipped: ["USDCUSD"],
     });
 
     const targets = moveTargets(tx);
-    // BTCUSD got its signed leaf; USDCUSD got a constant-only collector.
+    // BTCUSD got its signed leaf; USDCUSD got NOTHING — no collector, no
+    // constant feed, no aggregate.
     expect(targets).toContain("waterx_rule::collect_single_with_proof");
-    expect(targets).toContain("constant_rule::feed");
-    // Two collectors, two aggregates — nothing was silently dropped.
-    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
+    expect(targets).not.toContain("constant_rule::feed");
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(1);
   });
 
   it("a non-constant unserved ticker is SKIPPED and reported; the served sibling still refreshes", async () => {
@@ -706,6 +713,61 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     ]);
     expect(missing).toEqual(["USDCUSD"]);
     expect(data?.kind).toBe("waterx_rule");
+  });
+
+  it("an unknown-symbol 404 isolates the symbol: the rest of the batch refreshes and the gap is reported", async () => {
+    // The quote-center 404s a whole leaf batch naming the first symbol it
+    // does not know (a config newer than the deployed quote-center). The
+    // partial arm used to treat any 404 as "no leaf route", fall back to the
+    // envelope route, 404 again, and throw — one unknown symbol cost every
+    // sibling its refresh, with nothing reported skipped.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: async () => "Not Found",
+        } as Response);
+      }
+      const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
+      if (symbols.includes("ETHUSD")) {
+        // The quote-center's own per-symbol refusal shape (`get_quotes_leaves`).
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: async () => "unknown signed symbol ETHUSD",
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: async () => rawLeavesText(symbols),
+      } as unknown as Response);
+    });
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD"],
+      skipped: ["ETHUSD"],
+    });
+    expect(moveTargets(tx)).toContain("waterx_rule::collect_single_with_proof");
+  });
+
+  it("strict names the unknown symbol instead of a wasted envelope round trip", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "unknown signed symbol ETHUSD",
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /unknown signed symbol ETHUSD/,
+    );
+    // ONE request: the refusal is classified at the leaf route, not laundered
+    // through an envelope fallback that 404s again.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("the direct strict API is unchanged: fetchUpdateData still rejects a partial serve", async () => {

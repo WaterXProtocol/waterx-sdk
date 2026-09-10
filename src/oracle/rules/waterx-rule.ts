@@ -619,7 +619,16 @@ export async function fetchWaterxSignedUpdate(
 }
 
 /** A leaf pull either produced leaves, or the route isn't there to pull from. */
-export type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
+export type LeafPull =
+  | { leaves: WaterxSignedLeaf[] }
+  /** The quote-center HAS a leaf route but does not know this symbol —
+   * classified from its per-symbol `404 unknown signed symbol X` body, which
+   * names the first unknown symbol of the request. Distinct from
+   * `unavailable` (a bare 404: no leaf route at all), because the two need
+   * opposite reactions — retry WITHOUT the symbol vs fall back to the
+   * envelope route. */
+  | { unknownSymbol: string }
+  | { unavailable: string };
 
 /**
  * Pull per-symbol signed Merkle leaves — the DEFAULT update-data shape (see the
@@ -663,14 +672,14 @@ export async function fetchWaterxSignedLeaves(
   // Probe with the first chunk: a quote-center with no leaf route answers 404
   // for every chunk, so there is no point spending the rest to learn it.
   const first = await fetchLeafChunk(endpoint, chunks[0] ?? [], fetchOpts);
-  if ("unavailable" in first || chunks.length <= 1) return first;
+  if (!("leaves" in first) || chunks.length <= 1) return first;
 
   const rest = await Promise.all(
     chunks.slice(1).map((chunk) => fetchLeafChunk(endpoint, chunk, fetchOpts)),
   );
   const leaves = [...first.leaves];
   for (const pull of rest) {
-    if ("unavailable" in pull) return pull;
+    if (!("leaves" in pull)) return pull;
     leaves.push(...pull.leaves);
   }
   return { leaves };
@@ -705,7 +714,14 @@ async function fetchLeafChunk(
     fetchOpts,
   );
   if (res.status === 404) {
-    return { unavailable: `GET /v1/quotes/leaves → 404 ${(await res.text()).trim()}`.trim() };
+    const body = (await res.text()).trim();
+    // The quote-center's per-symbol refusal (`get_quotes_leaves`): the ROUTE
+    // exists, one requested symbol does not. Without this split the whole
+    // batch fell through to the envelope route, 404'd again there, and threw
+    // — one unknown symbol cost every sibling its refresh.
+    const unknown = /^unknown signed symbol (\S+)/.exec(body);
+    if (unknown) return { unknownSymbol: unknown[1] };
+    return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
   }
   if (!res.ok) {
     throw new Error(`WaterX quote-center leaf fetch failed: ${res.status} ${await res.text()}`);
@@ -912,7 +928,40 @@ export async function pullWaterxQuotes(
   payload: WaterxUpdatePayload;
   items: readonly WaterxBatchItem[];
 }> {
+  const pulled = await pullWaterxQuotesOrUnknown(endpoint, symbols, fetchOpts);
+  if ("unknownSymbol" in pulled) {
+    // Strict semantics: an unknown symbol is a coverage failure, named
+    // precisely — and thrown HERE, before the old behaviour's wasted trip to
+    // the envelope route (whose own 404 produced an unrelated-looking error).
+    throw new Error(
+      `WaterX quote-center leaves: unknown signed symbol ${pulled.unknownSymbol} ` +
+        `(requested ${symbols.join(", ")})`,
+    );
+  }
+  return pulled;
+}
+
+/**
+ * {@link pullWaterxQuotes} with the unknown-symbol refusal surfaced as data
+ * instead of a throw — what the partial-coverage arm of
+ * {@link pullWaterxData} iterates on to isolate the symbol and refetch the
+ * rest. The envelope fallback stays reserved for a genuinely absent leaf
+ * route (a bare 404), exactly as before.
+ */
+async function pullWaterxQuotesOrUnknown(
+  endpoint: string,
+  symbols: string[],
+  fetchOpts?: FetchPolicy,
+): Promise<
+  | { unknownSymbol: string }
+  | {
+      route: "leaves" | "envelope";
+      payload: WaterxUpdatePayload;
+      items: readonly WaterxBatchItem[];
+    }
+> {
   const pulled = await fetchWaterxSignedLeaves(endpoint, symbols, fetchOpts);
+  if ("unknownSymbol" in pulled) return { unknownSymbol: pulled.unknownSymbol };
   if ("leaves" in pulled) {
     return { route: "leaves", payload: { leaves: pulled.leaves }, items: pulled.leaves };
   }
@@ -959,26 +1008,53 @@ async function pullWaterxData(
   if (listed.length === 0) return { data: null, missing };
 
   const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
-  const { route, payload, items } = await pullWaterxQuotes(endpoint, listed, fetchOpts);
-  const served = new Set(items.map((item) => item.symbol));
 
   if (coverage === "strict") {
-    assertCoverage(route, listed, served);
+    const { route, payload, items } = await pullWaterxQuotes(endpoint, listed, fetchOpts);
+    assertCoverage(route, listed, new Set(items.map((item) => item.symbol)));
     return { data: { kind: "waterx_rule", payload }, missing };
   }
 
-  const covered: string[] = [];
-  for (const ticker of listed) (served.has(ticker) ? covered : missing).push(ticker);
-  // Divisibility is the rule's own knowledge, so the subset decision is
-  // delegated rather than re-encoded here: leaves subset per symbol, an
-  // envelope is indivisible and passes whole (or `null` when it covers none).
-  return {
-    data:
-      covered.length > 0
-        ? WaterxRule.narrowUpdateData(host, { kind: "waterx_rule", payload }, covered)
-        : null,
-    missing,
-  };
+  // Partial: peel unknown-symbol refusals one at a time. The quote-center
+  // 404s a whole leaf batch naming the FIRST symbol it does not know (a
+  // config newer than the deployed quote-center), so each pass isolates one
+  // and refetches the rest — bounded by the request size, and each peeled
+  // symbol lands in `missing` exactly like a 200 that omitted it.
+  let remaining = listed;
+  for (;;) {
+    const pulled = await pullWaterxQuotesOrUnknown(endpoint, remaining, fetchOpts);
+    if ("unknownSymbol" in pulled) {
+      if (!remaining.includes(pulled.unknownSymbol)) {
+        // A refusal naming something we never asked for cannot be peeled —
+        // retrying would loop forever on the same response.
+        throw new Error(
+          `WaterX quote-center refused a symbol it was not asked for: ` +
+            `${pulled.unknownSymbol} (requested ${remaining.join(", ")})`,
+        );
+      }
+      missing.push(pulled.unknownSymbol);
+      remaining = remaining.filter((t) => t !== pulled.unknownSymbol);
+      if (remaining.length === 0) return { data: null, missing };
+      continue;
+    }
+    const served = new Set(pulled.items.map((item) => item.symbol));
+    const covered: string[] = [];
+    for (const ticker of remaining) (served.has(ticker) ? covered : missing).push(ticker);
+    // Divisibility is the rule's own knowledge, so the subset decision is
+    // delegated rather than re-encoded here: leaves subset per symbol, an
+    // envelope is indivisible and passes whole (or `null` when it covers none).
+    return {
+      data:
+        covered.length > 0
+          ? WaterxRule.narrowUpdateData(
+              host,
+              { kind: "waterx_rule", payload: pulled.payload },
+              covered,
+            )
+          : null,
+      missing,
+    };
+  }
 }
 
 export const WaterxRule: PriceUpdateRule = {
