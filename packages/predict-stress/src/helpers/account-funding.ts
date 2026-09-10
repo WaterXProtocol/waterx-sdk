@@ -67,13 +67,22 @@ export function resolveMockUsdcCoinType(client: PredictClient): string | undefin
 }
 
 /**
- * PSM path readiness. The custody package, its vault, and the credit registry
- * are schema-required in the canonical document, so the only
- * deployment-dependent piece is whether a MOCK_USDC backing asset is
- * registered on the vault.
+ * PSM path readiness: the custody PACKAGE must be deployed and a MOCK_USDC
+ * backing asset registered on the vault.
+ *
+ * The custody vault and credit registry OBJECTS are schema-required, but the
+ * `native_custody` package entry is not: `packages` is an open record, and
+ * `native_custody` sits in the PERP line's asserted set, which
+ * `PredictClient` never checks — so a prediction-only deployment parses,
+ * builds a client, and simply has no entry. Checking only MOCK_USDC here
+ * answered `true` for exactly that deployment, and {@link appendPsmDeposit}
+ * then died on `packages.native_custody.published_at` with a bare TypeError.
  */
 export function psmConfigReady(client: PredictClient): boolean {
-  return resolveMockUsdcCoinType(client) !== undefined;
+  return (
+    client.config.packages.native_custody?.published_at !== undefined &&
+    resolveMockUsdcCoinType(client) !== undefined
+  );
 }
 
 export interface WalletUsdDepositParams {
@@ -108,7 +117,19 @@ export function appendPsmDeposit(
   tx: Transaction,
   params: PsmDepositParams,
 ): void {
-  const custodyPkg = client.config.packages.native_custody.published_at;
+  // Guarded read, not a bare index: `packages` is an open record and
+  // `native_custody` is asserted by the PERP line only, so a prediction-only
+  // deployment reaches here with no entry — that must be this named error
+  // (the same shape as the MOCK_USDC one below), never a TypeError off
+  // `undefined.published_at`. Callers gate on {@link psmConfigReady}, which
+  // checks the same two facts.
+  const custodyPkg = client.config.packages.native_custody?.published_at;
+  if (custodyPkg === undefined) {
+    throw new Error(
+      "PSM deposit requires the native_custody package in waterx-config " +
+        "(a prediction-only deployment does not carry it — check psmConfigReady() first)",
+    );
+  }
   const vault = client.config.objects.custody.vault;
   const creditRegistry = client.config.objects.credit.registry;
   const mockUsdc = resolveMockUsdcCoinType(client);
