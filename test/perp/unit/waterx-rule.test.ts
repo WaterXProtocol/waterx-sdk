@@ -32,8 +32,10 @@ import {
   fetchWaterxSignedUpdate,
   fetchWaterxUpdateData,
   isFreshWaterxEntry,
+  parseQuoteCenterError,
   parseSignedEnvelope,
   parseSignedLeaves,
+  QUOTE_CENTER_ERROR_CODES,
   WATERX_MAX_PRICE_AGE_MS,
   WaterxRule,
   type WaterxSignedEnvelope,
@@ -806,19 +808,58 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     vi.restoreAllMocks();
   });
 
-  it("honors a machine-readable refusal (code + symbol) without reading the message", async () => {
-    // The shape the quote-center should move to. Pinned now so adopting it
-    // needs no SDK release: `symbol` is read directly, message ignored.
+  it("a NUMERIC code drives the decision once the contract table maps it", async () => {
+    // Allen's requirement: identity is a number the service owns, and the
+    // message must not affect control flow. The table is the one place a code
+    // is given meaning, so this test populates it exactly as adoption will.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+    const codes = QUOTE_CENTER_ERROR_CODES as Record<number, "unknown_symbol">;
+    codes[10001] = "unknown_symbol";
+    try {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: false,
+        status: 404,
+        // Message deliberately says nothing parseable: only the code and the
+        // symbol field may be read.
+        text: async () => '{"code":10001,"symbol":"ETHUSD","message":"totally reworded"}',
+      } as Response);
+      await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+        /unknown signed symbol ETHUSD/,
+      );
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      delete codes[10001];
+    }
+  });
+
+  it("accepts a numeric code — the previous version required a string and dropped it", async () => {
+    expect(parseQuoteCenterError('{"code":10001,"symbol":"ETHUSD"}')?.code).toBe(10001);
+    // An all-digit string code normalizes to the same number, so the rest of
+    // the SDK only ever sees one type.
+    expect(parseQuoteCenterError('{"code":"10001"}')?.code).toBe(10001);
+    // A non-numeric code is not a number and must not be coerced to one.
+    expect(parseQuoteCenterError('{"code":"UNKNOWN_SYMBOL"}')?.code).toBeUndefined();
+    // Today's live body: no code at all.
+    expect(parseQuoteCenterError('{"error":"unknown symbol ETHUSD"}')).toEqual({
+      message: "unknown symbol ETHUSD",
+    });
+    // Not a JSON object ⇒ nothing served the path.
+    expect(parseQuoteCenterError("")).toBeNull();
+    expect(parseQuoteCenterError("Not Found")).toBeNull();
+  });
+
+  it("an unmapped code still falls back to the symbol the body names", async () => {
+    // A code the table does not know must not strand the request: the symbol
+    // field (or, today, the message) still identifies what to peel.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
       status: 404,
-      text: async () => '{"code":"UNKNOWN_SYMBOL","symbol":"ETHUSD","error":"totally reworded"}',
+      text: async () => '{"code":99999,"symbol":"ETHUSD","message":"unrecognized"}',
     } as Response);
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
       /unknown signed symbol ETHUSD/,
     );
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("a 404 with no structured body is still 'no leaf route' and falls back to the envelope", async () => {

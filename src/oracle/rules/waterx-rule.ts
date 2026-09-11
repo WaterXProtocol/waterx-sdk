@@ -603,9 +603,7 @@ export async function fetchWaterxSignedUpdate(
   }
   const res = await fetchQuoteCenter(endpoint, "v1/quotes/update", symbols, "fetch", fetchOpts);
   if (!res.ok) {
-    throw new Error(
-      `WaterX quote-center fetch failed: ${res.status} ${await res.text()}${context}`,
-    );
+    throw new Error(`WaterX quote-center fetch failed: ${await describeFailure(res)}${context}`);
   }
   // Parse from raw text (not res.json()) so the u64 fields are decoded exact as
   // bigint — see parseSignedEnvelope. Malformed-shape check lives there.
@@ -702,28 +700,68 @@ function chunkSymbols(symbols: string[]): string[][] {
 }
 
 /**
- * Classify a `404` from the leaf route: did the ROUTE refuse, or is there no
- * route at all?
- *
- * The discriminator is STRUCTURAL, never the wording of a message. A
- * quote-center that owns this path answers a refusal with a JSON object
- * (`application/json`); a deployment with no leaf route answers with an empty
- * body and no content type. Verified against both live quote-centers
- * (staging + mainnet, 2026-09-11): unknown symbol →
- * `{"error":"unknown symbol X"}`, missing route → empty. The previous check
- * matched a bare `unknown signed symbol X` string that neither host has ever
- * sent, so every refusal was misread as "no leaf route", retried as an
- * envelope, and 404'd again — failing the whole batch.
- *
- * `code` / `symbol` are read FIRST and are the intended long-term contract: a
- * machine-readable code is what the SDK should branch on. Until the
- * quote-center emits them, the symbol NAME is recovered from the message as a
- * transitional shim — note that only the naming falls back to text, never the
- * route-exists decision.
+ * One rendering for every non-ok quote-center response: status, the numeric
+ * code when the body carries one, and the human message. Codes reach the
+ * operator on EVERY error path, not just the 404 the classifier inspects, so a
+ * service that starts emitting them is immediately legible in logs.
  */
-function parseLeafRefusal(
-  body: string,
-): { symbol?: string; code?: string; message: string } | null {
+async function describeFailure(res: {
+  status: number;
+  text: () => Promise<string>;
+}): Promise<string> {
+  const body = (await res.text()).trim();
+  const parsed = parseQuoteCenterError(body);
+  if (!parsed) return `${String(res.status)} ${body}`.trim();
+  const code = parsed.code === undefined ? "" : ` code ${String(parsed.code)}`;
+  return `${String(res.status)}${code} ${parsed.message || body}`.trim();
+}
+
+/**
+ * The quote-center's NUMERIC error contract.
+ *
+ * Error identity belongs to the service, not to prose: a reworded message must
+ * never change SDK behaviour. This table is the ONE place a wire code is given
+ * meaning, so adopting the contract is a single edit here — no call site
+ * branches on a number, and no number appears anywhere else.
+ *
+ * DELIBERATELY EMPTY. The quote-center has not published its enum yet (verified
+ * 2026-09-11: both staging and mainnet answer a refusal with
+ * `{"error":"unknown symbol X"}` and no `code` at all). Guessing values would be
+ * worse than not reading them — a wrong mapping on the money path silently
+ * misclassifies a refusal. Until it ships, {@link parseQuoteCenterError} still
+ * PARSES a code of either type and the classifier still prefers it; only the
+ * meaning is missing, so the structural fallbacks below carry the load.
+ *
+ * To adopt: add the published numbers here. Nothing else changes.
+ *
+ * `Readonly` by type rather than `Object.freeze`, so the wiring can be proven:
+ * the table is empty until the service ships, and a test that populates it is
+ * the only way to exercise the code-driven path before then. Production never
+ * writes to it.
+ */
+export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">> = {};
+
+/** One quote-center error body, parsed. `code` is the contract; `message` is for humans. */
+export interface QuoteCenterError {
+  /** Numeric wire code. A string code is coerced when it is all digits — see the note in the parser. */
+  code?: number;
+  /** Symbol the service named, when it named one. */
+  symbol?: string;
+  /** Human-readable text. NEVER used for control flow — display and debugging only. */
+  message: string;
+}
+
+/**
+ * Parse any quote-center error body. Returns `null` when the body is not a JSON
+ * object, which is itself the signal that nothing served the path (see
+ * {@link fetchLeafChunk}).
+ *
+ * `code` accepts a number OR an all-digit string: the previous version required
+ * a string and so dropped a numeric code entirely, which is the shape the
+ * service is moving to. Both are normalized to a number here so the rest of the
+ * SDK only ever sees one type.
+ */
+export function parseQuoteCenterError(body: string): QuoteCenterError | null {
   if (!body) return null;
   let json: unknown;
   try {
@@ -733,14 +771,36 @@ function parseLeafRefusal(
   }
   if (!json || typeof json !== "object" || Array.isArray(json)) return null;
   const o = json as Record<string, unknown>;
+  const rawCode = o.code;
+  const code =
+    typeof rawCode === "number" && Number.isFinite(rawCode)
+      ? rawCode
+      : typeof rawCode === "string" && /^\d+$/.test(rawCode)
+        ? Number(rawCode)
+        : undefined;
   const message =
     typeof o.error === "string" ? o.error : typeof o.message === "string" ? o.message : "";
-  const code = typeof o.code === "string" ? o.code : undefined;
-  const symbol =
-    typeof o.symbol === "string" && o.symbol
-      ? o.symbol
-      : (/unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(message)?.[1] ?? undefined);
-  return { ...(symbol ? { symbol } : {}), ...(code ? { code } : {}), message };
+  const symbol = typeof o.symbol === "string" && o.symbol ? o.symbol : undefined;
+  return { ...(code !== undefined && { code }), ...(symbol && { symbol }), message };
+}
+
+/** Semantic meaning of a parsed error, via the contract table — `undefined` when unmapped. */
+function meaningOf(err: QuoteCenterError): "unknown_symbol" | undefined {
+  return err.code === undefined ? undefined : QUOTE_CENTER_ERROR_CODES[err.code];
+}
+
+/**
+ * Recover the symbol an unknown-symbol refusal names.
+ *
+ * TRANSITIONAL. `symbol` is the field that should carry this and is read first.
+ * The message parse exists only because today's quote-center sends neither a
+ * code nor a symbol field — it is the one place text is still read, it can only
+ * ever produce a NAME (never a routing decision), and it is deleted the moment
+ * the service emits `{ code, symbol }`.
+ */
+function namedSymbol(err: QuoteCenterError): string | undefined {
+  if (err.symbol) return err.symbol;
+  return /unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(err.message)?.[1] ?? undefined;
 }
 
 async function fetchLeafChunk(
@@ -757,24 +817,39 @@ async function fetchLeafChunk(
   );
   if (res.status === 404) {
     const body = (await res.text()).trim();
-    const refusal = parseLeafRefusal(body);
+    const refusal = parseQuoteCenterError(body);
     // No structured body ⇒ nothing served this path at all ⇒ no leaf route,
     // so the caller falls back to the envelope.
     if (!refusal) return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
     // The ROUTE answered and refused. Without this split the whole batch fell
     // through to the envelope route, 404'd again there, and threw — one
     // unknown symbol cost every sibling its refresh.
-    if (refusal.symbol) return { unknownSymbol: refusal.symbol };
+    //
+    // CODE FIRST: once the contract table is populated the decision is made
+    // entirely by the number, and the name comes from the `symbol` field.
+    const meaning = meaningOf(refusal);
+    if (meaning === "unknown_symbol") {
+      const named = namedSymbol(refusal);
+      if (named) return { unknownSymbol: named };
+      throw new Error(
+        `WaterX quote-center signalled an unknown symbol (code ${String(refusal.code)}) ` +
+          `without naming it: ${refusal.message || body}`,
+      );
+    }
+    // Unmapped or absent code — fall back to the name the body carries.
+    const named = namedSymbol(refusal);
+    if (named) return { unknownSymbol: named };
     // Refused, but it did not say which symbol. Peeling is impossible (we would
     // retry the same request forever) and the envelope fallback is wrong (the
     // route exists), so surface the server's own words.
     throw new Error(
       `WaterX quote-center refused the leaf request and did not name a symbol: ` +
-        `404 ${refusal.message || body}`,
+        `404 ${refusal.message || body}` +
+        (refusal.code === undefined ? "" : ` (code ${String(refusal.code)})`),
     );
   }
   if (!res.ok) {
-    throw new Error(`WaterX quote-center leaf fetch failed: ${res.status} ${await res.text()}`);
+    throw new Error(`WaterX quote-center leaf fetch failed: ${await describeFailure(res)}`);
   }
   // Raw text, not res.json(): u64s must survive as exact bigints.
   return { leaves: parseSignedLeaves(await res.text()) };
