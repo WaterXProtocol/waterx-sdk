@@ -22,6 +22,7 @@ import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 import { normalizeStructTag } from "@mysten/sui/utils";
 
+import { assertFeaturePackage } from "../../config.ts";
 import { mint as custodyMintCall } from "../../generated/native_custody/custody_vault.ts";
 import { requestWithdraw as requestWithdrawCall } from "../../generated/waterx_account/account.ts";
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
@@ -89,7 +90,9 @@ export function redeemVaa(
   params: RedeemVaaParams,
 ): TransactionArgument {
   const [req] = redeemVaaCall({
-    package: client.config.packages.wormhole_bridge.published_at,
+    package:
+      (assertFeaturePackage(client.config, "wormhole_bridge", "the Wormhole bridge"),
+      client.config.packages.wormhole_bridge.published_at),
     arguments: {
       bridge: tx.object(client.config.objects.bridge.state),
       registry: tx.object(client.config.objects.credit.registry),
@@ -149,7 +152,9 @@ export function routeWormhole(
   params: RouteWormholeParams,
 ): TransactionArgument {
   const out = routeWormholeCall({
-    package: client.config.packages.withdrawal_queue.published_at,
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
       evmDestinationChain: toU16(params.evmDestinationChain, "evmDestinationChain"),
       evmRecipient: toEvmAddressBytes(params.evmRecipient, "evmRecipient"),
@@ -177,7 +182,9 @@ export function routeNative(
   params: RouteNativeParams,
 ): TransactionArgument {
   const out = routeNativeCall({
-    package: client.config.packages.withdrawal_queue.published_at,
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: { minOutput: toU64(params.minOutput ?? 0n, "minOutput") },
     typeArguments: [normalizeStructTag(params.assetType)],
   })(tx);
@@ -241,7 +248,9 @@ export function enqueueWithdrawal(
   params: EnqueueWithdrawalParams,
 ): TransactionArgument {
   const out = enqueueCall({
-    package: client.config.packages.withdrawal_queue.published_at,
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
       queue: tx.object(client.config.objects.withdrawal_queue.queue),
       registry: tx.object(client.config.objects.account.registry),
@@ -274,7 +283,9 @@ export function executeWithdrawalWormhole(
 ): void {
   const request = makeSenderRequest(client, tx, params.bucketAccount);
   executeWormholeCall({
-    package: client.config.packages.withdrawal_queue.published_at,
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
       queue: tx.object(client.config.objects.withdrawal_queue.queue),
       key: toU64(params.key, "key"),
@@ -304,7 +315,9 @@ export function executeWithdrawalNative(
 ): void {
   const request = makeSenderRequest(client, tx, params.bucketAccount);
   executeNativeCall({
-    package: client.config.packages.withdrawal_queue.published_at,
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
       queue: tx.object(client.config.objects.withdrawal_queue.queue),
       key: toU64(params.key, "key"),
@@ -348,7 +361,9 @@ export function custodyMint(
   params: CustodyMintParams,
 ): TransactionArgument {
   const [req] = custodyMintCall({
-    package: client.config.packages.native_custody.published_at,
+    package:
+      (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
+      client.config.packages.native_custody.published_at),
     arguments: {
       vault: tx.object(client.config.objects.custody.vault),
       registry: tx.object(client.config.objects.credit.registry),

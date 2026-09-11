@@ -49,18 +49,40 @@ export const REQUIRED_PACKAGES = Object.freeze([
 ] as const);
 export type RequiredPackage = (typeof REQUIRED_PACKAGES)[number];
 
-/** Packages the PERP line reads (asserted by `PerpClient`, not by the loader). */
+/**
+ * Packages the PERP TRADING path reads — asserted by `PerpClient`, not by the
+ * loader.
+ *
+ * Deliberately the trading core only. The funding stack (`waterx_credit`,
+ * `native_custody`, `wormhole_bridge`, `withdrawal_queue`) and `waterx_staking`
+ * are OPT-IN sub-features: requiring them here would block a pure-trading
+ * consumer on a deployment that ships perp before the bridge, which is the same
+ * partial-deployment failure {@link REQUIRED_PACKAGES} exists to avoid, just at
+ * a finer grain. Their builders assert their own package when used
+ * ({@link assertFeaturePackage}).
+ */
 export const PERP_PACKAGES = Object.freeze([
   "waterx_oracle",
   "waterx_perp",
   "waterx_perp_view",
   "wlp",
-  "waterx_staking",
-  "waterx_credit",
-  "native_custody",
-  "wormhole_bridge",
-  "withdrawal_queue",
 ] as const);
+
+/**
+ * Assert an OPT-IN feature's package is present, at the point of use.
+ *
+ * The loader and the line asserts deliberately do not cover these, so a
+ * deployment that has not shipped a sub-feature still constructs a client; the
+ * cost is a clear error the first time that feature is actually built.
+ */
+export function assertFeaturePackage(config: WaterXConfig, name: string, feature: string): void {
+  if (ownEntry(config.packages, name) === undefined) {
+    throw new Error(
+      `waterx-config (${config.network}): packages.${name} missing — ` +
+        `this deployment does not ship ${feature}`,
+    );
+  }
+}
 
 /** Packages the PREDICTION line reads (asserted by `PredictClient`). */
 export const PREDICTION_PACKAGES = Object.freeze([
@@ -222,7 +244,14 @@ export interface LoadConfigOptions {
 // key's latest successfully-parsed fetch, strictly FRESHER than any
 // fallback read would have been, so a `cache: true` caller never observes
 // staler data than before; it can only observe MORE-recent data sooner.
-const configCache = new Map<string, WaterXConfig>();
+const configCache = new Map<string, { config: WaterXConfig; fetchedAt: number }>();
+
+/**
+ * How stale a fallback snapshot may be. Past this the load THROWS: an outage
+ * long enough to cross it is a deployment problem, and object ids rotated in
+ * the meantime would otherwise be built against silently.
+ */
+export const MAX_STALE_CONFIG_MS = 15 * 60_000;
 
 export function clearConfigCache(): void {
   configCache.clear();
@@ -265,8 +294,9 @@ export async function loadConfig(
   // to build transactions against. A wrong-network request simply misses here
   // and fetches fresh.
   const cacheKey = `${network}:${url}`;
-  if (opts.cache && configCache.has(cacheKey)) {
-    return configCache.get(cacheKey)!;
+  if (opts.cache) {
+    const hit = configCache.get(cacheKey);
+    if (hit) return hit.config;
   }
 
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as typeof fetch | undefined);
@@ -302,8 +332,16 @@ export async function loadConfig(
     }
     config = parseConfigDocument(await response.json(), network);
   } catch (err) {
+    // The fallback is bounded in BOTH directions it can go wrong. It only
+    // applies to a transient failure (above), only within
+    // {@link MAX_STALE_CONFIG_MS} — an unbounded outage must surface, not be
+    // papered over with an arbitrarily old snapshot — and never to a caller
+    // that passed `cache: false`, which is a request for fresh data, not a
+    // preference.
     const stale = isTransientLoadFailure(err) ? configCache.get(cacheKey) : undefined;
-    if (stale) return stale;
+    if (stale && opts.cache !== false && Date.now() - stale.fetchedAt <= MAX_STALE_CONFIG_MS) {
+      return stale.config;
+    }
     // Reframe a status-carrying FetchPolicyError into this function's own
     // message shape, mirroring the non-retried `!response.ok` throw above and
     // carrying the URL (the key datum for a config-fetch failure). A
@@ -313,7 +351,7 @@ export async function loadConfig(
     rethrowExhaustedFetch(err, (e) => `loadConfig: HTTP ${e.status} fetching ${url}`);
   }
 
-  configCache.set(cacheKey, config);
+  configCache.set(cacheKey, { config, fetchedAt: Date.now() });
   return config;
 }
 

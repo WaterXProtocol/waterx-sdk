@@ -840,17 +840,35 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     expect(parseQuoteCenterError("Not Found")).toBeNull();
   });
 
-  it("an unmapped code still falls back to the symbol the body names", async () => {
-    // A code the table does not know must not strand the request: the symbol
-    // field (or, today, the message) still identifies what to peel.
+  it("a CODED refusal never falls back to the message for the symbol", async () => {
+    // Once a code is present the answer comes from fields alone. A service new
+    // enough to send `code` always sends `symbol`, so a coded body without one
+    // is a contract violation to surface — not an invitation to parse prose.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
       status: 404,
-      text: async () => '{"code":99999,"symbol":"ETHUSD","message":"unrecognized"}',
+      // The message names a symbol; the shim must NOT pick it up.
+      text: async () => '{"code":10001,"error":"unknown symbol ETHUSD"}',
     } as Response);
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
-      /unknown signed symbol ETHUSD/,
+      /without a `symbol` field/,
+    );
+  });
+
+  it("an UNMAPPED code is surfaced, not peeled — even when the body names a symbol", async () => {
+    // Keying on the code exists to stop exactly this: a per-symbol refusal
+    // that is NOT "unknown symbol" (a stale feed, say) must reach the operator
+    // as the service's own error, not vanish into an opaque `skipped: [X]`.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () =>
+        '{"code":10007,"symbol":"ETHUSD","error":"feed stale, no quote in tolerance"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /404 code 10007 feed stale/,
     );
   });
 
@@ -882,6 +900,41 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
       fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
     ).rejects.toThrow(/did not name a symbol/);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a group emptied by an unserved ticker appends NO update leg", async () => {
+    // The zero-ticker guard runs BEFORE the fetches, so a group whose every
+    // ticker comes back unserved used to still reach the build phase and
+    // append its update leg to the caller's PTB — a moveCall whose return
+    // value nothing consumes, for a refresh that reports nothing refreshed.
+    // A stand-in rule stands for Lazer here: what matters is a SECOND source
+    // that fetches successfully and emits a command, not its wire format.
+    const client = createUnitTestClient({
+      oracleSource: ["pyth_lazer_rule", "waterx_rule"],
+      pythApiKey: "test-key",
+    });
+    let buildCalls = 0;
+    const emitsACommand: PriceUpdateRule = {
+      kind: "pyth_lazer_rule",
+      supportedTickers: () => ["ETHUSD"],
+      fetchUpdateData: async () => ({ kind: "pyth_lazer_rule", payload: { ok: true } }),
+      narrowUpdateData: (_h, data) => data,
+      buildUpdateCalls: (tx) => {
+        buildCalls += 1;
+        tx.moveCall({ target: "0x2::orphan::leg", arguments: [] });
+        return undefined;
+      },
+    };
+    // The quote-center answers 200 but omits the symbol ⇒ unserved.
+    mockLeafRoute([]);
+
+    const tx = new Transaction();
+    const summary = await refreshOraclePrices(tx, client, ["ETHUSD"], {
+      ruleOverrides: { pyth_lazer_rule: emitsACommand },
+    });
+    expect(summary).toEqual({ refreshed: [], skipped: ["ETHUSD"] });
+    expect(buildCalls).toBe(0);
+    expect(moveTargets(tx)).toEqual([]);
   });
 
   it("the direct strict API is unchanged: fetchUpdateData still rejects a partial serve", async () => {

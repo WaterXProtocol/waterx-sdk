@@ -6,6 +6,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { assertFeaturePackage } from "../../config.ts";
 import {
   bridgeFeeAmount as bridgeFeeAmountCall,
   bridgeFeeRate as bridgeFeeRateCall,
@@ -76,6 +77,7 @@ export async function getBridgeLimits(
   client: PerpClient,
   args: BridgeLimitsArgs = {},
 ): Promise<BridgeLimitsView> {
+  assertFeaturePackage(client.config, "wormhole_bridge", "the Wormhole bridge");
   const packageId = client.config.packages.wormhole_bridge.published_at;
   const bridge = client.config.objects.bridge.state;
 
@@ -175,6 +177,7 @@ export async function getBridgeFee(
   client: PerpClient,
   args: { evmDestinationChain: number; amount: bigint | number; creditType?: string },
 ): Promise<BridgeFeeView> {
+  assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue");
   const pkg = client.config.packages.withdrawal_queue.published_at;
   const queue = client.config.objects.withdrawal_queue.queue;
   const amount = toU64(args.amount, "amount");

@@ -168,7 +168,7 @@ function causeMessage(cause: unknown): string {
  * `.text()`, …) — a diagnostic snippet is never worth failing the request
  * differently than the status/cause already dictate.
  */
-async function readBodySnippet(response: Response): Promise<string> {
+export async function readBodySnippet(response: Response): Promise<string> {
   try {
     const text = await response.text();
     return text.length > MAX_BODY_SNIPPET_LENGTH

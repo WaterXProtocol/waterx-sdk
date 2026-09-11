@@ -404,12 +404,20 @@ export async function refreshOraclePrices(
   // EVERY group (an update leg for a ticker that gets no collector would be
   // dead weight), and lands in `skipped` below even where another source —
   // or a constant pin — could still feed it.
-  for (const group of groups) {
-    group.tickers = group.tickers.filter((t) => !unserved.has(t));
-  }
-  const dataByGroup = groups.map(
-    (group, i) => cachedByGroup[i] ?? fetched.get(group.source) ?? null,
-  );
+  //
+  // A group emptied by that filter is DROPPED, not merely narrowed. The
+  // zero-ticker guard above ran BEFORE the fetches, so without this a group
+  // whose every ticker went unserved would still reach Phase 2 and append its
+  // update leg — e.g. Lazer's `verify_le_ecdsa_update` — to the caller's PTB,
+  // producing a command whose return value nothing consumes for a refresh that
+  // reports zero refreshed tickers.
+  const servedGroups = groups
+    .map((group, i) => ({
+      ...group,
+      tickers: group.tickers.filter((t) => !unserved.has(t)),
+      data: cachedByGroup[i] ?? fetched.get(group.source) ?? null,
+    }))
+    .filter((group) => group.tickers.length > 0);
 
   // The refreshed/skipped partition. A ticker no listed source can price, or
   // that lost a listing source this round (`unserved`), is SKIPPED — not
@@ -428,7 +436,7 @@ export async function refreshOraclePrices(
   // deployment doesn't carry, so a constant-only collector is sound. A
   // FETCH-time gap gets no such exemption — the source is configured, the
   // chain may well weight it, and only the skip is provably safe.
-  const covered = new Set(groups.flatMap((group) => group.tickers));
+  const covered = new Set(servedGroups.flatMap((group) => group.tickers));
   const configServable = new Set(partitionServableTickers(host, tickers, covered).servable);
   const refreshed: string[] = [];
   const skipped: string[] = [];
@@ -449,8 +457,8 @@ export async function refreshOraclePrices(
   // from the group's fetched data.
   const waterxLeafByTicker = new Map<string, WaterxSignedLeaf>();
   const waterxEnvelopeByTicker = new Map<string, WaterxSignedEnvelope>();
-  for (const [i, group] of groups.entries()) {
-    const data = dataByGroup[i] ?? null;
+  for (const group of servedGroups) {
+    const { data } = group;
     const handle: RuleUpdateHandle | undefined =
       (await group.rule.buildUpdateCalls(tx, host, data)) ?? undefined;
     switch (group.rule.kind) {

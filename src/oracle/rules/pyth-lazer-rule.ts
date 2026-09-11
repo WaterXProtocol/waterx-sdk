@@ -23,6 +23,7 @@ import {
   type RuleUpdateData,
   type RuleUpdateHandle,
 } from "../price-update-rule.ts";
+import { lazerServedTickers } from "../served-tickers.ts";
 import { fetchWithPolicy, joinEndpointPath, rethrowExhaustedFetch } from "../update-fetch.ts";
 
 /**
@@ -278,7 +279,7 @@ export const PythLazerRule: PriceUpdateRule = {
 
   /** Tickers with an `oracle_rules.pyth_lazer.lazer_feed_ids` entry (integer Lazer feed ids). */
   supportedTickers(config: WaterXConfig): string[] {
-    return Object.keys(config.oracle_rules.pyth_lazer?.lazer_feed_ids ?? {});
+    return lazerServedTickers(config);
   },
 
   /** Resolves integer feed ids for `tickers`, then fetches one signed `leEcdsa` update. */

@@ -19,6 +19,7 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import { makeSenderRequest } from "../../account/account-request.ts";
+import { assertFeaturePackage } from "../../config.ts";
 import * as staking from "../../generated/waterx_staking/waterx_staking.ts";
 import { requireEntry } from "../../utils/record.ts";
 import { toU64Arg } from "../../utils/validate.ts";
@@ -29,6 +30,7 @@ function pool(client: PerpClient, stakeAlias: string): string {
 }
 
 function stakingPackage(client: PerpClient): string {
+  assertFeaturePackage(client.config, "waterx_staking", "staking");
   return client.config.packages.waterx_staking.published_at;
 }
 

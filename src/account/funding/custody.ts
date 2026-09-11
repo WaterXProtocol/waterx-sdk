@@ -17,6 +17,7 @@
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 import { normalizeStructTag } from "@mysten/sui/utils";
 
+import { assertFeaturePackage } from "../../config.ts";
 import * as custody from "../../generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
 import type { AccountClientLike } from "../client.ts";
@@ -48,7 +49,9 @@ export function mintCredit(
   params: MintCreditParams,
 ): TransactionArgument {
   const [req] = custody.mint({
-    package: client.config.packages.native_custody.published_at,
+    package:
+      (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
+      client.config.packages.native_custody.published_at),
     arguments: {
       vault: tx.object(client.config.objects.custody.vault),
       registry: tx.object(client.config.objects.credit.registry),
@@ -89,7 +92,9 @@ export function mintCreditFromRequest(
   params: MintCreditFromRequestParams,
 ): TransactionArgument {
   const [req] = custody.mintFromRequest({
-    package: client.config.packages.native_custody.published_at,
+    package:
+      (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
+      client.config.packages.native_custody.published_at),
     arguments: {
       vault: tx.object(client.config.objects.custody.vault),
       registry: tx.object(client.config.objects.credit.registry),

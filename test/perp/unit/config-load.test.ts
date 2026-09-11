@@ -5,6 +5,7 @@ import {
   assertRequiredPackages,
   clearConfigCache,
   loadConfig,
+  MAX_STALE_CONFIG_MS,
   parseConfigDocument,
   REQUIRED_PACKAGES,
 } from "../../../src/config.ts";
@@ -234,6 +235,47 @@ describe("loadConfig", () => {
     // before falling back — proves it's a real retry-then-fallback, not a
     // silent skip of the refresh.
     expect(calls).toBe(4);
+  });
+
+  it("does NOT fall back past the staleness budget — a long outage must surface", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      if (calls === 1) return ok(MOCK_TESTNET_CONFIG_RAW);
+      return { ok: false, status: 503, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    // Past the budget, the snapshot is no longer served: object ids rotated
+    // during an outage this long would otherwise be built against silently.
+    await vi.advanceTimersByTimeAsync(MAX_STALE_CONFIG_MS + 1);
+    const pending = loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    const assertion = expect(pending).rejects.toThrow(/HTTP 503/);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertion;
+  });
+
+  it("does NOT fall back for a caller that passed cache: false", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      if (calls === 1) return ok(MOCK_TESTNET_CONFIG_RAW);
+      return { ok: false, status: 503, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    await loadConfig("TESTNET", { waterxConfigUrl: BASE_URL, fetchImpl });
+    // `cache: false` asks for fresh data; serving a snapshot anyway would
+    // override the caller rather than help them.
+    const pending = loadConfig("TESTNET", {
+      waterxConfigUrl: BASE_URL,
+      cache: false,
+      fetchImpl,
+    });
+    const assertion = expect(pending).rejects.toThrow(/HTTP 503/);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertion;
   });
 
   it("keys the cache by network+url: a mainnet request never reuses a testnet snapshot for the same url (primary read)", async () => {

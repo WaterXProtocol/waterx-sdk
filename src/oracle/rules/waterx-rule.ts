@@ -57,10 +57,12 @@ import {
   type RuleUpdateData,
 } from "../price-update-rule.ts";
 import type { OraclePriceEntry } from "../read-prices.ts";
+import { waterxServedTickers } from "../served-tickers.ts";
 import {
   FetchPolicyError,
   fetchWithPolicy,
   joinEndpointPath,
+  readBodySnippet,
   type FetchPolicy,
 } from "../update-fetch.ts";
 
@@ -706,7 +708,10 @@ function chunkSymbols(symbols: string[]): string[][] {
  * service that starts emitting them is immediately legible in logs.
  */
 async function describeFailure(res: Response): Promise<string> {
-  const body = (await res.text()).trim();
+  // `readBodySnippet`, not a bare `res.text()`: a proxy can answer a 502 with
+  // a multi-kilobyte HTML page, and this string ends up inside a thrown Error
+  // on the tx-build path.
+  const body = (await readBodySnippet(res)).trim();
   const parsed = parseQuoteCenterError(body);
   if (!parsed) return `${String(res.status)} ${body}`.trim();
   const code = parsed.code === undefined ? "" : ` code ${String(parsed.code)}`;
@@ -733,7 +738,7 @@ export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">
 
 /** One quote-center error body, parsed. `code` is the contract; `message` is for humans. */
 export interface QuoteCenterError {
-  /** Numeric wire code. A string code is coerced when it is all digits — see the note in the parser. */
+  /** Numeric wire code (`ErrorCode as u32`). Absent on deployments predating the contract. */
   code?: number;
   /** Symbol the service named, when it named one. */
   symbol?: string;
@@ -782,7 +787,12 @@ function meaningOf(err: QuoteCenterError): "unknown_symbol" | undefined {
  */
 function namedSymbol(err: QuoteCenterError): string | undefined {
   if (err.symbol) return err.symbol;
-  return /unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(err.message)?.[1] ?? undefined;
+  const raw = /unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(err.message)?.[1];
+  // Trim quoting/punctuation the wording may wrap the name in. A capture of
+  // `"XAGUSD"` or `XAGUSD,` is not a ticker: it fails the caller's
+  // `remaining.includes` check and turns a graceful per-symbol peel into a
+  // thrown refresh.
+  return raw?.replace(/^["'`]+|["'`.,;:]+$/g, "") || undefined;
 }
 
 async function fetchLeafChunk(
@@ -810,16 +820,30 @@ async function fetchLeafChunk(
     // CODE FIRST: the decision is the number, and the name comes from the
     // `symbol` field. Text is read only by the shim below, for deployments
     // that predate the contract.
-    const meaning = meaningOf(refusal);
-    if (meaning === "unknown_symbol") {
-      const named = namedSymbol(refusal);
-      if (named) return { unknownSymbol: named };
+    // A code that maps to "unknown symbol" is peelable. A code that maps to
+    // something ELSE is not — even when the body names a symbol. Peeling
+    // `{"code":10007,"symbol":"X","error":"feed stale"}` would bury the
+    // service's actual, actionable error under an opaque `skipped: [X]`, which
+    // is precisely what keying on the code is meant to prevent.
+    if (refusal.code !== undefined && meaningOf(refusal) !== "unknown_symbol") {
       throw new Error(
-        `WaterX quote-center signalled an unknown symbol (code ${String(refusal.code)}) ` +
-          `without naming it: ${refusal.message || body}`,
+        `WaterX quote-center refused the leaf request: 404 code ` +
+          `${String(refusal.code)} ${refusal.message || body}`,
       );
     }
-    // Unmapped or absent code — fall back to the name the body carries.
+    // A CODED refusal is answered entirely from structured fields: the code
+    // said unknown-symbol, so the `symbol` field must name it. Falling back to
+    // the message here would let prose decide something the contract already
+    // covers — and a service new enough to send a code always sends `symbol`.
+    if (refusal.code !== undefined) {
+      if (refusal.symbol) return { unknownSymbol: refusal.symbol };
+      throw new Error(
+        `WaterX quote-center signalled an unknown symbol (code ${String(refusal.code)}) ` +
+          `without a \`symbol\` field: ${refusal.message || body}`,
+      );
+    }
+    // No code at all: a deployment predating the contract, the only place the
+    // message shim applies.
     const named = namedSymbol(refusal);
     if (named) return { unknownSymbol: named };
     // Refused, but it did not say which symbol. Peeling is impossible (we would
@@ -827,8 +851,7 @@ async function fetchLeafChunk(
     // route exists), so surface the server's own words.
     throw new Error(
       `WaterX quote-center refused the leaf request and did not name a symbol: ` +
-        `404 ${refusal.message || body}` +
-        (refusal.code === undefined ? "" : ` (code ${String(refusal.code)})`),
+        `404 ${refusal.message || body}`,
     );
   }
   if (!res.ok) {
@@ -1173,7 +1196,7 @@ export const WaterxRule: PriceUpdateRule = {
 
   /** Every ticker in the `symbols` universe — the quote-center serves the whole universe. */
   supportedTickers(config: WaterXConfig): string[] {
-    return Object.keys(config.symbols);
+    return waterxServedTickers(config);
   },
 
   /**

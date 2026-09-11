@@ -168,10 +168,12 @@ export class PerpClient extends BaseLineClient<PerpLineConfig> {
    * WLP pool-token tickers THIS client's fed set can actually price — the
    * ticker set the WLP builders refresh before `assert_prices_fresh`.
    *
-   * Filtered, not raw `Object.keys(pool_tokens)`: a token only an UNLISTED
-   * source serves is not priceable by this client. The predicate is
-   * `refreshOraclePrices`'s own (`servableTickers`), so this list is exactly
-   * what a refresh would accept.
+   * The predicate is `refreshOraclePrices`'s own (`servableTickers`), so this
+   * list is exactly what a refresh would ACCEPT at config level. Post-v2 that
+   * is a weaker filter than it once was: the quote-center is always listed and
+   * serves the whole `symbols` universe, so the only token dropped here is one
+   * in neither `symbols` nor `constant_prices`. It does NOT predict a
+   * fetch-time gap — see the SCOPE note on `assertOracleWriteCoverage`.
    *
    * NOTE this is a QUERY, not what the WLP builders use — they deliberately
    * refresh and bump the WHOLE pool, because dropping an unpriceable asset

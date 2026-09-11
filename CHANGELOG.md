@@ -170,8 +170,8 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   meaning — populated from the service's published `ErrorCode` enum
   (`UnknownSymbol = 10001`) — and the 404 classifier branches on it first;
   `parseQuoteCenterError` accepts a numeric code (the previous version required
-  a string and silently dropped numbers) and normalizes an all-digit string to
-  the same number. Every non-ok quote-center response now reports its code, not
+  a string and silently dropped numbers). A code is a JSON number and nothing
+  else — the service serializes `ErrorCode as u32`. Every non-ok quote-center response now reports its code, not
   just the 404. The message is display-only except for one transitional shim
   that recovers the symbol NAME from deployments predating the contract; the
   service now sends `symbol` as a field, so that shim retires once the new

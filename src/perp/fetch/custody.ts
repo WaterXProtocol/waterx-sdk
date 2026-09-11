@@ -5,6 +5,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { assertFeaturePackage } from "../../config.ts";
 import {
   burnFeeRate as burnFeeRateCall,
   creditSupply as creditSupplyCall,
@@ -16,6 +17,7 @@ import { DRY_RUN_SENDER } from "../constants.ts";
 import { simulateAndExtract } from "./simulate.ts";
 
 function custodyObjects(client: PerpClient): { pkg: string; vault: string; creditType: string } {
+  assertFeaturePackage(client.config, "native_custody", "the native custody PSM");
   return {
     pkg: client.config.packages.native_custody.published_at,
     vault: client.config.objects.custody.vault,

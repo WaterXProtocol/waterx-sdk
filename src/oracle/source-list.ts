@@ -32,7 +32,7 @@
 
 import type { WaterXConfig } from "../config.ts";
 import { ORACLE_SOURCES, type OracleSource } from "./price-update-rule.ts";
-import { resolveOracleRule } from "./rule-registry.ts";
+import { lazerServedTickers, waterxServedTickers } from "./served-tickers.ts";
 
 /**
  * The fed set this deployment wires: every implementable source whose rule
@@ -44,7 +44,13 @@ import { resolveOracleRule } from "./rule-registry.ts";
  * to pair with {@link missingOracleCredentials} in a boot assert).
  */
 export function deriveOracleSources(config: WaterXConfig): OracleSource[] {
-  return ORACLE_SOURCES.filter(
-    (source) => resolveOracleRule(source).supportedTickers(config).length > 0,
+  // Reads the served sets directly rather than through `resolveOracleRule`:
+  // the registry pulls in every rule module and its generated Move bindings,
+  // which would break this function's config-only contract for a consumer
+  // calling it before any client exists.
+  return ORACLE_SOURCES.filter((source) =>
+    source === "pyth_lazer_rule"
+      ? lazerServedTickers(config).length > 0
+      : waterxServedTickers(config).length > 0,
   );
 }

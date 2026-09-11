@@ -40,9 +40,12 @@ import { resolveOracleRule } from "./rule-registry.ts";
  *
  * `ConstantRule` is an auxiliary leg rather than a source — the SDK feeds it
  * alongside whichever source ran, so a ticker weighted only to it needs no
- * source. Anything NOT in this map (the retired `PythRule`, and `SupraRule`,
- * which the config cannot wire and the SDK never feeds) cannot be supplied by
- * this SDK at any fed set.
+ * source. Anything NOT in this map cannot be supplied by this SDK at any fed
+ * set: the retired `PythRule`, and `SupraRule` — whose `oracle_rules.supra`
+ * block DOES exist in v2 and carries `pair_ids`, but which v2 cannot make
+ * feedable, because feeding it needs an `oracle_holder` the schema has no field
+ * for. A ticker whose aggregator weights `SupraRule` is therefore unsuppliable
+ * and this check must report it.
  */
 const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource>> = Object.freeze({
   PythLazerRule: "pyth_lazer_rule",
