@@ -163,6 +163,23 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
     resolved without knowing the network, so the network is now required at the
     call site rather than implied by the string.
 
+### Fixed
+
+- **A quote-center `404` is classified by body SHAPE, not message wording.** The
+  leaf route's unknown-symbol refusal was matched against the prose
+  `unknown signed symbol X`, which neither live host sends — both answer
+  `{"error":"unknown symbol X"}`. Every refusal was therefore misread as "this
+  deployment has no leaf route", retried as an envelope, 404'd again, and threw:
+  one unknown symbol failed the WHOLE batch, exactly the failure the split
+  existed to prevent. The route question is now answered structurally — a JSON
+  object means the route answered and refused, an empty body means nothing
+  served the path (verified against both live quote-centers) — and a
+  machine-readable `code` / `symbol` is read FIRST, so a quote-center adopting
+  error codes needs no SDK release. Only the symbol NAME still falls back to the
+  message, never the routing decision. Regression tests pin the live body, the
+  structured form, the empty-body no-route arm, and a refusal naming no symbol
+  (which throws rather than looping or falling back).
+
 ### Added
 
 - **`PythProHistoryError`** — typed error thrown by `fetchPythProHistory` on a

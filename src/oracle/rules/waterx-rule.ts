@@ -621,12 +621,12 @@ export async function fetchWaterxSignedUpdate(
 /** A leaf pull either produced leaves, or the route isn't there to pull from. */
 export type LeafPull =
   | { leaves: WaterxSignedLeaf[] }
-  /** The quote-center HAS a leaf route but does not know this symbol —
-   * classified from its per-symbol `404 unknown signed symbol X` body, which
-   * names the first unknown symbol of the request. Distinct from
-   * `unavailable` (a bare 404: no leaf route at all), because the two need
-   * opposite reactions — retry WITHOUT the symbol vs fall back to the
-   * envelope route. */
+  /** The quote-center HAS a leaf route but does not know this symbol — a 404
+   * carrying a JSON refusal body, which names the first unknown symbol of the
+   * request. Distinct from `unavailable` (a 404 with NO structured body: no
+   * leaf route at all), because the two need opposite reactions — retry
+   * WITHOUT the symbol vs fall back to the envelope route. See
+   * {@link parseLeafRefusal} for why the split is structural, not textual. */
   | { unknownSymbol: string }
   | { unavailable: string };
 
@@ -701,6 +701,48 @@ function chunkSymbols(symbols: string[]): string[][] {
   return out;
 }
 
+/**
+ * Classify a `404` from the leaf route: did the ROUTE refuse, or is there no
+ * route at all?
+ *
+ * The discriminator is STRUCTURAL, never the wording of a message. A
+ * quote-center that owns this path answers a refusal with a JSON object
+ * (`application/json`); a deployment with no leaf route answers with an empty
+ * body and no content type. Verified against both live quote-centers
+ * (staging + mainnet, 2026-09-11): unknown symbol →
+ * `{"error":"unknown symbol X"}`, missing route → empty. The previous check
+ * matched a bare `unknown signed symbol X` string that neither host has ever
+ * sent, so every refusal was misread as "no leaf route", retried as an
+ * envelope, and 404'd again — failing the whole batch.
+ *
+ * `code` / `symbol` are read FIRST and are the intended long-term contract: a
+ * machine-readable code is what the SDK should branch on. Until the
+ * quote-center emits them, the symbol NAME is recovered from the message as a
+ * transitional shim — note that only the naming falls back to text, never the
+ * route-exists decision.
+ */
+function parseLeafRefusal(
+  body: string,
+): { symbol?: string; code?: string; message: string } | null {
+  if (!body) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  const o = json as Record<string, unknown>;
+  const message =
+    typeof o.error === "string" ? o.error : typeof o.message === "string" ? o.message : "";
+  const code = typeof o.code === "string" ? o.code : undefined;
+  const symbol =
+    typeof o.symbol === "string" && o.symbol
+      ? o.symbol
+      : (/unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(message)?.[1] ?? undefined);
+  return { ...(symbol ? { symbol } : {}), ...(code ? { code } : {}), message };
+}
+
 async function fetchLeafChunk(
   endpoint: string,
   symbols: string[],
@@ -715,13 +757,21 @@ async function fetchLeafChunk(
   );
   if (res.status === 404) {
     const body = (await res.text()).trim();
-    // The quote-center's per-symbol refusal (`get_quotes_leaves`): the ROUTE
-    // exists, one requested symbol does not. Without this split the whole
-    // batch fell through to the envelope route, 404'd again there, and threw
-    // — one unknown symbol cost every sibling its refresh.
-    const unknown = /^unknown signed symbol (\S+)/.exec(body);
-    if (unknown) return { unknownSymbol: unknown[1] };
-    return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
+    const refusal = parseLeafRefusal(body);
+    // No structured body ⇒ nothing served this path at all ⇒ no leaf route,
+    // so the caller falls back to the envelope.
+    if (!refusal) return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
+    // The ROUTE answered and refused. Without this split the whole batch fell
+    // through to the envelope route, 404'd again there, and threw — one
+    // unknown symbol cost every sibling its refresh.
+    if (refusal.symbol) return { unknownSymbol: refusal.symbol };
+    // Refused, but it did not say which symbol. Peeling is impossible (we would
+    // retry the same request forever) and the envelope fallback is wrong (the
+    // route exists), so surface the server's own words.
+    throw new Error(
+      `WaterX quote-center refused the leaf request and did not name a symbol: ` +
+        `404 ${refusal.message || body}`,
+    );
   }
   if (!res.ok) {
     throw new Error(`WaterX quote-center leaf fetch failed: ${res.status} ${await res.text()}`);

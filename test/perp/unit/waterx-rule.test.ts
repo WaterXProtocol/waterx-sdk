@@ -30,6 +30,7 @@ import {
 import {
   fetchWaterxSignedLeaves,
   fetchWaterxSignedUpdate,
+  fetchWaterxUpdateData,
   isFreshWaterxEntry,
   parseSignedEnvelope,
   parseSignedLeaves,
@@ -733,11 +734,12 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
       }
       const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
       if (symbols.includes("ETHUSD")) {
-        // The quote-center's own per-symbol refusal shape (`get_quotes_leaves`).
+        // The quote-center's own per-symbol refusal shape, captured from the
+        // LIVE staging + mainnet hosts (2026-09-11): a JSON body, not prose.
         return Promise.resolve({
           ok: false,
           status: 404,
-          text: async () => "unknown signed symbol ETHUSD",
+          text: async () => '{"error":"unknown symbol ETHUSD"}',
         } as Response);
       }
       return Promise.resolve({
@@ -760,13 +762,92 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
       status: 404,
-      text: async () => "unknown signed symbol ETHUSD",
+      text: async () => '{"error":"unknown symbol ETHUSD"}',
     } as Response);
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
       /unknown signed symbol ETHUSD/,
     );
     // ONE request: the refusal is classified at the leaf route, not laundered
     // through an envelope fallback that 404s again.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies the 404 by BODY SHAPE, not message wording", async () => {
+    // Allen's point, and the bug: the old check matched the prose
+    // `unknown signed symbol X`, which neither live host sends. The route
+    // question is now answered structurally — a JSON object means the route
+    // ANSWERED and refused; an empty body means nothing served the path. Both
+    // arms are pinned here so a message rewording upstream cannot resurrect
+    // this, and a quote-center that starts sending a `code` is already honored.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+
+    // (a) live wording, a symbol we asked for → peel it, keep the rest.
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+        return Promise.resolve({ ok: false, status: 404, text: async () => "" } as Response);
+      }
+      const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
+      return symbols.includes("ETHUSD")
+        ? Promise.resolve({
+            ok: false,
+            status: 404,
+            text: async () => '{"error":"unknown symbol ETHUSD"}',
+          } as Response)
+        : Promise.resolve({
+            ok: true,
+            status: 200,
+            text: async () => rawLeavesText(symbols),
+          } as unknown as Response);
+    });
+    await expect(
+      fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
+    ).resolves.toMatchObject({ missing: ["ETHUSD"] });
+    vi.restoreAllMocks();
+  });
+
+  it("honors a machine-readable refusal (code + symbol) without reading the message", async () => {
+    // The shape the quote-center should move to. Pinned now so adopting it
+    // needs no SDK release: `symbol` is read directly, message ignored.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"code":"UNKNOWN_SYMBOL","symbol":"ETHUSD","error":"totally reworded"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /unknown signed symbol ETHUSD/,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a 404 with no structured body is still 'no leaf route' and falls back to the envelope", async () => {
+    // The live missing-route shape: empty body, no content type. This is the
+    // ONLY arm that may fall back — misreading a refusal as this is what cost
+    // the whole batch.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = mockQuoteCenter({
+      leaves: { status: 404, text: "" },
+      update: { body: rawEnvelope() },
+    });
+    const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    expect(data?.kind).toBe("waterx_rule");
+    expect(requestedPaths(fetchSpy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+  });
+
+  it("a JSON refusal that names no symbol throws instead of looping or falling back", async () => {
+    // Peeling is impossible (the same request would repeat forever) and the
+    // envelope fallback is wrong (the route exists), so surface the server's
+    // own words.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"error":"batch rejected"}',
+    } as Response);
+    await expect(
+      fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
+    ).rejects.toThrow(/did not name a symbol/);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
