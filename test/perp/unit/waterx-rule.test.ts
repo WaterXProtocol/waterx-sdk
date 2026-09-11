@@ -827,14 +827,13 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
 
   it("accepts a numeric code — the previous version required a string and dropped it", async () => {
     expect(parseQuoteCenterError('{"code":10001,"symbol":"ETHUSD"}')?.code).toBe(10001);
-    // An all-digit string code normalizes to the same number, so the rest of
-    // the SDK only ever sees one type.
-    expect(parseQuoteCenterError('{"code":"10001"}')?.code).toBe(10001);
-    // A non-numeric code is not a number and must not be coerced to one.
-    expect(parseQuoteCenterError('{"code":"UNKNOWN_SYMBOL"}')?.code).toBeUndefined();
+    // The service serializes `ErrorCode as u32`, so a code is always a JSON
+    // number — a string is not one and must not be coerced into one.
+    expect(parseQuoteCenterError('{"code":"10001"}')?.code).toBeUndefined();
     // Today's live body: no code at all.
-    expect(parseQuoteCenterError('{"error":"unknown symbol ETHUSD"}')).toEqual({
+    expect(parseQuoteCenterError('{"error":"unknown symbol ETHUSD"}')).toMatchObject({
       message: "unknown symbol ETHUSD",
+      code: undefined,
     });
     // Not a JSON object ⇒ nothing served the path.
     expect(parseQuoteCenterError("")).toBeNull();

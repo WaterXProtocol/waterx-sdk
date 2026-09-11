@@ -370,7 +370,9 @@ export async function refreshOraclePrices(
   // listed source is load-bearing; silently building without it would starve
   // its weighted tickers on-chain).
   const fetched = new Map<OracleSource, RuleUpdateData>();
-  const missingBySource = new Map<OracleSource, Set<string>>();
+  // Which tickers came back unserved, across every source. Collected flat: no
+  // caller needs to know WHICH source declined, only that the ticker is gone.
+  const unserved = new Set<string>();
   await Promise.all(
     needsFetch.map(async (group) => {
       // Partial coverage where the rule offers it (divisible payloads): one
@@ -384,7 +386,7 @@ export async function refreshOraclePrices(
       if (group.rule.fetchUpdateDataPartial) {
         const { data, missing } = await group.rule.fetchUpdateDataPartial(host, group.tickers);
         fetched.set(group.source, data);
-        if (missing.length > 0) missingBySource.set(group.source, new Set(missing));
+        for (const ticker of missing) unserved.add(ticker);
       } else {
         fetched.set(group.source, await group.rule.fetchUpdateData(host, group.tickers));
       }
@@ -402,14 +404,8 @@ export async function refreshOraclePrices(
   // EVERY group (an update leg for a ticker that gets no collector would be
   // dead weight), and lands in `skipped` below even where another source —
   // or a constant pin — could still feed it.
-  const unserved = new Set<string>();
-  for (const missing of missingBySource.values()) {
-    for (const ticker of missing) unserved.add(ticker);
-  }
-  if (unserved.size > 0) {
-    for (const group of groups) {
-      group.tickers = group.tickers.filter((t) => !unserved.has(t));
-    }
+  for (const group of groups) {
+    group.tickers = group.tickers.filter((t) => !unserved.has(t));
   }
   const dataByGroup = groups.map(
     (group, i) => cachedByGroup[i] ?? fetched.get(group.source) ?? null,

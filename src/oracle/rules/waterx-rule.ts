@@ -624,7 +624,7 @@ export type LeafPull =
    * request. Distinct from `unavailable` (a 404 with NO structured body: no
    * leaf route at all), because the two need opposite reactions — retry
    * WITHOUT the symbol vs fall back to the envelope route. See
-   * {@link parseLeafRefusal} for why the split is structural, not textual. */
+   * {@link parseQuoteCenterError} for why the split is structural, not textual. */
   | { unknownSymbol: string }
   | { unavailable: string };
 
@@ -705,10 +705,7 @@ function chunkSymbols(symbols: string[]): string[][] {
  * operator on EVERY error path, not just the 404 the classifier inspects, so a
  * service that starts emitting them is immediately legible in logs.
  */
-async function describeFailure(res: {
-  status: number;
-  text: () => Promise<string>;
-}): Promise<string> {
+async function describeFailure(res: Response): Promise<string> {
   const body = (await res.text()).trim();
   const parsed = parseQuoteCenterError(body);
   if (!parsed) return `${String(res.status)} ${body}`.trim();
@@ -749,10 +746,8 @@ export interface QuoteCenterError {
  * object, which is itself the signal that nothing served the path (see
  * {@link fetchLeafChunk}).
  *
- * `code` accepts a number OR an all-digit string: the previous version required
- * a string and so dropped a numeric code entirely, which is the shape the
- * service is moving to. Both are normalized to a number here so the rest of the
- * SDK only ever sees one type.
+ * `code` is a JSON NUMBER: the service serializes `ErrorCode as u32`. The
+ * previous version required a string and so dropped it entirely.
  */
 export function parseQuoteCenterError(body: string): QuoteCenterError | null {
   if (!body) return null;
@@ -764,17 +759,11 @@ export function parseQuoteCenterError(body: string): QuoteCenterError | null {
   }
   if (!json || typeof json !== "object" || Array.isArray(json)) return null;
   const o = json as Record<string, unknown>;
-  const rawCode = o.code;
-  const code =
-    typeof rawCode === "number" && Number.isFinite(rawCode)
-      ? rawCode
-      : typeof rawCode === "string" && /^\d+$/.test(rawCode)
-        ? Number(rawCode)
-        : undefined;
+  const code = typeof o.code === "number" && Number.isFinite(o.code) ? o.code : undefined;
   const message =
     typeof o.error === "string" ? o.error : typeof o.message === "string" ? o.message : "";
   const symbol = typeof o.symbol === "string" && o.symbol ? o.symbol : undefined;
-  return { ...(code !== undefined && { code }), ...(symbol && { symbol }), message };
+  return { code, symbol, message };
 }
 
 /** Semantic meaning of a parsed error, via the contract table — `undefined` when unmapped. */
@@ -818,8 +807,9 @@ async function fetchLeafChunk(
     // through to the envelope route, 404'd again there, and threw — one
     // unknown symbol cost every sibling its refresh.
     //
-    // CODE FIRST: once the contract table is populated the decision is made
-    // entirely by the number, and the name comes from the `symbol` field.
+    // CODE FIRST: the decision is the number, and the name comes from the
+    // `symbol` field. Text is read only by the shim below, for deployments
+    // that predate the contract.
     const meaning = meaningOf(refusal);
     if (meaning === "unknown_symbol") {
       const named = namedSymbol(refusal);

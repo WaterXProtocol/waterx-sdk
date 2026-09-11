@@ -127,22 +127,16 @@ export function assertLinePackages<const Names extends readonly string[]>(
  */
 export function assertRequiredPackages(config: ParsedWaterxConfig): asserts config is WaterXConfig {
   const rules = config.oracle_rules;
-  const missing = [
-    ...REQUIRED_PACKAGES,
-    rules.waterx.package,
-    rules.constant.package,
-    ...(rules.pyth_lazer ? [rules.pyth_lazer.package] : []),
-    // `ownEntry`, not a bare bracket read: `oracle_rules.<rule>.package` is an
-    // unconstrained string from the document, so a value like "constructor"
-    // would hit Object.prototype, pass this check, and only surface later as
-    // `tx.moveCall({ package: undefined })`.
-  ].filter((name) => ownEntry(config.packages, name) === undefined);
-  if (missing.length > 0) {
-    throw new Error(
-      `waterx-config (${config.network}): packages.{${missing.join(", ")}} missing — ` +
-        `the SDK reads every one of these unconditionally`,
-    );
-  }
+  assertLinePackages(
+    config as WaterXConfig,
+    [
+      ...REQUIRED_PACKAGES,
+      rules.waterx.package,
+      rules.constant.package,
+      ...(rules.pyth_lazer ? [rules.pyth_lazer.package] : []),
+    ],
+    "SDK",
+  );
 }
 
 /**
@@ -234,16 +228,6 @@ export function clearConfigCache(): void {
   configCache.clear();
 }
 
-/** A non-ok config response, carrying the status so the fallback can classify it. */
-class HttpConfigError extends Error {
-  readonly status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "HttpConfigError";
-    this.status = status;
-  }
-}
-
 /**
  * Whether a failed load may be retried into the last-known-good snapshot.
  *
@@ -256,18 +240,13 @@ class HttpConfigError extends Error {
  * deployment problem.
  */
 function isTransientLoadFailure(err: unknown): boolean {
-  const status =
-    err instanceof HttpConfigError
-      ? err.status
-      : err instanceof FetchPolicyError
-        ? err.status
-        : undefined;
-  if (err instanceof HttpConfigError || err instanceof FetchPolicyError) {
-    return status === undefined || status === 429 || status >= 500;
-  }
-  // Anything raised after a 200 arrived (JSON.parse, the strict parser,
-  // assertRequiredPackages) is a property of the document, not of the moment.
-  return false;
+  // `fetchWithPolicy` only THROWS once it has exhausted retries, and it only
+  // retries what it deems transient — so a `FetchPolicyError` is the transient
+  // case. A non-ok response it hands back instead (any status it will not
+  // retry, e.g. 403/404) arrives here as a plain Error and is deterministic by
+  // construction. The status test below is belt-and-braces on that invariant.
+  if (!(err instanceof FetchPolicyError)) return false;
+  return err.status === undefined || err.status === 429 || err.status >= 500;
 }
 
 export async function loadConfig(
@@ -319,10 +298,7 @@ export async function loadConfig(
       { timeoutMs: opts.timeoutMs ?? 10_000, retries: 2, fetchImpl },
     );
     if (!response.ok) {
-      throw new HttpConfigError(
-        `loadConfig: HTTP ${response.status} fetching ${url}`,
-        response.status,
-      );
+      throw new Error(`loadConfig: HTTP ${response.status} fetching ${url}`);
     }
     config = parseConfigDocument(await response.json(), network);
   } catch (err) {
