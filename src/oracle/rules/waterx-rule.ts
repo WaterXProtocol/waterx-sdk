@@ -724,22 +724,15 @@ async function describeFailure(res: {
  * meaning, so adopting the contract is a single edit here — no call site
  * branches on a number, and no number appears anywhere else.
  *
- * DELIBERATELY EMPTY. The quote-center has not published its enum yet (verified
- * 2026-09-11: both staging and mainnet answer a refusal with
- * `{"error":"unknown symbol X"}` and no `code` at all). Guessing values would be
- * worse than not reading them — a wrong mapping on the money path silently
- * misclassifies a refusal. Until it ships, {@link parseQuoteCenterError} still
- * PARSES a code of either type and the classifier still prefers it; only the
- * meaning is missing, so the structural fallbacks below carry the load.
- *
- * To adopt: add the published numbers here. Nothing else changes.
- *
- * `Readonly` by type rather than `Object.freeze`, so the wiring can be proven:
- * the table is empty until the service ships, and a test that populates it is
- * the only way to exercise the code-driven path before then. Production never
- * writes to it.
+ * Values are the quote-center's published enum (`ErrorCode` in
+ * `quote-service/src/api.rs`), which is APPEND-ONLY — a number is never reused
+ * or renumbered, because clients pin it. Add a row here when the service adds
+ * one; nothing else in the SDK changes.
  */
-export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">> = {};
+export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">> = {
+  /** `ErrorCode::UnknownSymbol` — the symbol is not one the service signs. */
+  10001: "unknown_symbol",
+};
 
 /** One quote-center error body, parsed. `code` is the contract; `message` is for humans. */
 export interface QuoteCenterError {

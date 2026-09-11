@@ -167,15 +167,15 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 - **Quote-center errors are keyed on a NUMERIC code.** `QUOTE_CENTER_ERROR_CODES`
   (`oracle/rules/waterx-rule.ts`) is the single place a wire code is given
-  meaning, and the 404 classifier branches on it before anything else;
+  meaning — populated from the service's published `ErrorCode` enum
+  (`UnknownSymbol = 10001`) — and the 404 classifier branches on it first;
   `parseQuoteCenterError` accepts a numeric code (the previous version required
   a string and silently dropped numbers) and normalizes an all-digit string to
   the same number. Every non-ok quote-center response now reports its code, not
-  just the 404. The table ships EMPTY on purpose — the service has not published
-  its enum, and guessing a number would misclassify a refusal on the money path
-  — so adopting it is one edit with no other change. The message is display-only
-  except for one transitional shim that recovers the symbol NAME, which the
-  `symbol` field replaces the moment it is sent.
+  just the 404. The message is display-only except for one transitional shim
+  that recovers the symbol NAME from deployments predating the contract; the
+  service now sends `symbol` as a field, so that shim retires once the new
+  build is live.
 - **A quote-center `404` is classified by body SHAPE, not message wording.** The
   leaf route's unknown-symbol refusal was matched against the prose
   `unknown signed symbol X`, which neither live host sends — both answer
