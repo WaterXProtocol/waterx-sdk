@@ -1,6 +1,6 @@
 /**
- * wxa account reads (`waterx_account`) — work on credit-only deployments
- * (which have no `waterx_perp_view`). Plus the inclusive spendable-credit read.
+ * wxa account reads (`waterx_account`) — they touch no perp object, so they
+ * work against `waterx_account` alone. Plus the inclusive spendable-credit read.
  */
 
 import { bcs } from "@mysten/sui/bcs";
@@ -31,7 +31,7 @@ export async function getAccountsByOwner(client: PerpClient, owner: string): Pro
   accountIdsCall({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       owner,
     },
   })(tx);
@@ -53,7 +53,7 @@ export async function getAccountBalance(
   accountBalanceCall({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       accountId,
     },
     typeArguments: [coinType ?? client.creditType()],

@@ -32,7 +32,7 @@ describe.skipIf(!isIntegrationTraderConfigured())("Integration: staking stake + 
   }, 180_000);
 
   it("stakes 1 WLP then unstakes 1 WLP", async (ctx) => {
-    if (!client.config.packages.waterx_staking?.pools?.WLP) {
+    if (!client.config.objects.staking.pools.WLP) {
       ctx.skip("Staking pool WLP not deployed");
       return;
     }

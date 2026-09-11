@@ -35,7 +35,7 @@ describe(`builders compose (${e2eNetwork})`, () => {
     assertSimulateSuccess(sim, 1);
   }, 120_000);
 
-  it("increasePositionRequest + executeTrading wires one PTB (may abort without sponsor witnesses)", async (ctx) => {
+  it("increasePositionRequest + executeTrading wires one PTB (may abort on-chain)", async (ctx) => {
     const d = discovered;
     if (!d) {
       ctx.skip("No eligible discovered position");

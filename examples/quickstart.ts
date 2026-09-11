@@ -13,7 +13,7 @@
  *
  * Simulate-only by default — nothing is signed or sent unless you opt in.
  *
- *   export WATERX_CONFIG_URL=https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main/testnet.json
+ *   export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev   # CDN base; /<network>.json appended
  *   export PYTH_API_KEY=...   # the default fed set includes pyth_lazer_rule
  *   pnpm exec tsx examples/quickstart.ts                       # simulate every step
  *   WATERX_EXECUTE=1 pnpm exec tsx examples/quickstart.ts      # sign + send

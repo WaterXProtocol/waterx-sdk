@@ -17,7 +17,7 @@ import {
 const DUMMY_ACCOUNT = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 /** Vault assets at module load (resolved client) — drives per-token cases below. */
-const CUSTODY_ASSETS = client.config.packages.native_custody?.assets ?? [];
+const CUSTODY_ASSETS = client.config.objects.custody.assets;
 
 describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
   it("buildPlaceOrderTx simulates (market form)", async (ctx) => {
@@ -76,9 +76,9 @@ describe(`tx-builders smoke simulate (${e2eNetwork})`, () => {
   // input coin so the test needs no funded wallet — it only verifies the
   // per-asset type plumbing reaches chain simulate.
   if (CUSTODY_ASSETS.length === 0) {
-    it.skip("mintCreditToAccount per vault asset (native_custody not deployed)", () => {});
+    it.skip("mintCreditToAccount per vault asset (objects.custody.assets is empty)", () => {});
   } else {
-    it.each(CUSTODY_ASSETS.map((a) => ({ label: a.name ?? a.type, type: a.type })))(
+    it.each(CUSTODY_ASSETS.map((a) => ({ label: a.name, type: a.type })))(
       "mintCreditToAccount simulates for $label",
       async ({ type }) => {
         const tx = new Transaction();

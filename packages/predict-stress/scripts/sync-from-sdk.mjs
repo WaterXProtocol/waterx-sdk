@@ -39,6 +39,10 @@ const HELPER_FILES = [
 ];
 
 const OTHER_FILES = [
+  // The env-boundary URL rule is shared with the SDK harnesses; vendor it so
+  // this package applies the SAME base-vs-legacy-file semantics rather than a
+  // drifting copy. Imports of it are rewritten to the vendored path below.
+  ["scripts/waterx-config-url.ts", "src/helpers/waterx-config-url.ts"],
   ["test/prediction/contract/event-fields.ts", "src/contract/event-fields.ts"],
   ["test/prediction/fixtures/ptb-params.ts", "src/fixtures/ptb-params.ts"],
   ["test/prediction/scripts/place-stress-multi-wallet.ts", "src/scripts/place-stress-core.ts"],
@@ -62,6 +66,13 @@ function rewriteSdkImports(content) {
       // from the single shared root.
       .replace(/from "(?:\.\.\/)+src\/generated\/([^"]+)\.ts"/g, 'from "@waterx/sdk/generated/$1"')
       .replace(/from '(?:\.\.\/)+src\/generated\/([^']+)\.ts'/g, "from '@waterx/sdk/generated/$1'")
+      // `DEFAULT_GRPC_URLS` lives on `src/base-client.ts` upstream and is
+      // re-exported on the prediction export map for exactly this reason.
+      .replace(/from "(?:\.\.\/)+src\/base-client\.ts"/g, 'from "@waterx/sdk/prediction"')
+      .replace(/from '(?:\.\.\/)+src\/base-client\.ts'/g, "from '@waterx/sdk/prediction'")
+      // The env-boundary URL rule is vendored next to the helpers (OTHER_FILES).
+      .replace(/from "(?:\.\.\/)+scripts\/waterx-config-url\.ts"/g, 'from "./waterx-config-url.ts"')
+      .replace(/from '(?:\.\.\/)+scripts\/waterx-config-url\.ts'/g, "from './waterx-config-url.ts'")
   );
 }
 
@@ -72,7 +83,10 @@ function rewriteSdkImports(content) {
  * silently reach outside the package. Fail the sync instead of shipping it.
  */
 function assertNoSdkSourceEscape(label, content) {
-  const escapes = content.match(/from ["'](?:\.\.\/)+src\/[^"']+["']/g);
+  // `scripts/` counts too: it is just as far outside this package as `src/`,
+  // and an unrewritten import of it would be copied verbatim and fail only at
+  // RUNTIME — which is how `waterx-config-url.ts` slipped through once.
+  const escapes = content.match(/from ["'](?:\.\.\/)+(?:src|scripts)\/[^"']+["']/g);
   if (escapes) {
     throw new Error(
       `${label}: import(s) escape the standalone package: ${escapes.join(", ")}\n` +

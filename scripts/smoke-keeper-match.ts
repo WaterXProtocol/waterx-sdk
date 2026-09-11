@@ -68,7 +68,7 @@ import {
   refreshWlpPoolOracles,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 const BTC = "BTCUSD";
@@ -132,7 +132,7 @@ async function readMarketRaw(client: PerpClient): Promise<MarketDataView> {
   marketDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: BTC,
     },
     typeArguments: [client.wlpType()],
@@ -198,7 +198,7 @@ async function main(): Promise<void> {
 
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
   const usdcType = client.getPoolTokenType("USD");
 

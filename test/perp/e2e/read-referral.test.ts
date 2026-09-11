@@ -1,14 +1,12 @@
 /**
- * E2E: optional `waterx_referral` package (skipped when not configured).
+ * E2E: `waterx_referral` reads.
  */
 import { getRefererFor, isValidReferralCode, referralCodeExists } from "@waterx/sdk";
 import { describe, expect, it } from "vitest";
 
 import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 
-const referralConfigured = Boolean(client.config.packages.waterx_referral?.published_at);
-
-describe.skipIf(!referralConfigured)(`read referral (${e2eNetwork})`, () => {
+describe(`read referral (${e2eNetwork})`, () => {
   it("getRefererFor returns undefined for zero referee", async () => {
     const ref = await getRefererFor(
       client,

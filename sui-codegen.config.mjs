@@ -70,14 +70,6 @@ const config = {
       },
     },
     {
-      package: "@waterx/supra-rule",
-      path: resolve(contracts, "waterx_oracle_rule/supra_rule"),
-      generate: {
-        types: true,
-        functions: true,
-      },
-    },
-    {
       package: "@waterx/rule",
       path: resolve(contracts, "waterx_oracle_rule/waterx_rule"),
       generate: {

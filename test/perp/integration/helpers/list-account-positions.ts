@@ -56,7 +56,7 @@ export async function listAllConfiguredAccountPositions(
 ): Promise<AccountPositionRow[]> {
   const rows: AccountPositionRow[] = [];
   for (const t of tickers) {
-    if (!client.config.packages.waterx_perp.markets?.[t]) continue;
+    if (!client.config.objects.perp.markets?.[t]) continue;
     const part = await listAccountPositionsInMarket(client, accountId, t);
     rows.push(...part);
   }

@@ -17,7 +17,7 @@ import {
   withdrawCollateralRequest,
 } from "../../../src/perp/user/trading.ts";
 import { rawPrice } from "../../../src/utils/math.ts";
-import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
+import { MOCK_USDC_TYPE } from "../../helpers/fixtures/mock-testnet-config.ts";
 import {
   PTB_DUMMY_ACCOUNT_ID,
   PTB_DUMMY_DEPOSIT_COIN,

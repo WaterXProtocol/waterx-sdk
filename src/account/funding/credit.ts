@@ -22,6 +22,7 @@ import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 import { normalizeStructTag } from "@mysten/sui/utils";
 
+import { assertFeaturePackage } from "../../config.ts";
 import { mint as custodyMintCall } from "../../generated/native_custody/custody_vault.ts";
 import { requestWithdraw as requestWithdrawCall } from "../../generated/waterx_account/account.ts";
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
@@ -67,41 +68,6 @@ function creditTypeOf(client: AccountClientLike, override?: string): string {
   return normalizeStructTag(override ?? client.creditType());
 }
 
-// Required-ID accessors: the credit/bridge package entries carry their
-// shared object ids only after the relevant deploy phase has run, so each
-// is optional in the schema. These throw an actionable error rather than
-// letting `tx.object(undefined)` fail opaquely.
-function bridgeId(c: AccountClientLike): string {
-  const id = c.getBridge().bridge;
-  if (!id) throw new Error("wormhole_bridge.bridge missing from config (Bridge not initialized)");
-  return id;
-}
-function creditRegistryId(c: AccountClientLike): string {
-  const id = c.getCredit().credit_registry;
-  if (!id) throw new Error("waterx_credit.credit_registry missing from config");
-  return id;
-}
-function queuePkg(c: AccountClientLike): string {
-  const q = c.config.packages.withdrawal_queue;
-  if (!q) throw new Error("withdrawal_queue not configured for this deployment");
-  return q.published_at;
-}
-function queueId(c: AccountClientLike): string {
-  const q = c.config.packages.withdrawal_queue;
-  if (!q?.queue) throw new Error("withdrawal_queue.queue missing from config");
-  return q.queue;
-}
-function custodyPkg(c: AccountClientLike): string {
-  const n = c.config.packages.native_custody;
-  if (!n) throw new Error("native_custody not configured for this deployment");
-  return n.published_at;
-}
-function custodyVaultId(c: AccountClientLike): string {
-  const n = c.config.packages.native_custody;
-  if (!n?.vault) throw new Error("native_custody.vault missing from config");
-  return n.vault;
-}
-
 // ============================================================================
 // Mint (EVM → Sui)
 // ============================================================================
@@ -124,12 +90,14 @@ export function redeemVaa(
   params: RedeemVaaParams,
 ): TransactionArgument {
   const [req] = redeemVaaCall({
-    package: client.getBridge().published_at,
+    package:
+      (assertFeaturePackage(client.config, "wormhole_bridge", "the Wormhole bridge"),
+      client.config.packages.wormhole_bridge.published_at),
     arguments: {
-      bridge: tx.object(bridgeId(client)),
-      registry: tx.object(creditRegistryId(client)),
-      accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      wormholeState: tx.object(client.wormholeStateId()),
+      bridge: tx.object(client.config.objects.bridge.state),
+      registry: tx.object(client.config.objects.credit.registry),
+      accountRegistry: tx.object(client.config.objects.account.registry),
+      wormholeState: tx.object(client.config.objects.bridge.wormhole_state),
       vaaBytes: toBytes(params.vaaBytes),
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
@@ -157,7 +125,7 @@ export function consumeCreditDeposit(
   consumeDepositDirect({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       req: params.depositRequest as unknown as TransactionArgument,
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
@@ -184,7 +152,9 @@ export function routeWormhole(
   params: RouteWormholeParams,
 ): TransactionArgument {
   const out = routeWormholeCall({
-    package: queuePkg(client),
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
       evmDestinationChain: toU16(params.evmDestinationChain, "evmDestinationChain"),
       evmRecipient: toEvmAddressBytes(params.evmRecipient, "evmRecipient"),
@@ -212,7 +182,9 @@ export function routeNative(
   params: RouteNativeParams,
 ): TransactionArgument {
   const out = routeNativeCall({
-    package: queuePkg(client),
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: { minOutput: toU64(params.minOutput ?? 0n, "minOutput") },
     typeArguments: [normalizeStructTag(params.assetType)],
   })(tx);
@@ -248,7 +220,7 @@ export function requestCreditWithdraw(
   const [req] = requestWithdrawCall({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       senderRequest: senderRequest as unknown as TransactionArgument,
       accountId: params.accountId,
       amount: toU64(params.amount, "amount"),
@@ -276,10 +248,12 @@ export function enqueueWithdrawal(
   params: EnqueueWithdrawalParams,
 ): TransactionArgument {
   const out = enqueueCall({
-    package: queuePkg(client),
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
-      queue: tx.object(queueId(client)),
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      queue: tx.object(client.config.objects.withdrawal_queue.queue),
+      registry: tx.object(client.config.objects.account.registry),
       req: params.withdrawRequest as unknown as TransactionArgument,
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
@@ -309,14 +283,16 @@ export function executeWithdrawalWormhole(
 ): void {
   const request = makeSenderRequest(client, tx, params.bucketAccount);
   executeWormholeCall({
-    package: queuePkg(client),
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
-      queue: tx.object(queueId(client)),
+      queue: tx.object(client.config.objects.withdrawal_queue.queue),
       key: toU64(params.key, "key"),
       request: request as unknown as TransactionArgument,
-      bridge: tx.object(bridgeId(client)),
-      creditRegistry: tx.object(creditRegistryId(client)),
-      wormholeState: tx.object(client.wormholeStateId()),
+      bridge: tx.object(client.config.objects.bridge.state),
+      creditRegistry: tx.object(client.config.objects.credit.registry),
+      wormholeState: tx.object(client.config.objects.bridge.wormhole_state),
       wormholeFee: params.wormholeFee as unknown as TransactionArgument,
     },
     typeArguments: [creditTypeOf(client, params.creditType)],
@@ -339,13 +315,15 @@ export function executeWithdrawalNative(
 ): void {
   const request = makeSenderRequest(client, tx, params.bucketAccount);
   executeNativeCall({
-    package: queuePkg(client),
+    package:
+      (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
+      client.config.packages.withdrawal_queue.published_at),
     arguments: {
-      queue: tx.object(queueId(client)),
+      queue: tx.object(client.config.objects.withdrawal_queue.queue),
       key: toU64(params.key, "key"),
       request: request as unknown as TransactionArgument,
-      vault: tx.object(custodyVaultId(client)),
-      creditRegistry: tx.object(creditRegistryId(client)),
+      vault: tx.object(client.config.objects.custody.vault),
+      creditRegistry: tx.object(client.config.objects.credit.registry),
     },
     typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],
   })(tx);
@@ -383,11 +361,13 @@ export function custodyMint(
   params: CustodyMintParams,
 ): TransactionArgument {
   const [req] = custodyMintCall({
-    package: custodyPkg(client),
+    package:
+      (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
+      client.config.packages.native_custody.published_at),
     arguments: {
-      vault: tx.object(custodyVaultId(client)),
-      registry: tx.object(creditRegistryId(client)),
-      accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      vault: tx.object(client.config.objects.custody.vault),
+      registry: tx.object(client.config.objects.credit.registry),
+      accountRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       assetCoin: params.assetCoin as unknown as TransactionArgument,
       extraData: toBytes(params.extraData ?? new Uint8Array()),

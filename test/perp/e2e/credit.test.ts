@@ -12,10 +12,10 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { client, DUMMY_SENDER, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 import {
-  creditPipelineSkipReason,
   custodyWxaSkipReason,
   e2eSimulateGasBudget,
-  isCreditPipelineConfigured,
+  NO_CUSTODY_ASSET_SKIP_REASON,
+  primaryCustodyAssetType,
   resolveCustodyWxaRow,
   UNREGISTERED_CUSTODY_ASSET_TYPE,
 } from "../helpers/e2e/e2e-custody.ts";
@@ -29,12 +29,11 @@ import {
 } from "../helpers/e2e/simulate-assertions.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 
-const creditPipeline = isCreditPipelineConfigured(client);
 const EVM_ADDR = "0x1111111111111111111111111111111111111111";
 const EVM_TOKEN = "0x2222222222222222222222222222222222222222";
 
-describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
-  const assetType = creditPipeline ? client.getNativeAssets()[0]?.type : undefined;
+describe(`credit bridge (${e2eNetwork})`, () => {
+  const assetType = primaryCustodyAssetType(client);
 
   it("buildRedeemVaaTx composes redeem + consume (invalid VAA may abort on simulate)", async () => {
     const tx = buildRedeemVaaTx(client, { vaaBytes: new Uint8Array([0xde, 0xad]) });
@@ -115,9 +114,9 @@ describe.skipIf(!creditPipeline)(`credit bridge (${e2eNetwork})`, () => {
   }, 90_000);
 });
 
-describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () => {
+describe(`credit bridge stateful (${e2eNetwork})`, () => {
   let wxa: { accountId: string; owner: string } | null;
-  const assetType = client.getNativeAssets()[0]?.type;
+  const assetType = primaryCustodyAssetType(client);
 
   beforeAll(async () => {
     wxa = await resolveCustodyWxaRow(client);
@@ -130,11 +129,7 @@ describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () =>
       return;
     }
     if (!assetType) {
-      ctx.skip(creditPipelineSkipReason());
-      return;
-    }
-    if (!client.config.packages.withdrawal_queue?.queue) {
-      ctx.skip("withdrawal_queue.queue not in config");
+      ctx.skip(NO_CUSTODY_ASSET_SKIP_REASON);
       return;
     }
 
@@ -174,9 +169,9 @@ describe.skipIf(!creditPipeline)(`credit bridge stateful (${e2eNetwork})`, () =>
   }, 240_000);
 });
 
-describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork})`, () => {
+describe(`credit bridge negative simulate (${e2eNetwork})`, () => {
   let wxa: { accountId: string; owner: string } | null;
-  const assetType = client.getNativeAssets()[0]?.type;
+  const assetType = primaryCustodyAssetType(client);
 
   beforeAll(async () => {
     wxa = await resolveCustodyWxaRow(client);
@@ -189,11 +184,7 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
       return;
     }
     if (!assetType) {
-      ctx.skip(creditPipelineSkipReason());
-      return;
-    }
-    if (!client.config.packages.withdrawal_queue?.queue) {
-      ctx.skip("withdrawal_queue.queue not in config");
+      ctx.skip(NO_CUSTODY_ASSET_SKIP_REASON);
       return;
     }
 
@@ -225,10 +216,6 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
       ctx.skip(custodyWxaSkipReason());
       return;
     }
-    if (!client.config.packages.withdrawal_queue?.queue) {
-      ctx.skip("withdrawal_queue.queue not in config");
-      return;
-    }
 
     const tx = buildRequestCreditWithdrawTx(client, {
       accountId: row.accountId,
@@ -248,10 +235,6 @@ describe.skipIf(!creditPipeline)(`credit bridge negative simulate (${e2eNetwork}
     const row = wxa;
     if (!row) {
       ctx.skip(custodyWxaSkipReason());
-      return;
-    }
-    if (!client.config.packages.withdrawal_queue?.queue) {
-      ctx.skip("withdrawal_queue.queue not in config");
       return;
     }
 

@@ -8,7 +8,7 @@ import {
   settleRedeemWlp,
   updateTokenValue,
 } from "../../../src/perp/user/wlp.ts";
-import { MOCK_USDC_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
+import { MOCK_USDC_TYPE } from "../../helpers/fixtures/mock-testnet-config.ts";
 import { PTB_DUMMY_ACCOUNT_ID } from "../helpers/fixtures/ptb-test-dummies.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -48,20 +48,6 @@ describe("user/wlp PTB builders (v3)", () => {
       requestId: 1n,
     });
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("mintWlp throws when wlp_aum missing", () => {
-    const bare = createUnitTestClient();
-    delete bare.config.packages.wlp.wlp_aum;
-    const tx = new Transaction();
-    expect(() =>
-      mintWlp(bare, tx, {
-        accountId,
-        depositTokenType: MOCK_USDC_TYPE,
-        depositAmount: 1n,
-        minLpAmount: 0n,
-      }),
-    ).toThrow(/wlp_aum/);
   });
 
   it("updateTokenValue", () => {

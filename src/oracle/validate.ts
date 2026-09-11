@@ -19,12 +19,7 @@
  */
 
 import type { OracleHost } from "./host.ts";
-import {
-  ORACLE_SOURCES,
-  type OracleCredentialKind,
-  type OracleCredentials,
-  type OracleSource,
-} from "./price-update-rule.ts";
+import type { OracleCredentialKind, OracleCredentials, OracleSource } from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
 
 // The credential-kind union is the PORT's (`price-update-rule.ts`, next to
@@ -73,12 +68,15 @@ export class OracleTickerUnservedError extends Error {
  * set your deployment cares about (typically every market) and find out at
  * boot instead.
  *
- * It does NOT check "every listed source has feeds" any more: the fed set is
- * derived from exactly that condition (see `deriveOracleSources`), so that
- * assert became unreachable for any real client — it could only fire for a
- * config mutated after construction, which is a test fixture, not a
- * deployment. Write set == read set by construction (each source reads its own
- * feeds), so this single assert still covers both planes.
+ * SCOPE, post-v2 — read this before relying on it. The quote-center serves the
+ * whole `symbols` universe, so `waterx_rule` (always wired: its block is
+ * schema-required) makes every symbol servable. What this assert still catches
+ * is a requested ticker OUTSIDE `symbols` and not constant-pinned — e.g. a
+ * market or pool token the document never introduced as a symbol. What it can
+ * NO LONGER catch is a symbol the document lists but the quote-center does not
+ * actually serve; that surfaces at the first build's fetch instead. Verifying
+ * the on-chain half is `assertOracleWeightCoverage` (`weight-coverage.ts`),
+ * which reads the aggregators.
  */
 export function assertOracleWriteCoverage(host: OracleHost, tickers: readonly string[]): void {
   const { unservable } = partitionServableTickers(host, tickers);
@@ -87,53 +85,24 @@ export function assertOracleWriteCoverage(host: OracleHost, tickers: readonly st
   }
 }
 
-/** Tickers the client's LISTED sources carry a feed for. */
+/** Tickers the client's LISTED sources serve. */
 function fedSetTickers(host: OracleHost): Set<string> {
   return new Set(
-    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host)),
+    host.oracleSources.flatMap((source) => resolveOracleRule(source).supportedTickers(host.config)),
   );
-}
-
-/**
- * Tickers ANY rule in this config carries a feed for — listed or not.
- *
- * The fed set answers "can THIS client price it"; this answers "does the chain
- * plausibly weight a price-update rule for it", which is what decides whether
- * a constant leg alone is the whole picture. `supra_rule` counts (it is a
- * weighted leg even though it is not an `OracleSource`) but only when it is
- * actually wired — an unwired block's feeds map is documented as
- * informational, and honouring a stale one would strand constant-only tickers
- * for no benefit.
- */
-function tickersWithAnySourceFeed(host: OracleHost): Set<string> {
-  const out = new Set<string>();
-  for (const source of ORACLE_SOURCES) {
-    // Skip a source the deployment DISABLED — routing already honours
-    // `enabled: false` (`deriveOracleSources`), and applying it in one place
-    // but not the other meant a disabled block's informational feeds
-    // disqualified a constant-only ticker that nothing would ever feed. The
-    // predicate has to match what actually gets emitted.
-    if (host.config.packages[source]?.enabled === false) continue;
-    for (const ticker of resolveOracleRule(source).supportedTickers(host)) out.add(ticker);
-  }
-  // `getSupraRule()` already requires `enabled` — see `config-view.ts`.
-  if (host.getSupraRule() !== undefined) {
-    for (const ticker of Object.keys(host.config.packages.supra_rule?.feeds ?? {})) out.add(ticker);
-  }
-  return out;
 }
 
 /**
  * THE acceptance predicate, in partition form — the single definition of
  * "will `refreshOraclePrices` put a price on chain for this ticker".
  *
- * A ticker is servable when some LISTED source's feeds carry it, or when it is
- * CONSTANT-ONLY: `constant_rule` pins it and no other rule in the config feeds
- * it. The stricter constant test matters — a constant-pinned ticker that some
- * other rule also feeds gets aggregated from a constant-only collector, and if
- * the chain weights that other rule the aggregate aborts `EMissingPriceSource`.
- * (`aggregateTicker` only appends a supra leg when a price-update source
- * already fed the collector, so a constant-only collector can never carry one.)
+ * A ticker is servable when some LISTED source serves it, or when
+ * `constant_rule` pins it. No stricter constant test is needed: a source is
+ * listed exactly when it serves at least one ticker (`deriveOracleSources`),
+ * so a constant-pinned ticker that any source also serves is ALREADY in the
+ * fed set and gets that source's leg alongside the constant one — a
+ * constant-only collector is only ever emitted for a ticker no source in the
+ * config can serve, which the chain cannot weight to a source.
  *
  * `covered` lets a caller that has ALREADY resolved which of its tickers its
  * fed set serves — `refreshOraclePrices`, off its rule groups — pass that in
@@ -141,8 +110,7 @@ function tickersWithAnySourceFeed(host: OracleHost): Set<string> {
  * is the point: a consumer pre-filtering with {@link servableTickers} cannot
  * hand the build a ticker it will silently skip.
  *
- * Order-preserving. The `anyFeed` set is built at most once per call, and only
- * when a constant-pinned ticker actually needs it.
+ * Order-preserving.
  */
 export function partitionServableTickers(
   host: OracleHost,
@@ -152,17 +120,8 @@ export function partitionServableTickers(
   const fed = covered ?? fedSetTickers(host);
   const servable: string[] = [];
   const unservable: string[] = [];
-  let anyFeed: Set<string> | undefined;
-
   for (const ticker of tickers) {
-    if (fed.has(ticker)) {
-      servable.push(ticker);
-    } else if (host.isConstantTicker(ticker)) {
-      anyFeed ??= tickersWithAnySourceFeed(host);
-      (anyFeed.has(ticker) ? unservable : servable).push(ticker);
-    } else {
-      unservable.push(ticker);
-    }
+    (fed.has(ticker) || host.isConstantTicker(ticker) ? servable : unservable).push(ticker);
   }
   return { servable, unservable };
 }

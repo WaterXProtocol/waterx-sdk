@@ -13,7 +13,7 @@
  *
  * The wxa account must already hold WLP (run smoke-happy-path's mintWlp
  * step first if not). Rewarder settle calls are auto-derived from
- * `config.packages.waterx_staking.rewarders[stakeAlias]` via
+ * `config.objects.staking.rewarders[stakeAlias]` via
  * `client.getRewarderTypes(stakeAlias)`, so every registered rewarder on
  * the pool gets settled in the same PTB (the on-chain checker is
  * all-or-nothing). The `claim` path is covered by smoke-staking-claim.
@@ -45,7 +45,8 @@ import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { stake, unstake } from "../src/perp/index.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { ownEntry } from "../src/utils/record.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 interface SimResult {
@@ -95,16 +96,16 @@ async function execute(
   return success;
 }
 
+/** Per-alias pool lookup — the pools map may legitimately lack an alias. */
 function poolId(client: PerpClient, alias = "WLP"): string {
-  const id = client.config.packages.waterx_staking?.pools?.[alias];
-  if (!id) throw new Error(`waterx_staking.pools[${alias}] not set in config`);
+  const id = ownEntry(client.config.objects.staking.pools, alias);
+  if (!id) throw new Error(`objects.staking.pools[${alias}] not set in config`);
   return id;
 }
 
+/** `waterx_staking` is a required package entry — read directly, no guard. */
 function stakingPkg(client: PerpClient): string {
-  const pkg = client.config.packages.waterx_staking?.published_at;
-  if (!pkg) throw new Error("waterx_staking.published_at not set in config");
-  return pkg;
+  return client.config.packages.waterx_staking.published_at;
 }
 
 /** Hand-rolled raw simulate against `waterx_staking::total_stake_amount`. */
@@ -153,12 +154,10 @@ async function snapshot(client: PerpClient, accountId: string, label: string): P
  */
 async function readStakingWhitelisted(client: PerpClient): Promise<boolean> {
   const tx = new Transaction();
-  const stakingPkgOrig = client.config.packages.waterx_staking?.original_id;
-  if (!stakingPkgOrig) throw new Error("waterx_staking.original_id not set in config");
-  const witnessType = `${stakingPkgOrig}::witness::WaterXStaking`;
+  const witnessType = `${client.config.packages.waterx_staking.original_id}::witness::WaterXStaking`;
   isProtocolWhitelisted({
     package: client.config.packages.waterx_account.published_at,
-    arguments: { registry: tx.object(client.config.packages.waterx_account.account_registry) },
+    arguments: { registry: tx.object(client.config.objects.account.registry) },
     typeArguments: [witnessType],
   })(tx);
   tx.setSender(DRY_RUN_SENDER);
@@ -185,7 +184,7 @@ async function main(): Promise<void> {
 
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
@@ -204,12 +203,12 @@ async function main(): Promise<void> {
     );
   }
 
-  // Canonical testnet config may have an empty waterx_staking.pools map until
+  // Canonical testnet config may have an empty objects.staking.pools map until
   // an admin registers a pool; bail cleanly rather than crash mid-snapshot.
-  const stakingPools = client.config.packages.waterx_staking?.pools ?? {};
+  const stakingPools = client.config.objects.staking.pools;
   if (!stakingPools[stakeAlias]) {
     console.log(
-      `\nwaterx_staking.pools[${stakeAlias}] not registered in this config — skipping smoke.`,
+      `\nobjects.staking.pools[${stakeAlias}] not registered in this config — skipping smoke.`,
     );
     console.log(`Available pool aliases: ${Object.keys(stakingPools).join(", ") || "(none)"}`);
     return;
@@ -230,8 +229,8 @@ async function main(): Promise<void> {
     console.warn(
       "\nWaterXStaking witness not whitelisted on AccountRegistry — stake/unstake will abort.\n" +
         "Admin must call: account::whitelist_protocol<WaterXStaking>(registry, &AdminCap)\n" +
-        `  registry:  ${client.config.packages.waterx_account.account_registry}\n` +
-        `  admin_cap: ${client.config.packages.waterx_account.admin_cap}\n`,
+        `  registry:  ${client.config.objects.account.registry}\n` +
+        `  admin_cap: ${client.config.objects.account.admin_cap}\n`,
     );
     process.exit(2);
   }

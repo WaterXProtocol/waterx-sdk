@@ -5,6 +5,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { assertFeaturePackage } from "../../config.ts";
 import {
   burnFeeRate as burnFeeRateCall,
   creditSupply as creditSupplyCall,
@@ -15,12 +16,13 @@ import type { PerpClient } from "../client.ts";
 import { DRY_RUN_SENDER } from "../constants.ts";
 import { simulateAndExtract } from "./simulate.ts";
 
-function requireCustody(client: PerpClient): { pkg: string; vault: string; creditType: string } {
-  const nc = client.config.packages.native_custody;
-  if (!nc?.vault) {
-    throw new Error("native_custody not configured — set config.packages.native_custody.vault");
-  }
-  return { pkg: nc.published_at, vault: nc.vault, creditType: client.creditType() };
+function custodyObjects(client: PerpClient): { pkg: string; vault: string; creditType: string } {
+  assertFeaturePackage(client.config, "native_custody", "the native custody PSM");
+  return {
+    pkg: client.config.packages.native_custody.published_at,
+    vault: client.config.objects.custody.vault,
+    creditType: client.creditType(),
+  };
 }
 
 /** Vault-wide native-custody state. */
@@ -31,7 +33,7 @@ export interface CustodyVaultData {
 
 /** Reads vault-wide native-custody state via `custody_vault::credit_supply`. */
 export async function getCustodyVaultData(client: PerpClient): Promise<CustodyVaultData> {
-  const { pkg, vault, creditType } = requireCustody(client);
+  const { pkg, vault, creditType } = custodyObjects(client);
   const tx = new Transaction();
   creditSupplyCall({
     package: pkg,
@@ -67,7 +69,7 @@ export async function getCustodyAssetData(
   client: PerpClient,
   assetType: string,
 ): Promise<CustodyAssetData> {
-  const { pkg, vault, creditType } = requireCustody(client);
+  const { pkg, vault, creditType } = custodyObjects(client);
   const typeArguments: [string, string] = [assetType, creditType];
 
   const hasTx = new Transaction();

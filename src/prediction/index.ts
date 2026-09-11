@@ -1,16 +1,26 @@
 export { PredictClient } from "./client.ts";
 export type { CreateClientOptions } from "./client.ts";
-export { clearConfigCache, loadConfig } from "./config.ts";
+// Deployment config — the same loader + document as the perp line (`src/config.ts`).
+export {
+  PREDICTION_PACKAGES,
+  REQUIRED_PACKAGES,
+  assertLinePackages,
+  assertRequiredPackages,
+  clearConfigCache,
+  loadConfig,
+  parseConfigDocument,
+} from "../config.ts";
+/** Public fullnode default per network — what a client uses when `grpcUrl` is unset. */
+export { DEFAULT_GRPC_URLS } from "../base-client.ts";
 export type {
   LoadConfigOptions,
-  WaterxAccountPackage,
-  WaterxConfigPackageBase,
-  WaterxPredictionConfig,
-  WaterxPredictionConfigPackages,
-  WaterxPredictionGiftPackage,
-  WaterxPredictionPackage,
-  WaterxReferralPackage,
-} from "./config.ts";
+  NativeCustodyAsset,
+  PackageEntry,
+  PerpMarketEntry,
+  RequiredPackage,
+  RewarderEntry,
+  WaterXConfig,
+} from "../config.ts";
 export * from "./constants.ts";
 export * from "./types.ts";
 export * as user from "./user/index.ts";

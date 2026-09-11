@@ -5,7 +5,7 @@
 
 import type { Transaction } from "@mysten/sui/transactions";
 
-import { MOCK_TESTNET_CONFIG } from "./mock-testnet-config.ts";
+import { MOCK_TESTNET_CONFIG } from "../../../helpers/fixtures/mock-testnet-config.ts";
 import { mockSuiAddress } from "./sui-mock-fixtures.ts";
 
 const BUCKET_FRAMEWORK_PKG = MOCK_TESTNET_CONFIG.packages.bucket_framework.published_at;

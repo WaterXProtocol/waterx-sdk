@@ -8,7 +8,7 @@ import { client, e2eNetwork } from "../helpers/e2e/e2e-client.ts";
 
 describe(`read chain views (${e2eNetwork})`, () => {
   it("loads BTCUSD market entry from config", () => {
-    expect(client.config.packages.waterx_perp.markets.BTCUSD).toBeDefined();
+    expect(client.config.objects.perp.markets.BTCUSD).toBeDefined();
     expect(client.getMarket("BTCUSD").market).toMatch(/^0x/);
   });
 
@@ -35,7 +35,7 @@ describe(`read chain views (${e2eNetwork})`, () => {
   }, 60_000);
 
   it("client.getAggregator / wlpType / getPoolTokenType", () => {
-    const agg = client.config.packages.waterx_oracle?.aggregators?.BTCUSD;
+    const agg = client.config.objects.oracle.aggregators.BTCUSD;
     if (agg) expect(client.getAggregator("BTCUSD")).toBe(agg);
     expect(client.wlpType()).toContain("::wlp::WLP");
     expect(client.getPoolTokenType("USDCUSD")).toContain("::");

@@ -12,32 +12,26 @@
  * `claim<STAKE, R>` is single-call (no checker).
  *
  * Each builder takes a `stakeAlias` (e.g. `"WLP"`) that keys into
- * `config.packages.waterx_staking.pools` to find the actual
- * `StakingPool<STAKE>` shared object.
+ * `config.objects.staking.pools` to find the actual `StakingPool<STAKE>`
+ * shared object.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
 import { makeSenderRequest } from "../../account/account-request.ts";
+import { assertFeaturePackage } from "../../config.ts";
 import * as staking from "../../generated/waterx_staking/waterx_staking.ts";
-import { ownEntry } from "../../utils/record.ts";
+import { requireEntry } from "../../utils/record.ts";
 import { toU64Arg } from "../../utils/validate.ts";
 import type { PerpClient } from "../client.ts";
 
 function pool(client: PerpClient, stakeAlias: string): string {
-  const id = ownEntry(client.config.packages.waterx_staking?.pools, stakeAlias);
-  if (!id) {
-    throw new Error(
-      `config.packages.waterx_staking.pools[${stakeAlias}] is not set — staking is not deployed for this stake type`,
-    );
-  }
-  return id;
+  return requireEntry(client.config.objects.staking.pools, stakeAlias, "objects.staking.pools");
 }
 
 function stakingPackage(client: PerpClient): string {
-  const pkg = client.config.packages.waterx_staking?.published_at;
-  if (!pkg) throw new Error("config.packages.waterx_staking is not configured");
-  return pkg;
+  assertFeaturePackage(client.config, "waterx_staking", "staking");
+  return client.config.packages.waterx_staking.published_at;
 }
 
 // ============================================================================
@@ -46,7 +40,7 @@ function stakingPackage(client: PerpClient): string {
 
 export interface StakeParams {
   accountId: string;
-  /** Stake-type alias (key into `waterx_staking.pools`, e.g. `"WLP"`). */
+  /** Stake-type alias (key into `objects.staking.pools`, e.g. `"WLP"`). */
   stakeAlias: string;
   /** Fully-qualified `STAKE` coin type for the type argument. */
   stakeType: string;
@@ -69,7 +63,7 @@ export function stake(client: PerpClient, tx: Transaction, params: StakeParams):
     package: pkg,
     arguments: {
       self: tx.object(poolId),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       accReq: req as unknown as TransactionArgument,
       stakeAmount: toU64Arg(params.stakeAmount, "stakeAmount"),
@@ -116,7 +110,7 @@ export function unstake(client: PerpClient, tx: Transaction, params: UnstakePara
     package: pkg,
     arguments: {
       self: tx.object(poolId),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       accReq: req as unknown as TransactionArgument,
       withdrawalAmount: toU64Arg(params.withdrawalAmount, "withdrawalAmount"),
@@ -163,7 +157,7 @@ export function claimReward(client: PerpClient, tx: Transaction, params: ClaimRe
     package: pkg,
     arguments: {
       self: tx.object(poolId),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       request: req as unknown as TransactionArgument,
     },

@@ -21,16 +21,14 @@ import type { OracleSource } from "./price-update-rule.ts";
  *
  * - `plane: "lazer"` (`pyth_lazer_rule`) — price via the Lazer HTTP API
  *   (`readLazerPrices` in `read-prices.ts`), one entry per servable ticker
- *   mapped to its INTEGER Lazer feed id from `pyth_lazer_rule.feeds`. Auth is
+ *   mapped to its INTEGER Lazer feed id from
+ *   `oracle_rules.pyth_lazer.lazer_feed_ids`. Auth is
  *   the caller's `pythApiKey` Bearer; the endpoint is `LAZER_INFRA`'s own.
  * - `plane: "quote_center"` (`waterx_rule`) — price via the quote-center
  *   (`readQuoteCenterPrices` in `read-prices.ts`), keyed by ticker; served
- *   set = the `waterx_rule.feeds` block. An ABSENT block (source listed,
- *   package missing from the loaded config) serves NOTHING: claiming tickers
- *   would silently reroute reads to the quote-center — it happily serves
- *   symbols regardless of on-chain config — and swallow tickers a
- *   later-listed source could price. The misconfiguration is caught loudly by
- *   `assertOracleWriteCoverage` (`validate.ts`) at client creation instead.
+ *   set = the `symbols` universe. A ticker outside it is never claimed: the
+ *   quote-center happily serves symbols regardless of on-chain config, so
+ *   claiming one would silently reroute a read the chain cannot price.
  *
  * A ticker absent from a plan is simply not servable by THIS source's read
  * plane — callers decide how to degrade (typically: ask the next source in
@@ -60,12 +58,12 @@ export function resolveOracleReadPlan(
   switch (source) {
     case "pyth_lazer_rule": {
       // Lazer reads through its OWN integer ids — the same
-      // `pyth_lazer_rule.feeds` entries its write leg uses — so the read set
-      // is exactly the write set. All ticker lookups go through `ownEntry`
+      // `oracle_rules.pyth_lazer.lazer_feed_ids` entries its write leg uses —
+      // so the read set is exactly the write set. All ticker lookups go through `ownEntry`
       // (own-keys-only): a ticker named like an Object.prototype key
       // ("toString", "constructor", …) must read as not-listed, not as an
       // inherited Function.
-      const feeds = host.config.packages.pyth_lazer_rule?.feeds;
+      const feeds = host.config.oracle_rules.pyth_lazer?.lazer_feed_ids;
       const feedIdByTicker = new Map<string, number>();
       for (const ticker of tickers) {
         const feedId = ownEntry(feeds, ticker);
@@ -74,15 +72,15 @@ export function resolveOracleReadPlan(
       return { plane: "lazer", feedIdByTicker };
     }
     case "waterx_rule": {
-      // Absent feeds block ⇒ serves nothing (see the OracleReadPlan doc) —
-      // never claim tickers the config doesn't name. `ownEntry` (own-keys-
-      // only, never the `in` operator or a bare bracket read) so a
-      // prototype-key ticker can't count as feeds-listed and poison the
-      // quote-center batch (which 404s whole batches on unknown symbols).
-      const feeds = host.config.packages.waterx_rule?.feeds;
+      // Only tickers the `symbols` universe names — never claim one the config
+      // doesn't. `ownEntry` (own-keys-only, never the `in` operator or a bare
+      // bracket read) so a prototype-key ticker can't count as listed and
+      // poison the quote-center batch (which 404s whole batches on unknown
+      // symbols).
+      const symbols = host.config.symbols;
       return {
         plane: "quote_center",
-        tickers: tickers.filter((ticker) => ownEntry(feeds, ticker) !== undefined),
+        tickers: tickers.filter((ticker) => ownEntry(symbols, ticker) !== undefined),
       };
     }
     default: {

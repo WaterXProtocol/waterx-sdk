@@ -5,13 +5,14 @@ import {
   getOrderCursor,
 } from "../../../src/prediction/fetch.ts";
 import { getChainOrderView } from "../helpers/chain-order-view.ts";
+import { readE2eClientOverrides } from "../helpers/e2e-env.ts";
 
 const accountId = "0x602bce5950460623ab406feed9e668196c2177c5dc97a781853a6589b2c3f471";
 
 async function main(): Promise<void> {
-  // `loadConfig` no longer reads env — source the URL at this script boundary.
+  // `loadConfig` never reads env — compose the URL from the CDN base here.
   const client = await PredictClient.create("TESTNET", {
-    waterxConfigUrl: process.env.E2E_CONFIG_URL ?? process.env.WATERX_CONFIG_URL,
+    ...readE2eClientOverrides(),
   });
   const cursor = await getOrderCursor(client);
   console.log("cursor", {

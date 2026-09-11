@@ -1,7 +1,7 @@
 /**
  * Referral queries (`waterx_referral::referral_table`).
  *
- * Account-base reads — typed to {@link WxaClientLike} (just `waterx_referral` +
+ * Account-base reads — typed to {@link WxaClientLike} (the shared config +
  * transport), not the perp line. Co-located with the referral builders in
  * `account/referral.ts`; both product lines can use them. The perp `fetch/`
  * barrel re-exports these for back-compat.
@@ -18,23 +18,13 @@ import {
 import type { WxaClientLike } from "../client.ts";
 import { simulateAndExtract } from "./simulate.ts";
 
-function requireReferralPackage(client: WxaClientLike): { pkg: string; table: string } {
-  const pkg = client.config.packages.waterx_referral?.published_at;
-  const table = client.config.packages.waterx_referral?.referral_table;
-  if (!pkg || !table) {
-    throw new Error(
-      "referral package not configured: set config.packages.waterx_referral.{published_at,referral_table}",
-    );
-  }
-  return { pkg, table };
-}
-
 /** Returns the referrer address bound to `referee`, or `undefined` if none. */
 export async function getRefererFor(
   client: WxaClientLike,
   referee: string,
 ): Promise<string | undefined> {
-  const { pkg, table } = requireReferralPackage(client);
+  const pkg = client.config.packages.waterx_referral.published_at;
+  const table = client.config.objects.referral.table;
   const tx = new Transaction();
   tryGetReferCall({
     package: pkg,
@@ -47,7 +37,7 @@ export async function getRefererFor(
 
 /** True if `code` is a syntactically valid referral code (matches the contract's char rules). */
 export async function isValidReferralCode(client: WxaClientLike, code: string): Promise<boolean> {
-  const { pkg } = requireReferralPackage(client);
+  const pkg = client.config.packages.waterx_referral.published_at;
   const tx = new Transaction();
   isValidReferralCodeCall({ package: pkg, arguments: { code } })(tx);
   const bytes = await simulateAndExtract(client, tx);
@@ -56,7 +46,8 @@ export async function isValidReferralCode(client: WxaClientLike, code: string): 
 
 /** True if `code` is already claimed in the on-chain ReferralTable. */
 export async function referralCodeExists(client: WxaClientLike, code: string): Promise<boolean> {
-  const { pkg, table } = requireReferralPackage(client);
+  const pkg = client.config.packages.waterx_referral.published_at;
+  const table = client.config.objects.referral.table;
   const tx = new Transaction();
   referralCodeExistsCall({
     package: pkg,

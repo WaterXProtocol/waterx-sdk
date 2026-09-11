@@ -2,23 +2,24 @@
  * `OracleHost` — the narrow slice of a line client the oracle module reads.
  *
  * The oracle/refresh code used to take a concrete `PerpClient`, which fused the
- * shared oracle layer to the perp line. It only ever needs config-schema
- * lookups, the caller-supplied access slices, and a gRPC client — so it depends
- * on this structural interface instead. `PerpClient` satisfies it without any
- * `implements` clause, and a future `PredictClient` (or a test double) can too.
+ * shared oracle layer to the perp line. It only ever needs the parsed config,
+ * the caller-supplied access slices, and a gRPC client — so it depends on this
+ * structural interface instead. `PerpClient` satisfies it without any
+ * `implements` clause, and a test double can too.
  */
 
 import type { SuiGrpcClient } from "@mysten/sui/grpc";
 
+import type { WaterXConfig } from "../config.ts";
 import type { Network } from "../constants.ts";
-import type { OracleConfig, PythAccessConfig, WaterxAccessConfig } from "./config.ts";
+import type { PythAccessConfig, WaterxAccessConfig } from "./config.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 
 export interface OracleHost {
   /** Sui network this client targets — each rule keys its OWN infra table by it (`LAZER_INFRA`, `WATERX_INFRA`). */
   readonly network: Network;
-  /** Oracle slice of the canonical `waterx-config` JSON (rule packages + per-ticker feeds). */
-  readonly config: OracleConfig;
+  /** The parsed `waterx-config` document: rule wiring under `oracle_rules.*`, the ticker universe under `symbols`. */
+  readonly config: WaterXConfig;
   /** Caller-supplied Pyth credential + fetch policy (create options) — NO endpoints, NO object ids. */
   readonly pyth: PythAccessConfig;
   /**
@@ -48,8 +49,6 @@ export interface OracleHost {
    */
   readonly oracleSources: readonly OracleSource[];
 
-  /** True when `ticker` is priced by `constant_rule`. */
+  /** True when `ticker` is priced by `constant_rule` (`oracle_rules.constant.constant_prices`). */
   isConstantTicker(ticker: string): boolean;
-  /** The `supra_rule` config when deployed, enabled, and fully wired; else `undefined`. */
-  getSupraRule(): { published_at: string; config: string; oracle_holder: string } | undefined;
 }

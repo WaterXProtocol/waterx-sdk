@@ -31,7 +31,7 @@ import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
 import { getAccountBalance, getGlobalConfigData } from "../src/perp/fetch.ts";
 import { mintWlp, updateTokenValue } from "../src/perp/user/wlp.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 async function isUsdAllowed(
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
 
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
 
   const usdType = client.creditType();
@@ -108,8 +108,8 @@ async function main(): Promise<void> {
 
   console.log(`sender:        ${address}`);
   console.log(`account:       ${accountId}`);
-  console.log(`wlp_pool:      ${client.config.packages.wlp.wlp_pool}`);
-  console.log(`wlp_aum:       ${client.config.packages.wlp.wlp_aum}`);
+  console.log(`wlp_pool:      ${client.config.objects.wlp.pool}`);
+  console.log(`wlp_aum:       ${client.config.objects.wlp.aum}`);
   console.log(`deposit token: ${usdType}`);
   console.log(`lp token:      ${wlpType}`);
   console.log(`deposit raw:   ${depositAmount} (USD, 6 dec)`);
@@ -130,12 +130,12 @@ async function main(): Promise<void> {
   // On this testnet deployment the registry whitelist started with MOCK_USDC
   // only; USD has to be added via the admin AdminCap before mint_wlp works.
   const perpWitness = `${client.config.packages.waterx_perp.original_id}::account_data::WaterXPerp`;
-  const wxaRegistry = client.config.packages.waterx_account.account_registry;
+  const wxaRegistry = client.config.objects.account.registry;
   const allowed = await isUsdAllowed(client, wxaRegistry, perpWitness, usdType);
   console.log(`USD allowed:   ${allowed}`);
 
   if (!allowed) {
-    const adminCap = client.config.packages.waterx_account.admin_cap;
+    const adminCap = client.config.objects.account.admin_cap;
     if (!adminCap) throw new Error("waterx_account.admin_cap not in config");
     const owner = await getOwner(client, adminCap);
     if (owner !== address) {
@@ -182,8 +182,8 @@ async function main(): Promise<void> {
   // loops over every TokenPoolInfo and fails the moment any entry's stale
   // delta > price_refresh_threshold_ms. Bump the threshold via the perp
   // AdminCap so the unrefreshable WLP entry stops aborting.
-  const globalConfigId = client.config.packages.waterx_perp.global_config;
-  const perpAdminCap = client.config.packages.waterx_perp.admin_cap;
+  const globalConfigId = client.config.objects.perp.global_config;
+  const perpAdminCap = client.config.objects.perp.admin_cap;
   const currentThreshold = await getPriceRefreshThresholdMs(client);
   const TARGET_THRESHOLD_MS = 7n * 24n * 3600n * 1000n; // 7 days
   console.log(`refresh threshold: ${currentThreshold} ms`);

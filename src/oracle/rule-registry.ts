@@ -5,8 +5,8 @@
  * every `host.oracleSources` entry through it, and consumers (e.g. a BE
  * prefetch cache keying per source) import `resolveOracleRule` rather than
  * hand-mirroring this map. Selection is driven purely by the value passed in
- * (ultimately `OracleHost.oracleSources`, derived from the deployment config
- * option) — never by a config JSON `enabled` flag and never by `process.env`.
+ * (ultimately `OracleHost.oracleSources`, derived from the deployment config)
+ * — never by `process.env`.
  *
  * Each source is self-contained: it owns its own infra + config and does NOT
  * back-stop any other source. Two are registered: `pyth_lazer_rule`

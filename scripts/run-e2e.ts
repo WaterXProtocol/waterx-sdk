@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
  * Wrapper around `vitest run --project e2e` with `--testnet` / `--mainnet`.
- * Sets `WATERX_E2E_NETWORK` (and rewrites `WATERX_CONFIG_URL` `testnet.json` ↔
- * `mainnet.json` when needed) and strips network flags before forwarding to Vitest.
+ * Sets `WATERX_E2E_NETWORK` (each harness composes its own config URL from the
+ * `WATERX_CONFIG_URL` base) and strips network flags before forwarding to Vitest.
  *
  * Forward all other argv to Vitest (paths, `-t`, `--coverage`, reporters, etc.).
  *
@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
-import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 
 loadRepoEnvFiles();
 
@@ -63,14 +63,18 @@ const vitestBin = path.resolve(
 
 const projects = predictOnly ? ["predict-e2e"] : predict ? ["e2e", "predict-e2e"] : ["e2e"];
 const vitestArgs = ["run", ...projects.flatMap((name) => ["--project", name]), ...forward];
-const configUrl = waterxConfigUrlForNetwork(network);
 
+// `WATERX_CONFIG_URL` is passed through UNTOUCHED (inherited via `process.env`).
+// It is a CDN base, and each harness composes `/<network>.json` itself off
+// `WATERX_E2E_NETWORK` — which is the only thing this wrapper needs to set.
+// Resolving it here and re-exporting the resolved document URL would make the
+// child resolve an already-resolved value, permanently tripping the legacy
+// complete-file arm (and its deprecation warning) on every e2e run.
 const child = spawn(vitestBin, vitestArgs, {
   stdio: "inherit",
   env: {
     ...process.env,
     WATERX_E2E_NETWORK: network,
-    ...(configUrl ? { WATERX_CONFIG_URL: configUrl } : {}),
   },
 });
 

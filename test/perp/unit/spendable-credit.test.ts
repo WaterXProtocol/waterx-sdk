@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as fetchMod from "../../../src/perp/fetch.ts";
 import { appendConsolidateForSpend } from "../../../src/perp/tx-builders.ts";
+import { MOCK_CUSTODY_ASSET_TYPE } from "../../helpers/fixtures/mock-testnet-config.ts";
 import { listMoveCalls } from "../../prediction/helpers/ptb.ts";
 import { coinRef, mockConsolidateBalances } from "../helpers/consolidate-mocks.ts";
-import { MOCK_CUSTODY_ASSET_TYPE } from "../helpers/fixtures/mock-testnet-config.ts";
 import {
   PTB_DUMMY_ACCOUNT_ID,
   PTB_DUMMY_COIN_CC,

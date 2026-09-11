@@ -6,6 +6,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { assertFeaturePackage } from "../../config.ts";
 import {
   bridgeFeeAmount as bridgeFeeAmountCall,
   bridgeFeeRate as bridgeFeeRateCall,
@@ -71,22 +72,14 @@ export interface BridgeLimitsArgs {
  * Batched read of the bridge's rate-limit / cap state in a single simulate.
  * Pass `accountId` to also fetch the per-account burn usage, and `backing`
  * to also fetch the destination-chain backing (`minted_for`).
- *
- * Throws if `wormhole_bridge` (or its `Bridge` object id) is absent from the
- * canonical config — e.g. on a network where the Sui bridge isn't published.
  */
 export async function getBridgeLimits(
   client: PerpClient,
   args: BridgeLimitsArgs = {},
 ): Promise<BridgeLimitsView> {
-  const pkg = client.config.packages.wormhole_bridge;
-  if (!pkg?.bridge) {
-    throw new Error(
-      "wormhole_bridge is not deployed on this network (no `bridge` object id in config)",
-    );
-  }
-  const packageId = pkg.published_at;
-  const bridge = pkg.bridge;
+  assertFeaturePackage(client.config, "wormhole_bridge", "the Wormhole bridge");
+  const packageId = client.config.packages.wormhole_bridge.published_at;
+  const bridge = client.config.objects.bridge.state;
 
   const tx = new Transaction();
   // Fixed-order view calls; indices tracked below.
@@ -164,16 +157,6 @@ export interface BridgeFeeView {
   netAmount: bigint;
 }
 
-function requireWithdrawalQueue(client: PerpClient): { pkg: string; queue: string } {
-  const wq = client.config.packages.withdrawal_queue;
-  if (!wq?.queue) {
-    throw new Error(
-      "withdrawal_queue is not deployed on this network (no `queue` object id in config)",
-    );
-  }
-  return { pkg: wq.published_at, queue: wq.queue };
-}
-
 /**
  * Estimate the bridge fee for a wormhole (Sui → EVM) CREDIT exit of `amount`
  * to `evmDestinationChain`, read in a single simulate from the on-chain
@@ -194,7 +177,9 @@ export async function getBridgeFee(
   client: PerpClient,
   args: { evmDestinationChain: number; amount: bigint | number; creditType?: string },
 ): Promise<BridgeFeeView> {
-  const { pkg, queue } = requireWithdrawalQueue(client);
+  assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue");
+  const pkg = client.config.packages.withdrawal_queue.published_at;
+  const queue = client.config.objects.withdrawal_queue.queue;
   const amount = toU64(args.amount, "amount");
   const common = {
     package: pkg,

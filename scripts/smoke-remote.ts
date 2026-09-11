@@ -2,20 +2,23 @@
  * Remote-config smoke: exercises the full async path
  * `PerpClient.create("TESTNET")` against a remote waterx-config.
  *
- *   WATERX_CONFIG_URL=https://.../testnet.json tsx scripts/smoke-remote.ts
+ *   WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev tsx scripts/smoke-remote.ts
  *
- * The config URL is read from `WATERX_CONFIG_URL` (there is no default) — set it
+ * The config base is read from `WATERX_CONFIG_URL` (there is no default) — set it
  * in the environment or in a repo `.env` file.
  */
 import { waterxQuoteCenterEndpoint } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const configUrl = process.env.WATERX_CONFIG_URL;
+  const configUrl = waterxConfigUrlForNetwork("TESTNET");
   if (!configUrl) {
-    throw new Error("smoke-remote: set WATERX_CONFIG_URL to a config JSON URL");
+    throw new Error(
+      "smoke-remote: set WATERX_CONFIG_URL to a waterx-config CDN base " +
+        "(e.g. https://staging-v2.waterx-config.pages.dev)",
+    );
   }
   const t0 = Date.now();
   console.log(`fetching config: ${configUrl}`);
@@ -27,21 +30,19 @@ async function main(): Promise<void> {
   console.log(`-> loaded in ${dt}ms`);
 
   console.log("\n=== Resolved config ===");
-  console.log(`  network               ${client.config.network} / ${client.config.chain_id}`);
-  console.log(`  packages.waterx_perp  ${client.config.packages.waterx_perp.published_at}`);
-  console.log(`  global_config         ${client.config.packages.waterx_perp.global_config}`);
-  console.log(`  market_registry_wlp   ${client.config.packages.waterx_perp.market_registry_wlp}`);
-  console.log(`  wxa account_registry  ${client.config.packages.waterx_account.account_registry}`);
-  console.log(`  oracle                ${client.config.packages.waterx_oracle.oracle}`);
-  console.log(`  wlp_pool              ${client.config.packages.wlp.wlp_pool}`);
-  console.log(`  wlp_aum               ${client.config.packages.wlp.wlp_aum ?? "(missing)"}`);
-  console.log(
-    `  referral_table        ${client.config.packages.waterx_referral?.referral_table ?? "(missing)"}`,
-  );
-  console.log(`  quote-center          ${waterxQuoteCenterEndpoint("TESTNET")}`);
-  console.log(
-    `  markets               ${Object.keys(client.config.packages.waterx_perp.markets).join(", ")}`,
-  );
+  const row = (label: string, value: unknown): void =>
+    console.log(`  ${label.padEnd(34)}${String(value)}`);
+  row("network", `${client.config.network} / ${client.config.chain_id}`);
+  row("packages.waterx_perp.published_at", client.config.packages.waterx_perp.published_at);
+  row("objects.perp.global_config", client.config.objects.perp.global_config);
+  row("objects.perp.market_registry_wlp", client.config.objects.perp.market_registry_wlp);
+  row("objects.account.registry", client.config.objects.account.registry);
+  row("objects.oracle.oracle", client.config.objects.oracle.oracle);
+  row("objects.wlp.pool", client.config.objects.wlp.pool);
+  row("objects.wlp.aum", client.config.objects.wlp.aum);
+  row("objects.referral.table", client.config.objects.referral.table);
+  row("quote-center (WATERX_INFRA)", waterxQuoteCenterEndpoint("TESTNET"));
+  row("objects.perp.markets", Object.keys(client.config.objects.perp.markets).join(", "));
 
   console.log("\n=== Cache hit check (2nd create) ===");
   const t1 = Date.now();

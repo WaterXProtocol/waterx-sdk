@@ -45,27 +45,19 @@ export function mintWlp(
   const lpAmount = lp.mintWlp({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
-      aum: tx.object(requireWlpAum(client)),
+      pool: tx.object(client.config.objects.wlp.pool),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
+      aum: tx.object(client.config.objects.wlp.aum),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       depositAmount: toU64(params.depositAmount, "depositAmount"),
       minLpAmount: toU64(params.minLpAmount, "minLpAmount"),
-      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+      oracle: tx.object(client.config.objects.oracle.oracle),
     },
     typeArguments: [params.lpType ?? client.wlpType(), params.depositTokenType],
   })(tx);
   return lpAmount;
-}
-
-function requireWlpAum(client: PerpClient): string {
-  const aum = client.config.packages.wlp.wlp_aum;
-  if (!aum) {
-    throw new Error("wlp.wlp_aum is not configured — mintWlp/settleRedeem require WlpAum");
-  }
-  return aum;
 }
 
 // ============================================================================
@@ -92,9 +84,9 @@ export function requestRedeemWlp(
   lp.requestRedeem({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      pool: tx.object(client.config.objects.wlp.pool),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       accountId: params.accountId,
       lpAmount: toU64(params.lpAmount, "lpAmount"),
@@ -122,9 +114,9 @@ export function cancelRedeemWlp(
   lp.cancelRedeem({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      pool: tx.object(client.config.objects.wlp.pool),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       senderRequest: req as unknown as TransactionArgument,
       requestId: toU64(params.requestId, "requestId"),
     },
@@ -153,13 +145,13 @@ export function settleRedeemWlp(
   lp.settleRedeem({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
-      globalConfig: tx.object(client.config.packages.waterx_perp.global_config),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      pool: tx.object(client.config.objects.wlp.pool),
+      globalConfig: tx.object(client.config.objects.perp.global_config),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       operatorRequest: req as unknown as TransactionArgument,
-      aum: tx.object(requireWlpAum(client)),
+      aum: tx.object(client.config.objects.wlp.aum),
       requestId: toU64(params.requestId, "requestId"),
-      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+      oracle: tx.object(client.config.objects.oracle.oracle),
     },
     typeArguments: [params.lpType ?? client.wlpType(), params.redeemTokenType],
   })(tx);
@@ -178,8 +170,8 @@ export function updateTokenValue(
   lp.updateTokenValue({
     package: client.config.packages.waterx_perp.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
-      oracle: tx.object(client.config.packages.waterx_oracle.oracle),
+      pool: tx.object(client.config.objects.wlp.pool),
+      oracle: tx.object(client.config.objects.oracle.oracle),
     },
     typeArguments: [args.lpType ?? client.wlpType(), args.tokenType],
   })(tx);

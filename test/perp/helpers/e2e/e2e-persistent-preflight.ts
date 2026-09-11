@@ -43,7 +43,6 @@ import {
 } from "../integration/integration-trader-key.ts";
 import { refreshOraclePricesForTradingEdge } from "../trading/oracle-trading-edge.ts";
 import { findPendingRedeemForAccount } from "./discover-on-chain-position.ts";
-import { isCreditPipelineConfigured } from "./e2e-custody.ts";
 import { resolveE2eNetwork } from "./e2e-network.ts";
 import { lifecycleTickerRow } from "./lifecycle-test-markets.ts";
 
@@ -324,15 +323,12 @@ async function seedPendingRedeem(
   }
 }
 
-async function seedCreditIfConfigured(
+async function seedCreditIfEnabled(
   client: PerpClient,
   trader: Ed25519Keypair,
   owner: string,
   accountId: string,
 ): Promise<E2ePreflightReport["credit"]> {
-  if (!isCreditPipelineConfigured(client)) {
-    return { status: "skipped", reason: "credit pipeline not in deployment config" };
-  }
   const creditFlag = process.env.WATERX_E2E_PREFLIGHT_CREDIT?.trim().toLowerCase();
   if (creditFlag === "0" || creditFlag === "false" || creditFlag === "off") {
     return { status: "skipped", reason: "WATERX_E2E_PREFLIGHT_CREDIT disabled" };
@@ -379,9 +375,7 @@ export async function runE2ePersistentPreflight(client: PerpClient): Promise<E2e
   const { accountId } = await ensureUserAccountForIntegration(client, trader, execTx);
   publishWxaAccountIdForDiscovery(accountId);
 
-  const configuredTickers = e2ePersistentPerpTickersForClient(
-    client.config.packages.waterx_perp.markets ?? {},
-  );
+  const configuredTickers = e2ePersistentPerpTickersForClient(client.config.objects.perp.markets);
   const marketAtStart = await fetchIntegrationMarketSummaries(client, configuredTickers);
 
   const perpSlots: Record<string, E2ePreflightSlotResult> = {};
@@ -422,7 +416,7 @@ export async function runE2ePersistentPreflight(client: PerpClient): Promise<E2e
     preflightLog(`redeem: skipped (${redeem.reason})`);
   }
 
-  const credit = await seedCreditIfConfigured(client, trader, owner, accountId);
+  const credit = await seedCreditIfEnabled(client, trader, owner, accountId);
   if (credit.status === "minted") preflightLog("wxa CREDIT topped up");
   else if (credit.status === "ok") preflightLog("wxa CREDIT balance ok");
   else if (credit.status === "skipped") {

@@ -13,7 +13,7 @@
  *    original v1 publish 0xf5bd2141…, mainnet the v2-upgraded 0xefbfd064…
  *    which still exposes this v1 entry):
  *      pyth_lazer::parse_and_verify_le_ecdsa_update(
- *        state:  &State,        // waterx-config packages.pyth_lazer_rule.state
+ *        state:  &State,        // waterx-config oracle_rules.pyth_lazer.lazer_state_object
  *        clock:  &Clock,        // 0x6
  *        update: vector<u8>,    // the signed `leEcdsa` message bytes
  *      ): Update
@@ -23,7 +23,7 @@
  * 2. FEED (waterx `pyth_lazer_rule` package, `published_at` from config):
  *      pyth_lazer_rule::feed(
  *        collector: &mut PriceCollector,  // from oracle::new_collector(ticker)
- *        config:    &Config,              // packages.pyth_lazer_rule.config
+ *        config:    &Config,              // oracle_rules.pyth_lazer.lazer_config_object
  *        clock:     &Clock,               // 0x6
  *        update:    &Update,              // the verify result, by reference
  *      )
@@ -35,8 +35,8 @@
  *
  * 3. FEED IDENTITY: integer u32 Lazer feed id per oracle symbol
  *    (`Config.feed_id_map`, admin `set_feed_id`); mirrored off-chain as
- *    `packages.pyth_lazer_rule.feeds: Record<ticker, number>` (BTCUSD=1,
- *    ETHUSD=2, USDCUSD=7 on testnet). `enabled` is never read for routing.
+ *    `oracle_rules.pyth_lazer.lazer_feed_ids: Record<ticker, number>` (BTCUSD=1,
+ *    ETHUSD=2, USDCUSD=7 on testnet).
  *
  * 4. PAYLOAD ENCODING: Lazer `leEcdsa` framing — u32 magic, 65-byte secp256k1
  *    signature, u16 payload length, payload (u32 magic + u64 LE TimestampUs +
@@ -160,13 +160,17 @@ describe("PythLazerRule.kind", () => {
 describe("PythLazerRule.supportedTickers", () => {
   it("returns the tickers with integer lazer feed ids configured", () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    expect(PythLazerRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
+    expect(PythLazerRule.supportedTickers(client.config).sort()).toEqual([
+      "BTCUSD",
+      "ETHUSD",
+      "USDCUSD",
+    ]);
   });
 
-  it("returns an empty array when the pyth_lazer_rule package is absent", () => {
+  it("returns an empty array when the config carries no oracle_rules.pyth_lazer block", () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    delete client.config.packages.pyth_lazer_rule;
-    expect(PythLazerRule.supportedTickers(client)).toEqual([]);
+    delete client.config.oracle_rules.pyth_lazer;
+    expect(PythLazerRule.supportedTickers(client.config)).toEqual([]);
   });
 });
 
@@ -255,7 +259,7 @@ describe("PythLazerRule.fetchUpdateData", () => {
   it("propagates the feed-lookup throw for a ticker outside supportedTickers, without fetching", async () => {
     const client = createLazerTestClient();
     const fetchSpy = mockLazerFetch();
-    expect(PythLazerRule.supportedTickers(client)).not.toContain("DOGEUSD");
+    expect(PythLazerRule.supportedTickers(client.config)).not.toContain("DOGEUSD");
 
     await expect(PythLazerRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
       /No pyth_lazer_rule feed listed for ticker: DOGEUSD/,
@@ -273,13 +277,13 @@ describe("PythLazerRule.fetchUpdateData", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("throws the package-not-deployed error (not a per-ticker feed error) when the config carries no pyth_lazer_rule package", async () => {
+  it("throws the not-wired error (not a per-ticker feed error) when the config carries no oracle_rules.pyth_lazer block", async () => {
     const client = createLazerTestClient();
-    delete client.config.packages.pyth_lazer_rule;
+    delete client.config.oracle_rules.pyth_lazer;
     const fetchSpy = mockLazerFetch();
 
     await expect(PythLazerRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
-      /pyth_lazer_rule package is not deployed in this config/,
+      /pyth_lazer_rule is not wired in this config/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -355,7 +359,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     // Argument order per the contract: state, clock, update bytes.
     expect(calls[0].arguments).toHaveLength(3);
     expect(inputObjectId(tx, calls[0].arguments[0])).toBe(
-      client.config.packages.pyth_lazer_rule?.state,
+      client.config.oracle_rules.pyth_lazer?.lazer_state_object,
     );
     expect(inputObjectId(tx, calls[0].arguments[1])).toBe(CLOCK_ID);
     expect(inputPureBytes(tx, calls[0].arguments[2])).toBe(
@@ -406,9 +410,9 @@ describe("PythLazerRule.buildUpdateCalls", () => {
     );
   });
 
-  it("throws when the config carries no pyth_lazer_rule package", () => {
+  it("throws when the config carries no oracle_rules.pyth_lazer block", () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    delete client.config.packages.pyth_lazer_rule;
+    delete client.config.oracle_rules.pyth_lazer;
     const tx = new Transaction();
 
     expect(() =>
@@ -416,7 +420,7 @@ describe("PythLazerRule.buildUpdateCalls", () => {
         kind: "pyth_lazer_rule",
         payload: { update: SIGNED_UPDATE, feedIds: [1] },
       }),
-    ).toThrow(/pyth_lazer_rule package is not deployed/);
+    ).toThrow(/pyth_lazer_rule is not wired/);
   });
 });
 
@@ -465,7 +469,7 @@ describe("PythLazerRule.narrowUpdateData", () => {
 
   it("misses (null) for a ticker with no pyth_lazer_rule feed configured", () => {
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    expect(PythLazerRule.supportedTickers(client)).not.toContain("DOGEUSD");
+    expect(PythLazerRule.supportedTickers(client.config)).not.toContain("DOGEUSD");
 
     expect(PythLazerRule.narrowUpdateData(client, universeLazerData, ["DOGEUSD"])).toBeNull();
   });
@@ -531,7 +535,7 @@ describe("aggregateTicker — lazer collector-feed leg", () => {
     expect(feedCall?.arguments).toHaveLength(4);
     expect(feedCall?.arguments[0].$kind).toBe("Result"); // the collector
     expect(inputObjectId(tx, feedCall?.arguments[1] ?? {})).toBe(
-      client.config.packages.pyth_lazer_rule?.config,
+      client.config.oracle_rules.pyth_lazer?.lazer_config_object,
     );
     expect(inputObjectId(tx, feedCall?.arguments[2] ?? {})).toBe(CLOCK_ID);
     // Handle identity: the Update argument is THE verify command's first
@@ -580,7 +584,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     const client = createLazerTestClient("pyth_lazer_rule");
     // ETHUSD drops out of lazer support. There is no fallback: it is skipped
     // and named, BTCUSD still goes through, and no other source is consulted.
-    delete client.config.packages.pyth_lazer_rule?.feeds.ETHUSD;
+    delete client.config.oracle_rules.pyth_lazer?.lazer_feed_ids.ETHUSD;
     const fetchSpy = vi.fn(async () => ({
       ok: true,
       json: async () => ({ leEcdsa: { encoding: "hex", data: toHex(SIGNED_UPDATE) } }),

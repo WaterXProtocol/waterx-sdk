@@ -2,7 +2,9 @@
  * SDK smoke test against testnet.
  *
  * 1. Loads `waterx-config/testnet.json` directly from disk (bypasses HTTP
- *    so we don't need the config repo published yet).
+ *    so we don't need the config repo published yet) and runs it through the
+ *    same STRICT `schema_version: 2` parse the HTTP path uses
+ *    (`parseConfigDocument`) — a legacy (v1) file fails loudly here.
  * 2. Constructs a PerpClient.
  * 3. Builds a representative PTB per builder family.
  * 4. simulate() each one — reports OK / expected-on-chain-error / SDK-broken.
@@ -16,9 +18,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { parseConfigDocument, type WaterXConfig } from "../src/config.ts";
 import { refreshOraclePrices } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import type { WaterXConfig } from "../src/perp/config.ts";
 import { ORDER_TAG_WILDCARD, PERM_ALL_TRADING } from "../src/perp/constants.ts";
 import { getRefererFor, isValidReferralCode, referralCodeExists } from "../src/perp/fetch.ts";
 import {
@@ -34,7 +36,7 @@ import {
   setReferralCode,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 const CONFIG_PATH = resolve(import.meta.dirname, "..", "..", "waterx-config", "testnet.json");
 
@@ -173,41 +175,51 @@ async function main(): Promise<void> {
   loadRepoEnvFiles();
   // Prefer the sibling `../waterx-config/testnet.json` checkout when present
   // (local dev), but fall back to fetching the canonical config over HTTP so
-  // this works in CI, where the config repo isn't checked out alongside.
-  let config: WaterXConfig;
+  // this works in CI, where the config repo isn't checked out alongside. The
+  // local file is parsed STRICTLY (schema + network pin + required packages),
+  // exactly like the fetched one — never cast a raw JSON document to the type.
+  let config: WaterXConfig | undefined;
   let client: PerpClient;
+  // Presence alone is the wrong test: a sibling checkout sitting on a pre-v2
+  // branch exists but no longer parses, and selecting it by `existsSync` made
+  // the script unrunnable until the developer deleted the checkout. Try it,
+  // fall through to HTTP when it is not a v2 document.
   if (existsSync(CONFIG_PATH)) {
-    console.log(`Loading config from ${CONFIG_PATH}`);
-    config = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as WaterXConfig;
+    try {
+      config = parseConfigDocument(JSON.parse(readFileSync(CONFIG_PATH, "utf8")), "TESTNET");
+      console.log(`Loading config from ${CONFIG_PATH}`);
+    } catch (err) {
+      console.log(
+        `Local config ${CONFIG_PATH} is not a v2 document (${err instanceof Error ? err.message : String(err)}) — falling back to HTTP`,
+      );
+    }
+  }
+  if (config) {
     client = new PerpClient("TESTNET", config, {});
   } else {
-    console.log(`Local config ${CONFIG_PATH} not found — fetching canonical config over HTTP`);
+    console.log(`Fetching canonical config over HTTP`);
     client = await PerpClient.create("TESTNET", {
       cache: true,
-      waterxConfigUrl: waterxConfigUrlFromEnv(),
+      waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
     });
     config = client.config;
   }
 
   console.log("\n=== Config sanity ===");
-  console.log(`  network               ${config.network} / ${config.chain_id}`);
-  console.log(`  packages.waterx_perp  ${client.config.packages.waterx_perp.published_at}`);
-  console.log(`  global_config         ${client.config.packages.waterx_perp.global_config}`);
-  console.log(`  market_registry_wlp   ${client.config.packages.waterx_perp.market_registry_wlp}`);
-  console.log(`  wxa account_registry  ${client.config.packages.waterx_account.account_registry}`);
-  console.log(`  oracle                ${client.config.packages.waterx_oracle.oracle}`);
-  console.log(`  wlp_pool              ${client.config.packages.wlp.wlp_pool}`);
-  console.log(`  wlp_aum               ${client.config.packages.wlp.wlp_aum ?? "(missing)"}`);
-  console.log(
-    `  referral_table        ${client.config.packages.waterx_referral?.referral_table ?? "(missing)"}`,
-  );
-  console.log(
-    `  markets               ${Object.keys(client.config.packages.waterx_perp.markets).join(", ")}`,
-  );
-  console.log(
-    `  pool_tokens           ${Object.keys(client.config.packages.wlp.pool_tokens).join(", ")}`,
-  );
-  console.log(`  wlpType()             ${client.wlpType()}`);
+  const row = (label: string, value: unknown): void =>
+    console.log(`  ${label.padEnd(34)}${String(value)}`);
+  row("network", `${config.network} / ${config.chain_id}`);
+  row("packages.waterx_perp.published_at", client.config.packages.waterx_perp.published_at);
+  row("objects.perp.global_config", client.config.objects.perp.global_config);
+  row("objects.perp.market_registry_wlp", client.config.objects.perp.market_registry_wlp);
+  row("objects.account.registry", client.config.objects.account.registry);
+  row("objects.oracle.oracle", client.config.objects.oracle.oracle);
+  row("objects.wlp.pool", client.config.objects.wlp.pool);
+  row("objects.wlp.aum", client.config.objects.wlp.aum);
+  row("objects.referral.table", client.config.objects.referral.table);
+  row("objects.perp.markets", Object.keys(client.config.objects.perp.markets).join(", "));
+  row("objects.wlp.pool_tokens", Object.keys(client.config.objects.wlp.pool_tokens).join(", "));
+  row("wlpType()", client.wlpType());
 
   const USDC_TYPE = client.getPoolTokenType("USD");
   const BTC_TICKER = "BTCUSD";

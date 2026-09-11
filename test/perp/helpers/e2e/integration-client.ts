@@ -28,7 +28,7 @@ export async function createIntegrationWaterXClient(): Promise<PerpClient> {
   const pythApiKey = process.env.PYTH_API_KEY?.trim() || undefined;
   const c = await PerpClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
     cache: true,
-    waterxConfigUrl: resolveE2eWaterxConfigUrl(),
+    waterxConfigUrl: resolveE2eWaterxConfigUrl(resolveIntegrationNetwork()),
     ...(pythApiKey ? { pythApiKey } : {}),
     ...(grpcUrl ? { grpcUrl } : {}),
   });

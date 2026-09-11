@@ -2,14 +2,13 @@ import type { PredictClient } from "~predict/client.ts";
 import { getAccountIds } from "~predict/fetch.ts";
 import { resolveAccountPackageId } from "~predict/utils.ts";
 
-import { readFixtureOverrides } from "./e2e-env.ts";
+import { readE2eRpcUrl, readFixtureOverrides } from "./e2e-env.ts";
 import { hasWriteCredentials, loadSigner } from "./env.ts";
 
 const ownerCache = new Map<string, string | undefined>();
 
 function jsonRpcUrl(client: PredictClient): string {
-  const base = client.config.grpcUrl ?? "https://fullnode.testnet.sui.io:443";
-  return base.replace(/\/$/, "");
+  return readE2eRpcUrl(client.network);
 }
 
 interface SuiEventEnvelope {

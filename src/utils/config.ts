@@ -1,8 +1,8 @@
-import type { WaterXConfig } from "../perp/config.ts";
+import type { WaterXConfig } from "../config.ts";
 
 /** Returns all registered market tickers (e.g. "BTCUSD") from waterx-config. */
 export function getMarketTickers(config: WaterXConfig): string[] {
-  return Object.keys(config.packages.waterx_perp.markets);
+  return Object.keys(config.objects.perp.markets);
 }
 
 // "Which WLP pool tokens can this deployment PRICE" is an oracle-coverage

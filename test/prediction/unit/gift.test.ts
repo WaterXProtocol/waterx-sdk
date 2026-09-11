@@ -157,47 +157,29 @@ describe("deriveGiftAddress", () => {
   // Sui pins across upgrades — not `published_at`, which advances on every
   // upgrade. Otherwise the off-chain gift_id diverges from the on-chain
   // `derive_gift_address` after the first upgrade.
-  it("is invariant to a package upgrade when original_id is set", () => {
+  it("is invariant to a package upgrade (keys on original_id, not published_at)", () => {
     const pubkey = deriveGiftKeypair(FIXED_SEED).getPublicKey().toRawBytes();
     const originalId = "0x" + "a".repeat(64);
 
     // Fresh deploy: published_at == original id.
-    const beforeUpgrade = createMockPredictClient({
-      packages: {
-        waterx_prediction_gift: {
-          published_at: originalId,
-          claimable_link_config: TESTNET_FIXTURE_IDS.claimableLinkConfig,
-        },
-      },
-    });
+    const fresh = structuredClone(client.config);
+    fresh.packages.waterx_prediction_gift = {
+      published_at: originalId,
+      original_id: originalId,
+      version: 1,
+    };
+    const beforeUpgrade = createMockPredictClient(fresh);
 
     // After an upgrade: published_at advances, original_id stays put.
-    const afterUpgrade = createMockPredictClient({
-      packages: {
-        waterx_prediction_gift: {
-          published_at: "0x" + "b".repeat(64),
-          original_id: originalId,
-          claimable_link_config: TESTNET_FIXTURE_IDS.claimableLinkConfig,
-        },
-      },
-    });
+    const upgraded = structuredClone(client.config);
+    upgraded.packages.waterx_prediction_gift = {
+      published_at: "0x" + "b".repeat(64),
+      original_id: originalId,
+      version: 2,
+    };
+    const afterUpgrade = createMockPredictClient(upgraded);
 
     expect(deriveGiftAddress(afterUpgrade, pubkey)).toBe(deriveGiftAddress(beforeUpgrade, pubkey));
-  });
-
-  it("falls back to published_at when original_id is absent", () => {
-    const pubkey = deriveGiftKeypair(FIXED_SEED).getPublicKey().toRawBytes();
-    const cfg = (publishedAt: string) => ({
-      packages: {
-        waterx_prediction_gift: {
-          published_at: publishedAt,
-          claimable_link_config: TESTNET_FIXTURE_IDS.claimableLinkConfig,
-        },
-      },
-    });
-    const a = createMockPredictClient(cfg("0x" + "a".repeat(64)));
-    const b = createMockPredictClient(cfg("0x" + "b".repeat(64)));
-    expect(deriveGiftAddress(a, pubkey)).not.toBe(deriveGiftAddress(b, pubkey));
   });
 
   it("giftTypeOriginId overrides the type tag independently of giftPackageId", () => {

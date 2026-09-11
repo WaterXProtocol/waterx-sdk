@@ -11,7 +11,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 import { createAccount } from "../src/account/account.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 async function main(): Promise<void> {
@@ -22,12 +22,12 @@ async function main(): Promise<void> {
 
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
 
   console.log(`sender:   ${address}`);
   console.log(`alias:    ${alias}`);
-  console.log(`registry: ${client.config.packages.waterx_account.account_registry}`);
+  console.log(`registry: ${client.config.objects.account.registry}`);
   console.log(`mode:     ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
   const tx = new Transaction();

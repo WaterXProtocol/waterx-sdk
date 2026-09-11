@@ -54,11 +54,8 @@ export async function probeParkedBackingAssets(
   client: AccountClientLike,
   accountId: string,
 ): Promise<ParkedBackingAssetBalance[]> {
-  if (!client.config.packages.native_custody?.vault) return [];
-  if (!client.config.packages.waterx_credit?.credit_type) return [];
-
   const out: ParkedBackingAssetBalance[] = [];
-  for (const asset of client.getNativeAssets()) {
+  for (const asset of client.config.objects.custody.assets) {
     const bal = (await client.getBalance({
       owner: accountId,
       coinType: asset.type,
@@ -101,10 +98,6 @@ export async function probeAddressCreditBalance(
   client: AccountClientLike,
   accountId: string,
 ): Promise<AddressCreditBalance> {
-  if (!client.config.packages.waterx_credit?.credit_type) {
-    return { fundsRaw: 0n, coinsRaw: 0n };
-  }
-
   const creditType = client.creditType();
 
   const bal = (await client.getBalance({

@@ -1,5 +1,5 @@
 /**
- * E2E: market-form place order (oracle refresh + sponsor path), primary open simulate smoke.
+ * E2E: market-form place order (oracle refresh + request/execute envelope), primary open simulate smoke.
  */
 import { buildPlaceOrderTx } from "@waterx/sdk";
 import { describe, it } from "vitest";

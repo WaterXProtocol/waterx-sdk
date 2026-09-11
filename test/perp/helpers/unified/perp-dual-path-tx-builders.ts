@@ -20,7 +20,7 @@ import {
   buildWithdrawCollateralTx,
 } from "../../../../src/perp/tx-builders.ts";
 import { rawPrice } from "../../../../src/utils/math.ts";
-import { MOCK_CUSTODY_ASSET_TYPE } from "../fixtures/mock-testnet-config.ts";
+import { MOCK_CUSTODY_ASSET_TYPE } from "../../../helpers/fixtures/mock-testnet-config.ts";
 import {
   ACCOUNT_ID,
   baseOrderMain,

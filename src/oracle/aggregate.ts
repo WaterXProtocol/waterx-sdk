@@ -2,13 +2,12 @@
  * Oracle aggregation — the orchestrator that composes rules into the shared
  * `Oracle`. This is the ONE file that knows about every rule: it builds a
  * `PriceCollector`, feeds whichever rules a ticker is configured for
- * (Lazer / Waterx / Supra / Constant), then `aggregate`s.
+ * (Lazer / Waterx / Constant), then `aggregate`s.
  *
  * Per ticker:
  *   collector = oracle::new_collector(ticker)
  *   [pyth_lazer_rule::feed] when the update leg produced a verified lazer Update
  *   [waterx_rule::collect_*] when the update leg fetched signed waterx data
- *   [supra_rule::feed]      when supra is enabled + wired
  *   [constant_rule::feed]   when the ticker is a constant ticker
  *   oracle::aggregate(oracle, collector)
  *
@@ -38,7 +37,6 @@ import {
 import { resolveOracleRule } from "./rule-registry.ts";
 import { feedConstantRule } from "./rules/constant-rule.ts";
 import { feedLazerRule } from "./rules/pyth-lazer-rule.ts";
-import { maybeFeedSupra } from "./rules/supra-rule.ts";
 import {
   feedWaterxRule,
   feedWaterxRuleWithProof,
@@ -103,8 +101,6 @@ async function resolveCachedUpdateData(
  * - **Waterx** — fed when `waterxLeaf` (default shape) or `waterxEnvelope`
  *   (fallback shape) is supplied; verify AND feed are bundled into the one
  *   collect call per collector.
- * - **Supra** — fed alongside the sources when supra is enabled + wired
- *   (abstains on-chain for symbols it has no pair for).
  * - **Constant** — fed when the ticker is a constant ticker
  *   ({@link OracleHost.isConstantTicker}).
  *
@@ -159,11 +155,6 @@ export function aggregateTicker(
     fed = true;
   }
 
-  if (fed) {
-    // Supra rides on the same collector when enabled (abstains on-chain otherwise).
-    maybeFeedSupra(tx, host, collector);
-  }
-
   if (host.isConstantTicker(args.ticker)) {
     feedConstantRule(tx, host, collector);
     fed = true;
@@ -178,7 +169,7 @@ export function aggregateTicker(
   aggregateCall({
     package: oraclePkg,
     arguments: {
-      oracle: tx.object(host.config.packages.waterx_oracle.oracle),
+      oracle: tx.object(host.config.objects.oracle.oracle),
       collector,
     },
   })(tx);
@@ -219,18 +210,21 @@ export interface OracleRefreshSummary {
  * Refresh multiple tickers in one PTB. For each ticker {@link aggregateTicker}
  * feeds whichever rules it is configured for (Lazer if the lazer update leg
  * served it, Waterx if the waterx leg fetched signed data for it — see below —
- * Supra when enabled, Constant when it's a constant ticker).
+ * Constant when it's a constant ticker).
  *
  * Before that, the on-chain price *update* leg is routed by the
  * `host.oracleSources` fed set (see `rule-registry.ts`): EVERY listed source
- * updates the tickers its own `supportedTickers(host)` serves, all in this one
+ * updates the tickers its own `supportedTickers(config)` serves, all in this one
  * PTB. There is **no cross-source fallback** — a requested ticker NO listed
- * source serves, and that is not a constant-only ticker (which needs no
- * price-update leg), fails the build immediately with a clear error naming
- * the ticker and the list. That is the deliberate "fail the tx-build, don't
- * silently reroute" contract: a wrong-but-present feed id is NOT validated
- * here (it surfaces on-chain at dry-run); a ticker MISSING from every listed
- * source's feeds is caught here.
+ * source serves, and that `constant_rule` does not pin (a pin needs no
+ * price-update leg), is SKIPPED and named in
+ * {@link OracleRefreshSummary.skipped} rather than thrown on: this is a broad
+ * primitive callers sweep whole market lists through, so losing 29 tickers to
+ * an unconfigured 30th is the wrong trade. Failing closed happens one level
+ * up, where the ACTION is known — the `build*Tx` composers raise
+ * `OracleTickerUnservedError` for the tickers their specific call depends on
+ * (see `perp/tx-builders/common.ts`). A wrong-but-present feed id is NOT
+ * validated here either; it surfaces on-chain at dry-run.
  *
  * Each source's fetch + build runs against its own infra, guaranteeing
  * per-rule PTB atomicity. A credential pre-check runs early: any group that
@@ -304,45 +298,31 @@ export async function refreshOraclePrices(
   const groups = host.oracleSources
     .map((source) => {
       const rule = resolveOracleRule(source, opts.ruleOverrides);
-      const supported = new Set(rule.supportedTickers(host));
+      const supported = new Set(rule.supportedTickers(host.config));
       return { source, rule, tickers: tickers.filter((t) => supported.has(t)) };
     })
     .filter((group) => group.tickers.length > 0);
 
-  // A ticker no listed source can price is SKIPPED, not thrown on, and named
-  // in the returned summary.
-  //
-  // This is a broad primitive: callers sweep whole market lists through it, and
-  // losing 29 tickers because the 30th is unconfigured is the wrong trade — the
-  // 29 still need their prices on chain. Safety lives one level up, where the
-  // ACTION is known: the `build*Tx` composers fail closed on the tickers their
-  // specific call actually depends on (`assertTickersRefreshed` /
-  // `assertWlpPoolRefreshed` in `perp/tx-builders/common.ts`). A bare
-  // `refreshOraclePrices` caller composing its own PTB reads `skipped` and
-  // decides for itself.
-  //
-  // Exemption: a CONSTANT-ONLY ticker needs no update leg from any source, so
-  // it counts as refreshed with just its constant feed.
-  //
-  // "Constant-only" is deliberately stricter than "constant-pinned". A ticker
-  // that constant_rule pins AND some other rule also has a feed for is NOT
-  // exempt, even when that other rule is outside the fed set: the on-chain
-  // aggregator very likely weights the rule whose feed the config carries, and
-  // aggregating a constant-only collector for it aborts `EMissingPriceSource`.
-  // Exempting on `isConstantTicker` alone would be correct only while the fed
-  // set covers every ticker's weighted set — an operator-maintained property
-  // this function cannot verify without reading chain state. So the strict
-  // reading fails SAFE: the ticker is skipped, named, and the composers turn
-  // that into a build error instead of an opaque on-chain abort.
+  // The constant-pin exemption the partition below applies: pinning alone is
+  // a safe exemption, where it once had to be narrowed to "constant-ONLY". A
+  // source is listed exactly when it serves at least one ticker
+  // (`deriveOracleSources` over `supportedTickers`), so a pinned ticker that
+  // any configured source ALSO serves is already in the fed set and gets that
+  // source's leg alongside the constant one. A constant-only collector is
+  // therefore emitted only for a ticker no source in this config can serve —
+  // or that every listing source failed to serve this round — which is
+  // precisely the case the chain cannot weight to a source. The stricter test
+  // guarded a gap the v1 schema allowed (a rule carrying informational feeds
+  // while sitting outside the fed set) and that the consolidated document no
+  // longer expresses.
   //
   // Catches a MISSING feed only; a present-but-WRONG feed id is deliberately
   // left to abort on-chain at dry-run.
-  const covered = new Set(groups.flatMap((group) => group.tickers));
-  const { servable: refreshed, unservable: skipped } = partitionServableTickers(
-    host,
-    tickers,
-    covered,
-  );
+  //
+  // (The refreshed/skipped partition itself moves BELOW the fetches: a
+  // partial-coverage source can shrink its group there, and a ticker that
+  // loses its last source this round belongs in `skipped` too — same
+  // authority, applied once, after coverage is actually known.)
 
   // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below
   // (the position the retired fee-source pre-check held). It consults only
@@ -390,14 +370,79 @@ export async function refreshOraclePrices(
   // listed source is load-bearing; silently building without it would starve
   // its weighted tickers on-chain).
   const fetched = new Map<OracleSource, RuleUpdateData>();
+  // Which tickers came back unserved, across every source. Collected flat: no
+  // caller needs to know WHICH source declined, only that the ticker is gone.
+  const unserved = new Set<string>();
   await Promise.all(
     needsFetch.map(async (group) => {
-      fetched.set(group.source, await group.rule.fetchUpdateData(host, group.tickers));
+      // Partial coverage where the rule offers it (divisible payloads): one
+      // unserved ticker must cost ITSELF, not the batch — under the strict
+      // arm a single symbol the quote-center declined to serve failed every
+      // sibling ticker's refresh and reported nothing. The gap flows into
+      // the post-fetch partition below, where the unserved ticker is skipped
+      // OUTRIGHT (see the `unserved` comment there for why no other leg —
+      // constant pin included — may stand in for a configured source the
+      // chain might weight).
+      if (group.rule.fetchUpdateDataPartial) {
+        const { data, missing } = await group.rule.fetchUpdateDataPartial(host, group.tickers);
+        fetched.set(group.source, data);
+        for (const ticker of missing) unserved.add(ticker);
+      } else {
+        fetched.set(group.source, await group.rule.fetchUpdateData(host, group.tickers));
+      }
     }),
   );
-  const dataByGroup = groups.map(
-    (group, i) => cachedByGroup[i] ?? fetched.get(group.source) ?? null,
-  );
+  // A ticker ANY of its listing sources failed to serve this round is
+  // UNSERVED — and unserved means SKIPPED OUTRIGHT, never "aggregate with
+  // whatever legs are left". The chain's per-ticker weight tables are
+  // invisible to this SDK, so a missing source cannot be proven unweighted —
+  // and aggregating a collector that lacks a weighted source aborts the
+  // WHOLE PTB in `aggregator::remove_outliers` (`EMissingPriceSource`); a
+  // constant pin does not waive that requirement either. An on-chain abort
+  // of the whole transaction is strictly worse than the skip, so the gap
+  // costs the ticker, never the batch and never the PTB. The ticker leaves
+  // EVERY group (an update leg for a ticker that gets no collector would be
+  // dead weight), and lands in `skipped` below even where another source —
+  // or a constant pin — could still feed it.
+  //
+  // A group emptied by that filter is DROPPED, not merely narrowed. The
+  // zero-ticker guard above ran BEFORE the fetches, so without this a group
+  // whose every ticker went unserved would still reach Phase 2 and append its
+  // update leg — e.g. Lazer's `verify_le_ecdsa_update` — to the caller's PTB,
+  // producing a command whose return value nothing consumes for a refresh that
+  // reports zero refreshed tickers.
+  const servedGroups = groups
+    .map((group, i) => ({
+      ...group,
+      tickers: group.tickers.filter((t) => !unserved.has(t)),
+      data: cachedByGroup[i] ?? fetched.get(group.source) ?? null,
+    }))
+    .filter((group) => group.tickers.length > 0);
+
+  // The refreshed/skipped partition. A ticker no listed source can price, or
+  // that lost a listing source this round (`unserved`), is SKIPPED — not
+  // thrown on — and named in the returned summary. This is a broad
+  // primitive: callers sweep whole market lists through it, and losing 29
+  // tickers because the 30th is unserved is the wrong trade — the 29 still
+  // need their prices on chain. Safety lives one level up, where the ACTION
+  // is known: the `build*Tx` composers fail closed on the tickers their
+  // specific call actually depends on (`assertTickersRefreshed` /
+  // `assertWlpPoolRefreshed` in `perp/tx-builders/common.ts`); a bare caller
+  // composing its own PTB reads `skipped` and decides for itself.
+  //
+  // The constant-only exemption applies ONLY at the CONFIG level (a pinned
+  // ticker no source lists at all — the deployed USDCUSD shape, absent from
+  // the `symbols` universe): there the chain cannot weight a source this
+  // deployment doesn't carry, so a constant-only collector is sound. A
+  // FETCH-time gap gets no such exemption — the source is configured, the
+  // chain may well weight it, and only the skip is provably safe.
+  const covered = new Set(servedGroups.flatMap((group) => group.tickers));
+  const configServable = new Set(partitionServableTickers(host, tickers, covered).servable);
+  const refreshed: string[] = [];
+  const skipped: string[] = [];
+  for (const ticker of tickers) {
+    (configServable.has(ticker) && !unserved.has(ticker) ? refreshed : skipped).push(ticker);
+  }
 
   // Phase 2 — build each group's update leg sequentially, in list order, so
   // PTB command order stays deterministic. The carry step below is an
@@ -412,8 +457,8 @@ export async function refreshOraclePrices(
   // from the group's fetched data.
   const waterxLeafByTicker = new Map<string, WaterxSignedLeaf>();
   const waterxEnvelopeByTicker = new Map<string, WaterxSignedEnvelope>();
-  for (const [i, group] of groups.entries()) {
-    const data = dataByGroup[i] ?? null;
+  for (const group of servedGroups) {
+    const { data } = group;
     const handle: RuleUpdateHandle | undefined =
       (await group.rule.buildUpdateCalls(tx, host, data)) ?? undefined;
     switch (group.rule.kind) {

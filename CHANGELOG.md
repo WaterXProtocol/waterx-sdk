@@ -16,6 +16,181 @@ from the version number alone.
 
 ## [Unreleased]
 
+_BREAKING: the legacy per-package `waterx-config` shape is ABANDONED. `client.config` is
+now the STRICTLY PARSED `schema_version: 2` document (`@waterx/config`, one consolidated
+document for BOTH lines), and every SDK read moved to where that schema puts things —
+`objects.*` for object ids, `oracle_rules.*` for rule wiring, `symbols` for the ticker
+universe, `packages.*` for package identity only. A consumer that read
+`client.config.packages.<pkg>.<object id>`, imported the loader or any config type from
+`@waterx/sdk/perp/config` / `@waterx/sdk/prediction/config`, called `getCredit` /
+`getBridge` / `getNativeAssets` / `wormholeStateId` / `getSupraRule`, or pointed
+`waterxConfigUrl` at a legacy document must adapt in the same change set — the removal
+ledger below is grep-ready. Pointing at a legacy document now throws at `create()`; the
+canonical CDN (`config.waterx.app`) still serves the legacy shape until the config repo's
+v2 promotion, so consumers pin the `staging-v2` mirror until then (#93)._
+
+### BREAKING — the v2 `waterx-config` document is the config
+
+- **One loader, one document, both lines.** `loadConfig` / `clearConfigCache` /
+  `LoadConfigOptions` now live in `src/config.ts` (re-exported from `@waterx/sdk`,
+  `@waterx/sdk/perp`, `@waterx/sdk/prediction`). The body is parsed by `@waterx/config`'s
+  `parseWaterxConfig` (schema-derived types, 64-hex id patterns, `network` pin) and then
+  checked once for the package entries the SDK reads unconditionally
+  (`REQUIRED_PACKAGES`; each `oracle_rules.<rule>.package` must also name a published
+  entry). `parseConfigDocument(doc, network)` / `assertRequiredPackages(doc)` are exported
+  for pinned files and fixtures. The retry / last-known-good / `network:url` cache
+  semantics of the former perp loader are unchanged and now cover the prediction line too.
+  `WaterXClient.create` fetches the document ONCE when both lines resolve to the same
+  network + URL.
+- **`client.config` is `WaterXConfig` = the parsed document** (`@waterx/config`'s
+  `WaterxConfig` with `REQUIRED_PACKAGES` narrowed to present). There is no internal
+  view and no adapter. Read map for the object ids that moved:
+  `packages.waterx_account.account_registry → objects.account.registry`,
+  `packages.waterx_perp.{global_config,market_registry_wlp,markets} → objects.perp.*`,
+  `packages.wlp.{wlp_pool,wlp_aum,pool_tokens} → objects.wlp.{pool,aum,pool_tokens}`,
+  `packages.waterx_oracle.{oracle,aggregators} → objects.oracle.*`,
+  `packages.waterx_referral.referral_table → objects.referral.table`,
+  `packages.waterx_credit.{credit_type,credit_registry} → objects.credit.{credit_type,registry}`,
+  `packages.native_custody.{vault,assets} → objects.custody.*`,
+  `packages.wormhole_bridge.{bridge,wormhole_state,emitter_cap} → objects.bridge.{state,wormhole_state,emitter_cap}`,
+  `packages.withdrawal_queue.queue → objects.withdrawal_queue.queue`,
+  `packages.waterx_staking.{pools,rewarders} → objects.staking.*`,
+  `packages.waterx_prediction.* / waterx_prediction_gift.* → objects.prediction.*`,
+  `packages.pyth_lazer_rule.{feeds,config,state} → oracle_rules.pyth_lazer.{lazer_feed_ids,lazer_config_object,lazer_state_object}`,
+  `packages.waterx_rule.{config,enclave_config,enclave} → oracle_rules.waterx.{rule_config_object,enclave.config,enclave.object}`,
+  `packages.constant_rule.{feeds,config} → oracle_rules.constant.{constant_prices,rule_config_object}`.
+  `packages.<name>.{published_at,original_id,version}` are unchanged.
+- **The ticker universe is `symbols`.** `venue_feeds` / `waterx_rule.feeds` no longer
+  exist: `WaterxRule.supportedTickers` is `Object.keys(config.symbols)`, and the
+  quote-center read plan filters against it. `PriceUpdateRule.supportedTickers` now takes
+  the CONFIG (`supportedTickers(config)`), not the host — it is THE definition of
+  "wired": `deriveOracleSources(config)` lists a source exactly when it is non-empty.
+- **No `enabled` flag, no supra leg.** The v2 schema carries neither `enabled` nor
+  `supra.oracle_holder`, so the config-driven off switch and the `supra_rule::feed`
+  leg were unreachable and are REMOVED: `getSupraRule()` (client + `OracleHost`),
+  `maybeFeedSupra` / `src/oracle/rules/supra-rule.ts`, `"supra_rule"` from
+  `PriceUpdateRuleKind`, and the now-unused `src/generated/waterx_supra_rule` bindings
+  (with their `sui-codegen.config.mjs` / `scripts/codegen-summaries.ts` entries). `readOracleWeightCoverage` now reports a `SupraRule` weight as
+  unsuppliable (it is), and `partitionServableTickers` is simply "in the fed set, or
+  constant-pinned" — the old "constant-only vs another rule also feeds it" distinction
+  cannot arise when a source is listed iff it serves ≥1 ticker.
+- **Dead "package unset" guards are REMOVED** — the schema requires every `objects.*`
+  block (except `faucet` / `mock_usdsui`) and the loader asserts `REQUIRED_PACKAGES`, so
+  `getCredit()`, `getBridge()`, `getNativeAssets()`, `wormholeStateId()` (read
+  `client.config.objects.bridge.wormhole_state`) and every "referral / credit / custody /
+  bridge / withdrawal_queue / staking / wlp_aum not configured" throw are gone.
+  `creditType()`, `getNativeAsset(type)`, `getMarket`, `getAggregator`,
+  `getPoolTokenType`, `wlpType`, `getRewarders`, `isConstantTicker` remain.
+  `WormholeInfraConfig.state_id` and the `config.wormhole` / `config.grpcUrl` overrides
+  are gone (`WORMHOLE_DEFAULTS` — now in `src/account/config.ts` — is fixed per network;
+  the Wormhole `State` id is the document's `objects.bridge.wormhole_state`; the gRPC
+  URL is the `grpcUrl` create option).
+- **Removed types / modules** (grep-ready): `src/perp/config.ts`, `src/prediction/config.ts`,
+  `src/config-v2.ts`; `WaterXPackages`, `AccountPackages`, `AccountConfig`, `WxaPackages`,
+  `WxaConfig`, `OraclePackages`, `OracleConfig`, `BaseLineConfig`, `BasePackageEntry`,
+  `WaterxPredictionConfig`, `WaterxConfigPackageBase`, `WaterxPredictionPackage`,
+  `WaterxPredictionGiftPackage`, `WaterxPredictionConfigPackages`, `WaterxAccountPackage`,
+  `WxaAccountPackage`, `WaterxReferralPackage`, `WaterxCreditPackage`, `NativeCustodyPackage`,
+  `WormholeBridgePackage`, `WithdrawalQueuePackage`, `WaterxPerpPackage`,
+  `WaterxPerpMarketEntry`, `WaterxStakingPackage`, `WlpPackage`, `MockCoinPackage`,
+  `TestnetFaucetPackage`, `WaterxOraclePackage`, `WaterxRulePackage`, `WaterxRuleFeedEntry`,
+  `PythLazerRulePackage`, `WaterxConstantRulePackage`, `ConstantFeedEntry`,
+  `SupraRulePackage`, `SupraFeedEntry`. `BaseLineClient` stays generic, but over
+  its CONFIG rather than a per-line config type: it is now
+  `BaseLineClient<Cfg extends WaterXConfig = WaterXConfig>`, and each line binds
+  its own (see `PerpLineConfig` / `PredictionLineConfig` below).
+  Replacements: `WaterXConfig`, `PackageEntry`, `PerpMarketEntry`, `NativeCustodyAsset`,
+  `RewarderEntry`, `RequiredPackage` from `src/config.ts`; `PythAccessConfig` /
+  `PythFetchPolicy` / `WaterxAccessConfig` from `src/oracle/config.ts`.
+- **A pre-v2 document fails with an actionable message.** A network config that
+  carries `packages.waterx_perp` / `packages.waterx_prediction` but declares no
+  `schema_version` now throws `pre-v2 waterx-config is no longer supported —
+point at a v2 endpoint` before the schema parser reports it as a pile of field
+  errors. `main` / `staging` serve the pre-v2 shape while `main-v2` /
+  `staging-v2` serve v2, and the four co-exist for now, so this is the error a
+  mispointed deployment actually hits. A malformed _v2_ document still gets the
+  parser's field-level errors, which are the more useful answer there.
+- **The last-known-good fallback is TRANSIENT-only.** `loadConfig` falls back to
+  the cached snapshot for a network error, timeout, 429 or 5xx. A deterministic
+  failure — 403/404, malformed JSON, a schema violation, a network mismatch, or
+  a missing required package — now propagates whether or not a snapshot exists.
+  Serving stale state there let a process repointed at a retired or pre-v2
+  endpoint keep building against dead object ids forever, and consolidating the
+  loaders had newly exposed the prediction line to it.
+- **`REQUIRED_PACKAGES` is the SHARED core only.** The loader asserts
+  `bucket_framework` / `waterx_account` / `waterx_referral` plus the entry each
+  published `oracle_rules.<rule>` block names; the per-line sets
+  (`PERP_PACKAGES`, `PREDICTION_PACKAGES`) are asserted by `PerpClient` /
+  `PredictClient` at construction, via the exported `assertLinePackages`. A
+  PARTIAL deployment therefore loads: a document that ships perp before
+  prediction no longer blocks a perp-only app on an absent
+  `waterx_prediction_gift` it never reads.
+- **`PerpLineConfig` / `PredictionLineConfig`** name a document that additionally
+  carries a line's packages — the guarantee each line client establishes at
+  construction, and the type `client.config` now HAS: `BaseLineClient` is generic
+  over its config (defaulting to `WaterXConfig`) and each line narrows it, with
+  `assertLinePackages` narrowing from its package-name tuple. `WaterXConfig`
+  promises only what the LOADER checks, so `parseConfigDocument` no longer types
+  package keys it does not verify.
+- **New `@waterx/sdk/config` export subpath** for the shared loader and its
+  types. `@waterx/sdk/account` consumers can now name `WaterXConfig` without
+  reaching into `@waterx/sdk/perp`, and both line barrels re-export the same
+  loader surface (the perp barrel previously exported strictly more).
+- **`@waterx/config` is a regular dependency** (`0.1.1-staging.1`), not a peer: it is
+  imported unconditionally and has no shared-instance concern.
+
+### Changed
+
+- **`WATERX_CONFIG_URL` is now a CDN BASE root** (no file name) across every repo
+  harness — scripts, e2e/integration helpers, examples, CI — with the boundary
+  composing `${base}/${network}.json` (`scripts/waterx-config-url.ts`). One
+  exported value drives both networks, so `run-e2e.ts --mainnet` no longer
+  rewrites the string and a mainnet run cannot silently load a testnet document
+  because the value ended in `testnet.json`. Reference bases: prod
+  `https://config.waterx.app`, v2 staging
+  `https://staging-v2.waterx-config.pages.dev`; `raw.githubusercontent.com` is
+  out of the docs entirely (it 429s and the config repo forbids it).
+  - **Transitional compatibility:** a value ending in `.json` is still read as a
+    complete legacy file URL and used as-is — including the long-standing
+    `testnet.json` ↔ `mainnet.json` swap — emitting a one-time deprecation
+    warning. An already-exported `.env.local` or an old-shape repo variable keeps
+    working.
+  - **The SDK is unaffected.** It still never reads `process.env`, and
+    `loadConfig`'s `waterxConfigUrl` opt still takes a COMPLETE URL — composing
+    it is the env boundary's job, which is why the helper lives outside `src/`.
+  - `waterxConfigUrlFromEnv()` is **removed** in favour of
+    `waterxConfigUrlForNetwork(network)`: under base semantics a URL cannot be
+    resolved without knowing the network, so the network is now required at the
+    call site rather than implied by the string.
+
+### Fixed
+
+- **Quote-center errors are keyed on a NUMERIC code.** `QUOTE_CENTER_ERROR_CODES`
+  (`oracle/rules/waterx-rule.ts`) is the single place a wire code is given
+  meaning — populated from the service's published `ErrorCode` enum
+  (`UnknownSymbol = 10001`) — and the 404 classifier branches on it first;
+  `parseQuoteCenterError` accepts a numeric code (the previous version required
+  a string and silently dropped numbers). A code is a JSON number and nothing
+  else — the service serializes `ErrorCode as u32`. Every non-ok quote-center response now reports its code, not
+  just the 404. The message is display-only except for one transitional shim
+  that recovers the symbol NAME from deployments predating the contract; the
+  service now sends `symbol` as a field, so that shim retires once the new
+  build is live.
+- **A quote-center `404` is classified by body SHAPE, not message wording.** The
+  leaf route's unknown-symbol refusal was matched against the prose
+  `unknown signed symbol X`, which neither live host sends — both answer
+  `{"error":"unknown symbol X"}`. Every refusal was therefore misread as "this
+  deployment has no leaf route", retried as an envelope, 404'd again, and threw:
+  one unknown symbol failed the WHOLE batch, exactly the failure the split
+  existed to prevent. The route question is now answered structurally — a JSON
+  object means the route answered and refused, an empty body means nothing
+  served the path (verified against both live quote-centers) — and a
+  machine-readable `code` / `symbol` is read FIRST, so a quote-center adopting
+  error codes needs no SDK release. Only the symbol NAME still falls back to the
+  message, never the routing decision. Regression tests pin the live body, the
+  structured form, the empty-body no-route arm, and a refusal naming no symbol
+  (which throws rather than looping or falling back).
+
 ### Added
 
 - **`PythProHistoryError`** — typed error thrown by `fetchPythProHistory` on a

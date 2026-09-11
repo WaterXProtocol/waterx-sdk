@@ -18,16 +18,17 @@
  * leg never appears and the weighted rule is starved just the same.
  *
  * That is live on mainnet today, not hypothetical. `XAGUSD` / `WTIUSD` /
- * `BRENTUSD` are in `waterx_rule.feeds` (so: servable) while their aggregators
- * still weight the retired `PythRule@1`, which 5.0.0 cannot feed at all. The
- * config-only asserts wave all three through; only reading the weights catches
- * them.
+ * `BRENTUSD` are in the `symbols` universe (so: servable by the quote-center)
+ * while their aggregators still weight the retired `PythRule@1`, which 5.0.0
+ * cannot feed at all. The config-only asserts wave all three through; only
+ * reading the weights catches them.
  *
  * Async and chain-reading, so it is NOT on the build path — it belongs in a
  * deployment's boot sequence or a pre-release check, next to
  * `assertOracleWriteCoverage`.
  */
 
+import { ownEntry } from "../utils/record.ts";
 import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
 import { resolveOracleRule } from "./rule-registry.ts";
@@ -37,29 +38,19 @@ import { resolveOracleRule } from "./rule-registry.ts";
  * table is keyed by these type names, so this is the join between what the
  * chain requires and what the fed set can supply.
  *
- * `ConstantRule` and `SupraRule` are auxiliary legs rather than sources — the
- * SDK feeds them alongside whichever source ran, so a ticker weighted only to
- * them needs no source. Anything NOT in this map (notably the retired
- * `PythRule`) cannot be supplied by this SDK at any fed set.
+ * `ConstantRule` is an auxiliary leg rather than a source — the SDK feeds it
+ * alongside whichever source ran, so a ticker weighted only to it needs no
+ * source. Anything NOT in this map cannot be supplied by this SDK at any fed
+ * set: the retired `PythRule`, and `SupraRule` — whose `oracle_rules.supra`
+ * block DOES exist in v2 and carries `pair_ids`, but which v2 cannot make
+ * feedable, because feeding it needs an `oracle_holder` the schema has no field
+ * for. A ticker whose aggregator weights `SupraRule` is therefore unsuppliable
+ * and this check must report it.
  */
 const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource>> = Object.freeze({
   PythLazerRule: "pyth_lazer_rule",
   WaterxRule: "waterx_rule",
 });
-
-/**
- * Auxiliary witnesses — fed alongside a source rather than being one.
- *
- * Their emission is CONDITIONAL, per ticker, so they cannot be treated as
- * globally available (which certified a ticker clean that then aborted):
- *
- * - `ConstantRule` rides only when `host.isConstantTicker(ticker)`.
- * - `SupraRule` rides only when the deployment has supra wired AND a price
- *   -update source already fed that collector — `aggregateTicker` puts the
- *   supra leg inside `if (fed)`, so a ticker no listed source serves never
- *   gets one, constant-only tickers included.
- */
-// (Both are handled by `suppliableFor` inside `readOracleWeightCoverage`.)
 
 /** One ticker's on-chain weighting, as far as fed-set coverage is concerned. */
 export interface TickerWeightCoverage {
@@ -121,7 +112,7 @@ export async function readOracleWeightCoverage(
   host: OracleHost,
   tickers: readonly string[],
 ): Promise<TickerWeightCoverage[]> {
-  const aggregators = host.config.packages.waterx_oracle.aggregators;
+  const aggregators = host.config.objects.oracle.aggregators;
 
   // Which tickers each LISTED source actually feeds — per source, not merged.
   //
@@ -133,44 +124,42 @@ export async function readOracleWeightCoverage(
   const feedsByWitness = new Map<string, Set<string>>();
   for (const [witness, source] of Object.entries(WITNESS_TO_SOURCE)) {
     if (host.oracleSources.includes(source)) {
-      feedsByWitness.set(witness, new Set(resolveOracleRule(source).supportedTickers(host)));
+      feedsByWitness.set(witness, new Set(resolveOracleRule(source).supportedTickers(host.config)));
     }
   }
-  const supraWired = host.getSupraRule() !== undefined;
-  /** Some listed source feeds this ticker, so a collector gets fed at all. */
-  const anySourceFeeds = (ticker: string): boolean => {
-    for (const served of feedsByWitness.values()) if (served.has(ticker)) return true;
-    return false;
-  };
 
   const suppliableFor = (ticker: string, witness: string): boolean => {
     const served = feedsByWitness.get(witness);
     // A source witness: suppliable only where that source has THIS ticker's feed.
     if (served !== undefined) return served.has(ticker);
+    // `ConstantRule` is auxiliary, not a source, and rides only per-ticker —
+    // treating it as globally available once certified a ticker clean that
+    // then aborted on chain.
     if (witness === "ConstantRule") return host.isConstantTicker(ticker);
-    // Supra rides on a collector a SOURCE already fed — never on its own, and
-    // never on a constant-only collector.
-    if (witness === "SupraRule") return supraWired && anySourceFeeds(ticker);
     return false;
   };
 
-  const wanted = tickers.filter((t) => Object.hasOwn(aggregators, t));
+  // `ownEntry`, not `Object.hasOwn` + a bare bracket read: one own-key pass
+  // that carries the id with it, so the reads below need no `!`.
+  const wanted = tickers.flatMap((ticker) => {
+    const id = ownEntry(aggregators, ticker);
+    return id === undefined ? [] : [{ ticker, id }];
+  });
   // Independent reads — one round trip each would make a 30-market boot assert
   // needlessly serial.
   const objects = await Promise.all(
-    wanted.map((t) =>
+    wanted.map(({ id }) =>
       // Explicit field mask: the client's `getObject` wrapper requests none, so
       // `json` would come back undefined and every aggregator would look
       // weightless — an assert that passes exactly where it must fail.
-      host.grpcClient.getObject({ objectId: aggregators[t]!, include: { json: true } }),
+      host.grpcClient.getObject({ objectId: id, include: { json: true } }),
     ),
   );
 
-  return wanted.map((ticker, i) => {
+  return wanted.map(({ ticker, id }, i) => {
     // FAIL CLOSED on anything undecodable. Defaulting a missing object / JSON /
     // weights map to an empty list made the assert succeed without verifying a
     // single weight — the exact fail-open shape this gate exists to prevent.
-    const id = aggregators[ticker]!;
     const json = objects[i]?.object?.json;
     if (json === undefined || json === null || typeof json !== "object") {
       throw new OracleWeightUnreadableError(ticker, id, "no JSON payload in the object read");

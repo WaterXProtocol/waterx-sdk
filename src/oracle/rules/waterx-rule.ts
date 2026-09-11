@@ -27,7 +27,7 @@
  *
  * Both collect entries are the dual-rule path: they feed `collector.symbol()`
  * WITHOUT aggregating, so a waterx-routed ticker composes onto the same
- * collector as Pyth/Supra (compose-then-aggregate). Their abort-vs-abstain
+ * collector as Lazer (compose-then-aggregate). Their abort-vs-abstain
  * disposition is identical: a config/integrity mismatch, a bad signature or a
  * signed timestamp AHEAD of the on-chain `Clock` ABORTS; a freshness miss
  * ABSTAINS so the other weighted rules cover a lagging TEE, and so does a
@@ -40,6 +40,7 @@
 import { fromHex } from "@mysten/bcs";
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 
+import { rulePackageId, type WaterXConfig } from "../../config.ts";
 import type { Network } from "../../constants.ts";
 import {
   collectBatchLatest,
@@ -49,7 +50,6 @@ import {
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
 import { ownEntry } from "../../utils/record.ts";
-import type { WaterxRulePackage } from "../config.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -57,10 +57,12 @@ import {
   type RuleUpdateData,
 } from "../price-update-rule.ts";
 import type { OraclePriceEntry } from "../read-prices.ts";
+import { waterxServedTickers } from "../served-tickers.ts";
 import {
   FetchPolicyError,
   fetchWithPolicy,
   joinEndpointPath,
+  readBodySnippet,
   type FetchPolicy,
 } from "../update-fetch.ts";
 
@@ -505,13 +507,17 @@ export function parseSignedLeaves(text: string): WaterxSignedLeaf[] {
   });
 }
 
-/** The `waterx_rule` deployment entry; throws when the config carries none. */
-function requireWaterxPackage(host: OracleHost): WaterxRulePackage {
-  const entry = host.config.packages.waterx_rule;
-  if (!entry) {
-    throw new Error("waterx_rule package is not deployed in this config");
-  }
-  return entry;
+/**
+ * The `oracle_rules.waterx` block's on-chain objects + its package id. The
+ * block is schema-required, so there is no guard — a document without it
+ * never parses.
+ */
+function requireWaterx(config: WaterXConfig): {
+  rule: WaterXConfig["oracle_rules"]["waterx"];
+  packageId: string;
+} {
+  const rule = config.oracle_rules.waterx;
+  return { rule, packageId: rulePackageId(config, rule) };
 }
 
 /**
@@ -599,9 +605,7 @@ export async function fetchWaterxSignedUpdate(
   }
   const res = await fetchQuoteCenter(endpoint, "v1/quotes/update", symbols, "fetch", fetchOpts);
   if (!res.ok) {
-    throw new Error(
-      `WaterX quote-center fetch failed: ${res.status} ${await res.text()}${context}`,
-    );
+    throw new Error(`WaterX quote-center fetch failed: ${await describeFailure(res)}${context}`);
   }
   // Parse from raw text (not res.json()) so the u64 fields are decoded exact as
   // bigint — see parseSignedEnvelope. Malformed-shape check lives there.
@@ -615,7 +619,16 @@ export async function fetchWaterxSignedUpdate(
 }
 
 /** A leaf pull either produced leaves, or the route isn't there to pull from. */
-export type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
+export type LeafPull =
+  | { leaves: WaterxSignedLeaf[] }
+  /** The quote-center HAS a leaf route but does not know this symbol — a 404
+   * carrying a JSON refusal body, which names the first unknown symbol of the
+   * request. Distinct from `unavailable` (a 404 with NO structured body: no
+   * leaf route at all), because the two need opposite reactions — retry
+   * WITHOUT the symbol vs fall back to the envelope route. See
+   * {@link parseQuoteCenterError} for why the split is structural, not textual. */
+  | { unknownSymbol: string }
+  | { unavailable: string };
 
 /**
  * Pull per-symbol signed Merkle leaves — the DEFAULT update-data shape (see the
@@ -636,8 +649,8 @@ export type LeafPull = { leaves: WaterxSignedLeaf[] } | { unavailable: string };
  * a version skew.
  *
  * A 404 can ALSO mean "unknown symbol" (the quote-center 404s a symbol missing
- * from its feed registry). That is config drift between this SDK's `feeds` and
- * the quote-center's registry, and the fallback surfaces it honestly: the
+ * from its feed registry). That is config drift between this SDK's `symbols`
+ * universe and the quote-center's registry, and the fallback surfaces it honestly: the
  * envelope route 404s on the same symbol, and its error names both attempts.
  *
  * Public seam (WL-2345): consumers holding per-symbol leaves (BE prefetch
@@ -659,14 +672,14 @@ export async function fetchWaterxSignedLeaves(
   // Probe with the first chunk: a quote-center with no leaf route answers 404
   // for every chunk, so there is no point spending the rest to learn it.
   const first = await fetchLeafChunk(endpoint, chunks[0] ?? [], fetchOpts);
-  if ("unavailable" in first || chunks.length <= 1) return first;
+  if (!("leaves" in first) || chunks.length <= 1) return first;
 
   const rest = await Promise.all(
     chunks.slice(1).map((chunk) => fetchLeafChunk(endpoint, chunk, fetchOpts)),
   );
   const leaves = [...first.leaves];
   for (const pull of rest) {
-    if ("unavailable" in pull) return pull;
+    if (!("leaves" in pull)) return pull;
     leaves.push(...pull.leaves);
   }
   return { leaves };
@@ -688,6 +701,100 @@ function chunkSymbols(symbols: string[]): string[][] {
   return out;
 }
 
+/**
+ * One rendering for every non-ok quote-center response: status, the numeric
+ * code when the body carries one, and the human message. Codes reach the
+ * operator on EVERY error path, not just the 404 the classifier inspects, so a
+ * service that starts emitting them is immediately legible in logs.
+ */
+async function describeFailure(res: Response): Promise<string> {
+  // `readBodySnippet`, not a bare `res.text()`: a proxy can answer a 502 with
+  // a multi-kilobyte HTML page, and this string ends up inside a thrown Error
+  // on the tx-build path.
+  const body = (await readBodySnippet(res)).trim();
+  const parsed = parseQuoteCenterError(body);
+  if (!parsed) return `${String(res.status)} ${body}`.trim();
+  const code = parsed.code === undefined ? "" : ` code ${String(parsed.code)}`;
+  return `${String(res.status)}${code} ${parsed.message || body}`.trim();
+}
+
+/**
+ * The quote-center's NUMERIC error contract.
+ *
+ * Error identity belongs to the service, not to prose: a reworded message must
+ * never change SDK behaviour. This table is the ONE place a wire code is given
+ * meaning, so adopting the contract is a single edit here — no call site
+ * branches on a number, and no number appears anywhere else.
+ *
+ * Values are the quote-center's published enum (`ErrorCode` in
+ * `quote-service/src/api.rs`), which is APPEND-ONLY — a number is never reused
+ * or renumbered, because clients pin it. Add a row here when the service adds
+ * one; nothing else in the SDK changes.
+ */
+export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">> = {
+  /** `ErrorCode::UnknownSymbol` — the symbol is not one the service signs. */
+  10001: "unknown_symbol",
+};
+
+/** One quote-center error body, parsed. `code` is the contract; `message` is for humans. */
+export interface QuoteCenterError {
+  /** Numeric wire code (`ErrorCode as u32`). Absent on deployments predating the contract. */
+  code?: number;
+  /** Symbol the service named, when it named one. */
+  symbol?: string;
+  /** Human-readable text. NEVER used for control flow — display and debugging only. */
+  message: string;
+}
+
+/**
+ * Parse any quote-center error body. Returns `null` when the body is not a JSON
+ * object, which is itself the signal that nothing served the path (see
+ * {@link fetchLeafChunk}).
+ *
+ * `code` is a JSON NUMBER: the service serializes `ErrorCode as u32`. The
+ * previous version required a string and so dropped it entirely.
+ */
+export function parseQuoteCenterError(body: string): QuoteCenterError | null {
+  if (!body) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
+  const o = json as Record<string, unknown>;
+  const code = typeof o.code === "number" && Number.isFinite(o.code) ? o.code : undefined;
+  const message =
+    typeof o.error === "string" ? o.error : typeof o.message === "string" ? o.message : "";
+  const symbol = typeof o.symbol === "string" && o.symbol ? o.symbol : undefined;
+  return { code, symbol, message };
+}
+
+/** Semantic meaning of a parsed error, via the contract table — `undefined` when unmapped. */
+function meaningOf(err: QuoteCenterError): "unknown_symbol" | undefined {
+  return err.code === undefined ? undefined : QUOTE_CENTER_ERROR_CODES[err.code];
+}
+
+/**
+ * Recover the symbol an unknown-symbol refusal names.
+ *
+ * TRANSITIONAL. `symbol` is the field that should carry this and is read first.
+ * The message parse exists only because today's quote-center sends neither a
+ * code nor a symbol field — it is the one place text is still read, it can only
+ * ever produce a NAME (never a routing decision), and it is deleted the moment
+ * the service emits `{ code, symbol }`.
+ */
+function namedSymbol(err: QuoteCenterError): string | undefined {
+  if (err.symbol) return err.symbol;
+  const raw = /unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(err.message)?.[1];
+  // Trim quoting/punctuation the wording may wrap the name in. A capture of
+  // `"XAGUSD"` or `XAGUSD,` is not a ticker: it fails the caller's
+  // `remaining.includes` check and turns a graceful per-symbol peel into a
+  // thrown refresh.
+  return raw?.replace(/^["'`]+|["'`.,;:]+$/g, "") || undefined;
+}
+
 async function fetchLeafChunk(
   endpoint: string,
   symbols: string[],
@@ -701,10 +808,54 @@ async function fetchLeafChunk(
     fetchOpts,
   );
   if (res.status === 404) {
-    return { unavailable: `GET /v1/quotes/leaves → 404 ${(await res.text()).trim()}`.trim() };
+    const body = (await res.text()).trim();
+    const refusal = parseQuoteCenterError(body);
+    // No structured body ⇒ nothing served this path at all ⇒ no leaf route,
+    // so the caller falls back to the envelope.
+    if (!refusal) return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
+    // The ROUTE answered and refused. Without this split the whole batch fell
+    // through to the envelope route, 404'd again there, and threw — one
+    // unknown symbol cost every sibling its refresh.
+    //
+    // CODE FIRST: the decision is the number, and the name comes from the
+    // `symbol` field. Text is read only by the shim below, for deployments
+    // that predate the contract.
+    // A code that maps to "unknown symbol" is peelable. A code that maps to
+    // something ELSE is not — even when the body names a symbol. Peeling
+    // `{"code":10007,"symbol":"X","error":"feed stale"}` would bury the
+    // service's actual, actionable error under an opaque `skipped: [X]`, which
+    // is precisely what keying on the code is meant to prevent.
+    if (refusal.code !== undefined && meaningOf(refusal) !== "unknown_symbol") {
+      throw new Error(
+        `WaterX quote-center refused the leaf request: 404 code ` +
+          `${String(refusal.code)} ${refusal.message || body}`,
+      );
+    }
+    // A CODED refusal is answered entirely from structured fields: the code
+    // said unknown-symbol, so the `symbol` field must name it. Falling back to
+    // the message here would let prose decide something the contract already
+    // covers — and a service new enough to send a code always sends `symbol`.
+    if (refusal.code !== undefined) {
+      if (refusal.symbol) return { unknownSymbol: refusal.symbol };
+      throw new Error(
+        `WaterX quote-center signalled an unknown symbol (code ${String(refusal.code)}) ` +
+          `without a \`symbol\` field: ${refusal.message || body}`,
+      );
+    }
+    // No code at all: a deployment predating the contract, the only place the
+    // message shim applies.
+    const named = namedSymbol(refusal);
+    if (named) return { unknownSymbol: named };
+    // Refused, but it did not say which symbol. Peeling is impossible (we would
+    // retry the same request forever) and the envelope fallback is wrong (the
+    // route exists), so surface the server's own words.
+    throw new Error(
+      `WaterX quote-center refused the leaf request and did not name a symbol: ` +
+        `404 ${refusal.message || body}`,
+    );
   }
   if (!res.ok) {
-    throw new Error(`WaterX quote-center leaf fetch failed: ${res.status} ${await res.text()}`);
+    throw new Error(`WaterX quote-center leaf fetch failed: ${await describeFailure(res)}`);
   }
   // Raw text, not res.json(): u64s must survive as exact bigints.
   return { leaves: parseSignedLeaves(await res.text()) };
@@ -817,17 +968,16 @@ export function feedWaterxRuleWithProof(
   collector: TransactionArgument,
   leaf: WaterxSignedLeaf,
 ): void {
-  const wr = requireWaterxPackage(host);
-  const pkg = wr.published_at;
+  const { rule, packageId: pkg } = requireWaterx(host.config);
 
   const item = newItemArg(tx, pkg, leaf);
   collectSingleWithProof({
     package: pkg,
     arguments: {
       collector,
-      config: tx.object(wr.config),
-      enclaveConfig: tx.object(wr.enclave_config),
-      enclave: tx.object(wr.enclave),
+      config: tx.object(rule.rule_config_object),
+      enclaveConfig: tx.object(rule.enclave.config),
+      enclave: tx.object(rule.enclave.object),
       timestampMs: leaf.signed_timestamp_ms,
       item,
       // vector<vector<u8>>: sibling hashes in fold order, each re-checked as a
@@ -863,8 +1013,7 @@ export function feedWaterxRule(
   collector: TransactionArgument,
   envelope: WaterxSignedEnvelope,
 ): void {
-  const wr = requireWaterxPackage(host);
-  const pkg = wr.published_at;
+  const { rule, packageId: pkg } = requireWaterx(host.config);
 
   const payload = newBatchPayload({ package: pkg })(tx);
   for (const item of envelope.payload.items) {
@@ -876,9 +1025,9 @@ export function feedWaterxRule(
     package: pkg,
     arguments: {
       collector,
-      config: tx.object(wr.config),
-      enclaveConfig: tx.object(wr.enclave_config),
-      enclave: tx.object(wr.enclave),
+      config: tx.object(rule.rule_config_object),
+      enclaveConfig: tx.object(rule.enclave.config),
+      enclave: tx.object(rule.enclave.object),
       timestampMs: envelope.timestamp_ms,
       payload,
       sig: Array.from(decodeHex(envelope.signature)),
@@ -910,7 +1059,40 @@ export async function pullWaterxQuotes(
   payload: WaterxUpdatePayload;
   items: readonly WaterxBatchItem[];
 }> {
+  const pulled = await pullWaterxQuotesOrUnknown(endpoint, symbols, fetchOpts);
+  if ("unknownSymbol" in pulled) {
+    // Strict semantics: an unknown symbol is a coverage failure, named
+    // precisely — and thrown HERE, before the old behaviour's wasted trip to
+    // the envelope route (whose own 404 produced an unrelated-looking error).
+    throw new Error(
+      `WaterX quote-center leaves: unknown signed symbol ${pulled.unknownSymbol} ` +
+        `(requested ${symbols.join(", ")})`,
+    );
+  }
+  return pulled;
+}
+
+/**
+ * {@link pullWaterxQuotes} with the unknown-symbol refusal surfaced as data
+ * instead of a throw — what the partial-coverage arm of
+ * {@link pullWaterxData} iterates on to isolate the symbol and refetch the
+ * rest. The envelope fallback stays reserved for a genuinely absent leaf
+ * route (a bare 404), exactly as before.
+ */
+async function pullWaterxQuotesOrUnknown(
+  endpoint: string,
+  symbols: string[],
+  fetchOpts?: FetchPolicy,
+): Promise<
+  | { unknownSymbol: string }
+  | {
+      route: "leaves" | "envelope";
+      payload: WaterxUpdatePayload;
+      items: readonly WaterxBatchItem[];
+    }
+> {
   const pulled = await fetchWaterxSignedLeaves(endpoint, symbols, fetchOpts);
+  if ("unknownSymbol" in pulled) return { unknownSymbol: pulled.unknownSymbol };
   if ("leaves" in pulled) {
     return { route: "leaves", payload: { leaves: pulled.leaves }, items: pulled.leaves };
   }
@@ -920,7 +1102,7 @@ export async function pullWaterxQuotes(
 
 /**
  * THE quote-center pull — the one pipeline both coverage policies share:
- * package guard → own-key feeds partition → leaf route (default) → batch
+ * own-key `symbols` partition → leaf route (default) → batch
  * envelope only when this quote-center has no leaf route (see
  * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
  * why nothing else falls back).
@@ -940,46 +1122,70 @@ async function pullWaterxData(
   tickers: string[],
   coverage: "strict" | "partial",
 ): Promise<{ data: RuleUpdateData; missing: string[] }> {
-  // Package-level check first: a config without the deployment must say so,
-  // not fail per ticker as if only that feed were missing.
-  const { feeds } = requireWaterxPackage(host);
-  // One partition pass, own-keys-only: a prototype-key ticker ("toString")
-  // must read as unlisted, not pass as an inherited Function and reach the
-  // network.
+  // One partition pass over the `symbols` universe, own-keys-only: a
+  // prototype-key ticker ("toString") must read as unlisted, not pass as an
+  // inherited Function and reach the network.
   const missing: string[] = [];
   const listed: string[] = [];
   for (const ticker of tickers) {
-    (ownEntry(feeds, ticker) === undefined ? missing : listed).push(ticker);
+    (ownEntry(host.config.symbols, ticker) === undefined ? missing : listed).push(ticker);
   }
   // Unlisted tickers never reach the network on EITHER policy — the
   // quote-center 404s a whole batch on one unknown symbol. Strict surfaces
   // the per-ticker message; partial just records the gap and pulls the rest.
   if (coverage === "strict" && missing.length > 0) {
-    throw new Error(`No waterx_rule feed listed for ticker: ${missing[0]}`);
+    throw new Error(`waterx_rule: ticker not in the symbols universe: ${missing[0]}`);
   }
   if (listed.length === 0) return { data: null, missing };
 
   const { endpoint, fetch: fetchOpts } = resolveWaterxInfra(host);
-  const { route, payload, items } = await pullWaterxQuotes(endpoint, listed, fetchOpts);
-  const served = new Set(items.map((item) => item.symbol));
 
   if (coverage === "strict") {
-    assertCoverage(route, listed, served);
+    const { route, payload, items } = await pullWaterxQuotes(endpoint, listed, fetchOpts);
+    assertCoverage(route, listed, new Set(items.map((item) => item.symbol)));
     return { data: { kind: "waterx_rule", payload }, missing };
   }
 
-  const covered: string[] = [];
-  for (const ticker of listed) (served.has(ticker) ? covered : missing).push(ticker);
-  // Divisibility is the rule's own knowledge, so the subset decision is
-  // delegated rather than re-encoded here: leaves subset per symbol, an
-  // envelope is indivisible and passes whole (or `null` when it covers none).
-  return {
-    data:
-      covered.length > 0
-        ? WaterxRule.narrowUpdateData(host, { kind: "waterx_rule", payload }, covered)
-        : null,
-    missing,
-  };
+  // Partial: peel unknown-symbol refusals one at a time. The quote-center
+  // 404s a whole leaf batch naming the FIRST symbol it does not know (a
+  // config newer than the deployed quote-center), so each pass isolates one
+  // and refetches the rest — bounded by the request size, and each peeled
+  // symbol lands in `missing` exactly like a 200 that omitted it.
+  let remaining = listed;
+  for (;;) {
+    const pulled = await pullWaterxQuotesOrUnknown(endpoint, remaining, fetchOpts);
+    if ("unknownSymbol" in pulled) {
+      if (!remaining.includes(pulled.unknownSymbol)) {
+        // A refusal naming something we never asked for cannot be peeled —
+        // retrying would loop forever on the same response.
+        throw new Error(
+          `WaterX quote-center refused a symbol it was not asked for: ` +
+            `${pulled.unknownSymbol} (requested ${remaining.join(", ")})`,
+        );
+      }
+      missing.push(pulled.unknownSymbol);
+      remaining = remaining.filter((t) => t !== pulled.unknownSymbol);
+      if (remaining.length === 0) return { data: null, missing };
+      continue;
+    }
+    const served = new Set(pulled.items.map((item) => item.symbol));
+    const covered: string[] = [];
+    for (const ticker of remaining) (served.has(ticker) ? covered : missing).push(ticker);
+    // Divisibility is the rule's own knowledge, so the subset decision is
+    // delegated rather than re-encoded here: leaves subset per symbol, an
+    // envelope is indivisible and passes whole (or `null` when it covers none).
+    return {
+      data:
+        covered.length > 0
+          ? WaterxRule.narrowUpdateData(
+              host,
+              { kind: "waterx_rule", payload: pulled.payload },
+              covered,
+            )
+          : null,
+      missing,
+    };
+  }
 }
 
 export const WaterxRule: PriceUpdateRule = {
@@ -988,9 +1194,9 @@ export const WaterxRule: PriceUpdateRule = {
   // No credential: the quote-center read surface is public (no `credential`
   // declared — see `PriceUpdateRule.credential`).
 
-  /** Tickers with a `waterx_rule.feeds` entry (keyed by oracle ticker). */
-  supportedTickers(host: OracleHost): string[] {
-    return Object.keys(host.config.packages.waterx_rule?.feeds ?? {});
+  /** Every ticker in the `symbols` universe — the quote-center serves the whole universe. */
+  supportedTickers(config: WaterXConfig): string[] {
+    return waterxServedTickers(config);
   },
 
   /**
@@ -1001,6 +1207,21 @@ export const WaterxRule: PriceUpdateRule = {
   async fetchUpdateData(host: OracleHost, tickers: string[]): Promise<RuleUpdateData> {
     if (tickers.length === 0) return null;
     return (await pullWaterxData(host, tickers, "strict")).data;
+  },
+
+  /**
+   * The partial arm of {@link pullWaterxData}: what the quote-center serves is
+   * returned (narrowed per-symbol), what it does not — an unlisted ticker, or
+   * a listed one absent from this response, e.g. a constant-pinned symbol the
+   * BBO plane never signs — lands in `missing` instead of failing the batch.
+   * See `PriceUpdateRule.fetchUpdateDataPartial` for who acts on the gap.
+   */
+  async fetchUpdateDataPartial(
+    host: OracleHost,
+    tickers: string[],
+  ): Promise<{ data: RuleUpdateData; missing: string[] }> {
+    if (tickers.length === 0) return { data: null, missing: [] };
+    return pullWaterxData(host, tickers, "partial");
   },
 
   /**
@@ -1090,7 +1311,7 @@ export const WaterxRule: PriceUpdateRule = {
  *   `aggregate.ts`'s uncarried-ticker throw (04117a1) still can't be reached
  *   by a payload that under-covers its group.
  * - `coverage: "partial"` — universe-prefetch semantics (a BE cache warming
- *   every known ticker at once): a ticker with no `waterx_rule.feeds` entry,
+ *   every known ticker at once): a ticker outside the `symbols` universe,
  *   or one the quote-center response does not serve, lands in `missing`
  *   instead of throwing, and `data` covers the rest. On the leaf route the
  *   payload is the covering leaf SUBSET; on the envelope route the envelope

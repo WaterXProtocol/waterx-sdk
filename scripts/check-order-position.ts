@@ -4,7 +4,7 @@
  */
 import { PerpClient } from "../src/perp/client.ts";
 import { getAccountOrders, getAccountPositions } from "../src/perp/fetch.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 
 function j(v: unknown): string {
   return JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2);
@@ -14,7 +14,7 @@ async function main(): Promise<void> {
   loadRepoEnvFiles();
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
   const accountId = process.env.WATERX_ACCOUNT_ID ?? process.env.WATERX_SMOKE_ACCOUNT_ID ?? "";
   const ticker = process.env.WATERX_TICKER ?? "BTCUSD";

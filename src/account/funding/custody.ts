@@ -12,33 +12,15 @@
  * `custody_vault::burn` (audit L03/M14). CREDIT redemption routes through
  * requestCreditWithdraw -> enqueueWithdrawal -> keeper executeWithdrawalNative.
  *
- * Requires `waterx_credit` + `native_custody` in the loaded config — both
- * are optional in `WaterXConfig` since not every deployment ships the
- * credit pipeline.
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
 import { normalizeStructTag } from "@mysten/sui/utils";
 
+import { assertFeaturePackage } from "../../config.ts";
 import * as custody from "../../generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
 import type { AccountClientLike } from "../client.ts";
-
-function requireCredit(client: AccountClientLike): { credit_registry: string } {
-  const credit = client.config.packages.waterx_credit;
-  if (!credit?.credit_registry) {
-    throw new Error("waterx_credit is not configured — set packages.waterx_credit.credit_registry");
-  }
-  return { credit_registry: credit.credit_registry };
-}
-
-function requireCustody(client: AccountClientLike): { published_at: string; vault: string } {
-  const nc = client.config.packages.native_custody;
-  if (!nc?.vault) {
-    throw new Error("native_custody is not configured — set packages.native_custody.vault");
-  }
-  return { published_at: nc.published_at, vault: nc.vault };
-}
 
 // ============================================================================
 // mint — raw Coin<T> → DepositRequest<CREDIT>
@@ -66,14 +48,14 @@ export function mintCredit(
   tx: Transaction,
   params: MintCreditParams,
 ): TransactionArgument {
-  const credit = requireCredit(client);
-  const nc = requireCustody(client);
   const [req] = custody.mint({
-    package: nc.published_at,
+    package:
+      (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
+      client.config.packages.native_custody.published_at),
     arguments: {
-      vault: tx.object(nc.vault),
-      registry: tx.object(credit.credit_registry),
-      accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      vault: tx.object(client.config.objects.custody.vault),
+      registry: tx.object(client.config.objects.credit.registry),
+      accountRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       assetCoin: params.assetCoin as unknown as TransactionArgument,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
@@ -109,14 +91,14 @@ export function mintCreditFromRequest(
   tx: Transaction,
   params: MintCreditFromRequestParams,
 ): TransactionArgument {
-  const credit = requireCredit(client);
-  const nc = requireCustody(client);
   const [req] = custody.mintFromRequest({
-    package: nc.published_at,
+    package:
+      (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
+      client.config.packages.native_custody.published_at),
     arguments: {
-      vault: tx.object(nc.vault),
-      registry: tx.object(credit.credit_registry),
-      accountRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      vault: tx.object(client.config.objects.custody.vault),
+      registry: tx.object(client.config.objects.credit.registry),
+      accountRegistry: tx.object(client.config.objects.account.registry),
       depositRequest: params.depositRequest as unknown as TransactionArgument,
     },
     typeArguments: [
@@ -145,7 +127,7 @@ export function mintCreditToAccount(
   consumeDepositDirect({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       req: req as unknown as TransactionArgument,
     },
     typeArguments: [normalizeStructTag(params.creditType ?? client.creditType())],

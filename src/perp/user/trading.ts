@@ -44,14 +44,14 @@ export interface CommonTradingParams extends TradingTypeArgs {
 }
 
 function commonObjects(client: PerpClient) {
-  const perp = client.config.packages.waterx_perp;
+  const { objects, packages } = client.config;
   return {
-    perpPackage: perp.published_at,
-    globalConfig: perp.global_config,
-    wxaRegistry: client.config.packages.waterx_account.account_registry,
-    marketRegistry: perp.market_registry_wlp,
-    wlpPool: client.config.packages.wlp.wlp_pool,
-    oracle: client.config.packages.waterx_oracle.oracle,
+    perpPackage: packages.waterx_perp.published_at,
+    globalConfig: objects.perp.global_config,
+    wxaRegistry: objects.account.registry,
+    marketRegistry: objects.perp.market_registry_wlp,
+    wlpPool: objects.wlp.pool,
+    oracle: objects.oracle.oracle,
   };
 }
 

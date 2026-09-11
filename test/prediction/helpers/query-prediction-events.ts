@@ -1,11 +1,11 @@
 import type { PredictClient } from "~predict/client.ts";
 
 import type { EventFieldContract } from "../contract/event-fields.ts";
+import { readE2eRpcUrl } from "./e2e-env.ts";
 import type { SuiEventEnvelope } from "./events.ts";
 
 function jsonRpcUrl(client: PredictClient): string {
-  const base = client.config.grpcUrl ?? "https://fullnode.testnet.sui.io:443";
-  return base.replace(/\/$/, "");
+  return readE2eRpcUrl(client.network);
 }
 
 function parseEventRow(raw: Record<string, unknown>): SuiEventEnvelope | undefined {

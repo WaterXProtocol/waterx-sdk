@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as accountOps from "../../../src/account/index.ts";
 import * as perpReferral from "../../../src/account/referral.ts";
+import * as configModule from "../../../src/config.ts";
 import { PerpClient } from "../../../src/perp/client.ts";
 import * as perpFetch from "../../../src/perp/fetch.ts";
 import * as perpTx from "../../../src/perp/tx-builders.ts";
@@ -21,6 +22,7 @@ import * as predFetch from "../../../src/prediction/fetch.ts";
 import * as predGift from "../../../src/prediction/gift.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
 import { Client, perp, prediction, WaterXClient } from "../../../src/sdk.ts";
+import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.ts";
 
 const predAccountSpecific = {
   setDelegatePredictionPermission,
@@ -225,43 +227,74 @@ describe("umbrella WaterXClient", () => {
     expect(predictProto.has("simulate")).toBe(true);
   });
 
-  it("WaterXClient.create loads perp + predict configs and wires both lines", async () => {
-    const perpSpy = vi.spyOn(PerpClient, "create").mockResolvedValue(perpClient);
-    const predictSpy = vi
-      .spyOn(PredictClient, "create")
-      .mockResolvedValue(predictClient as unknown as PredictClient);
+  // The umbrella loads the ONE consolidated document itself and constructs
+  // both line clients from it — there is no per-line `create()` hop to
+  // intercept, so these cases spy on `loadConfig` and read the outcome off the
+  // built clients.
+
+  it("WaterXClient.create loads the document once and wires both lines from it", async () => {
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
 
     const unified = await WaterXClient.create({
       network: "TESTNET",
       waterxConfigUrl: "https://waterx.test/testnet.json",
-      perp: { cache: true },
+      cache: true,
       predict: { grpcUrl: "https://rpc.test:443" },
     });
 
-    expect(unified.perp).toBe(perpClient);
-    expect(unified.predict).toBe(predictClient);
-    expect(perpSpy).toHaveBeenCalledWith(
+    expect(unified.perp).toBeInstanceOf(PerpClient);
+    expect(unified.predict).toBeInstanceOf(PredictClient);
+    // One document serves both lines: a single load, shared by reference.
+    expect(loadConfig).toHaveBeenCalledTimes(1);
+    expect(loadConfig).toHaveBeenCalledWith(
       "TESTNET",
       expect.objectContaining({ waterxConfigUrl: "https://waterx.test/testnet.json", cache: true }),
     );
-    expect(predictSpy).toHaveBeenCalledWith(
-      "TESTNET",
-      expect.objectContaining({
-        waterxConfigUrl: "https://waterx.test/testnet.json",
-        grpcUrl: "https://rpc.test:443",
-      }),
-    );
+    expect(unified.perp.config).toBe(MOCK_TESTNET_CONFIG);
+    expect(unified.predict.config).toBe(MOCK_TESTNET_CONFIG);
+    // The umbrella's builders are grafted onto the constructed line clients.
+    expect(typeof unified.perp.buildPlaceOrderTx).toBe("function");
+    expect(typeof unified.predict.placeOrder).toBe("function");
+  });
+
+  it("loads per line when the two lines' cache policies differ", async () => {
+    // `cache` is part of each line's load contract, not just an optimization:
+    // sharing the perp load with a `cache: false` predict would hand it a
+    // CACHED snapshot it explicitly declined.
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
+
+    await WaterXClient.create({
+      network: "TESTNET",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
+      cache: true,
+      predict: { cache: false },
+    });
+
+    expect(loadConfig).toHaveBeenCalledTimes(2);
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", expect.objectContaining({ cache: true }));
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", expect.objectContaining({ cache: false }));
+  });
+
+  it("still shares one load when an unset cache meets an explicit false", async () => {
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
+
+    await WaterXClient.create({
+      network: "TESTNET",
+      waterxConfigUrl: "https://waterx.test/testnet.json",
+      predict: { cache: false },
+    });
+
+    expect(loadConfig).toHaveBeenCalledTimes(1);
   });
 
   it("WaterXClient.create forwards every oracle option to the perp line", async () => {
     // The umbrella is the standard entry point: an option reachable only via
     // the nested `perp: {…}` escape hatch is effectively undiscoverable, so
     // every oracle knob must be settable at the top level too.
-    const perpSpy = vi.spyOn(PerpClient, "create").mockResolvedValue(perpClient);
-    vi.spyOn(PredictClient, "create").mockResolvedValue(predictClient as unknown as PredictClient);
+    vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
     const fetchImpl = vi.fn() as unknown as typeof fetch;
 
-    await WaterXClient.create({
+    const unified = await WaterXClient.create({
       network: "TESTNET",
       pythApiKey: "k",
       pythFetch: { timeoutMs: 1_000 },
@@ -269,45 +302,43 @@ describe("umbrella WaterXClient", () => {
       waterxFetch: { fetchImpl, retries: 1 },
     });
 
-    expect(perpSpy).toHaveBeenCalledWith(
-      "TESTNET",
-      expect.objectContaining({
-        pythApiKey: "k",
-        pythFetch: { timeoutMs: 1_000 },
-        waterxEndpoint: "https://app.example/api/quote-center",
-        waterxFetch: { fetchImpl, retries: 1 },
-      }),
-    );
+    expect(unified.perp.pyth).toEqual({ api_key: "k", fetch: { timeoutMs: 1_000 } });
+    expect(unified.perp.waterx).toEqual({
+      endpoint: "https://app.example/api/quote-center",
+      fetch: { fetchImpl, retries: 1 },
+    });
   });
 
-  it("WaterXClient.create defaults both lines to TESTNET when only oracleSource is passed", async () => {
-    const perpSpy = vi.spyOn(PerpClient, "create").mockResolvedValue(perpClient);
-    const predictSpy = vi
-      .spyOn(PredictClient, "create")
-      .mockResolvedValue(predictClient as unknown as PredictClient);
+  it("WaterXClient.create defaults both lines to TESTNET when nothing is passed", async () => {
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
 
-    await WaterXClient.create({});
+    const unified = await WaterXClient.create({});
 
-    expect(perpSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
-    expect(predictSpy).toHaveBeenCalledWith("TESTNET", expect.any(Object));
+    expect(loadConfig).toHaveBeenCalledWith("TESTNET", expect.any(Object));
+    expect(unified.perp.network).toBe("TESTNET");
+    expect(unified.predict.network).toBe("TESTNET");
   });
 
   it("WaterXClient.create honors per-line network overrides", async () => {
-    const perpSpy = vi.spyOn(PerpClient, "create").mockResolvedValue(perpClient);
-    const predictSpy = vi
-      .spyOn(PredictClient, "create")
-      .mockResolvedValue(predictClient as unknown as PredictClient);
+    const loadConfig = vi.spyOn(configModule, "loadConfig").mockResolvedValue(MOCK_TESTNET_CONFIG);
+    // A split-network setup warns that `client.account` follows the perp line.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    await WaterXClient.create({
+    const unified = await WaterXClient.create({
       network: "TESTNET",
       perp: { network: "MAINNET" },
       predict: { network: "TESTNET", grpcUrl: "https://predict.rpc:443" },
     });
 
-    expect(perpSpy).toHaveBeenCalledWith("MAINNET", expect.any(Object));
-    expect(predictSpy).toHaveBeenCalledWith(
+    // Different networks ⇒ one load per line, each with its own option bag.
+    expect(loadConfig).toHaveBeenNthCalledWith(1, "MAINNET", expect.any(Object));
+    expect(loadConfig).toHaveBeenNthCalledWith(
+      2,
       "TESTNET",
       expect.objectContaining({ grpcUrl: "https://predict.rpc:443" }),
     );
+    expect(unified.perp.network).toBe("MAINNET");
+    expect(unified.predict.network).toBe("TESTNET");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("split-network"));
   });
 });

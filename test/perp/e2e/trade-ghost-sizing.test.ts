@@ -1,5 +1,5 @@
 /**
- * E2E: close / resize / collateral **tx-builders** with ghost `position_id` (no on-chain discovery — expect Move abort, still exercises sponsor + oracle PTB).
+ * E2E: close / resize / collateral **tx-builders** with ghost `position_id` (no on-chain discovery — expect Move abort, still exercises the oracle-refresh + request/execute PTB).
  */
 import type { Transaction } from "@mysten/sui/transactions";
 import {

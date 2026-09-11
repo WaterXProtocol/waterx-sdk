@@ -1,21 +1,14 @@
-import type { PredictClient } from "~predict/client.ts";
-import { PredictClient as PredictClientClass } from "~predict/client.ts";
-import type { WaterxPredictionConfig } from "~predict/config.ts";
+import { PredictClient } from "~predict/client.ts";
 
-import { TESTNET_FIXTURE_CONFIG } from "../fixtures/testnet-config.ts";
+import type { WaterXConfig } from "../../../src/config.ts";
+import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.ts";
 
-type MockConfigOverrides = Partial<Omit<WaterxPredictionConfig, "packages">> & {
-  packages?: Partial<WaterxPredictionConfig["packages"]>;
-};
-
-/** Offline client fixture using test-only deployment IDs (no RPC until methods run). */
-export function createMockPredictClient(overrides: MockConfigOverrides = {}): PredictClient {
-  return new PredictClientClass("TESTNET", {
-    ...TESTNET_FIXTURE_CONFIG,
-    ...overrides,
-    packages: {
-      ...TESTNET_FIXTURE_CONFIG.packages,
-      ...overrides.packages,
-    },
-  });
+/**
+ * Offline client fixture over the shared parsed document (no RPC until methods
+ * run). Pass a shaped copy of the fixture to test a particular deployment; the
+ * default is cloned so a test that mutates `client.config` cannot poison the
+ * shared fixture.
+ */
+export function createMockPredictClient(config: WaterXConfig = MOCK_TESTNET_CONFIG): PredictClient {
+  return new PredictClient("TESTNET", structuredClone(config));
 }

@@ -1,7 +1,10 @@
 import { vi } from "vitest";
 
 import type { PerpClient } from "../../../src/perp/client.ts";
-import { MOCK_CREDIT_TYPE, MOCK_CUSTODY_ASSET_TYPE } from "./fixtures/mock-testnet-config.ts";
+import {
+  MOCK_CREDIT_TYPE,
+  MOCK_CUSTODY_ASSET_TYPE,
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 
 export interface CoinRefMock {
   objectId: string;

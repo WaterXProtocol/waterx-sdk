@@ -19,10 +19,13 @@ import {
 } from "../../../src/oracle/weight-coverage.ts";
 
 interface HostOpts {
-  /** Feeds each source carries, keyed by source. */
+  /**
+   * Tickers each source serves, keyed by source — Lazer's become
+   * `oracle_rules.pyth_lazer.lazer_feed_ids`, the quote-center's the `symbols`
+   * universe.
+   */
   feeds?: Partial<Record<"pyth_lazer_rule" | "waterx_rule", string[]>>;
   constantTickers?: string[];
-  supraWired?: boolean;
   /** Override the raw object read, to exercise undecodable shapes. */
   getObject?: (id: string) => unknown;
 }
@@ -37,26 +40,26 @@ function hostWith(
     Object.keys(weightsByTicker).map((t, i) => [t, `0x${String(i + 1).padStart(2, "0")}`]),
   );
   const byId = new Map(Object.entries(aggregators).map(([t, id]) => [id, weightsByTicker[t]!]));
-  const feedEntries = (list: string[] | undefined) =>
-    Object.fromEntries((list ?? []).map((t) => [t, 1]));
+  const lazerFeedIds = Object.fromEntries(
+    (opts.feeds?.pyth_lazer_rule ?? []).map((t, i) => [t, i + 1]),
+  );
+  const symbols = Object.fromEntries(
+    (opts.feeds?.waterx_rule ?? []).map((t) => [t, { kind: "perp" }]),
+  );
 
   return {
     oracleSources,
     network: "TESTNET",
     isConstantTicker: (t: string) => (opts.constantTickers ?? []).includes(t),
-    getSupraRule: () => (opts.supraWired ? { published_at: "0xsupra" } : undefined),
     config: {
-      packages: {
-        waterx_oracle: { oracle: "0xoracle", aggregators },
-        pyth_lazer_rule: {
-          published_at: "0xlazer",
-          config: "0xc",
-          state: "0xs",
-          feeds: feedEntries(opts.feeds?.pyth_lazer_rule),
-        },
-        waterx_rule: {
-          published_at: "0xwaterx",
-          feeds: feedEntries(opts.feeds?.waterx_rule),
+      symbols,
+      objects: { oracle: { oracle: "0xoracle", aggregators } },
+      oracle_rules: {
+        pyth_lazer: {
+          package: "pyth_lazer_rule",
+          lazer_state_object: "0xs",
+          lazer_config_object: "0xc",
+          lazer_feed_ids: lazerFeedIds,
         },
       },
     },
@@ -83,10 +86,11 @@ function hostWith(
 
 describe("readOracleWeightCoverage — unsuppliable weights", () => {
   it("flags a ticker weighted to a RETIRED rule even though a listed source feeds it", async () => {
-    // The live mainnet shape: XAGUSD is in waterx_rule.feeds (so every config
-    // check passes) while its aggregator still weights the retired PythRule.
-    // Aggregating it emits a collector with no weighted contribution, and
-    // remove_outliers aborts EMissingPriceSource — taking the WHOLE PTB down.
+    // The live mainnet shape: XAGUSD is in the `symbols` universe (so every
+    // config check passes) while its aggregator still weights the retired
+    // PythRule. Aggregating it emits a collector with no weighted
+    // contribution, and remove_outliers aborts EMissingPriceSource — taking
+    // the WHOLE PTB down.
     const host = hostWith(
       ["waterx_rule"],
       { XAGUSD: ["PythRule"], BTCUSD: ["WaterxRule"] },
@@ -153,10 +157,10 @@ describe("readOracleWeightCoverage — a LISTED source is not suppliable everywh
   // source with no feed for THIS ticker emits no leg for it.
 
   it("flags a lazer-weighted ticker that only WaterX feeds, even with lazer listed", async () => {
-    // Both sources listed; XAUUSD is in waterx.feeds only, but the aggregator
-    // weights PythLazerRule. No lazer leg is ever emitted for XAUUSD, so the
-    // weighted rule is starved and remove_outliers aborts — while a fed-set
-    // membership check waves it through.
+    // Both sources listed; XAUUSD is in the symbols universe only, but the
+    // aggregator weights PythLazerRule. No lazer leg is ever emitted for
+    // XAUUSD, so the weighted rule is starved and remove_outliers aborts —
+    // while a fed-set membership check waves it through.
     const host = hostWith(
       ["waterx_rule", "pyth_lazer_rule"],
       { XAUUSD: ["PythLazerRule"] },
@@ -188,24 +192,11 @@ describe("readOracleWeightCoverage — a LISTED source is not suppliable everywh
     const [row] = await readOracleWeightCoverage(host, ["XAUUSD"]);
     expect(row?.unsuppliable).toEqual(["PythLazerRule"]);
   });
-
-  it("supra still rides when SOME listed source feeds the ticker", async () => {
-    // Supra's leg is conditional on the collector having been fed at all, which
-    // is a union question — distinct from the per-source rule above.
-    const host = hostWith(
-      ["waterx_rule", "pyth_lazer_rule"],
-      { XAUUSD: ["WaterxRule", "SupraRule"] },
-      { supraWired: true, feeds: { waterx_rule: ["XAUUSD"], pyth_lazer_rule: ["BTCUSD"] } },
-    );
-    const [row] = await readOracleWeightCoverage(host, ["XAUUSD"]);
-    expect(row?.unsuppliable).toEqual([]);
-  });
 });
 
 describe("readOracleWeightCoverage — auxiliary legs are PER TICKER", () => {
   // They are not globally available: `aggregateTicker` emits the constant leg
-  // only when the ticker is constant-pinned, and the supra leg only when a
-  // SOURCE already fed that collector. Treating them as always-suppliable
+  // only when the ticker is constant-pinned. Treating it as always-suppliable
   // certified a ticker clean that then aborted.
 
   it("ConstantRule counts only for a ticker that is actually constant-pinned", async () => {
@@ -222,34 +213,15 @@ describe("readOracleWeightCoverage — auxiliary legs are PER TICKER", () => {
     expect(rows.find((r) => r.ticker === "XAUUSD")?.unsuppliable).toEqual(["ConstantRule"]);
   });
 
-  it("SupraRule counts only when supra is wired AND a source feeds the ticker", async () => {
-    const wired = hostWith(
-      ["waterx_rule"],
-      { XAUUSD: ["WaterxRule", "SupraRule"] },
-      { supraWired: true, feeds: { waterx_rule: ["XAUUSD"] } },
-    );
-    expect((await readOracleWeightCoverage(wired, ["XAUUSD"]))[0]?.unsuppliable).toEqual([]);
-
-    // Supra weighted but the deployment has it unwired — no leg gets emitted.
-    const unwired = hostWith(
-      ["waterx_rule"],
-      { XAUUSD: ["WaterxRule", "SupraRule"] },
-      { supraWired: false, feeds: { waterx_rule: ["XAUUSD"] } },
-    );
-    expect((await readOracleWeightCoverage(unwired, ["XAUUSD"]))[0]?.unsuppliable).toEqual([
-      "SupraRule",
-    ]);
-  });
-
-  it("SupraRule does NOT count on a constant-only collector", async () => {
-    // `aggregateTicker` puts the supra leg inside `if (fed)`, and a
-    // constant-only ticker never sets `fed` before that check.
+  it("SupraRule is never suppliable — the SDK feeds no supra leg at any fed set", async () => {
+    // The config's optional supra block is never read, so a supra weight is
+    // exactly as unsuppliable as a retired rule's.
     const host = hostWith(
       ["waterx_rule"],
-      { USDCUSD: ["ConstantRule", "SupraRule"] },
-      { supraWired: true, constantTickers: ["USDCUSD"] },
+      { XAUUSD: ["WaterxRule", "SupraRule"] },
+      { feeds: { waterx_rule: ["XAUUSD"] } },
     );
-    expect((await readOracleWeightCoverage(host, ["USDCUSD"]))[0]?.unsuppliable).toEqual([
+    expect((await readOracleWeightCoverage(host, ["XAUUSD"]))[0]?.unsuppliable).toEqual([
       "SupraRule",
     ]);
   });

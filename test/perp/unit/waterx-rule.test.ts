@@ -30,9 +30,12 @@ import {
 import {
   fetchWaterxSignedLeaves,
   fetchWaterxSignedUpdate,
+  fetchWaterxUpdateData,
   isFreshWaterxEntry,
+  parseQuoteCenterError,
   parseSignedEnvelope,
   parseSignedLeaves,
+  QUOTE_CENTER_ERROR_CODES,
   WATERX_MAX_PRICE_AGE_MS,
   WaterxRule,
   type WaterxSignedEnvelope,
@@ -68,9 +71,13 @@ function sampleLeaves(
 afterEach(() => vi.restoreAllMocks());
 
 describe("WaterxRule — port", () => {
-  it("supportedTickers = the waterx_rule.feeds keys (oracle tickers)", () => {
+  it("supportedTickers = the symbols universe keys (oracle tickers)", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    expect(WaterxRule.supportedTickers(client).sort()).toEqual(["BTCUSD", "ETHUSD", "USDCUSD"]);
+    expect(WaterxRule.supportedTickers(client.config).sort()).toEqual([
+      "BTCUSD",
+      "ETHUSD",
+      "USDCUSD",
+    ]);
   });
 
   it("declares no credential (public quote-center read surface)", () => {
@@ -155,12 +162,12 @@ describe("WaterxRule — port", () => {
   });
 
   it("fetchUpdateData throws for a prototype-key ticker BEFORE fetching — never reaches the quote-center", async () => {
-    // feeds["toString"] is an inherited Function; a bare bracket-undefined
+    // symbols["toString"] is an inherited Function; a bare bracket-undefined
     // check passed it as listed and sent the name to the network.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "toString"])).rejects.toThrow(
-      /No waterx_rule feed listed for ticker: toString/,
+      /waterx_rule: ticker not in the symbols universe: toString/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -175,11 +182,11 @@ describe("WaterxRule — port", () => {
     ]);
   });
 
-  it("throws for a ticker with no waterx_rule feed (package-level, pre-fetch)", async () => {
+  it("throws for a ticker outside the symbols universe (pre-fetch)", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
-      /No waterx_rule feed/,
+      /ticker not in the symbols universe/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -548,7 +555,7 @@ describe("WaterxRule — on-chain feed", () => {
       "oracle::aggregate",
     ]);
 
-    // collect_single_with_proof carries the config / enclave_config / enclave objects.
+    // collect_single_with_proof carries the rule config / enclave config / enclave objects.
     const collect = moveCalls(tx).find((c) => c.function === "collect_single_with_proof")!;
     const objectIds = collect.arguments
       .filter((a) => a.$kind === "Input" && a.Input !== undefined)
@@ -556,10 +563,10 @@ describe("WaterxRule — on-chain feed", () => {
         const input = tx.getData().inputs[a.Input!];
         return input.UnresolvedObject?.objectId ?? input.Object?.SharedObject?.objectId;
       });
-    const wr = client.config.packages.waterx_rule!;
-    expect(objectIds).toContain(wr.config);
-    expect(objectIds).toContain(wr.enclave_config);
-    expect(objectIds).toContain(wr.enclave);
+    const wr = client.config.oracle_rules.waterx;
+    expect(objectIds).toContain(wr.rule_config_object);
+    expect(objectIds).toContain(wr.enclave.config);
+    expect(objectIds).toContain(wr.enclave.object);
   });
 
   it("re-checks the proof at the feed leg — a cached leaf never passed the parser", () => {
@@ -649,6 +656,296 @@ describe("WaterxRule — on-chain feed", () => {
   });
 });
 
+describe("refreshOraclePrices — partial quote-center coverage", () => {
+  it("an unserved symbol is skipped even when constant-pinned: the sibling refreshes, the gap gets NO collector", async () => {
+    // The repro shape: USDCUSD is listed in the `symbols` universe, so it
+    // lands in the waterx group — but the quote-center omits it. Under
+    // strict-only fetching that failed the WHOLE batch (assertCoverage), so
+    // not even BTCUSD refreshed and nothing was reported skipped.
+    //
+    // The pin does NOT rescue it: the chain's weight tables are invisible
+    // here, so the missing waterx source cannot be proven unweighted, and a
+    // collector lacking a weighted source aborts the whole PTB on-chain
+    // (`EMissingPriceSource` in `aggregator::remove_outliers`). The only
+    // provably safe answer for a FETCH-time gap is the skip; constant-only
+    // collectors stay reserved for the CONFIG-level exemption (a pinned
+    // ticker no source lists at all — see the routing test below).
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    client.config.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
+    mockLeafRoute(["BTCUSD"]);
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "USDCUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD"],
+      skipped: ["USDCUSD"],
+    });
+
+    const targets = moveTargets(tx);
+    // BTCUSD got its signed leaf; USDCUSD got NOTHING — no collector, no
+    // constant feed, no aggregate.
+    expect(targets).toContain("waterx_rule::collect_single_with_proof");
+    expect(targets).not.toContain("constant_rule::feed");
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(1);
+  });
+
+  it("a non-constant unserved ticker is SKIPPED and reported; the served sibling still refreshes", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockLeafRoute(["BTCUSD"]);
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD"],
+      skipped: ["ETHUSD"],
+    });
+
+    const targets = moveTargets(tx);
+    // Exactly one collector: the skipped ticker gets none (an empty collector
+    // would abort EMissingPriceSource on-chain), and the ACTION-level guards
+    // (`assertTickersRefreshed`) are what fail closed on a ticker a specific
+    // call depends on.
+    expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(1);
+    expect(targets).toContain("waterx_rule::collect_single_with_proof");
+  });
+
+  it("fetchUpdateDataPartial names the gap instead of throwing, and covers the rest", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockLeafRoute(["BTCUSD"]);
+    const { data, missing } = await WaterxRule.fetchUpdateDataPartial!(client, [
+      "BTCUSD",
+      "USDCUSD",
+    ]);
+    expect(missing).toEqual(["USDCUSD"]);
+    expect(data?.kind).toBe("waterx_rule");
+  });
+
+  it("an unknown-symbol 404 isolates the symbol: the rest of the batch refreshes and the gap is reported", async () => {
+    // The quote-center 404s a whole leaf batch naming the first symbol it
+    // does not know (a config newer than the deployed quote-center). The
+    // partial arm used to treat any 404 as "no leaf route", fall back to the
+    // envelope route, 404 again, and throw — one unknown symbol cost every
+    // sibling its refresh, with nothing reported skipped.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: async () => "Not Found",
+        } as Response);
+      }
+      const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
+      if (symbols.includes("ETHUSD")) {
+        // The quote-center's own per-symbol refusal shape, captured from the
+        // LIVE staging + mainnet hosts (2026-09-11): a JSON body, not prose.
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: async () => '{"error":"unknown symbol ETHUSD"}',
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: async () => rawLeavesText(symbols),
+      } as unknown as Response);
+    });
+
+    const tx = new Transaction();
+    await expect(refreshOraclePrices(tx, client, ["BTCUSD", "ETHUSD"])).resolves.toEqual({
+      refreshed: ["BTCUSD"],
+      skipped: ["ETHUSD"],
+    });
+    expect(moveTargets(tx)).toContain("waterx_rule::collect_single_with_proof");
+  });
+
+  it("strict names the unknown symbol instead of a wasted envelope round trip", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"error":"unknown symbol ETHUSD"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /unknown signed symbol ETHUSD/,
+    );
+    // ONE request: the refusal is classified at the leaf route, not laundered
+    // through an envelope fallback that 404s again.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies the 404 by BODY SHAPE, not message wording", async () => {
+    // Allen's point, and the bug: the old check matched the prose
+    // `unknown signed symbol X`, which neither live host sends. The route
+    // question is now answered structurally — a JSON object means the route
+    // ANSWERED and refused; an empty body means nothing served the path. Both
+    // arms are pinned here so a message rewording upstream cannot resurrect
+    // this, and a quote-center that starts sending a `code` is already honored.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+
+    // (a) live wording, a symbol we asked for → peel it, keep the rest.
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
+      const url = new URL(String(input));
+      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+        return Promise.resolve({ ok: false, status: 404, text: async () => "" } as Response);
+      }
+      const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
+      return symbols.includes("ETHUSD")
+        ? Promise.resolve({
+            ok: false,
+            status: 404,
+            text: async () => '{"error":"unknown symbol ETHUSD"}',
+          } as Response)
+        : Promise.resolve({
+            ok: true,
+            status: 200,
+            text: async () => rawLeavesText(symbols),
+          } as unknown as Response);
+    });
+    await expect(
+      fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
+    ).resolves.toMatchObject({ missing: ["ETHUSD"] });
+    vi.restoreAllMocks();
+  });
+
+  it("a NUMERIC code drives the decision; the message is ignored", async () => {
+    // Allen's requirement, end to end: identity is the number the service owns
+    // (`ErrorCode::UnknownSymbol` = 10001), the symbol travels as a field, and
+    // the message here is deliberately unparseable to prove no text is read.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    expect(QUOTE_CENTER_ERROR_CODES[10001]).toBe("unknown_symbol");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"code":10001,"symbol":"ETHUSD","message":"totally reworded"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /unknown signed symbol ETHUSD/,
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a numeric code — the previous version required a string and dropped it", async () => {
+    expect(parseQuoteCenterError('{"code":10001,"symbol":"ETHUSD"}')?.code).toBe(10001);
+    // The service serializes `ErrorCode as u32`, so a code is always a JSON
+    // number — a string is not one and must not be coerced into one.
+    expect(parseQuoteCenterError('{"code":"10001"}')?.code).toBeUndefined();
+    // Today's live body: no code at all.
+    expect(parseQuoteCenterError('{"error":"unknown symbol ETHUSD"}')).toMatchObject({
+      message: "unknown symbol ETHUSD",
+      code: undefined,
+    });
+    // Not a JSON object ⇒ nothing served the path.
+    expect(parseQuoteCenterError("")).toBeNull();
+    expect(parseQuoteCenterError("Not Found")).toBeNull();
+  });
+
+  it("a CODED refusal never falls back to the message for the symbol", async () => {
+    // Once a code is present the answer comes from fields alone. A service new
+    // enough to send `code` always sends `symbol`, so a coded body without one
+    // is a contract violation to surface — not an invitation to parse prose.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      // The message names a symbol; the shim must NOT pick it up.
+      text: async () => '{"code":10001,"error":"unknown symbol ETHUSD"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /without a `symbol` field/,
+    );
+  });
+
+  it("an UNMAPPED code is surfaced, not peeled — even when the body names a symbol", async () => {
+    // Keying on the code exists to stop exactly this: a per-symbol refusal
+    // that is NOT "unknown symbol" (a stale feed, say) must reach the operator
+    // as the service's own error, not vanish into an opaque `skipped: [X]`.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () =>
+        '{"code":10007,"symbol":"ETHUSD","error":"feed stale, no quote in tolerance"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /404 code 10007 feed stale/,
+    );
+  });
+
+  it("a 404 with no structured body is still 'no leaf route' and falls back to the envelope", async () => {
+    // The live missing-route shape: empty body, no content type. This is the
+    // ONLY arm that may fall back — misreading a refusal as this is what cost
+    // the whole batch.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = mockQuoteCenter({
+      leaves: { status: 404, text: "" },
+      update: { body: rawEnvelope() },
+    });
+    const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    expect(data?.kind).toBe("waterx_rule");
+    expect(requestedPaths(fetchSpy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+  });
+
+  it("a JSON refusal that names no symbol throws instead of looping or falling back", async () => {
+    // Peeling is impossible (the same request would repeat forever) and the
+    // envelope fallback is wrong (the route exists), so surface the server's
+    // own words.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"error":"batch rejected"}',
+    } as Response);
+    await expect(
+      fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
+    ).rejects.toThrow(/did not name a symbol/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a group emptied by an unserved ticker appends NO update leg", async () => {
+    // The zero-ticker guard runs BEFORE the fetches, so a group whose every
+    // ticker comes back unserved used to still reach the build phase and
+    // append its update leg to the caller's PTB — a moveCall whose return
+    // value nothing consumes, for a refresh that reports nothing refreshed.
+    // A stand-in rule stands for Lazer here: what matters is a SECOND source
+    // that fetches successfully and emits a command, not its wire format.
+    const client = createUnitTestClient({
+      oracleSource: ["pyth_lazer_rule", "waterx_rule"],
+      pythApiKey: "test-key",
+    });
+    let buildCalls = 0;
+    const emitsACommand: PriceUpdateRule = {
+      kind: "pyth_lazer_rule",
+      supportedTickers: () => ["ETHUSD"],
+      fetchUpdateData: async () => ({ kind: "pyth_lazer_rule", payload: { ok: true } }),
+      narrowUpdateData: (_h, data) => data,
+      buildUpdateCalls: (tx) => {
+        buildCalls += 1;
+        tx.moveCall({ target: "0x2::orphan::leg", arguments: [] });
+        return undefined;
+      },
+    };
+    // The quote-center answers 200 but omits the symbol ⇒ unserved.
+    mockLeafRoute([]);
+
+    const tx = new Transaction();
+    const summary = await refreshOraclePrices(tx, client, ["ETHUSD"], {
+      ruleOverrides: { pyth_lazer_rule: emitsACommand },
+    });
+    expect(summary).toEqual({ refreshed: [], skipped: ["ETHUSD"] });
+    expect(buildCalls).toBe(0);
+    expect(moveTargets(tx)).toEqual([]);
+  });
+
+  it("the direct strict API is unchanged: fetchUpdateData still rejects a partial serve", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockLeafRoute(["BTCUSD"]);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "USDCUSD"])).rejects.toThrow(
+      /does not cover ticker\(s\): USDCUSD/,
+    );
+  });
+});
+
 describe("WaterxRule — routing", () => {
   it("refreshOraclePrices with oracleSource waterx_rule routes through the leaf path", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
@@ -705,6 +1002,10 @@ describe("WaterxRule — routing", () => {
     const emptyLeaves: PriceUpdateRule = {
       ...WaterxRule,
       fetchUpdateData: async () => ({ kind: "waterx_rule", payload: { leaves: [] } }),
+      // The spread copies the real partial-coverage fetch, which the
+      // orchestrator PREFERS — cleared so the override's strict arm above is
+      // what actually feeds the carry step this test exercises.
+      fetchUpdateDataPartial: undefined,
     };
     const tx = new Transaction();
     await expect(

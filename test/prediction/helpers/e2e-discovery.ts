@@ -20,7 +20,7 @@ import { toBigInt } from "~predict/utils.ts";
 
 import { E2E_DEFAULT_ACCOUNT_ID } from "../fixtures/e2e-fixtures.ts";
 import { getChainOrderView } from "./chain-order-view.ts";
-import { readFixtureOverrides } from "./e2e-env.ts";
+import { readE2eRpcUrl, readFixtureOverrides } from "./e2e-env.ts";
 import { KEEPER_FILL_GRACE_MS } from "./prediction-protocol-constants.ts";
 import { resolveAccountOwner } from "./simulate.ts";
 import {
@@ -368,7 +368,7 @@ const discoveryCache = new Map<string, Promise<E2eFixtures>>();
 function cacheKey(client: PredictClient): string {
   return [
     client.network,
-    client.config.grpcUrl ?? "",
+    readE2eRpcUrl(client.network),
     client.packageId(),
     client.marketRegistry(),
     client.accountRegistry(),

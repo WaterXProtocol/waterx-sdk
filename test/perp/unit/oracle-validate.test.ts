@@ -50,40 +50,16 @@ describe("assertOracleWriteCoverage", () => {
     expect(() => assertOracleWriteCoverage(client, ["BTCUSD"])).not.toThrow();
   });
 
-  it("a constant-pinned ticker that ANOTHER rule also feeds is NOT servable", () => {
-    // Constant-ONLY is the exemption, not constant-pinned — otherwise the
-    // boot assert would bless a ticker the build goes on to skip.
+  it("exempts a constant-only ticker no listed source serves", () => {
+    // A constant pin needs no update leg from any source, so the ticker is
+    // servable with just its constant feed.
     const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
-    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
-    client.config.packages.waterx_rule!.feeds.USDCUSD = { ticker: "USDCUSDT" };
-
-    expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).toThrow(OracleTickerUnservedError);
-  });
-
-  it("a DISABLED source's informational feeds do not disqualify a constant-only ticker", () => {
-    // Routing honours `enabled: false`, so a disabled source feeds nothing —
-    // its feeds map is documented as informational. Applying the flag in
-    // routing but not here made a stale entry strand a ticker that is, in
-    // practice, constant-only: reported unservable while nothing would ever
-    // feed it.
-    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
-    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
-    client.config.packages.waterx_rule!.feeds.USDCUSD = { ticker: "USDCUSDT" };
-    client.config.packages.waterx_rule!.enabled = false;
+    client.config.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
+    delete client.config.oracle_rules.pyth_lazer!.lazer_feed_ids.USDCUSD;
+    delete client.config.symbols.USDCUSD;
 
     expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).not.toThrow();
     expect(partitionServableTickers(client, ["USDCUSD"]).servable).toEqual(["USDCUSD"]);
-  });
-
-  it("exempts a genuinely constant-only ticker", () => {
-    const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
-    client.config.packages.constant_rule!.feeds = { USDCUSD: { price: "1000000000" } };
-    delete client.config.packages.pyth_lazer_rule!.feeds.USDCUSD;
-    delete client.config.packages.waterx_rule!.feeds.USDCUSD;
-
-    expect(() => assertOracleWriteCoverage(client, ["USDCUSD"])).not.toThrow();
   });
 });
 

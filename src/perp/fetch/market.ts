@@ -42,7 +42,7 @@ export async function getAccountData(
   accountDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       accountId,
     },
   })(tx);
@@ -68,7 +68,7 @@ export async function getMarketData(
   marketDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
     },
     typeArguments: [withLp(client, args.lpType)],
@@ -83,7 +83,7 @@ export async function getPoolData(
   const tx = new Transaction();
   poolDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
-    arguments: { pool: tx.object(client.config.packages.wlp.wlp_pool) },
+    arguments: { pool: tx.object(client.config.objects.wlp.pool) },
     typeArguments: [withLp(client, args.lpType)],
   })(tx);
   return PoolData.parse(await simulateAndExtract(client, tx));
@@ -97,7 +97,7 @@ export async function getTokenPoolData(
   tokenPoolDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      pool: tx.object(client.config.objects.wlp.pool),
       tokenIndex: toU64(args.tokenIndex, "tokenIndex"),
     },
     typeArguments: [withLp(client, args.lpType)],
@@ -109,7 +109,7 @@ export async function getGlobalConfigData(client: PerpClient): Promise<GlobalCon
   const tx = new Transaction();
   globalConfigDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
-    arguments: { cfg: tx.object(client.config.packages.waterx_perp.global_config) },
+    arguments: { cfg: tx.object(client.config.objects.perp.global_config) },
   })(tx);
   return GlobalConfigData.parse(await simulateAndExtract(client, tx));
 }

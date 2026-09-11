@@ -52,7 +52,7 @@ export async function positionExists(
   positionExistsCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
       positionId: toU64(args.positionId, "positionId"),
     },
@@ -76,9 +76,9 @@ export async function getPosition(
   positionDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      pool: tx.object(client.config.objects.wlp.pool),
       basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
       collateralPriceUsd: toU64(args.collateralPriceUsd, "collateralPriceUsd"),
       positionId: toU64(args.positionId, "positionId"),
@@ -110,7 +110,7 @@ export async function getOrder(
   orderDataCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
       basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
       orderTypeTag: toU8(args.orderTypeTag, "orderTypeTag"),
@@ -144,7 +144,7 @@ export async function getMarketOrders(
   getMarketOrdersCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
       basePriceUsd: toU64(args.basePriceUsd ?? 0n, "basePriceUsd"),
       cursor: toU64(args.cursor ?? 0n, "cursor"),
@@ -185,9 +185,9 @@ export async function getMarketPositions(
   getMarketPositionsCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      pool: tx.object(client.config.objects.wlp.pool),
       basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
       collateralPriceUsd: toU64(args.collateralPriceUsd ?? 0n, "collateralPriceUsd"),
       cursor: toU64(args.cursor ?? 0n, "cursor"),
@@ -229,10 +229,10 @@ export async function getAccountPositions(
   getAccountPositionsCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
-      wxaRegistry: tx.object(client.config.packages.waterx_account.account_registry),
+      pool: tx.object(client.config.objects.wlp.pool),
+      wxaRegistry: tx.object(client.config.objects.account.registry),
       basePriceUsd: toU64(args.basePriceUsd, "basePriceUsd"),
       collateralPriceUsd: toU64(args.collateralPriceUsd ?? 0n, "collateralPriceUsd"),
       accountObjectAddress: args.accountObjectAddress,
@@ -256,7 +256,7 @@ export async function getAccountOrders(
   getAccountOrdersCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      marketRegistry: tx.object(client.config.packages.waterx_perp.market_registry_wlp),
+      marketRegistry: tx.object(client.config.objects.perp.market_registry_wlp),
       ticker: args.ticker,
       basePriceUsd: toU64(args.basePriceUsd ?? 0n, "basePriceUsd"),
       accountObjectAddress: args.accountObjectAddress,
@@ -276,7 +276,7 @@ export async function getRedeemRequests(
   getRedeemRequestsCall({
     package: client.config.packages.waterx_perp_view.published_at,
     arguments: {
-      pool: tx.object(client.config.packages.wlp.wlp_pool),
+      pool: tx.object(client.config.objects.wlp.pool),
       cursor: toU64(args.cursor ?? 0n, "cursor"),
       pageSize: toU64(args.pageSize ?? 100n, "pageSize"),
     },

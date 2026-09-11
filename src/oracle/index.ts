@@ -8,7 +8,7 @@
  *   - `price-update-rule.ts`— `PriceUpdateRule`, the fetch/build strategy port a rule
  *                             implements; `rule-registry.ts` + `aggregate.ts` wire
  *                             routing across rules.
- *   - `rules/*`             — one file per oracle rule (lazer / waterx / supra / constant).
+ *   - `rules/*`             — one file per oracle rule (lazer / waterx / constant).
  *   - `aggregate.ts`        — the orchestrator that feeds rules into a collector + aggregates.
  *   - `read-plane.ts` / `read-prices.ts` — per-source READ plans + their executors.
  *   - `validate.ts`         — consumers' boot-time coverage/credential asserts.

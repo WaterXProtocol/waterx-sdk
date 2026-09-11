@@ -9,16 +9,18 @@
  *   1. an SDK regression that stopped feeding a rule it should feed — a REAL
  *      integration break the e2e suites exist to catch; and
  *   2. a deployment whose aggregator weights a rule this build never feeds
- *      (e.g. an aggregator still weighting the retired `pyth_rule`, or
- *      weighting `waterx_rule` under a lazer-only `oracleSource` — neither is
- *      satisfiable by any 5.0.0 build).
+ *      (e.g. an aggregator still weighting the retired `pyth_rule` or the
+ *      never-fed `supra_rule`, or weighting `pyth_lazer_rule` for a ticker the
+ *      config carries no Lazer feed id for — none is satisfiable by any build).
  *
  * So the abort text alone must never gate a skip. {@link unfedWeightedRules}
  * names exactly which weighted rules this client cannot feed for a ticker,
- * computed from the live aggregator object plus the client's own config +
- * `oracleSource`. Empty ⇒ the environment is satisfiable and an
- * `EMissingPriceSource` is case 1: a real failure that must stay red.
+ * computed from the live aggregator object plus the client's own config and
+ * its config-derived fed set (`client.oracleSources`). Empty ⇒ the environment
+ * is satisfiable and an `EMissingPriceSource` is case 1: a real failure that
+ * must stay red.
  */
+import { resolveOracleRule } from "../../../../src/oracle/rule-registry.ts";
 import type { PerpClient } from "../../../../src/perp/client.ts";
 
 /** `0x`-prefixed, lowercase, zero-padded to 32 bytes — TypeName strings drop the `0x`. */
@@ -34,20 +36,27 @@ function normalizeTypeName(typeName: string): string {
   return `${normalizeAddress(pkg)}::${module}::${struct}`;
 }
 
-/** Collector witness type per rule package — `original_id` is what a TypeName carries. */
-const RULE_WITNESS: Record<string, string> = {
-  pyth_lazer_rule: "pyth_lazer_rule::PythLazerRule",
-  waterx_rule: "waterx_rule::WaterxRule",
-  constant_rule: "constant_rule::ConstantRule",
-  supra_rule: "supra_rule::SupraRule",
-};
+/**
+ * Collector witness per rule the SDK can feed: the `oracle_rules` block that
+ * names the rule's package (a TypeName carries that package's `original_id`)
+ * and the `<module>::<Struct>` suffix.
+ */
+const RULE_WITNESS = {
+  pyth_lazer_rule: { block: "pyth_lazer", witness: "pyth_lazer_rule::PythLazerRule" },
+  waterx_rule: { block: "waterx", witness: "waterx_rule::WaterxRule" },
+  constant_rule: { block: "constant", witness: "constant_rule::ConstantRule" },
+} as const;
 
-function witnessTypeName(client: PerpClient, pkg: keyof typeof RULE_WITNESS): string | undefined {
-  const entry = (
-    client.config.packages as unknown as Record<string, { original_id?: string } | undefined>
-  )[pkg];
-  const original = entry?.original_id;
-  return original ? `${normalizeAddress(original)}::${RULE_WITNESS[pkg]}` : undefined;
+type FedRule = keyof typeof RULE_WITNESS;
+
+/** `undefined` when the config does not wire the rule's `oracle_rules` block. */
+function witnessTypeName(client: PerpClient, rule: FedRule): string | undefined {
+  const { block, witness } = RULE_WITNESS[rule];
+  const wired = client.config.oracle_rules[block];
+  if (!wired) return undefined;
+  // `loadConfig` asserts the package entry every rule block names, so this
+  // index cannot miss on a parsed config.
+  return `${normalizeAddress(client.config.packages[wired.package].original_id)}::${witness}`;
 }
 
 /**
@@ -59,7 +68,7 @@ export async function readAggregatorWeightRules(
   client: PerpClient,
   ticker: string,
 ): Promise<string[] | undefined> {
-  const aggregatorId = client.config.packages.waterx_oracle?.aggregators?.[ticker];
+  const aggregatorId = client.config.objects.oracle.aggregators[ticker];
   if (!aggregatorId) return undefined;
   try {
     const { object } = await client.grpcClient.getObject({
@@ -83,22 +92,23 @@ export async function readAggregatorWeightRules(
 }
 
 /**
- * The rule witnesses a `refreshOraclePrices` build feeds for `ticker`:
- * constant, supra when wired, plus whichever sources `oracleSource` selects.
- * Mirrors `aggregate.ts::aggregateTicker` — keep the two in step. (A weighted
- * `pyth_rule` has no witness here at all: the source is retired, so such an
- * aggregator is unsatisfiable and correctly reported as unfed.)
+ * The rule witnesses a `refreshOraclePrices` build feeds for `ticker`: constant
+ * when the ticker is constant-pinned, plus every source in the config-derived
+ * fed set whose rule serves `ticker`. Mirrors `aggregate.ts::refreshOraclePrices`
+ * routing (`rule.supportedTickers(config)` per source) — keep the two in step.
+ * (The retired `pyth_rule` and the never-fed `supra_rule` have no witness here
+ * at all, so an aggregator weighting either is correctly reported as unfed.)
  */
 function fedWitnesses(client: PerpClient, ticker: string): Set<string> {
   const fed = new Set<string>();
-  const add = (pkg: keyof typeof RULE_WITNESS) => {
-    const t = witnessTypeName(client, pkg);
+  const add = (rule: FedRule) => {
+    const t = witnessTypeName(client, rule);
     if (t) fed.add(t);
   };
   if (client.isConstantTicker(ticker)) add("constant_rule");
-  if (client.getSupraRule()) add("supra_rule");
-  if (client.oracleSources.includes("pyth_lazer_rule")) add("pyth_lazer_rule");
-  if (client.oracleSources.includes("waterx_rule")) add("waterx_rule");
+  for (const source of client.oracleSources) {
+    if (resolveOracleRule(source).supportedTickers(client.config).includes(ticker)) add(source);
+  }
   return fed;
 }
 

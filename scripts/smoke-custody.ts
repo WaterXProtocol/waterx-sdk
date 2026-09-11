@@ -38,7 +38,7 @@ import {
   requestDepositFromReceivings,
   transferToAccount,
 } from "../src/perp/index.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
 
 /** Raw units split off a discovered coin for the write-builder dry-runs. */
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   const address = resolveActiveAddress();
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
@@ -174,21 +174,19 @@ async function main(): Promise<void> {
   // Keystore (secret) only needed to broadcast — dry runs stay address-only.
   const keypair = doExecute ? loadActiveKeypair().keypair : null;
 
+  // Package identity (`packages.*`) and object ids (`objects.custody.*`) are
+  // separate reads; the schema requires both, so there is no "is the credit
+  // pipeline deployed?" guard.
   const credit = client.config.packages.waterx_credit;
   const custody = client.config.packages.native_custody;
-  if (!credit || !custody?.vault) {
-    throw new Error(
-      "waterx_credit / native_custody.vault not in config — credit pipeline unavailable",
-    );
-  }
-  const vault = custody.vault;
+  const { vault, assets } = client.config.objects.custody;
   const creditType = client.creditType();
 
   console.log(`Sender:        ${address}`);
   console.log(`credit pkg:    ${credit.published_at}`);
   console.log(`credit type:   ${creditType}`);
-  console.log(`custody vault: ${custody.vault}`);
-  console.log(`assets:        ${custody.assets.map((a) => a.type).join(", ") || "(none)"}`);
+  console.log(`custody vault: ${vault}`);
+  console.log(`assets:        ${assets.map((a) => a.type).join(", ") || "(none)"}`);
   console.log(`mode:          ${doExecute ? "SIM + EXECUTE" : "SIM only"}`);
 
   // ==========================================================================
@@ -206,7 +204,7 @@ async function main(): Promise<void> {
     (b) => BigInt(bcs.u64().parse(b)),
   );
   console.log(`  creditSupply(vault)              ${supply}`);
-  for (const asset of custody.assets) {
+  for (const asset of assets) {
     const present = await readGetter(
       client,
       (tx) =>
@@ -231,7 +229,7 @@ async function main(): Promise<void> {
   // ==========================================================================
   // 2. mintCreditToAccount — Coin<T> → CREDIT into the wxa account
   // ==========================================================================
-  const asset = custody.assets[0];
+  const asset = assets[0];
   console.log(`\n=== mintCreditToAccount (${asset?.type.split("::").slice(-1)[0] ?? "?"}) ===`);
   if (!asset) {
     console.log("  no backing asset registered in config — skipped");
@@ -300,7 +298,7 @@ async function main(): Promise<void> {
           consumeDepositDirect({
             package: client.config.packages.waterx_account.published_at,
             arguments: {
-              registry: txB.object(client.config.packages.waterx_account.account_registry),
+              registry: txB.object(client.config.objects.account.registry),
               req: creditReq as unknown as TransactionArgument,
             },
             typeArguments: [creditType],

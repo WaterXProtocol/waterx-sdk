@@ -82,8 +82,6 @@ export async function appendConsolidateAddressCredit(
   tx: Transaction,
   accountId: string,
 ): Promise<number> {
-  if (!client.config.packages.waterx_credit?.credit_type) return 0;
-
   const creditType = client.creditType();
   const { fundsRaw, coinsRaw } = await probeAddressCreditBalance(client, accountId);
   let legs = 0;
@@ -147,7 +145,7 @@ function consumeDepositRequest(
   consumeDepositDirect({
     package: client.config.packages.waterx_account.published_at,
     arguments: {
-      registry: tx.object(client.config.packages.waterx_account.account_registry),
+      registry: tx.object(client.config.objects.account.registry),
       req: depositRequest as unknown as TransactionArgument,
     },
     typeArguments: [coinType],

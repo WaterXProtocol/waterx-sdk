@@ -26,6 +26,10 @@ import {
   referralCodeExists,
 } from "../../../src/perp/fetch.ts";
 import {
+  MOCK_CUSTODY_ASSET_TYPE,
+  MOCK_USDC_TYPE,
+} from "../../helpers/fixtures/mock-testnet-config.ts";
+import {
   accountDataNoneBytes,
   accountDataSomeBytes,
   addressOptionBytes,
@@ -49,10 +53,6 @@ import {
   mockSimulatePagedNested,
   mockSimulateReturn,
 } from "../helpers/fixtures/mock-simulate.ts";
-import {
-  MOCK_CUSTODY_ASSET_TYPE,
-  MOCK_USDC_TYPE,
-} from "../helpers/fixtures/mock-testnet-config.ts";
 import { mockSuiAddress } from "../helpers/fixtures/sui-mock-fixtures.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
@@ -238,14 +238,6 @@ describe("fetch view helpers (mocked simulate)", () => {
     expect(await referralCodeExists(client, "unused")).toBe(false);
   });
 
-  it("throws when referral package missing", async () => {
-    const bare = createUnitTestClient();
-    delete (bare.config.packages as { waterx_referral?: unknown }).waterx_referral;
-    await expect(getRefererFor(bare, mockSuiAddress("aa"))).rejects.toThrow(
-      /referral package not configured/,
-    );
-  });
-
   it("getAccountsByOwner decodes address vector", async () => {
     const owner = mockSuiAddress("ee");
     const ids = [mockSuiAddress("f1"), mockSuiAddress("f2")];
@@ -259,14 +251,6 @@ describe("fetch view helpers (mocked simulate)", () => {
 
     mockSimulateReturn(client, [{ bcs: bcs.u64().serialize(99n).toBytes() }]);
     expect(await getAccountBalance(client, mockSuiAddress("aa"), MOCK_USDC_TYPE)).toBe(99n);
-  });
-
-  it("getAccountBalance throws when credit_type missing and coinType omitted", async () => {
-    const bare = createUnitTestClient();
-    delete bare.config.packages.waterx_credit;
-    await expect(getAccountBalance(bare, mockSuiAddress("aa"))).rejects.toThrow(
-      /credit_type missing/,
-    );
   });
 
   it("getCustodyVaultData reads creditSupply", async () => {
@@ -297,12 +281,6 @@ describe("fetch view helpers (mocked simulate)", () => {
       mintFeeRate: 2_000_000n,
       burnFeeRate: 5_000_000n,
     });
-  });
-
-  it("throws when native_custody is not configured", async () => {
-    const bare = createUnitTestClient();
-    delete (bare.config.packages as { native_custody?: unknown }).native_custody;
-    await expect(getCustodyVaultData(bare)).rejects.toThrow(/native_custody not configured/);
   });
 });
 

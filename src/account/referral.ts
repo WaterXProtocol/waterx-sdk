@@ -1,9 +1,7 @@
 /**
- * Referral builders — backed by the standalone `waterx_referral` package.
- * Requires
- * `config.packages.waterx_referral.{published_at,referral_table}` to be
- * populated; otherwise the builder throws so misconfigured deployments fail
- * loudly instead of silently aborting on-chain.
+ * Referral builders — backed by the standalone `waterx_referral` package
+ * (`packages.waterx_referral` + `objects.referral.table`, both required at
+ * config load).
  */
 
 import type { Transaction, TransactionArgument } from "@mysten/sui/transactions";
@@ -11,17 +9,6 @@ import type { Transaction, TransactionArgument } from "@mysten/sui/transactions"
 import * as referral from "../generated/waterx_referral/referral_table.ts";
 import { makeSenderRequest } from "./account-request.ts";
 import type { WxaClientLike } from "./client.ts";
-
-function requireReferralConfig(client: WxaClientLike): { pkg: string; table: string } {
-  const pkg = client.config.packages.waterx_referral?.published_at;
-  const table = client.config.packages.waterx_referral?.referral_table;
-  if (!pkg || !table) {
-    throw new Error(
-      "referral package not configured: set config.packages.waterx_referral.{published_at,referral_table}",
-    );
-  }
-  return { pkg, table };
-}
 
 export interface SetReferralCodeParams {
   /** Referral code string the caller wants to claim. */
@@ -34,7 +21,8 @@ export function setReferralCode(
   tx: Transaction,
   params: SetReferralCodeParams,
 ): void {
-  const { pkg, table } = requireReferralConfig(client);
+  const pkg = client.config.packages.waterx_referral.published_at;
+  const table = client.config.objects.referral.table;
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   referral.setReferralCode({
     package: pkg,
@@ -57,7 +45,8 @@ export function useReferralCode(
   tx: Transaction,
   params: UseReferralCodeParams,
 ): void {
-  const { pkg, table } = requireReferralConfig(client);
+  const pkg = client.config.packages.waterx_referral.published_at;
+  const table = client.config.objects.referral.table;
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   referral.useReferralCode({
     package: pkg,

@@ -35,7 +35,7 @@ import {
   requestDeposit,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlFromEnv } from "./load-repo-env.ts";
+import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
 
 interface SimResult {
@@ -121,7 +121,7 @@ async function main(): Promise<void> {
 
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv(),
+    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
   });
   const usdcType = client.getPoolTokenType("USD");
 
@@ -182,7 +182,7 @@ async function main(): Promise<void> {
       consumeDepositDirect({
         package: client.config.packages.waterx_account.published_at,
         arguments: {
-          registry: tx.object(client.config.packages.waterx_account.account_registry),
+          registry: tx.object(client.config.objects.account.registry),
           req: req as unknown as TransactionArgument,
         },
         typeArguments: [usdcType],

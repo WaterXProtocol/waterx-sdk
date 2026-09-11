@@ -10,7 +10,7 @@
  * unlike `position::is_liquidatable`), so parity is EXACT: `sdkRaw === chainRaw`
  * bit-identical, zero tolerance.
  *
- *   WATERX_CONFIG_URL=<waterx-config raw json> pnpm exec tsx examples/views/liq-parity-check.ts
+ *   WATERX_CONFIG_URL=<waterx-config CDN base> pnpm exec tsx examples/views/liq-parity-check.ts
  *
  * 2026-07-30 testnet run: 69 positions across all markets, failures=0,
  * fetchFailures=0 — bit-identical on every position.
@@ -23,10 +23,7 @@ import { calcEstLiqPriceRawFromView } from "../../src/perp/liq-view.ts";
 const PROBE_PRICE_USD = 1000n; // whole-dollar u64 — any positive value is valid for parity
 
 const client = await buildClient();
-const tickers = Object.keys(
-  (client.config as { packages: { waterx_perp: { markets?: Record<string, unknown> } } }).packages
-    .waterx_perp.markets ?? {},
-);
+const tickers = Object.keys(client.config.objects.perp.markets);
 console.log(`markets in config: ${tickers.join(", ")}`);
 
 let total = 0;
