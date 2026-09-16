@@ -67,7 +67,7 @@ export function rawEnvelopeText(
 }
 
 /**
- * Server-shape `/v1/quotes/leaves` body as RAW TEXT — deliberately not an object
+ * Server-shape `/v1/sign/bbo/consensus` body as RAW TEXT — deliberately not an object
  * run through `JSON.stringify`.
  *
  * The display-only `price` / `confidence` are Rust `f64`s, and serde emits a
@@ -117,14 +117,19 @@ export interface MockRoute {
 }
 
 /**
- * Route-aware quote-center mock: `/v1/quotes/leaves` and `/v1/quotes/update` get
- * their own response, and an unconfigured route 404s the way a quote-center
- * that never had it would. A single blanket mock cannot express the central
- * case — the rule tries the leaf route FIRST and only falls back on a 404 — so
- * every fetch is routed by pathname.
+ * Route-aware quote-center mock: each route the rule reads gets its own
+ * response, and an unconfigured route 404s the way a quote-center that never
+ * had it would. A single blanket mock cannot express the central case — the
+ * rule walks a LADDER (current leaf route → legacy leaf route → envelope) and
+ * only steps down on a 404 — so every fetch is routed by pathname.
+ *
+ * `legacyLeaves` is `/v1/quotes/leaves`, the pre-rename path serving the same
+ * leaf shape. Leaving it unset models a CURRENT quote-center (which does not
+ * have it); setting it models the version-skew deployment the ladder exists for.
  */
 export function mockQuoteCenter(routes: {
   leaves?: MockRoute;
+  legacyLeaves?: MockRoute;
   update?: MockRoute;
 }): ReturnType<typeof vi.spyOn> {
   const respond = (route: MockRoute | undefined): Response => {
@@ -139,7 +144,9 @@ export function mockQuoteCenter(routes: {
   };
   return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
     const { pathname } = new URL(String(input));
-    if (pathname.endsWith("/v1/quotes/leaves")) return Promise.resolve(respond(routes.leaves));
+    if (pathname.endsWith("/v1/sign/bbo/consensus")) return Promise.resolve(respond(routes.leaves));
+    if (pathname.endsWith("/v1/quotes/leaves"))
+      return Promise.resolve(respond(routes.legacyLeaves));
     if (pathname.endsWith("/v1/quotes/update")) return Promise.resolve(respond(routes.update));
     return Promise.resolve(respond(undefined));
   }) as ReturnType<typeof vi.spyOn>;
@@ -155,23 +162,47 @@ export function mockLeafRoute(symbols: string[] = ["BTCUSD"]): ReturnType<typeof
   return mockQuoteCenter({ leaves: { text: rawLeavesText(symbols) } });
 }
 
-/** An older quote-center: no leaf route, envelope only. */
+/** An older quote-center: NO leaf route at either path, envelope only. */
 export function mockEnvelopeOnly(
   symbols: string[] = ["BTCUSD"],
   envelope: Record<string, unknown> = rawEnvelope(symbols),
 ): ReturnType<typeof vi.spyOn> {
-  return mockQuoteCenter({ leaves: { status: 404 }, update: { body: envelope } });
+  return mockQuoteCenter({
+    leaves: { status: 404 },
+    legacyLeaves: { status: 404 },
+    update: { body: envelope },
+  });
+}
+
+/**
+ * The version-skew deployment the leaf ladder exists for: a quote-center that
+ * predates the route rename, so the CURRENT leaf path 404s while the legacy one
+ * serves the identical leaf shape.
+ */
+export function mockLegacyLeafRoute(symbols: string[] = ["BTCUSD"]): ReturnType<typeof vi.spyOn> {
+  return mockQuoteCenter({
+    leaves: { status: 404 },
+    legacyLeaves: { text: rawLeavesText(symbols) },
+    update: { body: rawEnvelope(symbols) },
+  });
 }
 
 /**
  * Leaf route that ECHOES whatever `?symbols=` asked for — for builder tests
  * whose refresh derives its own ticker set (market + collateral + pool
  * tokens), so the mock cannot know the list up front.
+ *
+ * `refuse` plays the quote-center's per-symbol 404: given the chunk it was
+ * asked for, return the refusal BODY to answer with, or `undefined` to serve
+ * leaves. That is the whole difference between the happy echo and the
+ * unknown-symbol peel suites, so they share one route implementation.
  */
-export function mockLeafRouteEchoingSymbols(): ReturnType<typeof vi.spyOn> {
+export function mockLeafRouteEchoingSymbols(opts?: {
+  refuse?: (symbols: string[]) => string | undefined;
+}): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
     const url = new URL(String(input));
-    if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+    if (!url.pathname.endsWith("/v1/sign/bbo/consensus")) {
       return Promise.resolve({
         ok: false,
         status: 404,
@@ -179,6 +210,10 @@ export function mockLeafRouteEchoingSymbols(): ReturnType<typeof vi.spyOn> {
       } as Response);
     }
     const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
+    const refusal = opts?.refuse?.(symbols);
+    if (refusal !== undefined) {
+      return Promise.resolve({ ok: false, status: 404, text: async () => refusal } as Response);
+    }
     return Promise.resolve({
       ok: true,
       status: 200,

@@ -10,7 +10,9 @@
  *
  * TWO wire shapes carry the same prices, and this rule prefers the first:
  *
- * 1. **Merkle leaves** (default) — `GET /v1/quotes/leaves?symbols=…` returns one
+ * 1. **Merkle leaves** (default) — `GET /v1/sign/bbo/consensus?symbols=…` (or
+ *    `/v1/quotes/leaves` on a quote-center predating the rename — see
+ *    {@link WATERX_LEAF_ROUTES}) returns one
  *    `SignedLeaf` per symbol: the price fields, a Merkle `proof`, and the
  *    enclave's signature over the snapshot ROOT (`MERKLE_ROOT_INTENT`). Fed via
  *    {@link feedWaterxRuleWithProof} → `waterx_rule::collect_single_with_proof`,
@@ -22,8 +24,8 @@
  *    `waterx_rule::collect_batch_latest` to re-verify, even to use one symbol's
  *    price. With the 29-feed mainnet registry that is 58 extra moveCalls and
  *    ~320 extra pure inputs on every trade, which is why it is no longer the
- *    default. Used only when the quote-center has no leaf route yet (404),
- *    and by callers that still push whole batches.
+ *    default. Used only when NO rung of the leaf ladder answers (404), and by
+ *    callers that still push whole batches.
  *
  * Both collect entries are the dual-rule path: they feed `collector.symbol()`
  * WITHOUT aggregating, so a waterx-routed ticker composes onto the same
@@ -59,6 +61,7 @@ import {
 import type { OraclePriceEntry } from "../read-prices.ts";
 import { waterxServedTickers } from "../served-tickers.ts";
 import {
+  bodySnippet,
   FetchPolicyError,
   fetchWithPolicy,
   joinEndpointPath,
@@ -111,6 +114,25 @@ export const WATERX_INFRA: Record<Network, { endpoint: string }> = {
 export function waterxQuoteCenterEndpoint(network: Network): string {
   return WATERX_INFRA[network].endpoint;
 }
+
+/**
+ * The quote-center paths this rule reads — the other half of the wire identity
+ * {@link WATERX_INFRA} holds the host of. Relative on purpose: `fetchQuoteCenter`
+ * joins them with `joinEndpointPath`, so a `waterxEndpoint` proxy's own base
+ * path survives. A same-origin proxy must forward ALL of them.
+ *
+ * {@link WATERX_LEAF_ROUTES} is a LADDER, tried in order, because the per-symbol
+ * leaf shape is worth reaching on either generation of quote-center: the current
+ * release serves it at `v1/sign/bbo/consensus`, and the one that predates the
+ * rename still serves the identical shape at `v1/quotes/leaves`. Skipping
+ * straight from the new path to the envelope would drop a merely-old
+ * quote-center onto the indivisible batch — 58 extra moveCalls per trade on the
+ * 29-feed mainnet registry — while the divisible route it DOES serve sat unasked.
+ * The envelope is the last rung: retired upstream in the same release, and the
+ * only shape a quote-center older than the leaf route entirely can answer.
+ */
+const WATERX_LEAF_ROUTES = ["v1/sign/bbo/consensus", "v1/quotes/leaves"] as const;
+const WATERX_ENVELOPE_ROUTE = "v1/quotes/update";
 
 /**
  * Off-chain mirror of the on-chain `waterx_rule` `FeedConfig.max_age` DEFAULT
@@ -180,7 +202,7 @@ export interface WaterxSignedEnvelope {
 }
 
 /**
- * One enclave-signed Merkle leaf from `GET /v1/quotes/leaves` — identical shape
+ * One enclave-signed Merkle leaf from `GET /v1/sign/bbo/consensus` — identical shape
  * to the `/v1/quote/stream/signed` SSE/WS events (quote-center serves both from
  * one conversion), so a leaf from either transport submits the same way.
  *
@@ -485,7 +507,7 @@ function assertHash32(symbol: string, sibling: string): void {
 }
 
 /**
- * Parse a quote-center `/v1/quotes/leaves` response body (`{ leaves: [...] }`)
+ * Parse a quote-center `/v1/sign/bbo/consensus` response body (`{ leaves: [...] }`)
  * into {@link WaterxSignedLeaf}s, u64s exact as `bigint`, rejecting a malformed
  * leaf or proof element on the wire — before any PTB is touched.
  */
@@ -548,7 +570,7 @@ function resolveWaterxInfra(host: OracleHost): { endpoint: string; fetch?: Fetch
  * leading-slash path is ABSOLUTE and silently drops the endpoint's own base
  * path, which is exactly what a `waterxEndpoint` proxy route is (a
  * `https://app.example/api/quote-center` override would have been rewritten to
- * `https://app.example/v1/quotes/update`, bypassing the proxy). Same footgun
+ * `https://app.example/v1/sign/bbo/consensus`, bypassing the proxy). Same footgun
  * that 404'd every Pyth Pro feed by dropping its `/hermes` prefix.
  */
 async function fetchQuoteCenter(
@@ -603,7 +625,7 @@ export async function fetchWaterxSignedUpdate(
         `a quote-center that serves the per-symbol leaf route, which IS chunked.${context}`,
     );
   }
-  const res = await fetchQuoteCenter(endpoint, "v1/quotes/update", symbols, "fetch", fetchOpts);
+  const res = await fetchQuoteCenter(endpoint, WATERX_ENVELOPE_ROUTE, symbols, "fetch", fetchOpts);
   if (!res.ok) {
     throw new Error(`WaterX quote-center fetch failed: ${await describeFailure(res)}${context}`);
   }
@@ -628,17 +650,26 @@ export type LeafPull =
    * WITHOUT the symbol vs fall back to the envelope route. See
    * {@link parseQuoteCenterError} for why the split is structural, not textual. */
   | { unknownSymbol: string }
+  /** No rung of {@link WATERX_LEAF_ROUTES} served a leaf shape — every attempt's
+   * status is joined into the message so a deployment serving none of them
+   * reports them all rather than only the last. */
   | { unavailable: string };
 
 /**
  * Pull per-symbol signed Merkle leaves — the DEFAULT update-data shape (see the
  * module header for why it beats the indivisible batch envelope on a trade path).
  *
- * Returns `{ unavailable }` on `404` — and ONLY on 404, the one status that
- * means "this route isn't here": a quote-center older than `/v1/quotes/leaves`
- * has no handler registered for the path. That is the version-skew case the
- * caller answers by falling back to the batch envelope, so the SDK and the
- * quote-center can be deployed in either order.
+ * Walks {@link WATERX_LEAF_ROUTES} in order and returns the first rung that
+ * serves leaves, so a quote-center on either side of the route rename reaches
+ * the cheap per-symbol shape. `{ unavailable }` comes back only when EVERY rung
+ * 404s — and only on 404, the one status that means "this route isn't here".
+ * That is the version-skew case the caller answers by falling back to the batch
+ * envelope, so the SDK and the quote-center can be deployed in either order.
+ *
+ * A 404 counts as route-missing only when its body names neither an error
+ * `code` nor a symbol: the quote-center's own refusals always carry one, while a
+ * proxy's default 404 page carries neither (and is usually still JSON, so the
+ * body's JSON-ness cannot be the signal).
  *
  * Everything else THROWS rather than falling back, INCLUDING 5xx (`501` among
  * them — `fetchWithPolicy` classifies every 5xx as retryable and has already
@@ -668,21 +699,32 @@ export async function fetchWaterxSignedLeaves(
   // non-retryable 400 the moment a deployment crosses the cap, surfacing as a
   // bare "leaf fetch failed: 400" with nothing pointing at batch size.
   const chunks = chunkSymbols(symbols);
+  const unavailable: string[] = [];
 
-  // Probe with the first chunk: a quote-center with no leaf route answers 404
-  // for every chunk, so there is no point spending the rest to learn it.
-  const first = await fetchLeafChunk(endpoint, chunks[0] ?? [], fetchOpts);
-  if (!("leaves" in first) || chunks.length <= 1) return first;
+  for (const route of WATERX_LEAF_ROUTES) {
+    // Probe with the first chunk: a quote-center without THIS leaf route answers
+    // 404 for every chunk, so there is no point spending the rest to learn it.
+    const first = await fetchLeafChunk(endpoint, route, chunks[0] ?? [], fetchOpts);
+    if ("unavailable" in first) {
+      unavailable.push(first.unavailable);
+      continue; // next rung of the ladder — a merely-old quote-center serves one.
+    }
+    if (!("leaves" in first) || chunks.length <= 1) return first;
 
-  const rest = await Promise.all(
-    chunks.slice(1).map((chunk) => fetchLeafChunk(endpoint, chunk, fetchOpts)),
-  );
-  const leaves = [...first.leaves];
-  for (const pull of rest) {
-    if (!("leaves" in pull)) return pull;
-    leaves.push(...pull.leaves);
+    const rest = await Promise.all(
+      chunks.slice(1).map((chunk) => fetchLeafChunk(endpoint, route, chunk, fetchOpts)),
+    );
+    const leaves = [...first.leaves];
+    for (const pull of rest) {
+      // A later chunk cannot re-open the route question: the probe already
+      // proved this rung serves leaves, so anything else is this chunk's own
+      // answer (an unknown symbol) and belongs to the caller as-is.
+      if (!("leaves" in pull)) return pull;
+      leaves.push(...pull.leaves);
+    }
+    return { leaves };
   }
-  return { leaves };
+  return { unavailable: unavailable.join("; ") };
 }
 
 /**
@@ -797,22 +839,32 @@ function namedSymbol(err: QuoteCenterError): string | undefined {
 
 async function fetchLeafChunk(
   endpoint: string,
+  route: string,
   symbols: string[],
   fetchOpts?: FetchPolicy,
 ): Promise<LeafPull> {
-  const res = await fetchQuoteCenter(
-    endpoint,
-    "v1/quotes/leaves",
-    symbols,
-    "leaf fetch",
-    fetchOpts,
-  );
+  const res = await fetchQuoteCenter(endpoint, route, symbols, "leaf fetch", fetchOpts);
   if (res.status === 404) {
     const body = (await res.text()).trim();
     const refusal = parseQuoteCenterError(body);
-    // No structured body ⇒ nothing served this path at all ⇒ no leaf route,
-    // so the caller falls back to the envelope.
-    if (!refusal) return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
+    // Every 404 message below is truncated: `body` is parsed in full, but these
+    // strings ride `fellBackFrom` into a thrown Error on the tx-build path, and
+    // a proxy or CDN can 404 with a multi-kilobyte HTML page. `refusal.message`
+    // needs it too — this function parses the WHOLE body, so unlike
+    // `describeFailure` (which truncates before parsing) the parsed field is
+    // itself unbounded.
+    const shown = bodySnippet(refusal?.message || body);
+    // A refusal is only credible as "the ROUTE answered" when the body carries
+    // something only the quote-center would send: a `code` from its error
+    // contract, or the name of a symbol. A 404 with NEITHER is indistinguishable
+    // from a generic 404 page — and every framework-default 404 is JSON
+    // (`{"error":"not found"}` from Express/Next/Cloudflare), so keying
+    // route-missing on "body did not parse as JSON" would strand exactly the
+    // same-origin proxy this rule documents: it would throw about an unnamed
+    // symbol instead of trying the next rung. Structured-but-anonymous ⇒ next
+    // rung, and if none answers the final error names every attempt.
+    if (!refusal || (refusal.code === undefined && !namedSymbol(refusal)))
+      return { unavailable: `GET /${route} → 404 ${shown}`.trim() };
     // The ROUTE answered and refused. Without this split the whole batch fell
     // through to the envelope route, 404'd again there, and threw — one
     // unknown symbol cost every sibling its refresh.
@@ -828,7 +880,7 @@ async function fetchLeafChunk(
     if (refusal.code !== undefined && meaningOf(refusal) !== "unknown_symbol") {
       throw new Error(
         `WaterX quote-center refused the leaf request: 404 code ` +
-          `${String(refusal.code)} ${refusal.message || body}`,
+          `${String(refusal.code)} ${shown}`,
       );
     }
     // A CODED refusal is answered entirely from structured fields: the code
@@ -839,20 +891,14 @@ async function fetchLeafChunk(
       if (refusal.symbol) return { unknownSymbol: refusal.symbol };
       throw new Error(
         `WaterX quote-center signalled an unknown symbol (code ${String(refusal.code)}) ` +
-          `without a \`symbol\` field: ${refusal.message || body}`,
+          `without a \`symbol\` field: ${shown}`,
       );
     }
     // No code at all: a deployment predating the contract, the only place the
-    // message shim applies.
-    const named = namedSymbol(refusal);
-    if (named) return { unknownSymbol: named };
-    // Refused, but it did not say which symbol. Peeling is impossible (we would
-    // retry the same request forever) and the envelope fallback is wrong (the
-    // route exists), so surface the server's own words.
-    throw new Error(
-      `WaterX quote-center refused the leaf request and did not name a symbol: ` +
-        `404 ${refusal.message || body}`,
-    );
+    // message shim applies. A codeless refusal that reaches here ALWAYS names a
+    // symbol — the route-missing guard above already sent the anonymous ones
+    // down the ladder — so there is no unnamed-symbol arm left to throw from.
+    return { unknownSymbol: namedSymbol(refusal)! };
   }
   if (!res.ok) {
     throw new Error(`WaterX quote-center leaf fetch failed: ${await describeFailure(res)}`);
@@ -1076,8 +1122,8 @@ export async function pullWaterxQuotes(
  * {@link pullWaterxQuotes} with the unknown-symbol refusal surfaced as data
  * instead of a throw — what the partial-coverage arm of
  * {@link pullWaterxData} iterates on to isolate the symbol and refetch the
- * rest. The envelope fallback stays reserved for a genuinely absent leaf
- * route (a bare 404), exactly as before.
+ * rest. The envelope fallback stays reserved for a quote-center that serves NO
+ * rung of {@link WATERX_LEAF_ROUTES}.
  */
 async function pullWaterxQuotesOrUnknown(
   endpoint: string,
@@ -1102,8 +1148,8 @@ async function pullWaterxQuotesOrUnknown(
 
 /**
  * THE quote-center pull — the one pipeline both coverage policies share:
- * own-key `symbols` partition → leaf route (default) → batch
- * envelope only when this quote-center has no leaf route (see
+ * own-key `symbols` partition → leaf ladder (default) → batch
+ * envelope only when this quote-center serves no leaf route at all (see
  * {@link fetchWaterxSignedLeaves} for exactly which statuses mean that, and
  * why nothing else falls back).
  *

@@ -119,6 +119,23 @@ export function skipSimulateIfWeightedSourceMissing(
 }
 
 /**
+ * A quote-center 404 that EXHAUSTED every route — never an environment blip.
+ *
+ * A per-feed 404 ("Price ids not found": one feed id absent from a gateway's
+ * registry) is a deployment mismatch worth skipping past. A 404 on every rung of
+ * the leaf ladder AND the envelope is categorically different: the SDK is asking
+ * for paths this service does not serve, so every money-path build on that
+ * network is broken. Treating it as a gateway blip is how the 2026-09-04
+ * leaf-route rename stayed green in CI for ~12 days while both live networks
+ * were broken (PR #94).
+ *
+ * Identified by the `fell back from` clause that only an exhausted ladder emits.
+ */
+export function isExhaustedQuoteCenterRoute(msg: string): boolean {
+  return msg.includes("fell back from") && /quote-center[^\n]*fetch failed/.test(msg);
+}
+
+/**
  * Skip when the OFF-CHAIN oracle fetch fails before dry-run — source infra, not
  * SDK logic.
  *
@@ -135,6 +152,9 @@ export function skipSimulateIfWeightedSourceMissing(
  * signed envelope", "missing an integer timestamp_ms"). Those are a
  * quote-center serving bad data, which is a real failure worth a red test, not
  * an outage to skip past.
+ *
+ * Also deliberately NOT matched: a quote-center 404 that exhausted every route
+ * — see {@link isExhaustedQuoteCenterRoute}.
  */
 export function skipIfOracleFetchUnavailable(
   ctx: { skip: (reason?: string) => void },
@@ -146,6 +166,11 @@ export function skipIfOracleFetchUnavailable(
     /(?:Lazer|quote-center)[^\n]*fetch failed/.test(msg) ||
     msg.includes("Lazer returned no leEcdsa update data");
   if (!isFetchFailure) return false;
+
+  // A route outage is an SDK/service contract break, not an environment blip.
+  // Checked before any status branch: its first line is a 404 and would
+  // otherwise be skipped as a feed/gateway mismatch.
+  if (isExhaustedQuoteCenterRoute(msg)) return false;
 
   const firstLine = msg.split("\n")[0] ?? msg;
   const status =

@@ -9,7 +9,7 @@
  * signed data is carried straight from the fetched data to each ticker's feed
  * leg. TWO wire shapes reach that leg, and the rule prefers the first:
  *
- * 1. per-symbol Merkle LEAVES (`/v1/quotes/leaves`) → `collect_single_with_proof`,
+ * 1. per-symbol Merkle LEAVES (`/v1/sign/bbo/consensus`) → `collect_single_with_proof`,
  *    which re-derives the snapshot root from the leaf + its proof. ONE
  *    `new_batch_item` per PTB regardless of how many symbols the snapshot held.
  * 2. one indivisible batch ENVELOPE (`/v1/quotes/update`) → `collect_batch_latest`,
@@ -46,6 +46,8 @@ import {
   HASH_HEX,
   mockEnvelopeOnly,
   mockLeafRoute,
+  mockLeafRouteEchoingSymbols,
+  mockLegacyLeafRoute,
   mockQuoteCenter,
   rawEnvelope,
   rawLeaves,
@@ -91,7 +93,7 @@ describe("WaterxRule — port", () => {
     expect(data?.kind).toBe("waterx_rule");
     expect((data?.payload as { leaves: WaterxSignedLeaf[] }).leaves).toHaveLength(1);
     const url = new URL(String(fetchSpy.mock.calls[0]![0]));
-    expect(url.pathname).toBe("/v1/quotes/leaves");
+    expect(url.pathname).toBe("/v1/sign/bbo/consensus");
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
     // The indivisible envelope route is not touched when leaves are available.
     expect(requestedPaths(fetchSpy)).not.toContain("/v1/quotes/update");
@@ -108,7 +110,7 @@ describe("WaterxRule — port", () => {
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     const url = new URL(String(fetchSpy.mock.calls[0]![0]));
     expect(url.origin).toBe("https://app.example");
-    expect(url.pathname).toBe("/api/quote-center/v1/quotes/leaves");
+    expect(url.pathname).toBe("/api/quote-center/v1/sign/bbo/consensus");
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
   });
 
@@ -120,17 +122,17 @@ describe("WaterxRule — port", () => {
     const fetchSpy = mockLeafRoute();
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     expect(new URL(String(fetchSpy.mock.calls[0]![0])).pathname).toBe(
-      "/api/quote-center/v1/quotes/leaves",
+      "/api/quote-center/v1/sign/bbo/consensus",
     );
   });
 
-  it("the default (bare-origin) endpoint still hits /v1/quotes/leaves", async () => {
+  it("the default (bare-origin) endpoint still hits /v1/sign/bbo/consensus", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     const url = new URL(String(fetchSpy.mock.calls[0]![0]));
     expect(url.origin).toBe("https://quote-center-staging.waterx.app");
-    expect(url.pathname).toBe("/v1/quotes/leaves");
+    expect(url.pathname).toBe("/v1/sign/bbo/consensus");
   });
 
   it("waterxFetch.fetchImpl replaces the transport (global fetch never called)", async () => {
@@ -420,17 +422,15 @@ describe("quote-center batch cap", () => {
     // changes nothing about the PTB. Unchunked, one more feed on a 31-feed
     // deployment takes a non-retryable 400 reading only "leaf fetch failed: 400".
     const symbols = Array.from({ length: 40 }, (_, i) => `T${String(i)}USD`);
-    // Per-CALL response: each chunk gets leaves for exactly the symbols it asked
-    // for, so the concatenation is verifiable rather than assumed.
-    const spy = vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
-      const asked = new URL(String(url)).searchParams.get("symbols")!.split(",");
-      const text = rawLeavesText(asked);
-      return { ok: true, status: 200, text: async () => text } as unknown as Response;
-    }) as unknown as typeof fetch);
+    // The shared echo fixture, so this pins the ROUTE too: the previous inline
+    // mock answered any URL, and would have passed just as green with the leaf
+    // route set to a path no quote-center serves.
+    const spy = mockLeafRouteEchoingSymbols();
 
     const pulled = await fetchWaterxSignedLeaves("https://qc.example", symbols);
     expect("leaves" in pulled && pulled.leaves.map((l) => l.symbol)).toEqual(symbols);
 
+    expect(new Set(requestedPaths(spy))).toEqual(new Set(["/v1/sign/bbo/consensus"]));
     const batches = spy.mock.calls.map(
       (c) => new URL(String(c[0])).searchParams.get("symbols")!.split(",").length,
     );
@@ -455,12 +455,30 @@ describe("quote-center batch cap", () => {
 });
 
 describe("WaterxRule — batch-envelope fallback", () => {
-  it("falls back to /v1/quotes/update when the leaf route 404s (older quote-center)", async () => {
+  it("falls back to /v1/quotes/update only after BOTH leaf rungs 404", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockEnvelopeOnly();
     const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     expect((data?.payload as { envelope: WaterxSignedEnvelope }).envelope.intent).toBe(1);
-    expect(requestedPaths(fetchSpy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+    expect(requestedPaths(fetchSpy)).toEqual([
+      "/v1/sign/bbo/consensus",
+      "/v1/quotes/leaves",
+      "/v1/quotes/update",
+    ]);
+  });
+
+  it("a quote-center predating the rename stays on the CHEAP leaf shape", async () => {
+    // The version-skew case the fallback exists for. It serves the identical
+    // leaf shape at the old path, so dropping it onto the indivisible envelope
+    // (58 extra moveCalls per trade on the 29-feed registry) would be a
+    // self-inflicted cost — the ladder tries the old leaf path first.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const fetchSpy = mockLegacyLeafRoute(["BTCUSD"]);
+    const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
+    expect((data?.payload as { leaves: WaterxSignedLeaf[] }).leaves).toHaveLength(1);
+    expect(requestedPaths(fetchSpy)).toEqual(["/v1/sign/bbo/consensus", "/v1/quotes/leaves"]);
+    // The envelope was never asked for.
+    expect(requestedPaths(fetchSpy)).not.toContain("/v1/quotes/update");
   });
 
   it("does NOT fall back on a degraded quote-center (500) — the envelope route would fail too", async () => {
@@ -520,7 +538,7 @@ describe("WaterxRule — batch-envelope fallback", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockQuoteCenter({ leaves: { status: 404 }, update: { status: 404 } });
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
-      /fetch failed: 404.*fell back from GET \/v1\/quotes\/leaves → 404/s,
+      /fetch failed: 404.*fell back from GET \/v1\/sign\/bbo\/consensus → 404/s,
     );
   });
 
@@ -581,7 +599,7 @@ describe("WaterxRule — on-chain feed", () => {
 
   it("a one-leaf snapshot (empty proof) is still a valid submission", () => {
     // root == leaf_hash(item): nothing to fold. This is what a single-symbol
-    // /v1/quotes/leaves pull returns, and the cheapest possible waterx leg.
+    // /v1/sign/bbo/consensus pull returns, and the cheapest possible waterx leg.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const tx = new Transaction();
     aggregateTicker(tx, client, { ticker: "BTCUSD", waterxLeaf: sampleLeaves(["BTCUSD"], [])[0]! });
@@ -725,30 +743,12 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     // envelope route, 404 again, and throw — one unknown symbol cost every
     // sibling its refresh, with nothing reported skipped.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
-    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
-      const url = new URL(String(input));
-      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          text: async () => "Not Found",
-        } as Response);
-      }
-      const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
-      if (symbols.includes("ETHUSD")) {
-        // The quote-center's own per-symbol refusal shape, captured from the
-        // LIVE staging + mainnet hosts (2026-09-11): a JSON body, not prose.
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          text: async () => '{"error":"unknown symbol ETHUSD"}',
-        } as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        text: async () => rawLeavesText(symbols),
-      } as unknown as Response);
+    // The quote-center's own per-symbol refusal shape as observed on the LIVE
+    // staging + mainnet hosts (2026-09-11), against the leaf route as it was
+    // then: a JSON body, not prose. Not re-captured since the route rename.
+    mockLeafRouteEchoingSymbols({
+      refuse: (symbols) =>
+        symbols.includes("ETHUSD") ? '{"error":"unknown symbol ETHUSD"}' : undefined,
     });
 
     const tx = new Transaction();
@@ -784,28 +784,22 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
 
     // (a) live wording, a symbol we asked for → peel it, keep the rest.
-    vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
-      const url = new URL(String(input));
-      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
-        return Promise.resolve({ ok: false, status: 404, text: async () => "" } as Response);
-      }
-      const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
-      return symbols.includes("ETHUSD")
-        ? Promise.resolve({
-            ok: false,
-            status: 404,
-            text: async () => '{"error":"unknown symbol ETHUSD"}',
-          } as Response)
-        : Promise.resolve({
-            ok: true,
-            status: 200,
-            text: async () => rawLeavesText(symbols),
-          } as unknown as Response);
+    mockLeafRouteEchoingSymbols({
+      refuse: (symbols) =>
+        symbols.includes("ETHUSD") ? '{"error":"unknown symbol ETHUSD"}' : undefined,
     });
     await expect(
       fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
     ).resolves.toMatchObject({ missing: ["ETHUSD"] });
     vi.restoreAllMocks();
+
+    // (b) the same status with a body that attributes nothing → NOT a refusal.
+    // The route question is answered by "did the body name a code or a symbol",
+    // so an anonymous 404 walks the ladder and then reports every attempt.
+    mockQuoteCenter({ leaves: { status: 404 }, update: { status: 404 } });
+    await expect(
+      fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
+    ).rejects.toThrow(/fell back from GET \/v1\/sign\/bbo\/consensus → 404/s);
   });
 
   it("a NUMERIC code drives the decision; the message is ignored", async () => {
@@ -879,17 +873,63 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockQuoteCenter({
       leaves: { status: 404, text: "" },
+      legacyLeaves: { status: 404, text: "" },
       update: { body: rawEnvelope() },
     });
     const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     expect(data?.kind).toBe("waterx_rule");
-    expect(requestedPaths(fetchSpy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+    expect(requestedPaths(fetchSpy)).toEqual([
+      "/v1/sign/bbo/consensus",
+      "/v1/quotes/leaves",
+      "/v1/quotes/update",
+    ]);
   });
 
-  it("a JSON refusal that names no symbol throws instead of looping or falling back", async () => {
-    // Peeling is impossible (the same request would repeat forever) and the
-    // envelope fallback is wrong (the route exists), so surface the server's
-    // own words.
+  it("bounds a giant 404 body in the error instead of pasting the whole page", async () => {
+    // A proxy or CDN 404s with a multi-kilobyte HTML page. That text rides
+    // `fellBackFrom` into a thrown Error on the tx-build path, so it must be
+    // truncated the way every other quote-center failure already is — without
+    // truncating what gets PARSED, which is what classifies the 404.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    const huge = `<html><body>${"x".repeat(50_000)}</body></html>`;
+    mockQuoteCenter({
+      leaves: { status: 404, text: huge },
+      legacyLeaves: { status: 404, text: huge },
+      update: { status: 404, text: huge },
+    });
+    const err = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]).catch((e: unknown) => e);
+    const msg = err instanceof Error ? err.message : String(err);
+    // Three rungs' worth of snippets, not three 50KB pages.
+    expect(msg.length).toBeLessThan(1_500);
+    expect(msg).toContain("…");
+    expect(msg).toContain("fell back from");
+  });
+
+  it("a coded refusal's `message` is bounded too — the body is parsed in full", async () => {
+    // Unlike `describeFailure`, this path parses the WHOLE body, so the parsed
+    // `message` field is itself unbounded and needs the same cap.
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    mockQuoteCenter({
+      leaves: {
+        status: 404,
+        text: JSON.stringify({ code: 10007, error: "y".repeat(50_000) }),
+      },
+    });
+    const err = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]).catch((e: unknown) => e);
+    const msg = err instanceof Error ? err.message : String(err);
+    // The code still drove the decision (a non-unknown-symbol code throws)...
+    expect(msg).toContain("code 10007");
+    // ...and the message did not arrive at full length.
+    expect(msg.length).toBeLessThan(500);
+  });
+
+  it("a JSON 404 that attributes nothing walks the ladder — a proxy's error page is not a refusal", async () => {
+    // Peeling is impossible (the same request would repeat forever), so the
+    // only question is refusal-vs-route-missing. A body carrying neither a
+    // `code` nor a symbol cannot be told apart from a framework's default 404
+    // page — and those are JSON, so JSON-ness cannot be the signal. Every
+    // deployed same-origin proxy 404s this path until it is updated, so the
+    // anonymous case must try the next rung and then report every attempt.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: false,
@@ -898,8 +938,13 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     } as Response);
     await expect(
       fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
-    ).rejects.toThrow(/did not name a symbol/);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    ).rejects.toThrow(/fetch failed: 404.*fell back from/s);
+    // Both leaf rungs, then the envelope — nothing was classified as a refusal.
+    expect(requestedPaths(fetchSpy)).toEqual([
+      "/v1/sign/bbo/consensus",
+      "/v1/quotes/leaves",
+      "/v1/quotes/update",
+    ]);
   });
 
   it("a group emptied by an unserved ticker appends NO update leg", async () => {
