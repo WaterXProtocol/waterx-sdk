@@ -277,7 +277,7 @@ Every source plugs in the same way — routing is driven **only** by what the de
 4. **Add SDK infra constants** if the source needs external infra that is not part of the config JSON (API endpoints, verifier packages, state objects) — a **rule-owned** per-network table inside the rule's own file, mirroring `LAZER_INFRA` / `WATERX_INFRA` (never on the shared client, never in `oracle/config.ts`). Wire its read-plane served-set/ids into `resolveOracleReadPlan` (`src/oracle/read-plane.ts`).
 5. **Publish the block in the config** for the deployments that should feed it — every client on that config picks it up. No consumer code change, no env edit, no SDK re-release.
 
-The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one signed Merkle **leaf** per requested ticker from the quote-center (`GET /v1/quotes/leaves?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_single_with_proof` call per collector, so it emits no shared verify step. Each leaf carries its own membership proof and the enclave's signature over the snapshot root, so a PTB rebuilds exactly ONE price item however wide the snapshot was. Against a quote-center with no leaf route (404) it falls back to the older shape — one signature over a whole batch (`GET /v1/quotes/update`) fed through `collect_batch_latest`, which is indivisible and therefore has to rebuild _every_ item in the batch in-PTB just to use one symbol's price.
+The in-house `waterx_rule` (ed25519 enclave-signed CEX prices, `src/oracle/rules/waterx-rule.ts`) took exactly this path: it pulls one signed Merkle **leaf** per requested ticker from the quote-center (`GET /v1/sign/bbo/consensus?symbols=…`, public read — no auth), then verifies **and** feeds in a single `waterx_rule::collect_single_with_proof` call per collector, so it emits no shared verify step. Each leaf carries its own membership proof and the enclave's signature over the snapshot root, so a PTB rebuilds exactly ONE price item however wide the snapshot was. Against a quote-center with no leaf route (404) it falls back to the older shape — one signature over a whole batch (`GET /v1/quotes/update`) fed through `collect_batch_latest`, which is indivisible and therefore has to rebuild _every_ item in the batch in-PTB just to use one symbol's price.
 
 On-chain, both entries dispose of failures identically: a **freshness** miss abstains (the other weighted rules cover), and so does a **replayed** signed timestamp (the per-symbol high-water mark of audit F-014 — already recorded means the chain already holds a price at least this fresh, so concurrent builds sharing one snapshot no longer kill each other; only the single-rule `feed_*` entries abort on a replay). A config mismatch, a bad signature, or a signed timestamp **ahead of the on-chain `Clock`** aborts.
 
@@ -287,7 +287,7 @@ On-chain, both entries dispose of failures identically: a **freshness** miss abs
 > const perp = await PerpClient.create(network, {
 >   waterxConfigUrl,
 >   // absolute URL on your own origin; its base path is PRESERVED, so this
->   // fetches https://app.example/api/quote-center/v1/quotes/leaves
+>   // fetches https://app.example/api/quote-center/v1/sign/bbo/consensus
 >   waterxEndpoint: "https://app.example/api/quote-center",
 >   waterxFetch: { fetchImpl: myFetch, timeoutMs: 8_000 }, // optional custom transport / policy
 > });

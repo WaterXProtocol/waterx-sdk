@@ -165,6 +165,15 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Fixed
 
+- **`waterx_rule` reads the quote-center's current leaf route.** The leaf fetch now hits
+  `GET /v1/sign/bbo/consensus?symbols=…` — the quote-center renamed it from
+  `/v1/quotes/leaves` with its Spot-BBO consensus API (waterx-quote-center#191,
+  2026-09-04) and retired the batch envelope route (`/v1/quotes/update`) at the same
+  time, so every quote-center read had been 404ing since. The response shape is
+  unchanged (`{ leaves }`, same fields, `code: 10001` + `symbol` on an unknown symbol).
+  The envelope fallback is kept for a quote-center that predates that API. A
+  `waterxEndpoint` proxy must forward the new path.
+
 - **Quote-center errors are keyed on a NUMERIC code.** `QUOTE_CENTER_ERROR_CODES`
   (`oracle/rules/waterx-rule.ts`) is the single place a wire code is given
   meaning — populated from the service's published `ErrorCode` enum

@@ -79,7 +79,7 @@ export interface WaterxAccessConfig {
    * Quote-center base URL override (`waterxEndpoint` create option). A base
    * PATH is preserved — the rule appends via `joinEndpointPath`, so
    * `https://app.example/api/quote-center` resolves to
-   * `…/api/quote-center/v1/quotes/leaves` and a proxy route is not rewritten
+   * `…/api/quote-center/v1/sign/bbo/consensus` and a proxy route is not rewritten
    * away. A trailing slash is trimmed.
    */
   endpoint?: string;

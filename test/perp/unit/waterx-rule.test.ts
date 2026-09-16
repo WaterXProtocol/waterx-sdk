@@ -9,7 +9,7 @@
  * signed data is carried straight from the fetched data to each ticker's feed
  * leg. TWO wire shapes reach that leg, and the rule prefers the first:
  *
- * 1. per-symbol Merkle LEAVES (`/v1/quotes/leaves`) → `collect_single_with_proof`,
+ * 1. per-symbol Merkle LEAVES (`/v1/sign/bbo/consensus`) → `collect_single_with_proof`,
  *    which re-derives the snapshot root from the leaf + its proof. ONE
  *    `new_batch_item` per PTB regardless of how many symbols the snapshot held.
  * 2. one indivisible batch ENVELOPE (`/v1/quotes/update`) → `collect_batch_latest`,
@@ -91,7 +91,7 @@ describe("WaterxRule — port", () => {
     expect(data?.kind).toBe("waterx_rule");
     expect((data?.payload as { leaves: WaterxSignedLeaf[] }).leaves).toHaveLength(1);
     const url = new URL(String(fetchSpy.mock.calls[0]![0]));
-    expect(url.pathname).toBe("/v1/quotes/leaves");
+    expect(url.pathname).toBe("/v1/sign/bbo/consensus");
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
     // The indivisible envelope route is not touched when leaves are available.
     expect(requestedPaths(fetchSpy)).not.toContain("/v1/quotes/update");
@@ -108,7 +108,7 @@ describe("WaterxRule — port", () => {
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     const url = new URL(String(fetchSpy.mock.calls[0]![0]));
     expect(url.origin).toBe("https://app.example");
-    expect(url.pathname).toBe("/api/quote-center/v1/quotes/leaves");
+    expect(url.pathname).toBe("/api/quote-center/v1/sign/bbo/consensus");
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
   });
 
@@ -120,17 +120,17 @@ describe("WaterxRule — port", () => {
     const fetchSpy = mockLeafRoute();
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     expect(new URL(String(fetchSpy.mock.calls[0]![0])).pathname).toBe(
-      "/api/quote-center/v1/quotes/leaves",
+      "/api/quote-center/v1/sign/bbo/consensus",
     );
   });
 
-  it("the default (bare-origin) endpoint still hits /v1/quotes/leaves", async () => {
+  it("the default (bare-origin) endpoint still hits /v1/sign/bbo/consensus", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     const url = new URL(String(fetchSpy.mock.calls[0]![0]));
     expect(url.origin).toBe("https://quote-center-staging.waterx.app");
-    expect(url.pathname).toBe("/v1/quotes/leaves");
+    expect(url.pathname).toBe("/v1/sign/bbo/consensus");
   });
 
   it("waterxFetch.fetchImpl replaces the transport (global fetch never called)", async () => {
@@ -460,7 +460,7 @@ describe("WaterxRule — batch-envelope fallback", () => {
     const fetchSpy = mockEnvelopeOnly();
     const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     expect((data?.payload as { envelope: WaterxSignedEnvelope }).envelope.intent).toBe(1);
-    expect(requestedPaths(fetchSpy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+    expect(requestedPaths(fetchSpy)).toEqual(["/v1/sign/bbo/consensus", "/v1/quotes/update"]);
   });
 
   it("does NOT fall back on a degraded quote-center (500) — the envelope route would fail too", async () => {
@@ -520,7 +520,7 @@ describe("WaterxRule — batch-envelope fallback", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockQuoteCenter({ leaves: { status: 404 }, update: { status: 404 } });
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD"])).rejects.toThrow(
-      /fetch failed: 404.*fell back from GET \/v1\/quotes\/leaves → 404/s,
+      /fetch failed: 404.*fell back from GET \/v1\/sign\/bbo\/consensus → 404/s,
     );
   });
 
@@ -581,7 +581,7 @@ describe("WaterxRule — on-chain feed", () => {
 
   it("a one-leaf snapshot (empty proof) is still a valid submission", () => {
     // root == leaf_hash(item): nothing to fold. This is what a single-symbol
-    // /v1/quotes/leaves pull returns, and the cheapest possible waterx leg.
+    // /v1/sign/bbo/consensus pull returns, and the cheapest possible waterx leg.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const tx = new Transaction();
     aggregateTicker(tx, client, { ticker: "BTCUSD", waterxLeaf: sampleLeaves(["BTCUSD"], [])[0]! });
@@ -727,7 +727,7 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
       const url = new URL(String(input));
-      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+      if (!url.pathname.endsWith("/v1/sign/bbo/consensus")) {
         return Promise.resolve({
           ok: false,
           status: 404,
@@ -786,7 +786,7 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     // (a) live wording, a symbol we asked for → peel it, keep the rest.
     vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
       const url = new URL(String(input));
-      if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+      if (!url.pathname.endsWith("/v1/sign/bbo/consensus")) {
         return Promise.resolve({ ok: false, status: 404, text: async () => "" } as Response);
       }
       const symbols = (url.searchParams.get("symbols") ?? "").split(",").filter(Boolean);
@@ -883,7 +883,7 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     });
     const data = await WaterxRule.fetchUpdateData(client, ["BTCUSD"]);
     expect(data?.kind).toBe("waterx_rule");
-    expect(requestedPaths(fetchSpy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+    expect(requestedPaths(fetchSpy)).toEqual(["/v1/sign/bbo/consensus", "/v1/quotes/update"]);
   });
 
   it("a JSON refusal that names no symbol throws instead of looping or falling back", async () => {

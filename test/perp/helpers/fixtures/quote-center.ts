@@ -67,7 +67,7 @@ export function rawEnvelopeText(
 }
 
 /**
- * Server-shape `/v1/quotes/leaves` body as RAW TEXT — deliberately not an object
+ * Server-shape `/v1/sign/bbo/consensus` body as RAW TEXT — deliberately not an object
  * run through `JSON.stringify`.
  *
  * The display-only `price` / `confidence` are Rust `f64`s, and serde emits a
@@ -117,7 +117,7 @@ export interface MockRoute {
 }
 
 /**
- * Route-aware quote-center mock: `/v1/quotes/leaves` and `/v1/quotes/update` get
+ * Route-aware quote-center mock: `/v1/sign/bbo/consensus` and `/v1/quotes/update` get
  * their own response, and an unconfigured route 404s the way a quote-center
  * that never had it would. A single blanket mock cannot express the central
  * case — the rule tries the leaf route FIRST and only falls back on a 404 — so
@@ -139,7 +139,7 @@ export function mockQuoteCenter(routes: {
   };
   return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
     const { pathname } = new URL(String(input));
-    if (pathname.endsWith("/v1/quotes/leaves")) return Promise.resolve(respond(routes.leaves));
+    if (pathname.endsWith("/v1/sign/bbo/consensus")) return Promise.resolve(respond(routes.leaves));
     if (pathname.endsWith("/v1/quotes/update")) return Promise.resolve(respond(routes.update));
     return Promise.resolve(respond(undefined));
   }) as ReturnType<typeof vi.spyOn>;
@@ -171,7 +171,7 @@ export function mockEnvelopeOnly(
 export function mockLeafRouteEchoingSymbols(): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
     const url = new URL(String(input));
-    if (!url.pathname.endsWith("/v1/quotes/leaves")) {
+    if (!url.pathname.endsWith("/v1/sign/bbo/consensus")) {
       return Promise.resolve({
         ok: false,
         status: 404,

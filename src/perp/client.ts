@@ -52,12 +52,12 @@ export interface CreateClientOptions extends LoadConfigOptions {
    * from the page), so it is bound by the quote-center deployment's CORS
    * allowlist. A front end whose origin is not allowed — or one that must route
    * egress through its own backend — points this at a same-origin proxy that
-   * forwards `GET /v1/quotes/leaves` (and `GET /v1/quotes/update`, the fallback
+   * forwards `GET /v1/sign/bbo/consensus` (and `GET /v1/quotes/update`, the fallback
    * route). Unused by the Pyth sources.
    *
    * An absolute URL. Any base PATH is preserved (`joinEndpointPath`), so
    * `https://app.example/api/quote-center` fetches
-   * `https://app.example/api/quote-center/v1/quotes/leaves` — a proxy route
+   * `https://app.example/api/quote-center/v1/sign/bbo/consensus` — a proxy route
    * survives instead of being rewritten to the origin root.
    */
   waterxEndpoint?: string;

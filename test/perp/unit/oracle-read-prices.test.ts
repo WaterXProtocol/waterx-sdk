@@ -242,7 +242,7 @@ describe("readQuoteCenterPrices", () => {
     });
 
     const url = new URL(String(spy.mock.calls[0]![0]));
-    expect(url.pathname).toBe("/v1/quotes/leaves");
+    expect(url.pathname).toBe("/v1/sign/bbo/consensus");
     expect(url.searchParams.get("symbols")).toBe("BTCUSD");
     expect(requestedPaths(spy)).not.toContain("/v1/quotes/update");
 
@@ -261,7 +261,7 @@ describe("readQuoteCenterPrices", () => {
       tickers: ["BTCUSD", "XAUUSD"],
     });
 
-    expect(requestedPaths(spy)).toEqual(["/v1/quotes/leaves", "/v1/quotes/update"]);
+    expect(requestedPaths(spy)).toEqual(["/v1/sign/bbo/consensus", "/v1/quotes/update"]);
     expect(out.get("BTCUSD")).toEqual({
       price: 63700,
       conf: 10,
@@ -312,7 +312,7 @@ describe("readQuoteCenterPrices", () => {
     });
 
     expect(new URL(String(spy.mock.calls[0]![0])).pathname).toBe(
-      "/api/quote-center/v1/quotes/leaves",
+      "/api/quote-center/v1/sign/bbo/consensus",
     );
   });
 });

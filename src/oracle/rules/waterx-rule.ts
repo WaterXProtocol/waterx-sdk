@@ -10,7 +10,7 @@
  *
  * TWO wire shapes carry the same prices, and this rule prefers the first:
  *
- * 1. **Merkle leaves** (default) — `GET /v1/quotes/leaves?symbols=…` returns one
+ * 1. **Merkle leaves** (default) — `GET /v1/sign/bbo/consensus?symbols=…` returns one
  *    `SignedLeaf` per symbol: the price fields, a Merkle `proof`, and the
  *    enclave's signature over the snapshot ROOT (`MERKLE_ROOT_INTENT`). Fed via
  *    {@link feedWaterxRuleWithProof} → `waterx_rule::collect_single_with_proof`,
@@ -22,8 +22,14 @@
  *    `waterx_rule::collect_batch_latest` to re-verify, even to use one symbol's
  *    price. With the 29-feed mainnet registry that is 58 extra moveCalls and
  *    ~320 extra pure inputs on every trade, which is why it is no longer the
- *    default. Used only when the quote-center has no leaf route yet (404),
- *    and by callers that still push whole batches.
+ *    default. The quote-center RETIRED this route with its Spot-BBO consensus
+ *    API (waterx-quote-center#191, 2026-09-04): no deployed quote-center
+ *    answers it any more. It stays as the fallback for a quote-center that
+ *    predates that API — one that 404s the leaf route above — and for callers
+ *    that still push whole batches.
+ *
+ * The leaf route is `/v1/sign/bbo/consensus` since that same API (it was
+ * `/v1/quotes/leaves` before); the response shape did not change.
  *
  * Both collect entries are the dual-rule path: they feed `collector.symbol()`
  * WITHOUT aggregating, so a waterx-routed ticker composes onto the same
@@ -180,7 +186,7 @@ export interface WaterxSignedEnvelope {
 }
 
 /**
- * One enclave-signed Merkle leaf from `GET /v1/quotes/leaves` — identical shape
+ * One enclave-signed Merkle leaf from `GET /v1/sign/bbo/consensus` — identical shape
  * to the `/v1/quote/stream/signed` SSE/WS events (quote-center serves both from
  * one conversion), so a leaf from either transport submits the same way.
  *
@@ -485,7 +491,7 @@ function assertHash32(symbol: string, sibling: string): void {
 }
 
 /**
- * Parse a quote-center `/v1/quotes/leaves` response body (`{ leaves: [...] }`)
+ * Parse a quote-center `/v1/sign/bbo/consensus` response body (`{ leaves: [...] }`)
  * into {@link WaterxSignedLeaf}s, u64s exact as `bigint`, rejecting a malformed
  * leaf or proof element on the wire — before any PTB is touched.
  */
@@ -603,7 +609,7 @@ export async function fetchWaterxSignedUpdate(
         `a quote-center that serves the per-symbol leaf route, which IS chunked.${context}`,
     );
   }
-  const res = await fetchQuoteCenter(endpoint, "v1/quotes/update", symbols, "fetch", fetchOpts);
+  const res = await fetchQuoteCenter(endpoint, WATERX_ENVELOPE_ROUTE, symbols, "fetch", fetchOpts);
   if (!res.ok) {
     throw new Error(`WaterX quote-center fetch failed: ${await describeFailure(res)}${context}`);
   }
@@ -635,10 +641,11 @@ export type LeafPull =
  * module header for why it beats the indivisible batch envelope on a trade path).
  *
  * Returns `{ unavailable }` on `404` — and ONLY on 404, the one status that
- * means "this route isn't here": a quote-center older than `/v1/quotes/leaves`
- * has no handler registered for the path. That is the version-skew case the
- * caller answers by falling back to the batch envelope, so the SDK and the
- * quote-center can be deployed in either order.
+ * means "this route isn't here": a quote-center older than the Spot-BBO
+ * consensus API (waterx-quote-center#191) has no handler registered for
+ * `/v1/sign/bbo/consensus`. That is the version-skew case the caller answers by
+ * falling back to the batch envelope, so the SDK and the quote-center can be
+ * deployed in either order.
  *
  * Everything else THROWS rather than falling back, INCLUDING 5xx (`501` among
  * them — `fetchWithPolicy` classifies every 5xx as retryable and has already
@@ -691,6 +698,15 @@ export async function fetchWaterxSignedLeaves(
  * non-retryable 400.
  */
 export const WATERX_MAX_BATCH_SYMBOLS = 32;
+
+/**
+ * The quote-center routes this rule reads. The leaf route moved with the
+ * quote-center's Spot-BBO consensus API (waterx-quote-center#191): it was
+ * `v1/quotes/leaves`. The envelope route was retired there at the same time
+ * and is kept only as the version-skew fallback (see the module header).
+ */
+const WATERX_LEAF_ROUTE = "v1/sign/bbo/consensus";
+const WATERX_ENVELOPE_ROUTE = "v1/quotes/update";
 
 function chunkSymbols(symbols: string[]): string[][] {
   if (symbols.length <= WATERX_MAX_BATCH_SYMBOLS) return [symbols];
@@ -800,19 +816,13 @@ async function fetchLeafChunk(
   symbols: string[],
   fetchOpts?: FetchPolicy,
 ): Promise<LeafPull> {
-  const res = await fetchQuoteCenter(
-    endpoint,
-    "v1/quotes/leaves",
-    symbols,
-    "leaf fetch",
-    fetchOpts,
-  );
+  const res = await fetchQuoteCenter(endpoint, WATERX_LEAF_ROUTE, symbols, "leaf fetch", fetchOpts);
   if (res.status === 404) {
     const body = (await res.text()).trim();
     const refusal = parseQuoteCenterError(body);
     // No structured body ⇒ nothing served this path at all ⇒ no leaf route,
     // so the caller falls back to the envelope.
-    if (!refusal) return { unavailable: `GET /v1/quotes/leaves → 404 ${body}`.trim() };
+    if (!refusal) return { unavailable: `GET /${WATERX_LEAF_ROUTE} → 404 ${body}`.trim() };
     // The ROUTE answered and refused. Without this split the whole batch fell
     // through to the envelope route, 404'd again there, and threw — one
     // unknown symbol cost every sibling its refresh.
