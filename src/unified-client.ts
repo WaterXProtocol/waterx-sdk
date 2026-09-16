@@ -177,7 +177,9 @@ export interface ClientCreateOptions {
    * the quote-center deployment's CORS allowlist: a front end whose origin is
    * not allowed points this at its own same-origin proxy. An absolute URL whose
    * base PATH is preserved — `https://app.example/api/quote-center` fetches
-   * `…/api/quote-center/v1/sign/bbo/consensus`. Unused by the Pyth sources.
+   * `…/api/quote-center/v1/sign/bbo/consensus`. Unused by the Pyth sources. See
+   * `WaterxAccessConfig.endpoint` (`./oracle/config.ts`) for EVERY route a proxy
+   * must forward.
    */
   waterxEndpoint?: string;
   /**

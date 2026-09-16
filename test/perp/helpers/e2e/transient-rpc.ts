@@ -50,8 +50,15 @@ function isNetworkTypeError(err: TypeError): boolean {
  * off-chain source REST blips — the Lazer POST / quote-center GET throw before
  * the tx builds when the upstream returns 5xx/429 or empty data — infra
  * transients, so callers skip instead of hard-failing.
+ *
+ * EXCLUDES a quote-center 404 that exhausted every route (the `fell back from`
+ * clause). That is not a blip: it means the SDK is requesting paths the service
+ * does not serve, so every build on that network is broken. Swallowing it here
+ * is half of why the 2026-09-04 route rename shipped green (PR #94) — see
+ * `isExhaustedQuoteCenterRoute` in `./simulate-assertions.ts` for the other half.
  */
 export function isOracleTransientFailureMessage(msg: string): boolean {
+  if (msg.includes("fell back from")) return false;
   return (
     msg.includes("Lazer price fetch failed") ||
     msg.includes("Lazer returned no leEcdsa update data") ||

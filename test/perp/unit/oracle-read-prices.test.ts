@@ -261,7 +261,12 @@ describe("readQuoteCenterPrices", () => {
       tickers: ["BTCUSD", "XAUUSD"],
     });
 
-    expect(requestedPaths(spy)).toEqual(["/v1/sign/bbo/consensus", "/v1/quotes/update"]);
+    // The whole ladder, in order: both leaf rungs before the envelope.
+    expect(requestedPaths(spy)).toEqual([
+      "/v1/sign/bbo/consensus",
+      "/v1/quotes/leaves",
+      "/v1/quotes/update",
+    ]);
     expect(out.get("BTCUSD")).toEqual({
       price: 63700,
       conf: 10,

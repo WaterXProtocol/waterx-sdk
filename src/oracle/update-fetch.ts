@@ -170,13 +170,21 @@ function causeMessage(cause: unknown): string {
  */
 export async function readBodySnippet(response: Response): Promise<string> {
   try {
-    const text = await response.text();
-    return text.length > MAX_BODY_SNIPPET_LENGTH
-      ? `${text.slice(0, MAX_BODY_SNIPPET_LENGTH)}…`
-      : text;
+    return bodySnippet(await response.text());
   } catch {
     return "";
   }
+}
+
+/**
+ * {@link readBodySnippet}'s truncation, for a body already in hand — a caller
+ * that must PARSE the body in full still wants the bounded form before pasting
+ * it into an error message.
+ */
+export function bodySnippet(text: string): string {
+  return text.length > MAX_BODY_SNIPPET_LENGTH
+    ? `${text.slice(0, MAX_BODY_SNIPPET_LENGTH)}…`
+    : text;
 }
 
 /** Resolves after `ms`, or rejects immediately (with `signal.reason`) if `signal` fires first. */

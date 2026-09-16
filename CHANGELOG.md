@@ -29,6 +29,14 @@ ledger below is grep-ready. Pointing at a legacy document now throws at `create(
 canonical CDN (`config.waterx.app`) still serves the legacy shape until the config repo's
 v2 promotion, so consumers pin the `staging-v2` mirror until then (#93)._
 
+_BREAKING for `waterxEndpoint` proxies: the quote-center leaf route MOVED, and a
+same-origin proxy that forwards only the old paths will fail every oracle refresh — and
+therefore every tx build. A proxy must forward `GET /v1/sign/bbo/consensus` (the current
+leaf route) in addition to `GET /v1/quotes/leaves` and `GET /v1/quotes/update`, preserving
+`?symbols=`. No SDK API changed, so nothing surfaces this at compile time; browser
+consumers routing quote-center egress through their own backend must update that route in
+the same change set (#94)._
+
 ### BREAKING — the v2 `waterx-config` document is the config
 
 - **One loader, one document, both lines.** `loadConfig` / `clearConfigCache` /
@@ -171,8 +179,36 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   2026-09-04) and retired the batch envelope route (`/v1/quotes/update`) at the same
   time, so every quote-center read had been 404ing since. The response shape is
   unchanged (`{ leaves }`, same fields, `code: 10001` + `symbol` on an unknown symbol).
-  The envelope fallback is kept for a quote-center that predates that API. A
-  `waterxEndpoint` proxy must forward the new path.
+  The leaf fetch now walks a LADDER — `/v1/sign/bbo/consensus`, then the pre-rename
+  `/v1/quotes/leaves`, then the envelope — so a quote-center on either side of the rename
+  still reaches the cheap per-symbol shape instead of being dropped onto the indivisible
+  batch (58 extra moveCalls per trade on the 29-feed mainnet registry). A
+  `waterxEndpoint` proxy must forward the new path (#94).
+
+- **A bodyless leaf-route 404 no longer pastes an unbounded body into the error.**
+  The `unavailable` diagnostic — which rides `fellBackFrom` into the thrown error when
+  neither quote-center route answers — is now truncated the same way every other
+  quote-center failure already was (`describeFailure`), so a proxy or CDN answering
+  with a multi-kilobyte HTML page yields a readable error instead of a wall of markup.
+  The body is still parsed in full, so unknown-symbol peeling is unaffected. Applies to
+  every 404 exit, including the parsed `message` of a coded refusal — which this path,
+  unlike `describeFailure`, reads from a body it parsed whole (#94).
+
+- **An unattributable quote-center 404 now walks the route ladder instead of throwing.**
+  A 404 counts as "this route answered and refused" only when its body names an error
+  `code` or a symbol; the quote-center's own refusals always carry one. Previously the
+  signal was "the body parsed as JSON", which every framework's default 404 page does
+  (`{"error":"not found"}` from Express / Next / Cloudflare) — so a same-origin
+  `waterxEndpoint` proxy that had not yet been updated threw about an unnamed symbol and
+  never reached the fallback it was entitled to. An anonymous 404 now tries the next rung
+  and, if none answers, reports every attempt (#94).
+
+- **A quote-center route outage is no longer skipped in e2e.** `skipIfOracleFetchUnavailable`
+  treated any 404 as a feed/gateway mismatch and `isOracleTransientFailureMessage` treated
+  any quote-center fetch failure as an infra blip, so a 404 on EVERY route — the SDK asking
+  for paths the service does not serve — went green while both live networks were broken.
+  Both now exclude an exhausted ladder (`isExhaustedQuoteCenterRoute`); a per-feed 404 stays
+  skippable (#94).
 
 - **Quote-center errors are keyed on a NUMERIC code.** `QUOTE_CENTER_ERROR_CODES`
   (`oracle/rules/waterx-rule.ts`) is the single place a wire code is given
