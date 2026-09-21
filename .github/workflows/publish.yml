@@ -43,14 +43,27 @@ jobs:
           RELEASE_TYPE: ${{ inputs.releaseType }}
           ACTOR: ${{ github.actor }}
           ACTOR_ID: ${{ github.actor_id }}
+          # Space-separated GitHub user ids, managed in repo Settings -> Secrets
+          # and variables -> Actions -> Variables, so widening who may publish
+          # does not need a PR to this file. Note what that trades away: a repo
+          # admin can change these without review, and the change lands in the
+          # audit log rather than in git history.
+          RELEASE_PUBLISHERS: ${{ vars.RELEASE_PUBLISHERS }}
+          PRERELEASE_PUBLISHERS: ${{ vars.PRERELEASE_PUBLISHERS }}
         run: |
           set -euo pipefail
-          # GitHub user ids. Official releases are trillionxdev's call alone;
-          # allen-hsu may also cut prereleases.
           if [ "$RELEASE_TYPE" = "prerelease" ]; then
-            allowed="26142789 2819672" # trillionxdev, allen-hsu
+            allowed="$PRERELEASE_PUBLISHERS"
           else
-            allowed="26142789"         # trillionxdev
+            allowed="$RELEASE_PUBLISHERS"
+          fi
+
+          # An unset or deleted variable denies everyone rather than opening the
+          # gate — but say WHY, because "nobody may publish" and "you may not
+          # publish" need different fixes.
+          if [ -z "$allowed" ]; then
+            echo "::error::no publisher allowlist is configured for '$RELEASE_TYPE' — set the repo variable (RELEASE_PUBLISHERS / PRERELEASE_PUBLISHERS)"
+            exit 1
           fi
 
           for id in $allowed; do
