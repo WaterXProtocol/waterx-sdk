@@ -606,13 +606,23 @@ async function fetchQuoteCenter(
  * so a deployment whose quote-center serves NEITHER route reports both
  * statuses instead of only the second one.
  */
+/**
+ * Marks an error thrown only AFTER every rung of {@link WATERX_LEAF_ROUTES} was
+ * tried and the envelope was used as a last resort — i.e. the leaf ladder is
+ * exhausted, not merely slow. The e2e helpers key "this is a route outage, not
+ * an infra blip" on this exact string, so it is a constant they import rather
+ * than prose they re-spell: rewording it breaks compilation instead of silently
+ * reverting CI to swallowing the outage (2026-09-04, ~12 green days).
+ */
+export const QUOTE_CENTER_FALLBACK_MARKER = "fell back from";
+
 export async function fetchWaterxSignedUpdate(
   endpoint: string,
   symbols: string[],
   fetchOpts?: FetchPolicy,
   fellBackFrom?: string,
 ): Promise<WaterxSignedEnvelope> {
-  const context = fellBackFrom ? ` (fell back from ${fellBackFrom})` : "";
+  const context = fellBackFrom ? ` (${QUOTE_CENTER_FALLBACK_MARKER} ${fellBackFrom})` : "";
   // Unlike leaves, this route cannot be chunked: the response is ONE signature
   // over the whole batch, so two envelopes are two different snapshots and the
   // payload shape holds one. Say so explicitly rather than let the enclave
@@ -717,8 +727,20 @@ export async function fetchWaterxSignedLeaves(
     const leaves = [...first.leaves];
     for (const pull of rest) {
       // A later chunk cannot re-open the route question: the probe already
-      // proved this rung serves leaves, so anything else is this chunk's own
-      // answer (an unknown symbol) and belongs to the caller as-is.
+      // proved this rung serves leaves. So an `unavailable` here does NOT mean
+      // "no leaf route" — it means this route answered the probe and then
+      // anonymously 404'd a later chunk. Returning it as the ladder's verdict
+      // would abandon a WORKING leaf route and escalate the FULL symbol list to
+      // the envelope, which over the enclave's cap cannot even be requested.
+      if ("unavailable" in pull) {
+        throw new Error(
+          `WaterX quote-center served leaves on /${route} for the first ${String(
+            chunks[0]?.length ?? 0,
+          )} symbols and then answered an anonymous 404 for a later chunk: ${pull.unavailable}`,
+        );
+      }
+      // Anything left is this chunk's own answer (an unknown symbol) and
+      // belongs to the caller as-is.
       if (!("leaves" in pull)) return pull;
       leaves.push(...pull.leaves);
     }

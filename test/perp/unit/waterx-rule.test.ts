@@ -444,6 +444,25 @@ describe("quote-center batch cap", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("a later chunk's anonymous 404 does not retract a route the probe proved", async () => {
+    // The probe chunk established that this rung serves leaves. If a LATER chunk
+    // answers an anonymous 404 and that verdict is returned as the ladder's, the
+    // caller reads "no leaf route", abandons a working one, and escalates all 40
+    // symbols to the envelope — which cannot even be requested over the cap, so
+    // the real failure surfaces as a bogus "needs 40 symbols" message.
+    const symbols = Array.from({ length: 40 }, (_, i) => `T${String(i)}USD`);
+    mockLeafRouteEchoingSymbols({
+      // Chunk 1 (T0..T31) serves leaves — the probe succeeds. Chunk 2 answers a
+      // 404 whose body names neither a code nor a symbol, which `fetchLeafChunk`
+      // classifies as `unavailable`.
+      refuse: (chunk) => (chunk.includes("T32USD") ? '{"error":"not found"}' : undefined),
+    });
+
+    await expect(fetchWaterxSignedLeaves("https://qc.example", symbols)).rejects.toThrow(
+      /served leaves on .* and then answered an anonymous 404 for a later chunk/,
+    );
+  });
+
   it("refuses an over-cap ENVELOPE fetch with a message naming the cap", async () => {
     // One signature covers the whole batch, so this route genuinely cannot be
     // split; the failure should say that instead of surfacing a bare 400.
@@ -796,7 +815,13 @@ describe("refreshOraclePrices — partial quote-center coverage", () => {
     // (b) the same status with a body that attributes nothing → NOT a refusal.
     // The route question is answered by "did the body name a code or a symbol",
     // so an anonymous 404 walks the ladder and then reports every attempt.
-    mockQuoteCenter({ leaves: { status: 404 }, update: { status: 404 } });
+    // The body must be JSON that names neither: without an explicit `text` the
+    // fixture serves "Not Found", which exercises the OTHER arm (body does not
+    // parse as JSON at all) and leaves this one uncovered.
+    mockQuoteCenter({
+      leaves: { status: 404, text: '{"error":"not found"}' },
+      update: { status: 404, text: '{"error":"not found"}' },
+    });
     await expect(
       fetchWaterxUpdateData(client, ["BTCUSD", "ETHUSD"], { coverage: "partial" }),
     ).rejects.toThrow(/fell back from GET \/v1\/sign\/bbo\/consensus → 404/s);
