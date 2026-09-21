@@ -47,13 +47,10 @@ jobs:
           set -euo pipefail
           # GitHub user ids. Official releases are trillionxdev's call alone;
           # allen-hsu may also cut prereleases.
-          release_publishers="26142789"            # trillionxdev
-          prerelease_publishers="26142789 2819672" # trillionxdev, allen-hsu
-
           if [ "$RELEASE_TYPE" = "prerelease" ]; then
-            allowed="$prerelease_publishers"
+            allowed="26142789 2819672" # trillionxdev, allen-hsu
           else
-            allowed="$release_publishers"
+            allowed="26142789"         # trillionxdev
           fi
 
           for id in $allowed; do
@@ -102,9 +99,9 @@ jobs:
       # A clean install on purpose: a release never restores a node_modules
       # cache that another branch's workflow could have written.
       - run: pnpm install --frozen-lockfile
-      # The same bar `ci.yml` holds every PR to. `main` has no required checks,
-      # and `ci.yml` only runs on `pull_request`, so this is the gate that
-      # actually stands between a commit and the registry.
+      # Everything `ci.yml` runs that needs neither chain access nor a security
+      # scanner. `main` has no required checks and `ci.yml` is `pull_request`-only,
+      # so this is the gate that actually stands between a commit and the registry.
       - run: pnpm lint
       - run: pnpm docs:check
       - run: pnpm typecheck
@@ -126,19 +123,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Enable together with the npm-side binding — the OIDC subject changes the
-    # moment this line is live, and npm has to be expecting it:
-    #   1. repo Settings -> Environments -> "npm-publish": required reviewers
-    #      plus a deployment branch rule for `main`;
-    #   2. npmjs.com -> @waterx/sdk -> Settings -> Trusted publisher: set
-    #      Environment to "npm-publish".
+    # Gating on a reviewed environment takes both sides at once: repo Settings ->
+    # Environments -> "npm-publish" (reviewers + a `main`-only branch rule), and
+    # npmjs.com -> @waterx/sdk -> Trusted publisher -> Environment. The OIDC
+    # subject changes the moment this is live, so npm must already expect it.
     # environment: npm-publish
     permissions:
       contents: write # push the version bump back to main
       id-token: write # npm trusted publishing (OIDC) + provenance
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      dist-tag: ${{ steps.version.outputs.dist-tag }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -155,7 +147,11 @@ jobs:
       - name: Check the artifact carries the package entry points
         run: |
           set -euo pipefail
-          for f in dist/src/sdk.js dist/src/sdk.d.ts dist/cjs/src/sdk.js dist/cjs/package.json; do
+          # Read the paths off package.json rather than keep a list in step with
+          # it by hand; `dist/cjs/package.json` is finalize-cjs.mjs's marker and
+          # has no field to name it. This proves only that the artifact survived
+          # the round-trip — `check:exports` validated the map in the build job.
+          for f in $(npm pkg get main module types | jq -r '.[]') dist/cjs/package.json; do
             if [ ! -s "$f" ]; then
               echo "::error::built artifact is missing $f"
               exit 1
@@ -184,9 +180,9 @@ jobs:
             # restarts the counter at .0 — two prereleases in a row would compute
             # the same version and the second would 403. Take the series npm
             # derived and number it by the run instead: monotonic, never reused.
-            npm version prerelease --preid "$PRE_RELEASE_TAG" --no-git-tag-version >/dev/null
-            series="$(node -p 'require("./package.json").version.replace(/\.[0-9]+$/, "")')"
-            version="$series.$RUN_NUMBER"
+            series="$(npm version prerelease --preid "$PRE_RELEASE_TAG" --no-git-tag-version)"
+            series="${series#v}"                # X.Y.Z-<tag>.0
+            version="${series%.*}.$RUN_NUMBER"  # X.Y.Z-<tag>.<run>
             npm version "$version" --no-git-tag-version >/dev/null
             dist_tag="$PRE_RELEASE_TAG"
           else
@@ -207,7 +203,7 @@ jobs:
         run: |
           set -euo pipefail
           if npm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
-            echo "::error::$PACKAGE@$VERSION is already published — pick a different release type"
+            echo "::error::$PACKAGE@$VERSION is already published — dispatch a fresh run (a re-run reuses this run's number) or pick a different release type"
             exit 1
           fi
           echo "$PACKAGE@$VERSION is free"
@@ -216,16 +212,20 @@ jobs:
       # matches the claim against the repository AND this workflow's filename,
       # so renaming this file breaks publishing until npmjs.com is updated.
       - name: Publish
-        if: ${{ !inputs.dryRun }}
         env:
           DIST_TAG: ${{ steps.version.outputs.dist-tag }}
-        run: npm publish --provenance --access public --ignore-scripts --tag "$DIST_TAG"
-
-      - name: Publish (dry run)
-        if: ${{ inputs.dryRun }}
-        env:
-          DIST_TAG: ${{ steps.version.outputs.dist-tag }}
-        run: npm publish --dry-run --access public --ignore-scripts --tag "$DIST_TAG"
+          DRY_RUN: ${{ inputs.dryRun }}
+        run: |
+          set -euo pipefail
+          # One invocation, so the shared flags can never drift between the real
+          # publish and its rehearsal. `--provenance` is the one difference: a dry
+          # run performs no OIDC exchange, so it has nothing to attest.
+          if [ "$DRY_RUN" = "true" ]; then
+            mode="--dry-run"
+          else
+            mode="--provenance"
+          fi
+          npm publish "$mode" --access public --ignore-scripts --tag "$DIST_TAG"
 
       # Releases only. A prerelease bump stays off `main` on purpose — see the
       # version step; the run number, not the repo, carries its counter.
@@ -248,8 +248,7 @@ jobs:
           # The registry timestamp CHANGELOG.md dates its sections by, and the
           # commit npm recorded as gitHead (this checkout, one before the bump).
           published_at="$(npm view "$PACKAGE" time --json 2>/dev/null \
-            | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[process.env.VERSION] ?? "unknown"' \
-            || echo unknown)"
+            | jq -r --arg v "$VERSION" '.[$v] // "unknown"' || echo unknown)"
           {
             echo "## $PACKAGE@$VERSION"
             echo
