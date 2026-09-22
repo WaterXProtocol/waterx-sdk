@@ -45,11 +45,17 @@ the same change set (#94)._
   the quote-center — no `waterx_rule::collect_*` command is built and no quote-center
   fetch is made — and a symbol in neither rule's map is skipped by `refreshOraclePrices`
   and rejected by the composers' `assertTickersRefreshed`, exactly as an unlisted ticker
-  always was. Requires `@waterx/config` ≥ `0.1.1-staging.2` (waterx-config `c471511`);
-  the deployment document decides which symbols get which legs, so a consumer that
-  relied on "every symbol gets a quote-center leaf" must list those symbols there.
-- **`oracle_rules.pyth` is gone from `WaterXConfig`** — the v2 document dropped the
-  retired Pyth Core block; a consumer that read it must stop.
+  always was. A `prediction` symbol is never served even when the feed map lists one —
+  the quote-center 404s the whole batch on it — and one predicate (`waterxServes`)
+  answers "does the quote-center serve this ticker" for the fed set, the read plane and
+  the fetch partition alike. Requires `@waterx/config` ≥ `0.1.1-staging.2`, published
+  from waterx-config `a9fc5e5`; the deployment document decides which symbols get which
+  legs, so a consumer that relied on "every symbol gets a quote-center leaf" must list
+  those symbols there.
+- **`oracle_rules.pyth` is gone from the parsed `WaterXConfig`** — the retired Pyth Core
+  block is still SERVED (consumers pinned to an older parser require the field), but
+  this package's types no longer model it and the strict parse strips it, so a consumer
+  that read `config.oracle_rules.pyth` must stop.
 
 ### BREAKING — the v2 `waterx-config` document is the config
 

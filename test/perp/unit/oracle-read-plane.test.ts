@@ -13,8 +13,21 @@ import { readPlanTickers, resolveOracleReadPlan } from "../../../src/oracle/read
 
 /** A host whose config wires exactly the given Lazer ids / waterx feeds. */
 function hostWith(
-  wiring: { lazerFeedIds?: Record<string, number>; waterxFeeds?: string[] } = {},
+  wiring: {
+    lazerFeedIds?: Record<string, number>;
+    waterxFeeds?: string[];
+    /** Symbols to mark `kind: "prediction"` in the universe. */
+    predictionSymbols?: string[];
+  } = {},
 ): OracleHost {
+  const universe: Record<string, { kind: string }> = {
+    BTCUSD: { kind: "perp" },
+    ETHUSD: { kind: "perp" },
+    XAUUSD: { kind: "perp" },
+  };
+  for (const symbol of wiring.predictionSymbols ?? []) {
+    universe[symbol] = { kind: "prediction" };
+  }
   return {
     config: {
       oracle_rules: {
@@ -25,7 +38,7 @@ function hostWith(
           : {},
       },
       // The universe is populated on purpose: it must never leak into a plan.
-      symbols: { BTCUSD: { kind: "perp" }, ETHUSD: { kind: "perp" }, XAUUSD: { kind: "perp" } },
+      symbols: universe,
     },
   } as unknown as OracleHost;
 }
@@ -96,6 +109,21 @@ describe("resolveOracleReadPlan", () => {
     const plan = resolveOracleReadPlan(host, "waterx_rule", ["XAUUSD", "toString"]);
 
     expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"] });
+  });
+
+  it("waterx_rule: a LISTED prediction symbol is still not claimed — it would 404 the whole batch", () => {
+    // The read plane must ask the SAME question the served set and the fetch
+    // partition ask (`waterxServes`). Filtering on the raw feed map instead
+    // would route a prediction symbol to the quote-center and fail the batch
+    // for every ticker beside it.
+    const host = hostWith({
+      waterxFeeds: ["BTCUSD", "PREDMKT"],
+      predictionSymbols: ["PREDMKT"],
+    });
+
+    const plan = resolveOracleReadPlan(host, "waterx_rule", ["BTCUSD", "PREDMKT"]);
+
+    expect(plan).toEqual({ plane: "quote_center", tickers: ["BTCUSD"] });
   });
 
   it("waterx_rule: NO feeds map serves NOTHING, whatever `symbols` says — never a silent quote-center takeover", () => {

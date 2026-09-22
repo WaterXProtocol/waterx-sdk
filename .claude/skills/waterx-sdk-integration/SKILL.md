@@ -66,8 +66,10 @@ with `deriveOracleSources(config)`.
 | `pyth_lazer_rule` | one signed verify per PTB, no per-feed fees; **requires `pythApiKey`**           |
 | `waterx_rule`     | first-party TEE quote-center; no credential; browser needs a CORS-allowed origin |
 
-(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0. Its block is still published
-in the live configs and is inert: it is not a derivable source, so nothing feeds it.)
+(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0. Its `oracle_rules.pyth` block
+is still served — consumers on an older parser require the field — and the SDK's parsed
+`WaterXConfig` does not model it, so it is stripped. It is not a derivable source either
+way, so nothing feeds it.)
 
 Why derived rather than declared: **the fed set must be a superset of every ticker's
 on-chain weighted rules.** Starving a weighted rule aborts `EMissingPriceSource`; feeding

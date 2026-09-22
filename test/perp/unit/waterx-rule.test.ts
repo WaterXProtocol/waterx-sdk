@@ -169,7 +169,7 @@ describe("WaterxRule — port", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "toString"])).rejects.toThrow(
-      /waterx_rule: ticker not in oracle_rules\.waterx\.feeds: toString/,
+      /waterx_rule: ticker not served by the quote-center .*: toString/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -188,7 +188,7 @@ describe("WaterxRule — port", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
-      /ticker not in oracle_rules\.waterx\.feeds/,
+      /ticker not served by the quote-center/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });

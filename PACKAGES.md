@@ -69,9 +69,7 @@ The reason is that the chain arbitrates and the failure is one-sided: feeding an
 answer, and a hand-typed list could only err in the fatal direction — the classic being one
 copied between networks, naming a source that deployment does not carry.
 
-Retired rules are inert for a structural reason worth knowing: `pyth_rule` is not a
-member of `ORACLE_SOURCES`, so no rule module exists that could feed it — and the v2
-document carries no `oracle_rules.pyth` block any more.
+Retired rules are inert for a structural reason worth knowing: `pyth_rule` (Pyth Core) is not an `ORACLE_SOURCES` member, so no rule module exists that could feed it. Its `oracle_rules.pyth` block is still SERVED — consumers pinned to an older parser require the field — and the SDK's parsed `WaterXConfig` does not model it, so it is simply stripped. Present or absent, it can never enter a fed set.
 
 ```ts
 import { deriveOracleSources } from "@waterx/sdk/oracle";

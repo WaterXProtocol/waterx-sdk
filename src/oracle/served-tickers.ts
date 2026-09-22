@@ -36,19 +36,37 @@ export function waterxFeeds(config: WaterXConfig): WaterXConfig["oracle_rules"][
 }
 
 /**
+ * THE predicate: does the quote-center serve `ticker` in this deployment?
+ *
+ * Every waterx path asks through here — the served set below, the fetch
+ * partition (`pullWaterxData`) and the read plane (`resolveOracleReadPlan`) —
+ * so "listed" cannot mean one thing when a leg is WIRED and another when it is
+ * READ or FETCHED. Two conditions, and both have to hold:
+ *
+ * 1. `oracle_rules.waterx.feeds` names it. `ownEntry` is own-keys-only (never
+ *    the `in` operator or a bare bracket read), so a prototype-key ticker
+ *    ("toString") reads as unlisted instead of poisoning a batch.
+ * 2. It is not a `prediction` symbol. Those live in the same `symbols`
+ *    universe but are not priced through this plane, and asking the
+ *    quote-center for one 404s the WHOLE batch — so a hand-authored feed list
+ *    that names one must not reach the network.
+ */
+export function waterxServes(config: WaterXConfig, ticker: string): boolean {
+  return (
+    ownEntry(waterxFeeds(config), ticker) !== undefined &&
+    ownEntry(config.symbols, ticker)?.kind !== "prediction"
+  );
+}
+
+/**
  * Tickers with an `oracle_rules.waterx.feeds` entry — the quote-center's feed
  * list, declared per rule exactly like Lazer's. The `symbols` universe is NOT
- * consulted: a symbol builds a `waterx_rule` leg (and a quote-center fetch)
- * iff the deployment lists it here, so a document with no `feeds` map (or an
- * empty one) takes the quote-center out of the fed set entirely.
- *
- * `prediction` symbols are dropped even when listed: they live in the same
- * `symbols` universe but are not priced through this plane, and asking the
- * quote-center for one 404s the WHOLE batch. The list is authored by hand, so
- * this stays as the runtime guard the old universe-filter used to provide.
+ * consulted as a SERVED SET: a symbol builds a `waterx_rule` leg (and a
+ * quote-center fetch) iff the deployment lists it here, so a document with no
+ * `feeds` map (or an empty one) takes the quote-center out of the fed set
+ * entirely. It IS consulted for the prediction exclusion — see
+ * [`waterxServes`], which this is the list form of.
  */
 export function waterxServedTickers(config: WaterXConfig): string[] {
-  return Object.keys(waterxFeeds(config) ?? {}).filter(
-    (symbol) => ownEntry(config.symbols, symbol)?.kind !== "prediction",
-  );
+  return Object.keys(waterxFeeds(config) ?? {}).filter((symbol) => waterxServes(config, symbol));
 }

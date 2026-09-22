@@ -51,7 +51,6 @@ import {
   newBatchPayload,
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
-import { ownEntry } from "../../utils/record.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -59,7 +58,7 @@ import {
   type RuleUpdateData,
 } from "../price-update-rule.ts";
 import type { OraclePriceEntry } from "../read-prices.ts";
-import { waterxFeeds, waterxServedTickers } from "../served-tickers.ts";
+import { waterxServedTickers, waterxServes } from "../served-tickers.ts";
 import {
   bodySnippet,
   FetchPolicyError,
@@ -1171,17 +1170,19 @@ async function pullWaterxData(
   // One partition pass over the declared feed list (`oracle_rules.waterx.feeds`),
   // own-keys-only: a prototype-key ticker ("toString") must read as unlisted,
   // not pass as an inherited Function and reach the network.
-  const feeds = waterxFeeds(host.config);
   const missing: string[] = [];
   const listed: string[] = [];
   for (const ticker of tickers) {
-    (ownEntry(feeds, ticker) === undefined ? missing : listed).push(ticker);
+    (waterxServes(host.config, ticker) ? listed : missing).push(ticker);
   }
   // Unlisted tickers never reach the network on EITHER policy — the
   // quote-center 404s a whole batch on one unknown symbol. Strict surfaces
   // the per-ticker message; partial just records the gap and pulls the rest.
   if (coverage === "strict" && missing.length > 0) {
-    throw new Error(`waterx_rule: ticker not in oracle_rules.waterx.feeds: ${missing[0]}`);
+    throw new Error(
+      `waterx_rule: ticker not served by the quote-center (absent from ` +
+        `oracle_rules.waterx.feeds, or a prediction symbol): ${missing[0]}`,
+    );
   }
   if (listed.length === 0) return { data: null, missing };
 
