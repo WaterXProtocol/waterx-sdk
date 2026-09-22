@@ -252,7 +252,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",
-    "@waterx/config": "0.1.1-staging.1"
+    "@waterx/config": "0.1.1-staging.2"
   },
   "peerDependencies": {
     "@mysten/bcs": "^1.9.0",
@@ -282,5 +282,10 @@
     "typescript-eslint": "8.60.0",
     "vitest": "4.1.8"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "@waterx/config": "file:vendor/waterx-config"
+    }
+  }
 }

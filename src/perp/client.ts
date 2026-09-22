@@ -229,6 +229,16 @@ export class PerpClient extends BaseLineClient<PerpLineConfig> {
     return this.view.creditType();
   }
 
+  /** @see PerpConfigView.creditStack */
+  creditStack(credit?: string) {
+    return this.view.creditStack(credit);
+  }
+
+  /** @see PerpConfigView.creditStacks */
+  creditStacks() {
+    return this.view.creditStacks();
+  }
+
   /** @see PerpConfigView.getNativeAsset */
   getNativeAsset(moveType: string) {
     return this.view.getNativeAsset(moveType);

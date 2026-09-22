@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@waterx/config': file:vendor/waterx-config
+
 importers:
 
   .:
@@ -12,8 +15,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       '@waterx/config':
-        specifier: 0.1.1-staging.1
-        version: 0.1.1-staging.1
+        specifier: file:vendor/waterx-config
+        version: file:vendor/waterx-config
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.4
@@ -915,8 +918,8 @@ packages:
   '@vitest/utils@4.1.8':
     resolution: {integrity: sha512-uOJamYALNhfJ6iolExyQM40yIQwDqYnkKtQ5VCiSe17E33H0aQ/u+1GlRuz4LZBk6Mm3sg90G9hEbmEt37C1Zg==}
 
-  '@waterx/config@0.1.1-staging.1':
-    resolution: {integrity: sha512-6aKK93ZdCWM3MN7X7YKQOgZThiI73bDsYIg1aV3jDSIXNZc6ka1l/KApbvk0U7P1Z2J4M+u3MCuoev+hrR9gdQ==}
+  '@waterx/config@file:vendor/waterx-config':
+    resolution: {directory: vendor/waterx-config, type: directory}
     engines: {node: '>=18'}
 
   acorn-jsx@5.3.2:
@@ -2579,7 +2582,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@waterx/config@0.1.1-staging.1':
+  '@waterx/config@file:vendor/waterx-config':
     dependencies:
       zod: 3.25.76
 

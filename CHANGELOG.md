@@ -149,6 +149,15 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Changed
 
+- **`@waterx/config` is consumed through a temporary vendored build.** The parser
+  the SDK needs — one that carries the per-credit maps — is `waterx-config`
+  `staging-v2` @ `e21549f`, which the registry does not have yet (`0.1.1-staging.1`
+  predates the maps and STRIPS them). `package.json` declares the registry version
+  the SDK will need (`0.1.1-staging.2`) and a `pnpm.overrides` entry points THIS
+  repo's install at `vendor/waterx-config/` (build output only). The published
+  manifest is therefore publint-clean and correct once that version exists; **do
+  not run the publish workflow before it does**. `vendor/README.md` has the
+  removal / refresh steps (#97).
 - **`WATERX_CONFIG_URL` is now a CDN BASE root** (no file name) across every repo
   harness — scripts, e2e/integration helpers, examples, CI — with the boundary
   composing `${base}/${network}.json` (`scripts/waterx-config-url.ts`). One
@@ -173,6 +182,13 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Fixed
 
+- **`client.perp.refreshOraclePrices` / `refreshWlpPoolOracles` / `parseWholeDollarU64`
+  are no longer grafted onto the umbrella facade.** They are `(tx, …)` / `(value)`
+  helpers, so the bound methods passed the client where a transaction or string was
+  expected and threw on every call. They stay importable as free functions (`perp.*`
+  and the module paths); the umbrella now audits every bound builder's first
+  parameter in unit tests so a non-client-first export cannot be mis-bound again
+  (#97).
 - **`waterx_rule` reads the quote-center's current leaf route.** The leaf fetch now hits
   `GET /v1/sign/bbo/consensus?symbols=…` — the quote-center renamed it from
   `/v1/quotes/leaves` with its Spot-BBO consensus API (waterx-quote-center#191,
@@ -238,6 +254,45 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Added
 
+- **Multi-credit stacks — SUI / DEEP / WAL beside USD.** The chain now runs one
+  `CreditRegistry<CREDIT>` + `CustodyVault<CREDIT>` + `Queue<CREDIT>` per credit
+  coin (`usd_credit::usd::USD`, `sui_credit::sui::SUI`, `deep_credit::deep::DEEP`,
+  `wal_credit::wal::WAL`, all 6-decimal, NativeCustody-only for the new three), and
+  the v2 config carries them as three parallel alias-keyed maps
+  (`objects.credit.registries` / `objects.custody.vaults` /
+  `objects.withdrawal_queue.queues`) next to the singular USD fields. New
+  `account/credit-stack.ts` (exported from `@waterx/sdk/account` and the root) is
+  the ONLY join point: `resolveCreditStack(config, ref?)` takes an alias
+  (case-insensitive) or a Move type and returns the credit's `{ registry, vault,
+  assets, queue, executors, creditType, decimals, metadataCap? }`; it defaults to
+  the credit `objects.credit.credit_type` names (USD) and **throws on an unknown
+  credit — there is no fallback to USD**, so a non-USD credit can never be paired
+  with the USD registry. `creditStacks(config)` lists every stack (throws on a
+  half-wired one) and `creditStackForAsset(config, T)` finds the stack whose vault
+  registers backing asset `T`. Surfaced as `client.creditStack(credit?)` /
+  `client.creditStacks()` on `AccountClientLike` / `PerpClient` — on the umbrella
+  that is `client.perp.creditStack(…)`; the `(config, …)` functions are exported
+  for callers holding a config but are deliberately NOT bound onto
+  `client.account` (#97).
+  - Every credit builder's `creditType?` now accepts an alias OR a type and routes
+    to that credit's own objects: `mintCredit`, `mintCreditFromRequest`,
+    `mintCreditToAccount`, `custodyMint`, `redeemVaa`, `enqueueWithdrawal`,
+    `executeWithdrawalNative`, `executeWithdrawalWormhole`, `requestCreditWithdraw`,
+    and the `getBridgeFee` quote (which now reads that credit's queue).
+    Omitting it still means USD, so existing calls are unchanged.
+  - The consolidate sweep is per credit: `probeParkedBackingAssets`,
+    `probeAddressCreditBalance`, `appendConsolidateToUsd`,
+    `appendConsolidateAddressCredit`, `appendConsolidateForSpend`,
+    `buildConsolidateToUsdTx` gain a trailing `credit?`. Perp `build*Tx` composers
+    keep sweeping the default USD collateral; the prediction `buildPlaceOrderTx` /
+    `buildBatchClaimTx` now sweep into the market's **settlement coin**, so an
+    order on a SUI-settled market folds parked SUI into the SUI credit instead of
+    USD. `getCustodyVaultData(client, credit?)` / `getCustodyAssetData(client, T,
+    credit?)` read a chosen credit's vault (the asset read defaults to the credit
+    whose vault registers `T`); `getNativeAsset` searches every credit's vault.
+  - Requires a config document that carries the maps (`staging-v2` /
+    `main-v2` after waterx-config #77) — see the `@waterx/config` note under
+    Changed.
 - **`PythProHistoryError`** — typed error thrown by `fetchPythProHistory` on a
   non-2xx response, carrying `.status`. The message format is unchanged, so
   existing message-parsing consumers keep working; consumers can migrate from

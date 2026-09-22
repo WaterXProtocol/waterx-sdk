@@ -13,6 +13,14 @@
  * at the call site.
  */
 
+import { normalizeStructTag } from "@mysten/sui/utils";
+
+import {
+  creditStackForAsset,
+  creditStacks,
+  resolveCreditStack,
+  type CreditStack,
+} from "../account/credit-stack.ts";
 import type {
   NativeCustodyAsset,
   PerpMarketEntry,
@@ -101,9 +109,22 @@ export class PerpConfigView {
     return this.config.objects.credit.credit_type;
   }
 
-  /** A native-custody asset row by its fully-qualified Move type, throws if unknown. */
+  /** @see resolveCreditStack */
+  creditStack(credit?: string): CreditStack {
+    return resolveCreditStack(this.config, credit);
+  }
+
+  /** @see creditStacks */
+  creditStacks(): Readonly<Record<string, CreditStack>> {
+    return creditStacks(this.config);
+  }
+
+  /** A native-custody asset row by its Move type, searched across every credit's vault; throws if unknown. */
   getNativeAsset(moveType: string): NativeCustodyAsset {
-    const row = this.config.objects.custody.assets.find((a) => a.type === moveType);
+    const type = normalizeStructTag(moveType);
+    const row = creditStackForAsset(this.config, type)?.assets.find(
+      (a) => normalizeStructTag(a.type) === type,
+    );
     if (!row) throw new Error(`No native custody asset registered for type: ${moveType}`);
     return row;
   }

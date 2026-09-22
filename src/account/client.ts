@@ -17,6 +17,7 @@
 import type { BaseLineClient } from "../base-client.ts";
 import type { NativeCustodyAsset } from "../config.ts";
 import type { WormholeInfraConfig } from "./config.ts";
+import type { CreditStack } from "./credit-stack.ts";
 
 /**
  * The slice the **generic wxa builders** (create account / delegates / alias /
@@ -30,8 +31,16 @@ export interface AccountClientLike extends BaseLineClient {
   /** External Wormhole infra for the network (`WORMHOLE_DEFAULTS`). */
   readonly wormhole: WormholeInfraConfig;
 
-  /** Fully-qualified CREDIT coin Move type (`objects.credit.credit_type`). */
+  /** Fully-qualified Move type of the DEFAULT credit (`objects.credit.credit_type`, USD). */
   creditType(): string;
-  /** A native-custody backing-asset row by its fully-qualified Move type; throws if unknown. */
+  /**
+   * The credit stack (registry / vault / queue ids) for `credit` — an alias
+   * such as `"SUI"` or a Move type — or the default credit when omitted.
+   * Throws on an unknown credit. See {@link CreditStack}.
+   */
+  creditStack(credit?: string): CreditStack;
+  /** Every credit stack in the config, keyed by alias. */
+  creditStacks(): Readonly<Record<string, CreditStack>>;
+  /** A native-custody backing-asset row by its Move type, searched across every credit's vault; throws if unknown. */
   getNativeAsset(moveType: string): NativeCustodyAsset;
 }

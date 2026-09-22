@@ -20,6 +20,7 @@ import {
   type PlaceOrderParams,
 } from "./prediction.ts";
 import type { IdArgument } from "./types.ts";
+import { resolveSettlementCoinType } from "./utils.ts";
 
 export interface PredictCommonBuildOpts {
   tx?: Transaction;
@@ -52,10 +53,13 @@ async function maybeConsolidate(
   tx: Transaction,
   accountId: IdArgument,
   opts: PredictCommonBuildOpts | undefined,
+  settlementCoinType: string,
 ): Promise<void> {
   if (opts?.consolidateToUsd === false) return;
   if (typeof accountId !== "string") return;
-  await appendConsolidateForSpend(perpClient, tx, accountId);
+  // Sweep into the credit the order settles in — a SUI-settled market folds
+  // parked SUI into the SUI credit, not into USD.
+  await appendConsolidateForSpend(perpClient, tx, accountId, settlementCoinType);
 }
 
 function stripPlaceOrderParams(params: BuildPlaceOrderTxParams): PlaceOrderParams {
@@ -80,7 +84,13 @@ export async function buildPlaceOrderTx(
   params: BuildPlaceOrderTxParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  await maybeConsolidate(perpClient, tx, params.accountId, params);
+  await maybeConsolidate(
+    perpClient,
+    tx,
+    params.accountId,
+    params,
+    resolveSettlementCoinType(predictClient, params.settlementCoinType),
+  );
   placeOrder(predictClient, tx, stripPlaceOrderParams(params));
   return tx;
 }
@@ -94,7 +104,13 @@ export async function buildBatchClaimTx(
   params: BuildBatchClaimTxParams,
 ): Promise<Transaction> {
   const tx = newTx(params);
-  await maybeConsolidate(perpClient, tx, params.accountId, params);
+  await maybeConsolidate(
+    perpClient,
+    tx,
+    params.accountId,
+    params,
+    resolveSettlementCoinType(predictClient, params.settlementCoinType),
+  );
   batchClaim(predictClient, tx, stripBatchClaimParams(params));
   return tx;
 }

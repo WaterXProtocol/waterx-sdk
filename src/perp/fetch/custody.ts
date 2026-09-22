@@ -5,6 +5,7 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
 
+import { creditStackForAsset } from "../../account/credit-stack.ts";
 import { assertFeaturePackage } from "../../config.ts";
 import {
   burnFeeRate as burnFeeRateCall,
@@ -16,12 +17,16 @@ import type { PerpClient } from "../client.ts";
 import { DRY_RUN_SENDER } from "../constants.ts";
 import { simulateAndExtract } from "./simulate.ts";
 
-function custodyObjects(client: PerpClient): { pkg: string; vault: string; creditType: string } {
+function custodyObjects(
+  client: PerpClient,
+  credit?: string,
+): { pkg: string; vault: string; creditType: string } {
   assertFeaturePackage(client.config, "native_custody", "the native custody PSM");
+  const stack = client.creditStack(credit);
   return {
     pkg: client.config.packages.native_custody.published_at,
-    vault: client.config.objects.custody.vault,
-    creditType: client.creditType(),
+    vault: stack.vault,
+    creditType: stack.creditType,
   };
 }
 
@@ -32,8 +37,11 @@ export interface CustodyVaultData {
 }
 
 /** Reads vault-wide native-custody state via `custody_vault::credit_supply`. */
-export async function getCustodyVaultData(client: PerpClient): Promise<CustodyVaultData> {
-  const { pkg, vault, creditType } = custodyObjects(client);
+export async function getCustodyVaultData(
+  client: PerpClient,
+  credit?: string,
+): Promise<CustodyVaultData> {
+  const { pkg, vault, creditType } = custodyObjects(client, credit);
   const tx = new Transaction();
   creditSupplyCall({
     package: pkg,
@@ -68,8 +76,15 @@ export interface CustodyAssetData {
 export async function getCustodyAssetData(
   client: PerpClient,
   assetType: string,
+  credit?: string,
 ): Promise<CustodyAssetData> {
-  const { pkg, vault, creditType } = custodyObjects(client);
+  // Default to the credit whose vault registers this asset (each backing
+  // asset belongs to exactly one credit); fall back to the default credit for
+  // an unregistered probe.
+  const { pkg, vault, creditType } = custodyObjects(
+    client,
+    credit ?? creditStackForAsset(client.config, assetType)?.alias,
+  );
   const typeArguments: [string, string] = [assetType, creditType];
 
   const hasTx = new Transaction();
