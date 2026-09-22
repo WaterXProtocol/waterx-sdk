@@ -167,6 +167,10 @@ jobs:
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
+          # This job never installs pnpm, and setup-node otherwise reads
+          # package.json's `packageManager` field and shells out to it to warm a
+          # cache this job has no use for — "Unable to locate executable file: pnpm".
+          package-manager-cache: false
       # No `pnpm install` in this job: publishing needs no dependencies, and this
       # is the only job holding `id-token: write`.
       - name: Download dist
