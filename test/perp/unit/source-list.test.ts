@@ -84,6 +84,13 @@ describe("deriveOracleSources", () => {
     expect(deriveOracleSources(noFeeds)).toEqual(["pyth_lazer_rule"]);
   });
 
+  it("drops a prediction symbol even when the feed map lists it — it would 404 the whole batch", () => {
+    const withPrediction = configWith({ waterxFeeds: ["BTCUSD"] });
+    withPrediction.oracle_rules.waterx.feeds!.PREDMKT = {};
+    withPrediction.symbols.PREDMKT = { kind: "prediction" };
+    expect(resolveOracleRule("waterx_rule").supportedTickers(withPrediction)).toEqual(["BTCUSD"]);
+  });
+
   it("serves ONLY the listed feeds — a symbol in the universe but not in waterx.feeds is not the quote-center's", () => {
     const partial = configWith({ waterxFeeds: ["BTCUSD"] });
     expect(resolveOracleRule("waterx_rule").supportedTickers(partial)).toEqual(["BTCUSD"]);

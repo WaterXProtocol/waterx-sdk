@@ -11,6 +11,7 @@
  */
 
 import type { WaterXConfig } from "../config.ts";
+import { ownEntry } from "../utils/record.ts";
 
 /** Tickers with an `oracle_rules.pyth_lazer.lazer_feed_ids` entry. */
 export function lazerServedTickers(config: WaterXConfig): string[] {
@@ -27,7 +28,11 @@ export function lazerServedTickers(config: WaterXConfig): string[] {
  * needs the `?? {}`.
  */
 export function waterxFeeds(config: WaterXConfig): WaterXConfig["oracle_rules"]["waterx"]["feeds"] {
-  return config.oracle_rules.waterx.feeds;
+  // `?.` like the Lazer sibling above: the block is schema-required, so a
+  // parsed document always carries it — but hand-built hosts (this SDK's own
+  // partial test hosts, and a consumer's fixtures) omit it, and an absent rule
+  // block must read as "serves nothing", never throw.
+  return config.oracle_rules.waterx?.feeds;
 }
 
 /**
@@ -36,7 +41,14 @@ export function waterxFeeds(config: WaterXConfig): WaterXConfig["oracle_rules"][
  * consulted: a symbol builds a `waterx_rule` leg (and a quote-center fetch)
  * iff the deployment lists it here, so a document with no `feeds` map (or an
  * empty one) takes the quote-center out of the fed set entirely.
+ *
+ * `prediction` symbols are dropped even when listed: they live in the same
+ * `symbols` universe but are not priced through this plane, and asking the
+ * quote-center for one 404s the WHOLE batch. The list is authored by hand, so
+ * this stays as the runtime guard the old universe-filter used to provide.
  */
 export function waterxServedTickers(config: WaterXConfig): string[] {
-  return Object.keys(waterxFeeds(config) ?? {});
+  return Object.keys(waterxFeeds(config) ?? {}).filter(
+    (symbol) => ownEntry(config.symbols, symbol)?.kind !== "prediction",
+  );
 }
