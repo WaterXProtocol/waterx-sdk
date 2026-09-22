@@ -173,6 +173,30 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Fixed
 
+- **A quote-center route outage is no longer swallowed by the second skip
+  predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
+  exhausted route ladder, but the e2e suites call `skipIfOracleFetchUnavailable`
+  and then `skipIfTransientInfrastructureError` on the same error, and
+  `isInfrastructureTransientError` still said "transient" — the exhausted
+  message contains the bare substring `fetch failed`, which the generic RPC
+  heuristic matches. Both predicates now consult ONE
+  `isExhaustedQuoteCenterRoute`, keyed on `QUOTE_CENTER_FALLBACK_MARKER`
+  exported from the rule that emits it, so rewording the message breaks
+  compilation instead of silently restoring the swallow. The predicate also
+  existed in a second, subtly different copy that additionally required
+  `/quote-center.*fetch failed/` and so read the over-the-cap batch error as a
+  blip (#96).
+- **A later leaf chunk can no longer retract a route the probe proved.** In
+  `fetchWaterxSignedLeaves`, an `unavailable` from any chunk after the first was
+  returned as the ladder's verdict — so a >32-symbol refresh whose second chunk
+  drew an anonymous 404 abandoned a WORKING leaf route and escalated every
+  symbol to the indivisible envelope, which over the enclave's cap cannot be
+  requested at all and surfaced as a misleading "needs N symbols" error. It now
+  throws, naming the route that served the probe (#96).
+- `WaterxAccessConfig.endpoint`'s doc no longer re-spells the three
+  quote-center routes a same-origin proxy must forward; it points at
+  `WATERX_LEAF_ROUTES` / `WATERX_ENVELOPE_ROUTE`, which cannot go stale (#96).
+
 - **`waterx_rule` reads the quote-center's current leaf route.** The leaf fetch now hits
   `GET /v1/sign/bbo/consensus?symbols=…` — the quote-center renamed it from
   `/v1/quotes/leaves` with its Spot-BBO consensus API (waterx-quote-center#191,

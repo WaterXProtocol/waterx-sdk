@@ -5,6 +5,7 @@ import { expect } from "vitest";
 
 import { FetchPolicyError } from "../../../../src/oracle/index.ts";
 import {
+  isExhaustedQuoteCenterRoute,
   isInfrastructureTransientError,
   isOracleTransientFailureMessage,
   isTransientRpcErrorMessage,
@@ -116,23 +117,6 @@ export function skipSimulateIfWeightedSourceMissing(
     `Aggregator weights rule(s) this build does not feed: ${unfedWeightedRules.join(", ")} — ${msg}`,
   );
   return true;
-}
-
-/**
- * A quote-center 404 that EXHAUSTED every route — never an environment blip.
- *
- * A per-feed 404 ("Price ids not found": one feed id absent from a gateway's
- * registry) is a deployment mismatch worth skipping past. A 404 on every rung of
- * the leaf ladder AND the envelope is categorically different: the SDK is asking
- * for paths this service does not serve, so every money-path build on that
- * network is broken. Treating it as a gateway blip is how the 2026-09-04
- * leaf-route rename stayed green in CI for ~12 days while both live networks
- * were broken (PR #94).
- *
- * Identified by the `fell back from` clause that only an exhausted ladder emits.
- */
-export function isExhaustedQuoteCenterRoute(msg: string): boolean {
-  return msg.includes("fell back from") && /quote-center[^\n]*fetch failed/.test(msg);
 }
 
 /**
