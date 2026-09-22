@@ -18,6 +18,19 @@ export function lazerServedTickers(config: WaterXConfig): string[] {
 }
 
 /**
+ * The quote-center's declared feed map, `oracle_rules.waterx.feeds` — optional
+ * in the document, and THE one place its path is spelled: the served set below,
+ * the fetch partition (`pullWaterxData`) and the read plane
+ * (`resolveOracleReadPlan`) all read it through here, so "which tickers does
+ * the quote-center serve" has one definition. Membership checks pass the
+ * result to `ownEntry` as-is (it takes an absent record); only a key listing
+ * needs the `?? {}`.
+ */
+export function waterxFeeds(config: WaterXConfig): WaterXConfig["oracle_rules"]["waterx"]["feeds"] {
+  return config.oracle_rules.waterx.feeds;
+}
+
+/**
  * Tickers with an `oracle_rules.waterx.feeds` entry — the quote-center's feed
  * list, declared per rule exactly like Lazer's. The `symbols` universe is NOT
  * consulted: a symbol builds a `waterx_rule` leg (and a quote-center fetch)
@@ -25,5 +38,5 @@ export function lazerServedTickers(config: WaterXConfig): string[] {
  * empty one) takes the quote-center out of the fed set entirely.
  */
 export function waterxServedTickers(config: WaterXConfig): string[] {
-  return Object.keys(config.oracle_rules.waterx.feeds ?? {});
+  return Object.keys(waterxFeeds(config) ?? {});
 }

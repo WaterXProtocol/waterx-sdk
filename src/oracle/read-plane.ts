@@ -15,6 +15,7 @@
 import { ownEntry } from "../utils/record.ts";
 import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
+import { waterxFeeds } from "./served-tickers.ts";
 
 /**
  * One source's read plan for a requested ticker set.
@@ -77,7 +78,7 @@ export function resolveOracleReadPlan(
       // bare bracket read) so a prototype-key ticker can't count as listed and
       // poison the quote-center batch (which 404s whole batches on unknown
       // symbols).
-      const feeds = host.config.oracle_rules.waterx.feeds ?? {};
+      const feeds = waterxFeeds(host.config);
       return {
         plane: "quote_center",
         tickers: tickers.filter((ticker) => ownEntry(feeds, ticker) !== undefined),

@@ -59,7 +59,7 @@ import {
   type RuleUpdateData,
 } from "../price-update-rule.ts";
 import type { OraclePriceEntry } from "../read-prices.ts";
-import { waterxServedTickers } from "../served-tickers.ts";
+import { waterxFeeds, waterxServedTickers } from "../served-tickers.ts";
 import {
   bodySnippet,
   FetchPolicyError,
@@ -1171,7 +1171,7 @@ async function pullWaterxData(
   // One partition pass over the declared feed list (`oracle_rules.waterx.feeds`),
   // own-keys-only: a prototype-key ticker ("toString") must read as unlisted,
   // not pass as an inherited Function and reach the network.
-  const feeds = host.config.oracle_rules.waterx.feeds ?? {};
+  const feeds = waterxFeeds(host.config);
   const missing: string[] = [];
   const listed: string[] = [];
   for (const ticker of tickers) {

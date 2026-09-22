@@ -6,8 +6,8 @@
  * the same canonical document that wires the rules: a source is in the fed
  * set when its rule can serve at least one ticker — `oracle_rules.pyth_lazer`
  * published with `lazer_feed_ids` for Lazer, `oracle_rules.waterx` carrying
- * a non-empty `feeds` map for the quote-center. Each rule declares its own
- * ticker list; the `symbols` universe is never a served set.
+ * a non-empty `feeds` map for the quote-center (`served-tickers.ts` is where
+ * each rule's list is read).
  *
  * Why derived rather than declared. The chain arbitrates — per-ticker weights
  * decide which contributions count, feeding an UNWEIGHTED rule is dropped

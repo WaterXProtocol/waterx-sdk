@@ -55,8 +55,8 @@ the SDK never does. Look up ids through the client (`client.perp.getMarket(ticke
 
 **The oracle fed set is DERIVED from that config** — there is no `oracleSource` option
 and no `ORACLE_SOURCE` env var. A source is fed when its rule can serve at least one
-ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, a non-empty
-`symbols` universe for the quote-center. Every derived source's data is
+ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, `oracle_rules.waterx`
+carrying a non-empty `feeds` map for the quote-center. Every derived source's data is
 fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrate. Read the
 answer for a live deployment with `client.perp.oracleSources`, or before a client exists
 with `deriveOracleSources(config)`.

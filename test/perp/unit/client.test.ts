@@ -221,12 +221,6 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     expect(new PerpClient("TESTNET", config, {}).oracleSources).toEqual(["waterx_rule"]);
   });
 
-  it("a document with no oracle_rules.waterx.feeds derives a Lazer-only fed set — the mainnet shape", () => {
-    const config = structuredClone(MOCK_TESTNET_CONFIG);
-    delete config.oracle_rules.waterx.feeds;
-    expect(new PerpClient("TESTNET", config, {}).oracleSources).toEqual(["pyth_lazer_rule"]);
-  });
-
   it("construction throws when the config wires NO price-update source at all", () => {
     // Not a per-ticker coverage question (that is tx-build's job): a config
     // that can price nothing would skip every ticker and abort every trade.

@@ -69,9 +69,9 @@ The reason is that the chain arbitrates and the failure is one-sided: feeding an
 answer, and a hand-typed list could only err in the fatal direction — the classic being one
 copied between networks, naming a source that deployment does not carry.
 
-The retired blocks above are inert for a structural reason worth knowing: neither is a
-member of `ORACLE_SOURCES`, so no rule module exists that could feed one. The continued
-presence of `oracle_rules.pyth` in the live configs changes nothing.
+Retired rules are inert for a structural reason worth knowing: `pyth_rule` is not a
+member of `ORACLE_SOURCES`, so no rule module exists that could feed it — and the v2
+document carries no `oracle_rules.pyth` block any more.
 
 ```ts
 import { deriveOracleSources } from "@waterx/sdk/oracle";
