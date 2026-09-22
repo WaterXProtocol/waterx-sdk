@@ -58,9 +58,10 @@ feeds is **derived from the config, not passed as an argument** — see below.
 
 There is no `oracleSource` create option and no `ORACLE_SOURCE` env var. A source is fed
 when its rule can serve at least one ticker — `oracle_rules.pyth_lazer` carrying
-`lazer_feed_ids` for Lazer, a non-empty `symbols` universe for the quote-center. So
-mainnet derives `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no
-per-environment wiring at all.
+`lazer_feed_ids` for Lazer, `oracle_rules.waterx` carrying a non-empty `feeds` map for
+the quote-center — and each rule feeds exactly the tickers its own map lists. So mainnet
+(no `waterx.feeds`) derives `[pyth_lazer_rule]` and testnet (no Lazer block) derives
+`[waterx_rule]` with no per-environment wiring at all.
 
 The reason is that the chain arbitrates and the failure is one-sided: feeding an
 **unweighted** rule is dropped on-chain, while starving a **weighted** one aborts

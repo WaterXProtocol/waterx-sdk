@@ -5,9 +5,9 @@
  * every consumer that loads the same config gets the same fed set.
  *
  * A source is in the fed set exactly when its rule serves ≥1 ticker: Lazer's
- * set is `oracle_rules.pyth_lazer.lazer_feed_ids`, the quote-center's is the
- * `symbols` universe (its `oracle_rules.waterx` block is schema-required, so
- * the universe is the only thing that can be empty).
+ * set is `oracle_rules.pyth_lazer.lazer_feed_ids`, the quote-center's is
+ * `oracle_rules.waterx.feeds` (optional in the document — absent reads as
+ * empty, which is how a deployment turns the quote-center leg off).
  */
 import { describe, expect, it } from "vitest";
 
@@ -20,13 +20,15 @@ import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.
 /** A copy of the fixture with each source's ticker set replaced. */
 function configWith(wiring: {
   lazerFeedIds?: Record<string, number> | null;
-  symbols?: string[];
+  /** `null` deletes the map outright (the mainnet shape); an array sets its keys. */
+  waterxFeeds?: string[] | null;
 }): WaterXConfig {
   const cfg = structuredClone(MOCK_TESTNET_CONFIG);
   if (wiring.lazerFeedIds === null) delete cfg.oracle_rules.pyth_lazer;
   else if (wiring.lazerFeedIds) cfg.oracle_rules.pyth_lazer!.lazer_feed_ids = wiring.lazerFeedIds;
-  if (wiring.symbols) {
-    cfg.symbols = Object.fromEntries(wiring.symbols.map((t) => [t, { kind: "perp" as const }]));
+  if (wiring.waterxFeeds === null) delete cfg.oracle_rules.waterx.feeds;
+  else if (wiring.waterxFeeds) {
+    cfg.oracle_rules.waterx.feeds = Object.fromEntries(wiring.waterxFeeds.map((t) => [t, {}]));
   }
   return cfg;
 }
@@ -51,11 +53,12 @@ describe("deriveOracleSources", () => {
 
   it("is order-stable in ORACLE_SOURCES order, not config key order", () => {
     // Config key order is arbitrary JSON; the fed set must not inherit it. Put
-    // the quote-center's universe (`symbols`) BEFORE the Lazer block.
-    const { symbols, ...rest } = configWith({ lazerFeedIds: { BTCUSD: 1 }, symbols: ["BTCUSD"] });
-    const reversed = { symbols, ...rest } as WaterXConfig;
-    expect(Object.keys(reversed).indexOf("symbols")).toBeLessThan(
-      Object.keys(reversed).indexOf("oracle_rules"),
+    // the quote-center's block BEFORE the Lazer block inside oracle_rules.
+    const cfg = configWith({ lazerFeedIds: { BTCUSD: 1 }, waterxFeeds: ["BTCUSD"] });
+    const { waterx, ...otherRules } = cfg.oracle_rules;
+    const reversed = { ...cfg, oracle_rules: { waterx, ...otherRules } } as WaterXConfig;
+    expect(Object.keys(reversed.oracle_rules).indexOf("waterx")).toBeLessThan(
+      Object.keys(reversed.oracle_rules).indexOf("pyth_lazer"),
     );
     expect(deriveOracleSources(reversed)).toEqual(["pyth_lazer_rule", "waterx_rule"]);
   });
@@ -63,31 +66,35 @@ describe("deriveOracleSources", () => {
   it("excludes a source whose ticker set is empty", () => {
     // Published-but-serving-nothing is not a source: feeding it would emit an
     // update leg that can never carry a ticker.
-    expect(deriveOracleSources(configWith({ lazerFeedIds: {}, symbols: [] }))).toEqual([]);
+    expect(deriveOracleSources(configWith({ lazerFeedIds: {}, waterxFeeds: [] }))).toEqual([]);
     expect(deriveOracleSources(configWith({ lazerFeedIds: {} }))).toEqual(["waterx_rule"]);
-    expect(deriveOracleSources(configWith({ symbols: [] }))).toEqual(["pyth_lazer_rule"]);
+    expect(deriveOracleSources(configWith({ waterxFeeds: [] }))).toEqual(["pyth_lazer_rule"]);
   });
 
   it("excludes Lazer when the deployment carries no oracle_rules.pyth_lazer block at all", () => {
     expect(deriveOracleSources(configWith({ lazerFeedIds: null }))).toEqual(["waterx_rule"]);
   });
 
-  it("IGNORES the retired oracle_rules.pyth block — it is still in the live configs", () => {
-    // Pyth Core's block is schema-required and remains published. `pyth_rule`
-    // is not an ORACLE_SOURCES member (no rule module could feed it), so a
-    // populated feed map can never put it in a fed set.
-    const withRetired = configWith({ lazerFeedIds: {}, symbols: ["BTCUSD"] });
-    withRetired.oracle_rules.pyth.pyth_price_feeds = {
-      BTCUSD: { feed_id: "0x" + "ef".repeat(32), price_info_object: "0x" + "01".repeat(32) },
-    };
-    expect(deriveOracleSources(withRetired)).toEqual(["waterx_rule"]);
+  it("excludes the quote-center when oracle_rules.waterx carries no feeds map — the mainnet shape", () => {
+    // `feeds` is optional in the document. A deployment that wants no
+    // waterx_rule leg simply omits it; the `symbols` universe (still populated,
+    // it names every market) is never consulted as a served set.
+    const noFeeds = configWith({ waterxFeeds: null });
+    expect(Object.keys(noFeeds.symbols).length).toBeGreaterThan(0);
+    expect(deriveOracleSources(noFeeds)).toEqual(["pyth_lazer_rule"]);
+  });
+
+  it("serves ONLY the listed feeds — a symbol in the universe but not in waterx.feeds is not the quote-center's", () => {
+    const partial = configWith({ waterxFeeds: ["BTCUSD"] });
+    expect(resolveOracleRule("waterx_rule").supportedTickers(partial)).toEqual(["BTCUSD"]);
+    expect(Object.keys(partial.symbols)).toContain("ETHUSD");
   });
 
   it("does not consult constant_prices or a supra block — neither is a price-update SOURCE", () => {
     // constant_rule pins a price (an auxiliary feed leg, no update to fetch)
     // and the optional supra block is never read by the SDK, so neither is a
     // fed-set member even when wired.
-    const auxOnly = configWith({ lazerFeedIds: {}, symbols: [] });
+    const auxOnly = configWith({ lazerFeedIds: {}, waterxFeeds: [] });
     auxOnly.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
     auxOnly.oracle_rules.supra = {
       package: "supra_rule",

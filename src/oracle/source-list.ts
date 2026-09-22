@@ -5,8 +5,9 @@
  * sources a build feeds is a property of the DEPLOYMENT, so it is read from
  * the same canonical document that wires the rules: a source is in the fed
  * set when its rule can serve at least one ticker — `oracle_rules.pyth_lazer`
- * published with `lazer_feed_ids` for Lazer, a non-empty `symbols` universe
- * for the quote-center (its `oracle_rules.waterx` block is schema-required).
+ * published with `lazer_feed_ids` for Lazer, `oracle_rules.waterx` carrying
+ * a non-empty `feeds` map for the quote-center. Each rule declares its own
+ * ticker list; the `symbols` universe is never a served set.
  *
  * Why derived rather than declared. The chain arbitrates — per-ticker weights
  * decide which contributions count, feeding an UNWEIGHTED rule is dropped
@@ -14,14 +15,15 @@
  * failure is therefore one-sided: over-feeding is free, under-feeding is fatal.
  * A hand-typed list errs in the fatal direction (the classic being one copied
  * between networks, naming a source that deployment does not carry); the
- * config cannot, because it IS what wires the rules. Mainnet derives
- * `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no
- * per-deployment configuration at all.
+ * config cannot, because it IS what wires the rules — and it is also where a
+ * deployment turns a source OFF: mainnet ships no `waterx.feeds`, so it
+ * derives `[pyth_lazer_rule]`; testnet lists no Lazer block, so it derives
+ * `[waterx_rule]`. No per-deployment SDK configuration either way.
  *
- * Retired rules are inert here by construction: `oracle_rules.pyth` (Pyth
- * Core) is still published, but `pyth_rule` is not an {@link ORACLE_SOURCES}
- * member — there is no rule module that could feed it — so its block is
- * never consulted.
+ * Retired rules are inert here by construction: `pyth_rule` (Pyth Core) is
+ * not an {@link ORACLE_SOURCES} member — there is no rule module that could
+ * feed it — and the v2 document no longer carries an `oracle_rules.pyth`
+ * block at all.
  *
  * Deliberately NOT filtered by which credentials the caller holds. A keyless
  * client whose config wires Lazer fails loudly at build

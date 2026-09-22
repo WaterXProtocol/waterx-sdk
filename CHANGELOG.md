@@ -37,6 +37,20 @@ leaf route) in addition to `GET /v1/quotes/leaves` and `GET /v1/quotes/update`, 
 consumers routing quote-center egress through their own backend must update that route in
 the same change set (#94)._
 
+### BREAKING — the quote-center leg is gated by `oracle_rules.waterx.feeds`
+
+- **`waterx_rule` serves exactly the tickers `oracle_rules.waterx.feeds` lists**, the
+  same way `pyth_lazer_rule` serves `lazer_feed_ids`; the `symbols` universe is no longer
+  a served set. A document with no `feeds` map (mainnet today) derives a fed set WITHOUT
+  the quote-center — no `waterx_rule::collect_*` command is built and no quote-center
+  fetch is made — and a symbol in neither rule's map is skipped by `refreshOraclePrices`
+  and rejected by the composers' `assertTickersRefreshed`, exactly as an unlisted ticker
+  always was. Requires `@waterx/config` ≥ `0.1.1-staging.2` (waterx-config `c471511`);
+  the deployment document decides which symbols get which legs, so a consumer that
+  relied on "every symbol gets a quote-center leaf" must list those symbols there.
+- **`oracle_rules.pyth` is gone from `WaterXConfig`** — the v2 document dropped the
+  retired Pyth Core block; a consumer that read it must stop.
+
 ### BREAKING — the v2 `waterx-config` document is the config
 
 - **One loader, one document, both lines.** `loadConfig` / `clearConfigCache` /

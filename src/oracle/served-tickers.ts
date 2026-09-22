@@ -18,12 +18,12 @@ export function lazerServedTickers(config: WaterXConfig): string[] {
 }
 
 /**
- * Tickers the quote-center serves: the `symbols` universe, minus kinds that are
- * never a perp oracle ticker. `prediction` symbols live in the same map but are
- * not priced through this plane, and asking for one 404s the whole batch.
+ * Tickers with an `oracle_rules.waterx.feeds` entry — the quote-center's feed
+ * list, declared per rule exactly like Lazer's. The `symbols` universe is NOT
+ * consulted: a symbol builds a `waterx_rule` leg (and a quote-center fetch)
+ * iff the deployment lists it here, so a document with no `feeds` map (or an
+ * empty one) takes the quote-center out of the fed set entirely.
  */
 export function waterxServedTickers(config: WaterXConfig): string[] {
-  return Object.entries(config.symbols)
-    .filter(([, meta]) => meta.kind !== "prediction")
-    .map(([symbol]) => symbol);
+  return Object.keys(config.oracle_rules.waterx.feeds ?? {});
 }

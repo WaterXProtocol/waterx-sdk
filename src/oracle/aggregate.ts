@@ -431,8 +431,8 @@ export async function refreshOraclePrices(
   // composing its own PTB reads `skipped` and decides for itself.
   //
   // The constant-only exemption applies ONLY at the CONFIG level (a pinned
-  // ticker no source lists at all — the deployed USDCUSD shape, absent from
-  // the `symbols` universe): there the chain cannot weight a source this
+  // ticker no source lists at all — the deployed USDCUSD shape, in no rule's
+  // feed map): there the chain cannot weight a source this
   // deployment doesn't carry, so a constant-only collector is sound. A
   // FETCH-time gap gets no such exemption — the source is configured, the
   // chain may well weight it, and only the skip is provably safe.

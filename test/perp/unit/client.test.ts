@@ -221,16 +221,10 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     expect(new PerpClient("TESTNET", config, {}).oracleSources).toEqual(["waterx_rule"]);
   });
 
-  it("the retired oracle_rules.pyth block is inert — it can never be derived", () => {
-    // Pyth Core's block is schema-required and still published in the LIVE
-    // configs. `pyth_rule` is not an ORACLE_SOURCES member (no rule module
-    // could feed it), so populating its feed map changes nothing.
+  it("a document with no oracle_rules.waterx.feeds derives a Lazer-only fed set — the mainnet shape", () => {
     const config = structuredClone(MOCK_TESTNET_CONFIG);
-    config.oracle_rules.pyth.pyth_price_feeds = {
-      BTCUSD: { feed_id: "0x" + "ef".repeat(32), price_info_object: "0x" + "01".repeat(32) },
-    };
-    const client = new PerpClient("TESTNET", config, {});
-    expect(client.oracleSources).toEqual(["pyth_lazer_rule", "waterx_rule"]);
+    delete config.oracle_rules.waterx.feeds;
+    expect(new PerpClient("TESTNET", config, {}).oracleSources).toEqual(["pyth_lazer_rule"]);
   });
 
   it("construction throws when the config wires NO price-update source at all", () => {
@@ -240,7 +234,7 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
     expect(() => new PerpClient("TESTNET", config, {})).toThrow(/wires no price-update source/);
     // The message points at the two wiring locations an operator would fix.
     expect(() => new PerpClient("TESTNET", config, {})).toThrow(/oracle_rules\.pyth_lazer/);
-    expect(() => new PerpClient("TESTNET", config, {})).toThrow(/symbols/);
+    expect(() => new PerpClient("TESTNET", config, {})).toThrow(/oracle_rules\.waterx/);
   });
 
   it("pythFetch is supplied at client init and rides on client.pyth", () => {

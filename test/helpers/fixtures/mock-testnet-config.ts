@@ -10,7 +10,7 @@
  * (or loses a required package) fails EVERY test loudly instead of yielding a
  * silently different client.
  *
- * Both price-update sources are wired (Lazer feeds + a `symbols` universe) so
+ * Both price-update sources are wired (Lazer feeds + waterx feeds) so
  * the fed set derives `[pyth_lazer_rule, waterx_rule]`; `constant_prices` is
  * EMPTY so every ticker stays on the live sources — constant-routing tests
  * clone the config and populate it. Tests that want a particular fed set go
@@ -180,13 +180,10 @@ export const MOCK_TESTNET_CONFIG_RAW = {
         cap: stub(0xe0c),
         pubkey: "03baaa84a2a1d05b3a3563223b114ea62cfd6141b86ab71f1d54de3f88cf90a6",
       },
-    },
-    // Pyth Core is RETIRED (5.0.0) but its block is schema-required; the SDK
-    // never reads it (`pyth_rule` is not an ORACLE_SOURCES member).
-    pyth: {
-      package: "pyth_rule",
-      pyth_config_object: stub(0x971),
-      pyth_price_feeds: {},
+      // The quote-center's declared feed list — every fixture symbol, so the
+      // waterx leg covers the same tickers it did when the served set was
+      // the `symbols` universe.
+      feeds: { BTCUSD: {}, ETHUSD: {}, USDCUSD: {} },
     },
     constant: {
       package: "constant_rule",
