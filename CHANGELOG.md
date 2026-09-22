@@ -16,6 +16,25 @@ from the version number alone.
 
 ## [Unreleased]
 
+## [6.0.0] - 2026-09-22
+
+_MAJOR: three BREAKING changes, each detailed in its own note below. (1) The quote-center
+leg is GATED by `oracle_rules.waterx.feeds` — `waterx_rule` serves exactly the tickers that
+map lists, the way `lazer_feed_ids` already gates the Lazer leg, and `symbols` is no
+longer a served set. The live mainnet document lists none, so mainnet derives
+`[pyth_lazer_rule]` alone and the five markets outside its 25 Lazer feeds (`BRENTUSD`,
+`EURUSD`, `USDJPY`, `WTIUSD`, `XAGUSD`) are SKIPPED by `refreshOraclePrices` and rejected
+by the `build*Tx` composers until the document lists them under `waterx.feeds`;
+`oracle_rules.pyth` is also STRIPPED from the parsed `WaterXConfig` (#98). (2) The legacy
+per-package `waterx-config` shape is ABANDONED for the strictly parsed `schema_version: 2`
+document (#93). (3) The quote-center leaf route MOVED, so a `waterxEndpoint` proxy must
+forward `GET /v1/sign/bbo/consensus` (#94). All of it rides `@waterx/config`
+`0.1.1-staging.2`, whose schema REQUIRES the per-credit maps — a document predating
+waterx-config #77 fails at `create()`, so point at `staging-v2` / `main-v2`. The
+multi-credit stacks themselves are additive: every `creditType?` still defaults to USD
+(#97). Registry note: an intermediate `5.0.1` (2026-09-16, from #92–#94) was published
+without a changelog cut; this section covers everything since 5.0.0._
+
 _BREAKING: the legacy per-package `waterx-config` shape is ABANDONED. `client.config` is
 now the STRICTLY PARSED `schema_version: 2` document (`@waterx/config`, one consolidated
 document for BOTH lines), and every SDK read moved to where that schema puts things —
