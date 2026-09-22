@@ -16,8 +16,8 @@ import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.
  * Each unwanted source's TICKER SET is emptied rather than its block deleted:
  * derivation drops an empty source either way, but the block stays reachable
  * for tests that exercise a rule's on-chain objects directly. Lazer's set is
- * `oracle_rules.pyth_lazer.lazer_feed_ids`; the quote-center's is the
- * `symbols` universe.
+ * `oracle_rules.pyth_lazer.lazer_feed_ids`; the quote-center's is
+ * `oracle_rules.waterx.feeds`.
  */
 export function withOracleSources(
   config: WaterXConfig,
@@ -28,7 +28,7 @@ export function withOracleSources(
   if (!wanted.has("pyth_lazer_rule") && next.oracle_rules.pyth_lazer) {
     next.oracle_rules.pyth_lazer.lazer_feed_ids = {};
   }
-  if (!wanted.has("waterx_rule")) next.symbols = {};
+  if (!wanted.has("waterx_rule")) next.oracle_rules.waterx.feeds = {};
   // Self-checking: the parameter promises a fed set, so verify the config
   // actually produces it. Without this, a fixture that loses a feed entry
   // silently yields a differently-fed client and the affected tests assert

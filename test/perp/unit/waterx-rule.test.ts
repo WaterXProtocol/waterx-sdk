@@ -73,7 +73,7 @@ function sampleLeaves(
 afterEach(() => vi.restoreAllMocks());
 
 describe("WaterxRule — port", () => {
-  it("supportedTickers = the symbols universe keys (oracle tickers)", () => {
+  it("supportedTickers = the oracle_rules.waterx.feeds keys (oracle tickers)", () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     expect(WaterxRule.supportedTickers(client.config).sort()).toEqual([
       "BTCUSD",
@@ -164,12 +164,12 @@ describe("WaterxRule — port", () => {
   });
 
   it("fetchUpdateData throws for a prototype-key ticker BEFORE fetching — never reaches the quote-center", async () => {
-    // symbols["toString"] is an inherited Function; a bare bracket-undefined
+    // feeds["toString"] is an inherited Function; a bare bracket-undefined
     // check passed it as listed and sent the name to the network.
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "toString"])).rejects.toThrow(
-      /waterx_rule: ticker not in the symbols universe: toString/,
+      /waterx_rule: ticker not served by the quote-center .*: toString/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -184,11 +184,11 @@ describe("WaterxRule — port", () => {
     ]);
   });
 
-  it("throws for a ticker outside the symbols universe (pre-fetch)", async () => {
+  it("throws for a ticker outside oracle_rules.waterx.feeds (pre-fetch)", async () => {
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     const fetchSpy = mockLeafRoute();
     await expect(WaterxRule.fetchUpdateData(client, ["DOGEUSD"])).rejects.toThrow(
-      /ticker not in the symbols universe/,
+      /ticker not served by the quote-center/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -676,7 +676,7 @@ describe("WaterxRule — on-chain feed", () => {
 
 describe("refreshOraclePrices — partial quote-center coverage", () => {
   it("an unserved symbol is skipped even when constant-pinned: the sibling refreshes, the gap gets NO collector", async () => {
-    // The repro shape: USDCUSD is listed in the `symbols` universe, so it
+    // The repro shape: USDCUSD is listed in `oracle_rules.waterx.feeds`, so it
     // lands in the waterx group — but the quote-center omits it. Under
     // strict-only fetching that failed the WHOLE batch (assertCoverage), so
     // not even BTCUSD refreshed and nothing was reported skipped.

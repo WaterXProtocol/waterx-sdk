@@ -15,6 +15,7 @@
 import { ownEntry } from "../utils/record.ts";
 import type { OracleHost } from "./host.ts";
 import type { OracleSource } from "./price-update-rule.ts";
+import { waterxServes } from "./served-tickers.ts";
 
 /**
  * One source's read plan for a requested ticker set.
@@ -26,7 +27,7 @@ import type { OracleSource } from "./price-update-rule.ts";
  *   the caller's `pythApiKey` Bearer; the endpoint is `LAZER_INFRA`'s own.
  * - `plane: "quote_center"` (`waterx_rule`) — price via the quote-center
  *   (`readQuoteCenterPrices` in `read-prices.ts`), keyed by ticker; served
- *   set = the `symbols` universe. A ticker outside it is never claimed: the
+ *   set = `oracle_rules.waterx.feeds`. A ticker outside it is never claimed: the
  *   quote-center happily serves symbols regardless of on-chain config, so
  *   claiming one would silently reroute a read the chain cannot price.
  *
@@ -72,15 +73,13 @@ export function resolveOracleReadPlan(
       return { plane: "lazer", feedIdByTicker };
     }
     case "waterx_rule": {
-      // Only tickers the `symbols` universe names — never claim one the config
-      // doesn't. `ownEntry` (own-keys-only, never the `in` operator or a bare
-      // bracket read) so a prototype-key ticker can't count as listed and
-      // poison the quote-center batch (which 404s whole batches on unknown
-      // symbols).
-      const symbols = host.config.symbols;
+      // `waterxServes` is the ONE definition of "the quote-center serves
+      // this" — the feed map names it AND it is not a prediction symbol. Read
+      // set == write set by construction only while this arm and the rule's
+      // own fetch partition ask the same question.
       return {
         plane: "quote_center",
-        tickers: tickers.filter((ticker) => ownEntry(symbols, ticker) !== undefined),
+        tickers: tickers.filter((ticker) => waterxServes(host.config, ticker)),
       };
     }
     default: {

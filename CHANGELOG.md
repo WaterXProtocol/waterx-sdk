@@ -37,6 +37,26 @@ leaf route) in addition to `GET /v1/quotes/leaves` and `GET /v1/quotes/update`, 
 consumers routing quote-center egress through their own backend must update that route in
 the same change set (#94)._
 
+### BREAKING — the quote-center leg is gated by `oracle_rules.waterx.feeds`
+
+- **`waterx_rule` serves exactly the tickers `oracle_rules.waterx.feeds` lists**, the
+  same way `pyth_lazer_rule` serves `lazer_feed_ids`; the `symbols` universe is no longer
+  a served set. A document with no `feeds` map (mainnet today) derives a fed set WITHOUT
+  the quote-center — no `waterx_rule::collect_*` command is built and no quote-center
+  fetch is made — and a symbol in neither rule's map is skipped by `refreshOraclePrices`
+  and rejected by the composers' `assertTickersRefreshed`, exactly as an unlisted ticker
+  always was. A `prediction` symbol is never served even when the feed map lists one —
+  the quote-center 404s the whole batch on it — and one predicate (`waterxServes`)
+  answers "does the quote-center serve this ticker" for the fed set, the read plane and
+  the fetch partition alike. Requires `@waterx/config` ≥ `0.1.1-staging.2`, published
+  from waterx-config `a9fc5e5`; the deployment document decides which symbols get which
+  legs, so a consumer that relied on "every symbol gets a quote-center leaf" must list
+  those symbols there.
+- **`oracle_rules.pyth` is gone from the parsed `WaterXConfig`** — the retired Pyth Core
+  block is still SERVED (consumers pinned to an older parser require the field), but
+  this package's types no longer model it and the strict parse strips it, so a consumer
+  that read `config.oracle_rules.pyth` must stop.
+
 ### BREAKING — the v2 `waterx-config` document is the config
 
 - **One loader, one document, both lines.** `loadConfig` / `clearConfigCache` /
@@ -149,15 +169,13 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Changed
 
-- **`@waterx/config` is consumed through a temporary vendored build.** The parser
-  the SDK needs — one that carries the per-credit maps — is `waterx-config`
-  `staging-v2` @ `e21549f`, which the registry does not have yet (`0.1.1-staging.1`
-  predates the maps and STRIPS them). `package.json` declares the registry version
-  the SDK will need (`0.1.1-staging.2`) and a `pnpm.overrides` entry points THIS
-  repo's install at `vendor/waterx-config/` (build output only). The published
-  manifest is therefore publint-clean and correct once that version exists; **do
-  not run the publish workflow before it does**. `vendor/README.md` has the
-  removal / refresh steps (#97).
+- **`@waterx/config` is `0.1.1-staging.2`, straight from the registry.** That
+  version — published from `waterx-config` `a9fc5e5` — carries both the
+  per-credit maps and `oracle_rules.waterx.feeds`, so the temporary
+  `vendor/waterx-config` bridge #97 added (a build of `e21549f`, routed in by a
+  `pnpm.overrides` entry while the registry still only had `0.1.1-staging.1`) is
+  removed again: no override, no vendored build, and the publish workflow is
+  unblocked (#97, #98).
 - **`WATERX_CONFIG_URL` is now a CDN BASE root** (no file name) across every repo
   harness — scripts, e2e/integration helpers, examples, CI — with the boundary
   composing `${base}/${network}.json` (`scripts/waterx-config-url.ts`). One

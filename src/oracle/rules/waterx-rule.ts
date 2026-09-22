@@ -51,7 +51,6 @@ import {
   newBatchPayload,
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
-import { ownEntry } from "../../utils/record.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
@@ -59,7 +58,7 @@ import {
   type RuleUpdateData,
 } from "../price-update-rule.ts";
 import type { OraclePriceEntry } from "../read-prices.ts";
-import { waterxServedTickers } from "../served-tickers.ts";
+import { waterxServedTickers, waterxServes } from "../served-tickers.ts";
 import {
   bodySnippet,
   FetchPolicyError,
@@ -1168,19 +1167,22 @@ async function pullWaterxData(
   tickers: string[],
   coverage: "strict" | "partial",
 ): Promise<{ data: RuleUpdateData; missing: string[] }> {
-  // One partition pass over the `symbols` universe, own-keys-only: a
-  // prototype-key ticker ("toString") must read as unlisted, not pass as an
-  // inherited Function and reach the network.
+  // One partition pass over the declared feed list (`oracle_rules.waterx.feeds`),
+  // own-keys-only: a prototype-key ticker ("toString") must read as unlisted,
+  // not pass as an inherited Function and reach the network.
   const missing: string[] = [];
   const listed: string[] = [];
   for (const ticker of tickers) {
-    (ownEntry(host.config.symbols, ticker) === undefined ? missing : listed).push(ticker);
+    (waterxServes(host.config, ticker) ? listed : missing).push(ticker);
   }
   // Unlisted tickers never reach the network on EITHER policy — the
   // quote-center 404s a whole batch on one unknown symbol. Strict surfaces
   // the per-ticker message; partial just records the gap and pulls the rest.
   if (coverage === "strict" && missing.length > 0) {
-    throw new Error(`waterx_rule: ticker not in the symbols universe: ${missing[0]}`);
+    throw new Error(
+      `waterx_rule: ticker not served by the quote-center (absent from ` +
+        `oracle_rules.waterx.feeds, or a prediction symbol): ${missing[0]}`,
+    );
   }
   if (listed.length === 0) return { data: null, missing };
 
@@ -1240,7 +1242,7 @@ export const WaterxRule: PriceUpdateRule = {
   // No credential: the quote-center read surface is public (no `credential`
   // declared — see `PriceUpdateRule.credential`).
 
-  /** Every ticker in the `symbols` universe — the quote-center serves the whole universe. */
+  /** The `oracle_rules.waterx.feeds` keys — the deployment's declared quote-center feed list. */
   supportedTickers(config: WaterXConfig): string[] {
     return waterxServedTickers(config);
   },
@@ -1357,7 +1359,7 @@ export const WaterxRule: PriceUpdateRule = {
  *   `aggregate.ts`'s uncarried-ticker throw (04117a1) still can't be reached
  *   by a payload that under-covers its group.
  * - `coverage: "partial"` — universe-prefetch semantics (a BE cache warming
- *   every known ticker at once): a ticker outside the `symbols` universe,
+ *   every known ticker at once): a ticker outside `oracle_rules.waterx.feeds`,
  *   or one the quote-center response does not serve, lands in `missing`
  *   instead of throwing, and `data` covers the rest. On the leaf route the
  *   payload is the covering leaf SUBSET; on the envelope route the envelope

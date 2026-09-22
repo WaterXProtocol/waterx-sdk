@@ -242,6 +242,10 @@ export const MOCK_TESTNET_CONFIG_RAW = {
         cap: stub(0xe0c),
         pubkey: "03baaa84a2a1d05b3a3563223b114ea62cfd6141b86ab71f1d54de3f88cf90a6",
       },
+      // The quote-center's declared feed list — every fixture symbol, so the
+      // waterx leg covers the same tickers it did when the served set was
+      // the `symbols` universe.
+      feeds: { BTCUSD: {}, ETHUSD: {}, USDCUSD: {} },
     },
     // Pyth Core is RETIRED (5.0.0) but its block is schema-required; the SDK
     // never reads it (`pyth_rule` is not an ORACLE_SOURCES member).

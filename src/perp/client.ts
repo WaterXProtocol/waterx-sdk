@@ -121,7 +121,7 @@ export class PerpClient extends BaseLineClient<PerpLineConfig> {
       throw new Error(
         `this deployment's config wires no price-update source — expected at least one of ` +
           `${ORACLE_SOURCES.join(" | ")} to serve a ticker (oracle_rules.pyth_lazer with ` +
-          `lazer_feed_ids, or a non-empty symbols universe for the quote-center).`,
+          `lazer_feed_ids, or oracle_rules.waterx with a non-empty feeds map for the quote-center).`,
       );
     }
     this.view = new PerpConfigView(() => this.config);
@@ -169,11 +169,10 @@ export class PerpClient extends BaseLineClient<PerpLineConfig> {
    * ticker set the WLP builders refresh before `assert_prices_fresh`.
    *
    * The predicate is `refreshOraclePrices`'s own (`servableTickers`), so this
-   * list is exactly what a refresh would ACCEPT at config level. Post-v2 that
-   * is a weaker filter than it once was: the quote-center is always listed and
-   * serves the whole `symbols` universe, so the only token dropped here is one
-   * in neither `symbols` nor `constant_prices`. It does NOT predict a
-   * fetch-time gap — see the SCOPE note on `assertOracleWriteCoverage`.
+   * list is exactly what a refresh would ACCEPT at config level: a token is
+   * kept when some listed rule's feed map (`lazer_feed_ids`, `waterx.feeds`)
+   * names it, or `constant_prices` pins it. It does NOT predict a fetch-time
+   * gap — see the SCOPE note on `assertOracleWriteCoverage`.
    *
    * NOTE this is a QUERY, not what the WLP builders use — they deliberately
    * refresh and bump the WHOLE pool, because dropping an unpriceable asset
