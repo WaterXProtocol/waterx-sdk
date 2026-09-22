@@ -24,7 +24,55 @@ const stub = (n: number): string => `0x${n.toString(16).padStart(64, "0")}`;
 /** Package identity for a fresh (never-upgraded) publish: `original_id === published_at`. */
 const pkg = (id: string, version = 1) => ({ published_at: id, original_id: id, version });
 
-const USD_TYPE = "0x3d6fd5e79c5134f94523f5d6d24a96ecf9f9af35bdbf9e6af87f5a6dbb032efe::usd::USD";
+/** The USD credit coin — the default credit AND the prediction USD settlement coin (one and the same on-chain). */
+const USD_TYPE = "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD";
+
+/**
+ * A second, NON-default credit stack (SUI credit, backed by native SUI) so
+ * tests can prove a non-USD credit pairs with ITS OWN registry / vault /
+ * queue. Ids mirror the deployed testnet SUI stack.
+ */
+const SUI_CREDIT_TYPE =
+  "0x0298bfd43fbb86f7b990190aa513e09764320d0dcac66b55aca575caa7cdb314::sui::SUI";
+const SUI_CREDIT_REGISTRY = "0xdfc31c153310ccabbe97fb5e647f79caac4c0a8840cf79c7fa70aee1afeae996";
+const SUI_CREDIT_VAULT = "0xf36e11137591c5b2b5c058a9ff09b8fe0aaf04c7ca8e3f4cfe214b807e7210e6";
+const SUI_CREDIT_QUEUE = "0x624af156dab81efa46cd8b67760acc10eaa7c610ca9d32d8822bc5fc1fb0f2ad";
+
+/** Withdrawal-queue executor allowlist (shared by every queue on testnet). */
+const QUEUE_EXECUTORS = [
+  "0xeaadff7edd13268918f649adbe9de20984646645e750b44bac929f35a12e0abe",
+  "0x26266b1381bcf03ab3acc37c1e87beffb52d49f345248bc3efb9114176990ae4",
+];
+
+const USD_VAULT_ASSETS = [
+  {
+    name: "MOCK_USDC",
+    type: "0x7ccd477e884ec74f960b23a8b34b7d87999e4d7ee0dde738a0c25f46200f201a::mock_usdc::MOCK_USDC",
+    decimal: 6,
+    mint_fee_scaled: "0",
+    burn_fee_scaled: "1000000",
+    min_burn_amount: "0",
+  },
+  {
+    name: "MOCK_USDSUI",
+    type: "0xc0fad30bc21babe3b8b51c6a4c380d27b61a47e34b26968daf20315da0e35016::mock_usdsui::MOCK_USDSUI",
+    decimal: 6,
+    mint_fee_scaled: "0",
+    burn_fee_scaled: "1000000",
+    min_burn_amount: "0",
+  },
+];
+
+const SUI_VAULT_ASSETS = [
+  {
+    name: "SUI",
+    type: "0x2::sui::SUI",
+    decimal: 9,
+    mint_fee_scaled: "0",
+    burn_fee_scaled: "0",
+    min_burn_amount: "0",
+  },
+];
 
 export const MOCK_TESTNET_CONFIG_RAW = {
   schema_version: 2,
@@ -91,9 +139,11 @@ export const MOCK_TESTNET_CONFIG_RAW = {
       admin_cap: "0x31acc29c6f6171a86ad5583e4610d75bdd9bcc71e16b46b1b994770743cdc782",
       market_registries: {
         USD: "0x6571c67131ea645bd3fd747c2b4c387f23ac80d83317f82f495cabfeadc512e0",
+        SUI: "0x41c0daf309850eb88fd56d37d94bb98d4318d2ccdaaf031e4295385ea402398b",
       },
       settlement_coin_types: {
-        USD: "0x6321b712685d4c4921c15ff4790d7a9a2b2b7d3b44f8b19a2304e60ca3ad26c7::usd::USD",
+        USD: USD_TYPE,
+        SUI: SUI_CREDIT_TYPE,
       },
       claimable_link_config: "0x39e9b1fa73e5a544acbe94409f6784c737ff5f64aab9094bbfa1043abc848eb2",
       gift_admin_cap: stub(0x91f7),
@@ -126,30 +176,37 @@ export const MOCK_TESTNET_CONFIG_RAW = {
     referral: {
       table: "0xb008a69a277ed7a62318566fd1bba6bc213cdd642232cf62ed3bf58fe437515f",
     },
+    // The singular `registry` / `vault` / `queue` fields are the DEFAULT (USD)
+    // stack's entries, duplicated into the per-credit maps under alias `USD`;
+    // `SUI` is the second stack (see `credit-stack.ts`).
     credit: {
       registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
       credit_type: USD_TYPE,
+      registries: {
+        USD: {
+          registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
+          credit_type: USD_TYPE,
+          decimals: 6,
+          metadata_cap: stub(0x05d),
+        },
+        SUI: {
+          registry: SUI_CREDIT_REGISTRY,
+          credit_type: SUI_CREDIT_TYPE,
+          decimals: 6,
+          metadata_cap: stub(0x05e),
+        },
+      },
     },
     custody: {
       vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
-      assets: [
-        {
-          name: "MOCK_USDC",
-          type: "0x7ccd477e884ec74f960b23a8b34b7d87999e4d7ee0dde738a0c25f46200f201a::mock_usdc::MOCK_USDC",
-          decimal: 6,
-          mint_fee_scaled: "0",
-          burn_fee_scaled: "1000000",
-          min_burn_amount: "0",
+      assets: USD_VAULT_ASSETS,
+      vaults: {
+        USD: {
+          vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
+          assets: USD_VAULT_ASSETS,
         },
-        {
-          name: "MOCK_USDSUI",
-          type: "0xc0fad30bc21babe3b8b51c6a4c380d27b61a47e34b26968daf20315da0e35016::mock_usdsui::MOCK_USDSUI",
-          decimal: 6,
-          mint_fee_scaled: "0",
-          burn_fee_scaled: "1000000",
-          min_burn_amount: "0",
-        },
-      ],
+        SUI: { vault: SUI_CREDIT_VAULT, assets: SUI_VAULT_ASSETS },
+      },
     },
     bridge: {
       state: stub(0x7a1b),
@@ -165,6 +222,11 @@ export const MOCK_TESTNET_CONFIG_RAW = {
     },
     withdrawal_queue: {
       queue: stub(0x4a1b),
+      executors: QUEUE_EXECUTORS,
+      queues: {
+        USD: { queue: stub(0x4a1b), executors: QUEUE_EXECUTORS },
+        SUI: { queue: SUI_CREDIT_QUEUE, executors: QUEUE_EXECUTORS },
+      },
     },
     usd: {
       metadata_cap: stub(0x05d),
@@ -217,3 +279,14 @@ export const MOCK_CUSTODY_ASSET_TYPE = MOCK_TESTNET_CONFIG.objects.custody.asset
 
 /** CREDIT CoinType minted by the native-custody PSM. */
 export const MOCK_CREDIT_TYPE = MOCK_TESTNET_CONFIG.objects.credit.credit_type;
+
+/** The non-default credit stack the fixture carries beside USD. */
+export const MOCK_SUI_CREDIT = {
+  alias: "SUI",
+  creditType: SUI_CREDIT_TYPE,
+  registry: SUI_CREDIT_REGISTRY,
+  vault: SUI_CREDIT_VAULT,
+  queue: SUI_CREDIT_QUEUE,
+  /** Backing asset registered on the SUI credit vault. */
+  assetType: SUI_VAULT_ASSETS[0]!.type,
+} as const;

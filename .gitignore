@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# vendored @waterx/config build (see vendor/README.md) must ship with the repo
+!vendor/waterx-config/dist/
 coverage/
 .env
 .env.local

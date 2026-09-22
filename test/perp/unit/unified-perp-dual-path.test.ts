@@ -27,6 +27,10 @@ const NON_CLIENT_FIRST = new Set([
   "appendConsolidateAddressCredit",
   "appendConsolidateForSpend",
   "buildConsolidateToUsdTx",
+  // Pure `(config, …)` credit-stack resolvers — no PTB, no client; covered in credit-stack.test.ts.
+  "creditStacks",
+  "resolveCreditStack",
+  "creditStackForAsset",
 ]);
 
 const fnNames = (ns: object): string[] =>
