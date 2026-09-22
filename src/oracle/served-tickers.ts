@@ -46,16 +46,22 @@ export function waterxFeeds(config: WaterXConfig): WaterXConfig["oracle_rules"][
  * 1. `oracle_rules.waterx.feeds` names it. `ownEntry` is own-keys-only (never
  *    the `in` operator or a bare bracket read), so a prototype-key ticker
  *    ("toString") reads as unlisted instead of poisoning a batch.
- * 2. It is not a `prediction` symbol. Those live in the same `symbols`
- *    universe but are not priced through this plane, and asking the
- *    quote-center for one 404s the WHOLE batch — so a hand-authored feed list
- *    that names one must not reach the network.
+ * 2. `symbols` names it, with a kind this plane prices. `prediction` symbols
+ *    live in the same universe but are not priced here, and a key absent from
+ *    `symbols` altogether is a feed list that drifted from the document it is
+ *    supposed to be a subset of. Either one 404s the WHOLE batch at the
+ *    quote-center, so both must fail CLOSED — and the check has to be a
+ *    positive test for a present entry, not `?.kind !== "prediction"`, which
+ *    an absent entry also satisfies.
+ *
+ * The config repo's CI enforces `feeds ⊆ symbols`, but the PARSER does not
+ * (`feeds` is an unconstrained record), so a hand-built or custom document
+ * reaches here unvalidated. This is where that relationship is enforced.
  */
 export function waterxServes(config: WaterXConfig, ticker: string): boolean {
-  return (
-    ownEntry(waterxFeeds(config), ticker) !== undefined &&
-    ownEntry(config.symbols, ticker)?.kind !== "prediction"
-  );
+  if (ownEntry(waterxFeeds(config), ticker) === undefined) return false;
+  const symbol = ownEntry(config.symbols, ticker);
+  return symbol !== undefined && symbol.kind !== "prediction";
 }
 
 /**

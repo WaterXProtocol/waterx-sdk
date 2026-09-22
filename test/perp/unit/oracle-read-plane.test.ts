@@ -126,6 +126,18 @@ describe("resolveOracleReadPlan", () => {
     expect(plan).toEqual({ plane: "quote_center", tickers: ["BTCUSD"] });
   });
 
+  it("waterx_rule: a feed key absent from `symbols` is NOT served — the parser does not enforce feeds ⊆ symbols", () => {
+    // The config repo's CI checks the subset relation; the published parser
+    // models `feeds` as an unconstrained record, so a drifted or hand-built
+    // document reaches the SDK unvalidated. An unknown key must fail closed
+    // rather than 404 the whole quote-center batch.
+    const host = hostWith({ waterxFeeds: ["BTCUSD", "GHOSTUSD"] });
+
+    const plan = resolveOracleReadPlan(host, "waterx_rule", ["BTCUSD", "GHOSTUSD"]);
+
+    expect(plan).toEqual({ plane: "quote_center", tickers: ["BTCUSD"] });
+  });
+
   it("waterx_rule: NO feeds map serves NOTHING, whatever `symbols` says — never a silent quote-center takeover", () => {
     // Claiming unlisted tickers would reroute every read to the quote-center
     // (it serves symbols regardless of on-chain config) and swallow tickers a

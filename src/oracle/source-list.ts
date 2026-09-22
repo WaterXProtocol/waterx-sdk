@@ -22,8 +22,18 @@
  *
  * Retired rules are inert here by construction: `pyth_rule` (Pyth Core) is
  * not an {@link ORACLE_SOURCES} member — there is no rule module that could
- * feed it — and the v2 document no longer carries an `oracle_rules.pyth`
- * block at all.
+ * feed it. Its `oracle_rules.pyth` block is still SERVED (consumers pinned to
+ * an older parser require the field) and the parsed `WaterXConfig` does not
+ * model it, so it is stripped; present or absent, it can never be derived.
+ *
+ * What derivation does NOT give you: the fed set covering every ticker's
+ * on-chain WEIGHTED rules. Each rule's feed list moves independently of the
+ * weights — `waterx.feeds` is edited in waterx-config, the weights with
+ * `oracle::set_rule_weight` — so the two are kept in step by SEQUENCING, not
+ * by construction: feed a rule everywhere before its weight is raised, and
+ * drop the weight before the feeds go. `assertOracleWeightCoverage`
+ * (`weight-coverage.ts`) reads the aggregators and is the gate for that
+ * rollout; nothing here can see the weights.
  *
  * Deliberately NOT filtered by which credentials the caller holds. A keyless
  * client whose config wires Lazer fails loudly at build

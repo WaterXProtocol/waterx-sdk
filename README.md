@@ -138,11 +138,16 @@ repo's v2 promotion lands there.)
 
 **2 — Nothing to pick: the fed set is derived.** Every source the config wires
 (`oracle_rules.pyth_lazer` with `lazer_feed_ids` for Lazer; `oracle_rules.waterx` with a
-non-empty `feeds` map for the quote-center) is fed. That is what keeps the fed set a
-**superset of every ticker's on-chain weighted rules**, which is the property that
-matters — starving a weighted rule aborts `EMissingPriceSource` at simulate, while
-feeding an unweighted one is dropped harmlessly on chain. Inspect what a network
-weights when you are debugging:
+non-empty `feeds` map for the quote-center) is fed. Derivation removes the
+per-environment list that used to drift between networks, but it does **not** by itself
+make the fed set a superset of every ticker's on-chain weighted rules: a rule's feed list
+lives in waterx-config and its weight on chain, and the two move independently. Keeping
+them in step is a SEQUENCED rollout — feed a rule everywhere before
+`oracle::set_rule_weight` raises it, and drop the weight before the feeds go — because
+starving a weighted rule aborts `EMissingPriceSource` at simulate, while feeding an
+unweighted one is dropped harmlessly on chain. `assertOracleWeightCoverage` reads the
+aggregators and is the gate for that rollout. Inspect what a network weights when you are
+debugging:
 
 ```bash
 pnpm oracle:aggregates:testnet    # per-ticker aggregator sources + weights
@@ -325,7 +330,7 @@ these surface at simulate, before you spend gas.
 | CORS failure fetching the quote-center (browser only)                      | `waterx_rule` fetches from the page and your origin is not on the allowlist. Point `waterxEndpoint` at a same-origin proxy; its base path is preserved. Node and keeper consumers are unaffected.                                                                                                                                                                   |
 | Ticker lookups return nothing                                              | Wrong format. Tickers are concatenated — `BTCUSD`, never `BTC/USD` or `BTC`. Canonical list: the document's `objects.perp.markets` keys (and `symbols` for the oracle universe).                                                                                                                                                                                    |
 | Prices off by 10⁹, or an order fills far from the intended level           | A human-readable number was passed where a raw 1e9-scaled `u64` belongs. Wrap in `rawPrice()`. Exception: view `basePriceUsd` args take a **whole-dollar** u64 — use `parseWholeDollarU64`.                                                                                                                                                                         |
-| A ticker prices on one network but not another                             | The two networks wire **different sources**, and the fed set follows the config — mainnet derives `[pyth_lazer_rule, waterx_rule]`, testnet `[waterx_rule]`. This is the drift a hand-declared list used to cause and derivation removes. Confirm per network with `pnpm oracle:aggregates:mainnet`.                                                                |
+| A ticker prices on one network but not another                             | The two networks wire **different sources**, and the fed set follows the config — mainnet ships no `oracle_rules.waterx.feeds` so it derives `[pyth_lazer_rule]`; testnet carries no Lazer block so it derives `[waterx_rule]`. This is the drift a hand-declared list used to cause and derivation removes. Confirm per network with `pnpm oracle:aggregates:mainnet`.                                                    |
 
 ## Documentation map
 

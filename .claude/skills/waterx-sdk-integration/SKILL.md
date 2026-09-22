@@ -75,8 +75,13 @@ Why derived rather than declared: **the fed set must be a superset of every tick
 on-chain weighted rules.** Starving a weighted rule aborts `EMissingPriceSource`; feeding
 an unweighted one is silently dropped. Because the failure is one-sided, taking every
 source the config wires is the fail-safe answer — and a hand-typed list could only err
-in the fatal direction (the classic being one copied between networks). A weight
-migration is then a config change, never an env edit and never an SDK release.
+in the fatal direction (the classic being one copied between networks).
+
+Derivation does not ESTABLISH that superset, though: a rule's feed list lives in
+waterx-config and its weight on chain, so the two move independently. A weight migration
+is a sequenced rollout — feed the rule everywhere first, raise the weight after; drop the
+weight before removing feeds — and `assertOracleWeightCoverage` reads the aggregators to
+gate it. No env edit and no SDK release either way.
 
 Inspect what a network actually weights when you are debugging:
 
