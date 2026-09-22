@@ -32,8 +32,9 @@ export async function appendConsolidateToUsd(
   client: AccountClientLike,
   tx: Transaction,
   accountId: string,
+  credit?: string,
 ): Promise<number> {
-  const parked = await probeParkedBackingAssets(client, accountId);
+  const parked = await probeParkedBackingAssets(client, accountId, credit);
   let legs = 0;
   for (const row of parked) {
     if (row.fundsRaw > 0n) {
@@ -41,7 +42,7 @@ export async function appendConsolidateToUsd(
         accountId,
         coinType: row.assetType,
       });
-      foldDepositRequestToUsd(client, tx, fromFunds, row.assetType);
+      foldDepositRequestToUsd(client, tx, fromFunds, row.assetType, credit);
       legs += 1;
     }
 
@@ -63,7 +64,7 @@ export async function appendConsolidateToUsd(
         coinType: row.assetType,
         receivings,
       });
-      foldDepositRequestToUsd(client, tx, fromReceivings, row.assetType);
+      foldDepositRequestToUsd(client, tx, fromReceivings, row.assetType, credit);
       legs += 1;
     }
   }
@@ -81,9 +82,10 @@ export async function appendConsolidateAddressCredit(
   client: AccountClientLike,
   tx: Transaction,
   accountId: string,
+  credit?: string,
 ): Promise<number> {
-  const creditType = client.creditType();
-  const { fundsRaw, coinsRaw } = await probeAddressCreditBalance(client, accountId);
+  const creditType = client.creditStack(credit).creditType;
+  const { fundsRaw, coinsRaw } = await probeAddressCreditBalance(client, accountId, credit);
   let legs = 0;
 
   if (fundsRaw > 0n) {
@@ -130,9 +132,10 @@ export async function appendConsolidateForSpend(
   client: AccountClientLike,
   tx: Transaction,
   accountId: string,
+  credit?: string,
 ): Promise<number> {
-  const backingLegs = await appendConsolidateToUsd(client, tx, accountId);
-  const creditLegs = await appendConsolidateAddressCredit(client, tx, accountId);
+  const backingLegs = await appendConsolidateToUsd(client, tx, accountId, credit);
+  const creditLegs = await appendConsolidateAddressCredit(client, tx, accountId, credit);
   return backingLegs + creditLegs;
 }
 
@@ -157,12 +160,15 @@ function foldDepositRequestToUsd(
   tx: Transaction,
   depositRequest: TransactionArgument,
   assetType: string,
+  credit?: string,
 ): void {
-  const usdReq = mintCreditFromRequest(client, tx, {
+  const stack = client.creditStack(credit);
+  const creditReq = mintCreditFromRequest(client, tx, {
     depositRequest,
     assetType,
+    creditType: stack.creditType,
   });
-  consumeDepositRequest(client, tx, usdReq as unknown as TransactionArgument, client.creditType());
+  consumeDepositRequest(client, tx, creditReq as unknown as TransactionArgument, stack.creditType);
 }
 
 /**
@@ -176,8 +182,9 @@ export async function buildConsolidateToUsdTx(
   client: AccountClientLike,
   accountId: string,
   tx?: Transaction,
+  credit?: string,
 ): Promise<Transaction> {
   const txOut = tx ?? new Transaction();
-  await appendConsolidateToUsd(client, txOut, accountId);
+  await appendConsolidateToUsd(client, txOut, accountId, credit);
   return txOut;
 }

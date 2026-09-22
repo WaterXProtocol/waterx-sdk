@@ -171,7 +171,7 @@ export interface BridgeFeeView {
  *
  * @param args.amount             CREDIT base units (the bridged coin's smallest unit).
  * @param args.evmDestinationChain WORMHOLE chain id of the destination EVM.
- * @param args.creditType         CREDIT coin type; defaults to `client.creditType()`.
+ * @param args.creditType         Credit to quote — an alias (`"SUI"`) or the CREDIT Move type; selects that credit's queue. Default: the default credit (USD).
  */
 export async function getBridgeFee(
   client: PerpClient,
@@ -179,11 +179,12 @@ export async function getBridgeFee(
 ): Promise<BridgeFeeView> {
   assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue");
   const pkg = client.config.packages.withdrawal_queue.published_at;
-  const queue = client.config.objects.withdrawal_queue.queue;
+  const stack = client.creditStack(args.creditType);
+  const queue = stack.queue;
   const amount = toU64(args.amount, "amount");
   const common = {
     package: pkg,
-    typeArguments: [args.creditType ?? client.creditType()] as [string],
+    typeArguments: [stack.creditType] as [string],
   };
   const chain = args.evmDestinationChain;
 
