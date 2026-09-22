@@ -44,20 +44,42 @@ export interface CreditStack {
   readonly executors: readonly string[];
 }
 
-/** Every credit stack in the config, keyed by alias. Throws on a half-wired credit. */
+const STACK_MAPS = [
+  ["objects.credit.registries", (c: WaterXConfig) => c.objects.credit.registries],
+  ["objects.custody.vaults", (c: WaterXConfig) => c.objects.custody.vaults],
+  ["objects.withdrawal_queue.queues", (c: WaterXConfig) => c.objects.withdrawal_queue.queues],
+] as const;
+
+/**
+ * The three maps must carry exactly the same alias set — a credit is either
+ * fully wired (registry + vault + queue) or it is not a credit. Any alias
+ * present in some maps but not all is a half-wired stack, whichever map is
+ * the odd one out, and the whole document is rejected rather than that
+ * credit silently dropped.
+ */
+function assertStackMapsSymmetric(config: WaterXConfig): void {
+  const union = new Set(STACK_MAPS.flatMap(([, pick]) => Object.keys(pick(config))));
+  const problems: string[] = [];
+  for (const alias of union) {
+    const missing = STACK_MAPS.filter(([, pick]) => !(alias in pick(config))).map(([path]) => path);
+    if (missing.length > 0) problems.push(`credit ${alias}: missing from ${missing.join(", ")}`);
+  }
+  if (problems.length > 0) throw new Error(`half-wired credit stack(s) — ${problems.join("; ")}`);
+}
+
+/**
+ * Every credit stack in the config, keyed by alias. Throws when the three
+ * per-credit maps disagree on the alias set (a half-wired credit).
+ */
 export function creditStacks(config: WaterXConfig): Readonly<Record<string, CreditStack>> {
+  assertStackMapsSymmetric(config);
   const registries = config.objects.credit.registries;
   const vaults = config.objects.custody.vaults;
   const queues = config.objects.withdrawal_queue.queues;
   const out: Record<string, CreditStack> = {};
   for (const [alias, reg] of Object.entries(registries)) {
-    const vault = vaults[alias];
-    const queue = queues[alias];
-    if (!vault || !queue) {
-      throw new Error(
-        `credit ${alias}: config has its registry but ${!vault ? "no objects.custody.vaults entry" : "no objects.withdrawal_queue.queues entry"} — half-wired stack`,
-      );
-    }
+    const vault = vaults[alias]!;
+    const queue = queues[alias]!;
     out[alias] = Object.freeze({
       alias,
       creditType: normalizeStructTag(reg.credit_type),

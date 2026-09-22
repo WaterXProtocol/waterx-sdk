@@ -68,15 +68,44 @@ describe("creditStacks", () => {
     expect(sui.assets.map((a) => a.type)).toEqual([MOCK_SUI_CREDIT.assetType]);
   });
 
-  it("throws on a half-wired credit (registry without vault or queue)", () => {
+  it("throws on a half-wired credit, whichever map is the odd one out", () => {
+    // registry present, vault / queue missing
     const noVault = structuredClone(config);
     delete (noVault.objects.custody.vaults as Record<string, unknown>).SUI;
-    expect(() => creditStacks(noVault)).toThrow(/credit SUI: .*no objects\.custody\.vaults entry/);
+    expect(() => creditStacks(noVault)).toThrow(
+      /credit SUI: missing from objects\.custody\.vaults$/,
+    );
 
     const noQueue = structuredClone(config);
     delete (noQueue.objects.withdrawal_queue.queues as Record<string, unknown>).SUI;
     expect(() => creditStacks(noQueue)).toThrow(
-      /credit SUI: .*no objects\.withdrawal_queue\.queues entry/,
+      /credit SUI: missing from objects\.withdrawal_queue\.queues$/,
+    );
+
+    // the inverse: a vault and/or queue with NO registry must not be silently dropped
+    const noRegistry = structuredClone(config);
+    delete (noRegistry.objects.credit.registries as Record<string, unknown>).SUI;
+    expect(() => creditStacks(noRegistry)).toThrow(
+      /credit SUI: missing from objects\.credit\.registries$/,
+    );
+    expect(() => creditStackForAsset(noRegistry, MOCK_SUI_CREDIT.assetType)).toThrow(/half-wired/);
+
+    const orphanQueue = structuredClone(config);
+    (orphanQueue.objects.withdrawal_queue.queues as Record<string, unknown>).DEEP = {
+      queue: MOCK_SUI_CREDIT.queue,
+      executors: [],
+    };
+    expect(() => creditStacks(orphanQueue)).toThrow(
+      /credit DEEP: missing from objects\.credit\.registries, objects\.custody\.vaults$/,
+    );
+
+    // several problems are reported together, not one at a time
+    const both = structuredClone(config);
+    delete (both.objects.custody.vaults as Record<string, unknown>).SUI;
+    (both.objects.credit.registries as Record<string, unknown>).WAL =
+      both.objects.credit.registries.USD;
+    expect(() => creditStacks(both)).toThrow(
+      /credit SUI: missing from objects\.custody\.vaults; credit WAL: missing from/,
     );
   });
 });

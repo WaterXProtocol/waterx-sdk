@@ -182,6 +182,13 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Fixed
 
+- **`client.perp.refreshOraclePrices` / `refreshWlpPoolOracles` / `parseWholeDollarU64`
+  are no longer grafted onto the umbrella facade.** They are `(tx, …)` / `(value)`
+  helpers, so the bound methods passed the client where a transaction or string was
+  expected and threw on every call. They stay importable as free functions (`perp.*`
+  and the module paths); the umbrella now audits every bound builder's first
+  parameter in unit tests so a non-client-first export cannot be mis-bound again
+  (#97).
 - **`waterx_rule` reads the quote-center's current leaf route.** The leaf fetch now hits
   `GET /v1/sign/bbo/consensus?symbols=…` — the quote-center renamed it from
   `/v1/quotes/leaves` with its Spot-BBO consensus API (waterx-quote-center#191,
@@ -263,11 +270,15 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   with the USD registry. `creditStacks(config)` lists every stack (throws on a
   half-wired one) and `creditStackForAsset(config, T)` finds the stack whose vault
   registers backing asset `T`. Surfaced as `client.creditStack(credit?)` /
-  `client.creditStacks()` on `AccountClientLike` / `PerpClient` (#97).
+  `client.creditStacks()` on `AccountClientLike` / `PerpClient` — on the umbrella
+  that is `client.perp.creditStack(…)`; the `(config, …)` functions are exported
+  for callers holding a config but are deliberately NOT bound onto
+  `client.account` (#97).
   - Every credit builder's `creditType?` now accepts an alias OR a type and routes
     to that credit's own objects: `mintCredit`, `mintCreditFromRequest`,
     `mintCreditToAccount`, `custodyMint`, `redeemVaa`, `enqueueWithdrawal`,
-    `executeWithdrawalNative`, `executeWithdrawalWormhole`, `requestCreditWithdraw`.
+    `executeWithdrawalNative`, `executeWithdrawalWormhole`, `requestCreditWithdraw`,
+    and the `getBridgeFee` quote (which now reads that credit's queue).
     Omitting it still means USD, so existing calls are unchanged.
   - The consolidate sweep is per credit: `probeParkedBackingAssets`,
     `probeAddressCreditBalance`, `appendConsolidateToUsd`,
