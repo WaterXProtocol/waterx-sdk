@@ -126,9 +126,20 @@ export const MOCK_TESTNET_CONFIG_RAW = {
     referral: {
       table: "0xb008a69a277ed7a62318566fd1bba6bc213cdd642232cf62ed3bf58fe437515f",
     },
+    // The singular `registry` / `credit_type` are the USD stack's legacy
+    // aliases of `registries.USD`; the map is what the document is keyed by
+    // now (one stack per credit coin), so the two must agree.
     credit: {
       registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
       credit_type: USD_TYPE,
+      registries: {
+        USD: {
+          registry: "0xd3c432ee9b0bb49a8d8af00a35b357649d592e7c851ce9a8fd02eb665c4dafb7",
+          credit_type: USD_TYPE,
+          decimals: 6,
+          metadata_cap: stub(0x05d),
+        },
+      },
     },
     custody: {
       vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
@@ -150,6 +161,21 @@ export const MOCK_TESTNET_CONFIG_RAW = {
           min_burn_amount: "0",
         },
       ],
+      vaults: {
+        USD: {
+          vault: "0xa16c7b06afc1baeedd9acb5f590d14bbb6a887df6e810a72e7709acb764c5b71",
+          assets: [
+            {
+              name: "MOCK_USDC",
+              type: "0x7ccd477e884ec74f960b23a8b34b7d87999e4d7ee0dde738a0c25f46200f201a::mock_usdc::MOCK_USDC",
+              decimal: 6,
+              mint_fee_scaled: "0",
+              burn_fee_scaled: "1000000",
+              min_burn_amount: "0",
+            },
+          ],
+        },
+      },
     },
     bridge: {
       state: stub(0x7a1b),
@@ -165,6 +191,10 @@ export const MOCK_TESTNET_CONFIG_RAW = {
     },
     withdrawal_queue: {
       queue: stub(0x4a1b),
+      executors: [stub(0x3e1a)],
+      queues: {
+        USD: { queue: stub(0x4a1b), executors: [stub(0x3e1a)] },
+      },
     },
     usd: {
       metadata_cap: stub(0x05d),

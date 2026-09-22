@@ -252,7 +252,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",
-    "@waterx/config": "0.1.1-staging.1"
+    "@waterx/config": "0.1.1-staging.2"
   },
   "peerDependencies": {
     "@mysten/bcs": "^1.9.0",
