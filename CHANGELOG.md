@@ -32,7 +32,7 @@ fixtures only._
   stale, ungenerated `test/perp/TEST-CASES.md` inventory (it indexed deleted Core test
   files) is deleted. `PythAccessConfig` / `client.pyth` stay: they are the Pyth Lazer /
   Pro credential. `assertOracleWeightCoverage` still reports an on-chain aggregator that
-  weights `PythRule`, since that is chain state the SDK cannot feed.
+  weights `PythRule`, since that is chain state the SDK cannot feed (#99).
 
 ## [6.0.0] - 2026-09-22
 
