@@ -4,10 +4,9 @@
  * Run:
  *   pnpm exec tsx scripts/wlp-pool-status.ts
  */
-import { PerpClient } from "../src/perp/client.ts";
 import { getPoolData, getTokenPoolData } from "../src/perp/fetch.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 const FLOAT_SCALE = 1_000_000_000n; // 1e9 Float scale (src/constants.ts)
 
@@ -24,10 +23,7 @@ function shortType(t: string): string {
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
 
   const pool = await getPoolData(client);
   console.log("=== WLP Pool ===");

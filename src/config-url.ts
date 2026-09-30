@@ -10,13 +10,13 @@
  * This is a pure helper for code that holds such a root, typically read from
  * `WATERX_CONFIG_URL`. The SDK itself still reads no env: `loadConfig` and
  * `create()` take a COMPLETE document URL via `waterxConfigUrl`, e.g.
- * `waterxConfigUrl: waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL!, "TESTNET")`.
+ * `waterxConfigUrl: waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL, "TESTNET")`.
  */
 
 import type { Network } from "./constants.ts";
 
 /** The network argument: the SDK's `Network`, or its lowercase document name. */
-export type WaterxConfigNetwork = Network | "mainnet" | "testnet";
+export type WaterxConfigNetwork = Network | Lowercase<Network>;
 
 const EXAMPLE_ROOT = "https://staging-v2.waterx-config.pages.dev";
 
@@ -42,16 +42,19 @@ const GITHUB_HOST = /(^|\.)github(usercontent)?\.com$/i;
  * @example waterxConfigUrlFromRoot("https://staging-v2.waterx-config.pages.dev/", "TESTNET")
  *   // → "https://staging-v2.waterx-config.pages.dev/testnet.json"
  */
-export function waterxConfigUrlFromRoot(root: string, network: WaterxConfigNetwork): string {
+export function waterxConfigUrlFromRoot(
+  root: string | undefined,
+  network: WaterxConfigNetwork,
+): string {
   const net = String(network).toLowerCase();
   if (net !== "mainnet" && net !== "testnet") {
     throw new Error(
       `waterxConfigUrlFromRoot: unknown network ${JSON.stringify(network)} (expected MAINNET or TESTNET)`,
     );
   }
-  // `String(... ?? "")`: an unset env root reaches here as `undefined` through a
-  // `!` assertion or plain JS, and must still get the "empty config root" error.
-  const value = String(root ?? "").trim();
+  // `undefined` is accepted so an unset env var can be passed straight in and
+  // get the "empty config root" error.
+  const value = (root ?? "").trim();
   if (!value) fail("empty config root");
 
   let url: URL;

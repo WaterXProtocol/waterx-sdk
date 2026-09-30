@@ -142,7 +142,7 @@ with the exported helper, which strips trailing slashes and throws for a full do
 ```ts
 import { waterxConfigUrlFromRoot } from "@waterx/sdk"; // also on /config, /perp, /prediction
 
-const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL!, "TESTNET");
+const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL, "TESTNET");
 ```
 
 **2 — Nothing to pick: the fed set is derived.** Every source the config wires

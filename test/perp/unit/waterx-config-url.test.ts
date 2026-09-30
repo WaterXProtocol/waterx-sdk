@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  assertNoRetiredConfigUrlAliases,
-  RETIRED_CONFIG_URL_ALIASES,
-  waterxConfigUrlFromEnv,
-} from "../../../scripts/waterx-config-url.ts";
+import { waterxConfigUrlFromEnv } from "../../../scripts/waterx-config-url.ts";
 import { waterxConfigUrlFromRoot } from "../../../src/config.ts";
 
 const ROOT = "https://staging-v2.waterx-config.pages.dev";
@@ -74,9 +70,11 @@ describe("waterxConfigUrlFromRoot (public)", () => {
 });
 
 describe("waterxConfigUrlFromEnv (env boundary)", () => {
-  it("returns undefined for an unset/blank value so create() throws its own error", () => {
-    expect(waterxConfigUrlFromEnv("testnet", {})).toBeUndefined();
-    expect(waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: "   " })).toBeUndefined();
+  it("throws, naming the variable, for an unset/blank value", () => {
+    expect(() => waterxConfigUrlFromEnv("testnet", {})).toThrow(/^WATERX_CONFIG_URL is unset/);
+    expect(() => waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: "   " })).toThrow(
+      /^WATERX_CONFIG_URL is unset/,
+    );
   });
 
   it("composes a root and prefixes errors with the variable name", () => {
@@ -90,12 +88,8 @@ describe("waterxConfigUrlFromEnv (env boundary)", () => {
 });
 
 describe("retired aliases", () => {
-  it("names E2E_CONFIG_URL and PREDICT_CONFIG_URL", () => {
-    expect([...RETIRED_CONFIG_URL_ALIASES]).toEqual(["E2E_CONFIG_URL", "PREDICT_CONFIG_URL"]);
-  });
-
   it("throws, naming WATERX_CONFIG_URL, when a retired alias is set", () => {
-    expect(() => assertNoRetiredConfigUrlAliases({ E2E_CONFIG_URL: ROOT })).toThrow(
+    expect(() => waterxConfigUrlFromEnv("testnet", { E2E_CONFIG_URL: ROOT })).toThrow(
       /E2E_CONFIG_URL is retired\. Unset it and set WATERX_CONFIG_URL/,
     );
     expect(() =>

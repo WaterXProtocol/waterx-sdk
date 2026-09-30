@@ -16,12 +16,6 @@ import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const configUrl = waterxConfigUrlFromEnv("TESTNET");
-  if (!configUrl) {
-    throw new Error(
-      "smoke-remote: set WATERX_CONFIG_URL to a waterx-config CDN root " +
-        "(e.g. https://staging-v2.waterx-config.pages.dev)",
-    );
-  }
   const t0 = Date.now();
   console.log(`fetching config: ${configUrl}`);
   const client = await PerpClient.create("TESTNET", {

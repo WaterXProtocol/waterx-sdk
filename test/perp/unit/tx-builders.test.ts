@@ -68,7 +68,7 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("buildPlaceOrderTx with oracle refresh: fee-free, no SplitCoins, no sponsor legs — just verify+feed+aggregate", async () => {
+  it("buildPlaceOrderTx with oracle refresh: fee-free, no SplitCoins — just verify+feed+aggregate", async () => {
     mockLeafRouteEchoingSymbols();
 
     const tx = await buildPlaceOrderTx(client, {

@@ -48,7 +48,7 @@ import { stake, unstake } from "../src/perp/index.ts";
 import { ownEntry } from "../src/utils/record.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 interface SimResult {
   $kind?: string;
@@ -183,10 +183,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const stakeAlias = process.env.WATERX_STAKE_ALIAS ?? "WLP";
   const doExecute = process.env.EXECUTE === "1";

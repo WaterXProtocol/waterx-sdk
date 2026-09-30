@@ -43,7 +43,7 @@ import { claimReward, stake, unstake } from "../src/perp/index.ts";
 import { ownEntry } from "../src/utils/record.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 const TESTNET_JSON_RPC = "https://fullnode.testnet.sui.io:443";
 
@@ -230,10 +230,7 @@ async function main(): Promise<void> {
   console.log(`Sender:    ${address}`);
   console.log(`AccountId: ${accountId}`);
 
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
   const stakeAmount = BigInt(process.env.WATERX_STAKE_AMOUNT ?? "1000000");
   const waitMs = Number(process.env.WATERX_REWARD_WAIT_MS ?? "15000");
   const pollMs = Number(process.env.WATERX_POLL_INTERVAL_MS ?? "1500");

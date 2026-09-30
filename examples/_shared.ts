@@ -32,13 +32,6 @@ const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
 export async function buildClient(network: Network = "TESTNET"): Promise<PerpClient> {
   const waterxConfigUrl = waterxConfigUrlFromEnv(network);
-  if (!waterxConfigUrl) {
-    throw new Error(
-      "buildClient: set WATERX_CONFIG_URL to a waterx-config CDN root " +
-        "(e.g. https://staging-v2.waterx-config.pages.dev) — the network's " +
-        "document name is appended for you",
-    );
-  }
   // The fed set is derived from the config the client loads — nothing to wire.
   return PerpClient.create(network, {
     cache: true,

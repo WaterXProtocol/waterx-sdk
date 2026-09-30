@@ -8,6 +8,8 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { rewriteSdkImports } from "./rewrite-sdk-imports.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(__dirname, "..");
 const SDK_ROOT = join(PKG_ROOT, "../..");
@@ -55,29 +57,6 @@ const OTHER_FILES = [
     "src/scripts/bootstrap-deposits-core.ts",
   ],
 ];
-
-function rewriteSdkImports(content) {
-  return (
-    content
-      .replace(/from "~predict\/([^"]+)\.ts"/g, 'from "@waterx/sdk/prediction/$1"')
-      .replace(/from '\~predict\/([^']+)\.ts'/g, "from '@waterx/sdk/prediction/$1'")
-      // Codegen lives at `src/generated/`, exported as `@waterx/sdk/generated/*`.
-      // There is no `prediction/generated` subpath — the prediction line imports
-      // from the single shared root.
-      .replace(/from "(?:\.\.\/)+src\/generated\/([^"]+)\.ts"/g, 'from "@waterx/sdk/generated/$1"')
-      .replace(/from '(?:\.\.\/)+src\/generated\/([^']+)\.ts'/g, "from '@waterx/sdk/generated/$1'")
-      // `DEFAULT_GRPC_URLS` lives on `src/base-client.ts` upstream and is
-      // re-exported on the prediction export map for exactly this reason.
-      .replace(/from "(?:\.\.\/)+src\/base-client\.ts"/g, 'from "@waterx/sdk/prediction"')
-      .replace(/from '(?:\.\.\/)+src\/base-client\.ts'/g, "from '@waterx/sdk/prediction'")
-      // The env-boundary URL rule is vendored next to the helpers (OTHER_FILES).
-      // ...and it composes through the SDK's public `waterxConfigUrlFromRoot`.
-      .replace(/from "(?:\.\.\/)+src\/config-url\.ts"/g, 'from "@waterx/sdk/config"')
-      .replace(/from '(?:\.\.\/)+src\/config-url\.ts'/g, "from '@waterx/sdk/config'")
-      .replace(/from "(?:\.\.\/)+scripts\/waterx-config-url\.ts"/g, 'from "./waterx-config-url.ts"')
-      .replace(/from '(?:\.\.\/)+scripts\/waterx-config-url\.ts'/g, "from './waterx-config-url.ts'")
-  );
-}
 
 /**
  * `packages/predict-stress` is standalone — it consumes the SDK through the

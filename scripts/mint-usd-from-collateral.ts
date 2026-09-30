@@ -33,7 +33,7 @@ import { mintCreditToAccount } from "../src/account/funding/custody.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 /** First spendable coin of `coinType` owned by `owner`, with its balance. */
 async function pickCoin(
@@ -79,10 +79,7 @@ async function main(): Promise<void> {
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
 
   // `objects.custody` / `objects.credit` are required by the config schema —
   // no "is custody deployed on this network?" guard.

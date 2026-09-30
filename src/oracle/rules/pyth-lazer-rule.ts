@@ -198,7 +198,7 @@ export function postLazerLatestPrice(
 ): Promise<Response> {
   // joinEndpointPath preserves any base path on the endpoint (see
   // update-fetch.ts). Defensive here: the default Lazer endpoint has no base
-  // path, but a config override may.
+  // path, but a caller-supplied endpoint may.
   const url = joinEndpointPath(endpoint, "v1/latest_price");
   return fetchWithPolicy(
     url.toString(),

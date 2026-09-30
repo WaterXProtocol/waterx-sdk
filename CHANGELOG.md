@@ -32,7 +32,8 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   trailing slashes are stripped, and it returns `${root}/${network}.json` for `MAINNET` /
   `TESTNET` (either case). It THROWS, naming the fix, for a path ending in `.json` (the old
   full-document form, never rewritten), a non-https value, a GitHub host (`github.com`,
-  `*.githubusercontent.com`), a query/fragment, or an empty value. The SDK still reads no env
+  `*.githubusercontent.com`), a query/fragment, or an empty value (`root` may be `undefined`, so
+  an unset env var can be passed straight in and get that error). The SDK still reads no env
   and `waterxConfigUrl` is unchanged; this only composes the value you pass it. Covered by
   the post-build export tests (ESM + CJS on all four entries) (#99).
 
@@ -45,7 +46,8 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   silently overriding it: the prediction e2e helpers (`test/prediction/helpers/e2e-env.ts`
   and the vendored `packages/predict-stress` copy) read `WATERX_CONFIG_URL` alone. Every
   harness (scripts, `examples/_shared.ts`, both e2e clients) now calls the one
-  `waterxConfigUrlFromEnv(network)`; the pass-through `waterxConfigUrlForNetwork`,
+  `waterxConfigUrlFromEnv(network)`, which also THROWS, naming the variable, when it is unset
+  (the testnet scripts share one `createTestnetScriptClient()`); the pass-through `waterxConfigUrlForNetwork`,
   `resolveWaterxConfigUrl` and `resolveE2eWaterxConfigUrl` wrappers are gone.
   `.env.example`, the CI workflow comments and the docs describe the root form, with
   `main-v2` as the production root (#99).

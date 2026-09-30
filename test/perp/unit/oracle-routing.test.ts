@@ -1,7 +1,6 @@
 /**
- * Env-selected oracle rule routing — `oracleSource` client option threading
- * (unified-client → PerpClient → OracleHost) and `refreshOraclePrices`'s
- * per-rule grouping via `rule-registry.ts`. No real network; the sources'
+ * Oracle rule routing by the derived fed set (unified-client → PerpClient →
+ * OracleHost) and `refreshOraclePrices`'s per-rule grouping via `rule-registry.ts`. No real network; the sources'
  * off-chain fetches are stubbed per test.
  */
 import { Transaction } from "@mysten/sui/transactions";
