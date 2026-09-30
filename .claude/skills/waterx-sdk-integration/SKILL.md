@@ -50,7 +50,19 @@ const client = await WaterXClient.create({
 the consolidated `schema_version: 2` shape — the SDK parses it strictly and rejects a
 legacy per-package file at `create()`. It is fetched
 as-is — the SDK appends no `<network>.json` and no git ref. Your app reads the env var;
-the SDK never does. Look up ids through the client (`client.perp.getMarket(ticker)`,
+the SDK never does. When your env holds a config CDN ROOT (the fleet's
+`WATERX_CONFIG_URL` convention, e.g. `https://staging-v2.waterx-config.pages.dev`), compose
+the document URL with the exported helper instead of by hand:
+
+```ts
+import { waterxConfigUrlFromRoot } from "@waterx/sdk"; // also on /config, /perp, /prediction
+
+const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL!, "TESTNET");
+// → https://staging-v2.waterx-config.pages.dev/testnet.json
+```
+
+It strips trailing slashes and THROWS for a full document URL (`…/testnet.json`, the old
+format), a non-https value, a GitHub host, or a query/fragment. Look up ids through the client (`client.perp.getMarket(ticker)`,
 `client.perp.creditType()`, `client.perp.wlpType()`) rather than hardcoding them.
 
 **The oracle fed set is DERIVED from that config** — there is no `oracleSource` option
