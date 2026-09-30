@@ -16,6 +16,24 @@ from the version number alone.
 
 ## [Unreleased]
 
+_PATCH: no public export, type or runtime behaviour changes — docs, comments and test
+fixtures only._
+
+### Removed
+
+- **The last Pyth Core (`pyth_rule`) remnants.** The v2 test fixtures
+  (`test/perp/helpers/fixtures/waterx-config-v2-testnet.json`,
+  `test/helpers/fixtures/mock-testnet-config.ts`) no longer carry `oracle_rules.pyth` /
+  `packages.pyth_rule`, matching the pyth-free v2 documents (waterx-config #91 / #92).
+  Tests that only asserted the retired `pyth_rule::feed` / `pyth_sponsor_rule` legs are
+  absent are dropped, Core-era comments are rewritten to describe the current design,
+  and `README.md`, `PACKAGES.md`, `CLAUDE.md`, the integration skill, `.env.example` and
+  the CI workflow no longer describe Hermes, `pyth_rule` or `pyth_sponsor_rule`. The
+  stale, ungenerated `test/perp/TEST-CASES.md` inventory (it indexed deleted Core test
+  files) is deleted. `PythAccessConfig` / `client.pyth` stay: they are the Pyth Lazer /
+  Pro credential. `assertOracleWeightCoverage` still reports an on-chain aggregator that
+  weights `PythRule`, since that is chain state the SDK cannot feed.
+
 ## [6.0.0] - 2026-09-22
 
 _MAJOR: three BREAKING changes, each detailed in its own note below. (1) The quote-center
