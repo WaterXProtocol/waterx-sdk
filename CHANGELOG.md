@@ -31,8 +31,10 @@ fixtures only._
   the CI workflow no longer describe Hermes, `pyth_rule` or `pyth_sponsor_rule`. The
   stale, ungenerated `test/perp/TEST-CASES.md` inventory (it indexed deleted Core test
   files) is deleted. `PythAccessConfig` / `client.pyth` stay: they are the Pyth Lazer /
-  Pro credential. `assertOracleWeightCoverage` still reports an on-chain aggregator that
-  weights `PythRule`, since that is chain state the SDK cannot feed (#99).
+  Pro credential. `assertOracleWeightCoverage` and the e2e weight helper no longer name
+  `PythRule` anywhere: its docs and tests describe the generic case, where ANY weighted
+  rule the SDK has no source for (unknown, `SupraRule`, or unlisted) is reported as
+  unsuppliable and the assert throws `OracleWeightCoverageError` (#99).
 
 ## [6.0.0] - 2026-09-22
 
