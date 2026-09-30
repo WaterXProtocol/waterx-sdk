@@ -17,8 +17,8 @@ import type { Transaction } from "@mysten/sui/transactions";
 
 import { PerpClient } from "../src/perp/client.ts";
 import { buildRequestCreditWithdrawTx } from "../src/perp/tx-builders.ts";
-import { waterxConfigUrlForNetwork } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 
 /** Default wxa account (deployer's) if WATERX_SMOKE_ACCOUNT_ID is unset. */
 const DEFAULT_ACCOUNT = "0x9d017d08000a6cfa4eae6366dafe44ffd197480ef01a3707a4057bd7f697b67b";
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
   const address = resolveActiveAddress();
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
+    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
   });
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID ?? DEFAULT_ACCOUNT;
   const execute = process.env.EXECUTE === "1";

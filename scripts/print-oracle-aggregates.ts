@@ -16,7 +16,8 @@ import {
 } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import type { Network } from "../src/perp/constants.ts";
-import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 
 type OutputFormat = "pretty" | "raw";
 
@@ -128,8 +129,8 @@ function parseArgs(argv: string[]): {
   signed leaves/envelope). There is NO cross-source fallback — a missing feed or
   refresh failure fails the ticker.
 
-  Requires WATERX_CONFIG_URL (or .env) — a CDN base; /<network>.json is appended
-  for the selected network (a legacy full-file value is swapped instead).
+  Requires WATERX_CONFIG_URL (or .env) — a CDN root; /<network>.json is appended
+  for the selected network (a full document URL is rejected).
 
   -h, --help        Show this message.`);
       process.exit(0);
@@ -414,7 +415,7 @@ async function runOne(
 
   try {
     // No cross-source fallback and no stale-continue: a refresh failure for
-    // the fed set fails the ticker (the retired Hermes stale path is gone).
+    // the fed set fails the ticker.
     await refreshOraclePrices(tx, client, [feed.ticker], { updateDataProvider });
 
     const res = await client.grpcClient.simulateTransaction({
@@ -505,7 +506,7 @@ async function runOne(
 async function main() {
   loadRepoEnvFiles();
   const { format, network, tickers } = parseArgs(process.argv);
-  const waterxConfigUrl = waterxConfigUrlForNetwork(network);
+  const waterxConfigUrl = waterxConfigUrlFromEnv(network);
   const pythApiKey = resolvePythApiKey();
   const client = await PerpClient.create(network, {
     cache: true,

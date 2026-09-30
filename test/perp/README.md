@@ -29,7 +29,7 @@ PRs to `main` run [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml): 
 - **`referral`** / **`read-referral`**: referral not in config (**`describe.skipIf`**).
 - **Oracle fetch 404 / 429 / 5xx during `build*Tx`**: source gateway outage or feed mismatch (Lazer or the quote-center) — tests **`ctx.skip`** via **`skipIfOracleFetchUnavailable`** (including **`runBuiltTradingTx`** used by **`trade-position`**). A MALFORMED payload is not skipped: that is the quote-center serving bad data, which should fail red.
 
-**Ghost-ID simulate** (**`trade-ghost-sizing`**, **`trade-pre-order-requests`**) does **not** depend on discovery; they still **`simulate`** the sponsor + oracle PTB (Move may **abort** on invalid ids — that is acceptable for builder smoke).
+**Ghost-ID simulate** (**`trade-ghost-sizing`**, **`trade-pre-order-requests`**) does **not** depend on discovery; they still **`simulate`** the oracle PTB (Move may **abort** on invalid ids — that is acceptable for builder smoke).
 
 ### E2E layout (`test/perp/e2e/`)
 
@@ -85,11 +85,11 @@ Positional args and unknown flags after `pnpm test:e2e` are forwarded to Vitest,
 ## Simulate / e2e: network + discovery
 
 - **Network:** `scripts/run-e2e.ts` / **`test/perp/helpers/e2e/e2e-client.ts`**: **`--testnet`** / **`--mainnet`** (CLI) → **`WATERX_E2E_NETWORK`** → **`testnet`** default when unspecified (`pnpm test` runs Vitest without `run-e2e.ts`, so it relies on this fallback).
-- **Config URL:** `WATERX_CONFIG_URL` is a CDN BASE root, passed through to the harness untouched; each harness composes `/<network>.json` itself from `WATERX_E2E_NETWORK` (which is what `run-e2e.ts` sets). A legacy value ending in `testnet.json` / `mainnet.json` is still accepted and swapped to the requested network, with a one-time warning.
+- **Config URL:** `WATERX_CONFIG_URL` is a CDN ROOT, passed through to the harness untouched; each harness composes `/<network>.json` itself from `WATERX_E2E_NETWORK` (which is what `run-e2e.ts` sets). A full document URL (`…/testnet.json`), a non-https value, a GitHub host, or a set retired alias (`E2E_CONFIG_URL`) throws.
 - **Mainnet wxa discovery:** there is **no** built-in canonical mainnet account. Behavior differs by path:
   - **Custody/credit** (`resolveCustodyWxaRow`): env / owner hints only — no WLP/USDC all-market fallback after hints miss (that path exceeded the 180s `beforeAll` hookTimeout on public gRPC). Set **`WATERX_E2E_WXA_ACCOUNT_ID`** + **`WATERX_E2E_WXA_OWNER`** for stateful suites.
   - **WLP stored-balance candidates** (`collectWxaAccountIdCandidates`): env hints **plus** redeem-queue recipients; still **skips** all-market position scan + funded probe. Testnet keeps canonical wxa + full market/probe fallback.
-- **Oracle:** Lazer / quote-center signed updates via **`refreshOraclePrices`** (`src/oracle/aggregate.ts`), fed by whichever sources the loaded config wires. There is **no** legacy bucket-aggregator prime step and no Hermes warm step.
+- **Oracle:** Lazer / quote-center signed updates via **`refreshOraclePrices`** (`src/oracle/aggregate.ts`), fed by whichever sources the loaded config wires. There is **no** legacy bucket-aggregator prime step.
 - **Oracle (Lazer):** `PythLazerRule` has **mock-only unit coverage** today (`test/perp/unit/pyth-lazer-rule.test.ts`) — the Lazer API is auth-first and feed responses need an **entitled** Pyth Pro key. A future real e2e should read **`WATERX_E2E_LAZER_API_KEY`** at the harness boundary and pass it as the **`pythApiKey`** create option (the SDK never reads env), skipping when unset. Never hardcode a key.
 - **gRPC:** optional **`WATERX_E2E_GRPC_URL`**; parallelism **`WATERX_E2E_MAX_FORKS=2`…`8`** if your RPC tolerates it.
 

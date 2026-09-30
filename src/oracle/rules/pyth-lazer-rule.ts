@@ -196,10 +196,9 @@ export function postLazerLatestPrice(
   requestPins: Record<string, unknown>,
   fetchOpts?: PythFetchPolicy,
 ): Promise<Response> {
-  // joinEndpointPath preserves any base path on the endpoint — the same
-  // leading-slash `new URL` footgun that 404'd every feed on the Pyth Pro
-  // Hermes endpoint (see update-fetch.ts). Defensive here: the default
-  // Lazer endpoint has no base path, but a config override may.
+  // joinEndpointPath preserves any base path on the endpoint (see
+  // update-fetch.ts). Defensive here: the default Lazer endpoint has no base
+  // path, but a config override may.
   const url = joinEndpointPath(endpoint, "v1/latest_price");
   return fetchWithPolicy(
     url.toString(),

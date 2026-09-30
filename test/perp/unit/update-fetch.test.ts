@@ -303,7 +303,7 @@ describe("fetchWithPolicy", () => {
       let caught: unknown;
       try {
         await fetchWithPolicy(
-          "https://hermes.test.invalid/v2/updates/price/latest?ids[]=0xsecretfeedid",
+          "https://lazer.test.invalid/v1/latest_price?ids[]=0xsecretfeedid",
           {},
           { retries: 1, retryDelayMs: 1 },
         );
@@ -313,7 +313,7 @@ describe("fetchWithPolicy", () => {
 
       expect(caught).toBeInstanceOf(FetchPolicyError);
       const err = caught as FetchPolicyError;
-      expect(err.message).toContain("hermes.test.invalid/v2/updates/price/latest");
+      expect(err.message).toContain("lazer.test.invalid/v1/latest_price");
       expect(err.message).not.toContain("ids");
       expect(err.message).not.toContain("0xsecretfeedid");
       expect(err.message).not.toContain("?");
@@ -332,7 +332,7 @@ describe("fetchWithPolicy", () => {
       let caught: unknown;
       try {
         await fetchWithPolicy(
-          "https://hermes.test.invalid/v2/updates/price/latest",
+          "https://lazer.test.invalid/v1/latest_price",
           {},
           { retries: 0, retryDelayMs: 1 },
         );
@@ -342,7 +342,7 @@ describe("fetchWithPolicy", () => {
 
       expect(caught).toBeInstanceOf(FetchPolicyError);
       const err = caught as FetchPolicyError;
-      expect(err.message).toContain("hermes.test.invalid/v2/updates/price/latest");
+      expect(err.message).toContain("lazer.test.invalid/v1/latest_price");
       expect(err.message).toContain("fetch failed");
       expect(err.status).toBeUndefined();
       expect(err.attempts).toBe(1); // retries: 0 ⇒ 1 total attempt
@@ -499,8 +499,8 @@ describe("joinEndpointPath", () => {
   });
 
   it("is identical to plain concat for a bare-origin endpoint", () => {
-    expect(joinEndpointPath("https://hermes.pyth.network", "v1/latest_price").href).toBe(
-      "https://hermes.pyth.network/v1/latest_price",
+    expect(joinEndpointPath("https://pyth-lazer.dourolabs.app", "v1/latest_price").href).toBe(
+      "https://pyth-lazer.dourolabs.app/v1/latest_price",
     );
   });
 

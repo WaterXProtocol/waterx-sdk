@@ -3,8 +3,8 @@
  * shape): integer Lazer ids from `oracle_rules.pyth_lazer.lazer_feed_ids`, the
  * waterx served-set contract over `oracle_rules.waterx.feeds`, and
  * `readPlanTickers` over both planes. Every source reads its OWN namespace, so
- * write set == read set by construction — there is no hermes plane, no
- * endpoint resolver, and no `unreadable` diagnostic anymore.
+ * write set == read set by construction — there is no endpoint resolver and
+ * no `unreadable` diagnostic.
  */
 import { describe, expect, it } from "vitest";
 

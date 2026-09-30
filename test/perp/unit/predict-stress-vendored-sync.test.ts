@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
  * so the next drift fails here instead of in a stress run.
  */
 describe("predict-stress vendored modules", () => {
-  it("waterx-config-url.ts is byte-identical to its source", () => {
+  it("waterx-config-url.ts is byte-identical to its source (modulo the SDK import)", () => {
     const source = readFileSync(
       new URL("../../../scripts/waterx-config-url.ts", import.meta.url),
       "utf8",
@@ -23,6 +23,10 @@ describe("predict-stress vendored modules", () => {
       new URL("../../../packages/predict-stress/src/helpers/waterx-config-url.ts", import.meta.url),
       "utf8",
     );
-    expect(vendored).toBe(source);
+    // The one rewrite `pnpm sync` applies: the standalone package reaches the
+    // SDK's `waterxConfigUrlFromRoot` through the export map, not `../src/`.
+    const expected = source.replace('from "../src/config-url.ts"', 'from "@waterx/sdk/config"');
+    expect(expected).not.toBe(source);
+    expect(vendored).toBe(expected);
   });
 });

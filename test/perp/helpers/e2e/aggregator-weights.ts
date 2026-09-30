@@ -9,9 +9,10 @@
  *   1. an SDK regression that stopped feeding a rule it should feed — a REAL
  *      integration break the e2e suites exist to catch; and
  *   2. a deployment whose aggregator weights a rule this build never feeds
- *      (e.g. an aggregator still weighting the retired `pyth_rule` or the
- *      never-fed `supra_rule`, or weighting `pyth_lazer_rule` for a ticker the
- *      config carries no Lazer feed id for — none is satisfiable by any build).
+ *      (e.g. an aggregator weighting a rule the SDK has no witness for, such
+ *      as the never-fed `supra_rule`, or weighting `pyth_lazer_rule` for a
+ *      ticker the config carries no Lazer feed id for — none is satisfiable by
+ *      any build).
  *
  * So the abort text alone must never gate a skip. {@link unfedWeightedRules}
  * names exactly which weighted rules this client cannot feed for a ticker,
@@ -96,8 +97,9 @@ export async function readAggregatorWeightRules(
  * when the ticker is constant-pinned, plus every source in the config-derived
  * fed set whose rule serves `ticker`. Mirrors `aggregate.ts::refreshOraclePrices`
  * routing (`rule.supportedTickers(config)` per source) — keep the two in step.
- * (The retired `pyth_rule` and the never-fed `supra_rule` have no witness here
- * at all, so an aggregator weighting either is correctly reported as unfed.)
+ * (Any rule not in `RULE_WITNESS` — the never-fed `supra_rule`, or one the SDK
+ * does not know — has no witness here at all, so an aggregator weighting it is
+ * correctly reported as unfed.)
  */
 function fedWitnesses(client: PerpClient, ticker: string): Set<string> {
   const fed = new Set<string>();

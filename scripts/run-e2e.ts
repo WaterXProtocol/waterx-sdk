@@ -65,11 +65,10 @@ const projects = predictOnly ? ["predict-e2e"] : predict ? ["e2e", "predict-e2e"
 const vitestArgs = ["run", ...projects.flatMap((name) => ["--project", name]), ...forward];
 
 // `WATERX_CONFIG_URL` is passed through UNTOUCHED (inherited via `process.env`).
-// It is a CDN base, and each harness composes `/<network>.json` itself off
+// It is a CDN root, and each harness composes `/<network>.json` itself off
 // `WATERX_E2E_NETWORK` — which is the only thing this wrapper needs to set.
-// Resolving it here and re-exporting the resolved document URL would make the
-// child resolve an already-resolved value, permanently tripping the legacy
-// complete-file arm (and its deprecation warning) on every e2e run.
+// Re-exporting a resolved document URL would make every child throw: a value
+// ending in `.json` is rejected as the old full-document form.
 const child = spawn(vitestBin, vitestArgs, {
   stdio: "inherit",
   env: {

@@ -174,16 +174,11 @@ describe("client.pyth (access-only: caller-supplied credential/policy, NO infra)
   });
 
   it("a `pyth` block in the config JSON is ignored — access comes from create options only", () => {
-    // The canonical waterx-config JSON has never carried one; the SDK no
-    // longer looks. State ids / endpoints are not deployment-overridable.
+    // The canonical waterx-config JSON never carries one: the Lazer credential
+    // is a secret and comes from the `pythApiKey` create option only.
     const config = {
       ...structuredClone(MOCK_TESTNET_CONFIG),
-      pyth: {
-        state_id: "0x" + "ab".repeat(32),
-        wormhole_state_id: "0x" + "cd".repeat(32),
-        hermes_endpoint: "https://hermes.example.invalid",
-        api_key: "from-json",
-      },
+      pyth: { api_key: "from-json" },
     } as unknown as WaterXConfig;
 
     const client = new PerpClient("TESTNET", config, {});

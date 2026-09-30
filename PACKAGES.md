@@ -45,14 +45,12 @@ rather than where it is:
 An **oracle rule** is a source of signed prices the `Oracle` aggregates. Which ones a build
 feeds is **derived from the config, not passed as an argument** — see below.
 
-| Rule                | What it is                                                                    |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `pyth_lazer_rule`   | Pyth Lazer signed updates (leEcdsa). Auth-first — needs a `pythApiKey`        |
-| `waterx_rule`       | First-party Nautilus-TEE quote-center, ed25519 signed. No credential, no fee  |
-| `constant_rule`     | Pins a ticker to a fixed price (e.g. `USDCUSD`). Not a source — no update leg |
-| `supra_rule`        | On-chain only. The v2 config cannot wire it, so the SDK never feeds it        |
-| `pyth_rule`         | **RETIRED in 5.0.0** (Pyth Core / Hermes). Block still published; inert       |
-| `pyth_sponsor_rule` | **RETIRED in 5.0.0** — paid Pyth Core's per-feed fees, which no longer exist  |
+| Rule              | What it is                                                                    |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `pyth_lazer_rule` | Pyth Lazer signed updates (leEcdsa). Auth-first — needs a `pythApiKey`        |
+| `waterx_rule`     | First-party Nautilus-TEE quote-center, ed25519 signed. No credential, no fee  |
+| `constant_rule`   | Pins a ticker to a fixed price (e.g. `USDCUSD`). Not a source — no update leg |
+| `supra_rule`      | On-chain only. The v2 config cannot wire it, so the SDK never feeds it        |
 
 ## The fed set is derived, never passed
 
@@ -68,8 +66,6 @@ The reason is that the chain arbitrates and the failure is one-sided: feeding an
 `EMissingPriceSource`. Taking every source the config wires is therefore the fail-safe
 answer, and a hand-typed list could only err in the fatal direction — the classic being one
 copied between networks, naming a source that deployment does not carry.
-
-Retired rules are inert for a structural reason worth knowing: `pyth_rule` (Pyth Core) is not an `ORACLE_SOURCES` member, so no rule module exists that could feed it. Its `oracle_rules.pyth` block is still SERVED — consumers pinned to an older parser require the field — and the SDK's parsed `WaterXConfig` does not model it, so it is simply stripped. Present or absent, it can never enter a fed set.
 
 ```ts
 import { deriveOracleSources } from "@waterx/sdk/oracle";

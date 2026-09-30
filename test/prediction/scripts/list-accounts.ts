@@ -20,7 +20,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // `loadConfig` never reads env — compose the URL from the CDN base here.
+  // `loadConfig` never reads env — compose the URL from the CDN root here.
   const client = await PredictClient.testnet({
     ...readE2eClientOverrides(),
   });

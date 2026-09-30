@@ -17,12 +17,11 @@
  * groups a ticker under a source only when that source's feeds have it — so the
  * leg never appears and the weighted rule is starved just the same.
  *
- * That was live on mainnet, not hypothetical: `XAGUSD` / `WTIUSD` /
- * `BRENTUSD` were listed for the quote-center while their aggregators still
- * weighted the retired `PythRule@1`, which 5.0.0 cannot feed at all. The
- * config-only asserts wave such a shape through; only reading the weights
- * catches it — and the reverse shape too, a symbol the chain weights to
- * `WaterxRule` that the document dropped from `oracle_rules.waterx.feeds`.
+ * The config-only asserts wave both shapes through; only reading the weights
+ * catches them — a ticker weighted to a rule the SDK does not know at all, a
+ * rule it knows but this deployment does not list, and a symbol the chain
+ * weights to `WaterxRule` that the document dropped from
+ * `oracle_rules.waterx.feeds`.
  *
  * Async and chain-reading, so it is NOT on the build path — it belongs in a
  * deployment's boot sequence or a pre-release check, next to
@@ -42,11 +41,12 @@ import { resolveOracleRule } from "./rule-registry.ts";
  * `ConstantRule` is an auxiliary leg rather than a source — the SDK feeds it
  * alongside whichever source ran, so a ticker weighted only to it needs no
  * source. Anything NOT in this map cannot be supplied by this SDK at any fed
- * set: the retired `PythRule`, and `SupraRule` — whose `oracle_rules.supra`
- * block DOES exist in v2 and carries `pair_ids`, but which v2 cannot make
- * feedable, because feeding it needs an `oracle_holder` the schema has no field
- * for. A ticker whose aggregator weights `SupraRule` is therefore unsuppliable
- * and this check must report it.
+ * set, so an unknown witness name is always reported as unsuppliable. That
+ * includes `SupraRule`, whose `oracle_rules.supra` block DOES exist in v2 and
+ * carries `pair_ids`, but which v2 cannot make feedable, because feeding it
+ * needs an `oracle_holder` the schema has no field for. A ticker whose
+ * aggregator weights `SupraRule` is therefore unsuppliable and this check must
+ * report it.
  */
 const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource>> = Object.freeze({
   PythLazerRule: "pyth_lazer_rule",
@@ -58,7 +58,7 @@ export interface TickerWeightCoverage {
   ticker: string;
   /** Weighted rule witness names, as the aggregator holds them. */
   weighted: string[];
-  /** Weighted rules this client's fed set cannot feed (retired, or unlisted). */
+  /** Weighted rules this client's fed set cannot feed (unknown to the SDK, or unlisted). */
   unsuppliable: string[];
 }
 
@@ -95,7 +95,7 @@ export class OracleWeightUnreadableError extends Error {
   }
 }
 
-/** `0x…::aggregator::PythRule` → `PythRule`; already-short names pass through. */
+/** `0x…::aggregator::WaterxRule` → `WaterxRule`; already-short names pass through. */
 function witnessName(raw: unknown): string {
   const s = typeof raw === "string" ? raw : String((raw as { name?: unknown })?.name ?? raw);
   return s.split("::").pop() ?? s;

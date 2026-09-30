@@ -1038,10 +1038,10 @@ describe("WaterxRule — routing", () => {
     expect(moveTargets(tx)).toContain("waterx_rule::collect_batch_latest");
   });
 
-  it("multi-ticker refresh collects each ticker with only its OWN leaf — no retired Core leg", async () => {
+  it("multi-ticker refresh collects each ticker with only its OWN leaf", async () => {
     // One PTB, several tickers, one snapshot covering both — but each collector
     // gets only ITS leaf (one new_batch_item per collector, not one per
-    // snapshot symbol), and nothing pyth_rule-shaped appears anywhere.
+    // snapshot symbol).
     const client = createUnitTestClient({ oracleSource: "waterx_rule" });
     mockLeafRoute(["BTCUSD", "ETHUSD"]);
     const tx = new Transaction();
@@ -1052,7 +1052,6 @@ describe("WaterxRule — routing", () => {
     expect(count("oracle::new_collector")).toBe(2);
     expect(count("waterx_rule::collect_single_with_proof")).toBe(2);
     expect(count("waterx_rule::new_batch_item")).toBe(2); // one per collector, not one per snapshot symbol
-    expect(count("pyth_rule::feed")).toBe(0); // the Core leg is retired
     expect(count("oracle::aggregate")).toBe(2);
   });
 

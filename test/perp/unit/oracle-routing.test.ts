@@ -2,8 +2,7 @@
  * Env-selected oracle rule routing — `oracleSource` client option threading
  * (unified-client → PerpClient → OracleHost) and `refreshOraclePrices`'s
  * per-rule grouping via `rule-registry.ts`. No real network; the sources'
- * off-chain fetches are stubbed per test (the retired Hermes/gRPC mocks are
- * gone with the `pyth_rule` source).
+ * off-chain fetches are stubbed per test.
  */
 import { Transaction } from "@mysten/sui/transactions";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -182,7 +181,6 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
   });
 
   it("USDCUSD constant-only is exempt under EVERY fed set, and aggregates a constant-only collector", async () => {
-    // THE config-drop regression (WL-2355): after `pyth_rule` leaves the config,
     // USDCUSD exists ONLY in `oracle_rules.constant.constant_prices`. Every fed set must exempt it
     // from the no-feed throw and still emit a collector fed by constant_rule
     // alone — the SDK-side mirror of the keeper's `aggregate_constant_only`.

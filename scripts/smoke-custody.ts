@@ -38,8 +38,9 @@ import {
   requestDepositFromReceivings,
   transferToAccount,
 } from "../src/perp/index.ts";
-import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
+import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 
 /** Raw units split off a discovered coin for the write-builder dry-runs. */
 const SMOKE_AMOUNT = 1000n;
@@ -166,7 +167,7 @@ async function main(): Promise<void> {
   const address = resolveActiveAddress();
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
+    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
   });
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;

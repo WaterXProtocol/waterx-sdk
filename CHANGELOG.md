@@ -16,6 +16,57 @@ from the version number alone.
 
 ## [Unreleased]
 
+_MINOR: one additive public export, `waterxConfigUrlFromRoot`. No existing export, type or
+runtime behaviour changes beyond one fix: `fetchWaterxSignedLeaves` now THROWS when a leaf
+chunk after the first reports the route unavailable, instead of returning `unavailable` and
+escalating to the envelope (#96). `waterxConfigUrl` still takes a COMPLETE document URL. The
+repo's own harnesses (scripts, examples, e2e helpers — not published) now REJECT a
+`WATERX_CONFIG_URL` in the old full-document form and the retired `E2E_CONFIG_URL`._
+
+### Added
+
+- **`waterxConfigUrlFromRoot(root, network)`** on `@waterx/sdk`, `@waterx/sdk/config`,
+  `@waterx/sdk/perp` and `@waterx/sdk/prediction` (plus the `WaterxConfigNetwork` type). It
+  implements the fleet's `WATERX_CONFIG_URL` standard for any TS consumer: `root` is a CDN
+  ROOT (`https://main-v2.waterx-config.pages.dev`, `https://staging-v2.waterx-config.pages.dev`),
+  trailing slashes are stripped, and it returns `${root}/${network}.json` for `MAINNET` /
+  `TESTNET` (either case). It THROWS, naming the fix, for a path ending in `.json` (the old
+  full-document form, never rewritten), a non-https value, a GitHub host (`github.com`,
+  `*.githubusercontent.com`), a query/fragment, or an empty value. The SDK still reads no env
+  and `waterxConfigUrl` is unchanged; this only composes the value you pass it. Covered by
+  the post-build export tests (ESM + CJS on all four entries) (#99).
+
+### Changed
+
+- **Repo harnesses: `WATERX_CONFIG_URL` is a CDN ROOT only.** `scripts/waterx-config-url.ts`
+  now composes through `waterxConfigUrlFromRoot`, so a legacy `…/<network>.json` value THROWS
+  instead of being swapped and used with a one-time warning. Setting the retired alias
+  `E2E_CONFIG_URL` (or `PREDICT_CONFIG_URL`) THROWS, naming `WATERX_CONFIG_URL`, instead of
+  silently overriding it: the prediction e2e helpers (`test/prediction/helpers/e2e-env.ts`
+  and the vendored `packages/predict-stress` copy) read `WATERX_CONFIG_URL` alone. Every
+  harness (scripts, `examples/_shared.ts`, both e2e clients) now calls the one
+  `waterxConfigUrlFromEnv(network)`; the pass-through `waterxConfigUrlForNetwork`,
+  `resolveWaterxConfigUrl` and `resolveE2eWaterxConfigUrl` wrappers are gone.
+  `.env.example`, the CI workflow comments and the docs describe the root form, with
+  `main-v2` as the production root (#99).
+
+### Removed
+
+- **The last Pyth Core (`pyth_rule`) remnants.** The v2 test fixtures
+  (`test/perp/helpers/fixtures/waterx-config-v2-testnet.json`,
+  `test/helpers/fixtures/mock-testnet-config.ts`) no longer carry `oracle_rules.pyth` /
+  `packages.pyth_rule`, matching the pyth-free v2 documents (waterx-config #91 / #92).
+  Tests that only asserted the retired `pyth_rule::feed` / `pyth_sponsor_rule` legs are
+  absent are dropped, Core-era comments are rewritten to describe the current design,
+  and `README.md`, `PACKAGES.md`, `CLAUDE.md`, the integration skill, `.env.example` and
+  the CI workflow no longer describe Hermes, `pyth_rule` or `pyth_sponsor_rule`. The
+  stale, ungenerated `test/perp/TEST-CASES.md` inventory (it indexed deleted Core test
+  files) is deleted. `PythAccessConfig` / `client.pyth` stay: they are the Pyth Lazer /
+  Pro credential. `assertOracleWeightCoverage` and the e2e weight helper no longer name
+  `PythRule` anywhere: its docs and tests describe the generic case, where ANY weighted
+  rule the SDK has no source for (unknown, `SupraRule`, or unlisted) is reported as
+  unsuppliable and the assert throws `OracleWeightCoverageError` (#99).
+
 ### Fixed
 
 - **A quote-center route outage is no longer swallowed by the second skip
