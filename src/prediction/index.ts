@@ -9,6 +9,7 @@ export {
   clearConfigCache,
   loadConfig,
   parseConfigDocument,
+  waterxConfigUrlFromRoot,
 } from "../config.ts";
 /** Public fullnode default per network — what a client uses when `grpcUrl` is unset. */
 export { DEFAULT_GRPC_URLS } from "../base-client.ts";
@@ -20,6 +21,7 @@ export type {
   RequiredPackage,
   RewarderEntry,
   WaterXConfig,
+  WaterxConfigNetwork,
 } from "../config.ts";
 export * from "./constants.ts";
 export * from "./types.ts";

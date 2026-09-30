@@ -22,6 +22,9 @@ import type { Network } from "./constants.ts";
 import { FetchPolicyError, fetchWithPolicy, rethrowExhaustedFetch } from "./oracle/update-fetch.ts";
 import { ownEntry, requireEntry } from "./utils/record.ts";
 
+export { waterxConfigUrlFromRoot } from "./config-url.ts";
+export type { WaterxConfigNetwork } from "./config-url.ts";
+
 /** One `packages.<name>` entry — package identity only, no object ids. */
 export type PackageEntry = ParsedWaterxConfig["packages"][string];
 /** One `objects.perp.markets[ticker]` entry (`Market<LP>` + its `MarketConfig`). */

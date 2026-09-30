@@ -177,7 +177,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias && tsc -p tsconfig.cjs.json && node scripts/finalize-cjs.mjs",
-    "check:exports": "publint --strict && attw --pack . --profile node16",
+    "check:exports": "publint --strict && attw --pack . --profile node16 && vitest run --project post-build --reporter=dot -t waterxConfigUrlFromRoot",
     "codegen": "tsx scripts/codegen-summaries.ts && npx sui-ts-codegen generate && tsx scripts/fix-generated-imports.ts",
     "lint": "pnpm lint:eslint && pnpm lint:prettier",
     "lint:eslint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"examples/**/*.ts\" \"vitest.config.ts\"",

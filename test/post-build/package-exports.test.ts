@@ -84,3 +84,22 @@ describe("CommonJS consumers can require() the package (dual ESM/CJS build)", ()
     }
   });
 });
+
+describe("waterxConfigUrlFromRoot is public on every config-bearing entry (ESM + CJS)", () => {
+  const ROOT = "https://staging-v2.waterx-config.pages.dev";
+  type Mod = { waterxConfigUrlFromRoot: (root: string, network: string) => string };
+
+  it.each([".", "./config", "./perp", "./prediction"])("import %s", async (subpath) => {
+    const mod = (await importExport(subpath)) as Mod;
+    expect(mod.waterxConfigUrlFromRoot(`${ROOT}/`, "TESTNET")).toBe(`${ROOT}/testnet.json`);
+    expect(() => mod.waterxConfigUrlFromRoot(`${ROOT}/testnet.json`, "TESTNET")).toThrow();
+  });
+
+  it.each(["@waterx/sdk", "@waterx/sdk/config", "@waterx/sdk/perp", "@waterx/sdk/prediction"])(
+    "require('%s')",
+    (specifier) => {
+      const mod = require(specifier) as Mod;
+      expect(mod.waterxConfigUrlFromRoot(ROOT, "MAINNET")).toBe(`${ROOT}/mainnet.json`);
+    },
+  );
+});
