@@ -1,8 +1,7 @@
 /**
  * Pyth Pro symbol catalog (`GET /v1/symbols`, keyless) + chart history
- * (`GET /v1/{channel}/history`, Bearer) — the two Pro read surfaces that
- * replace the retired Hermes `/v2/price_feeds` catalog and Benchmarks
- * history. Record shapes pinned to the 2026-08-19 probe (`pyth_lazer_id`
+ * (`GET /v1/{channel}/history`, Bearer) — the two Pro read surfaces.
+ * Record shapes pinned to the 2026-08-19 probe (`pyth_lazer_id`
  * integer, `hermes_id` hex-or-absent, `symbol` fully qualified, `schedule`
  * in the market-hours grammar).
  */

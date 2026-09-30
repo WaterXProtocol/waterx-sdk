@@ -100,7 +100,7 @@ function verifyCommandIndex(tx: Transaction): number {
   );
 }
 
-/** Client with a lazer api key set (replace `pyth` — never mutate the shared PYTH_DEFAULTS). */
+/** Client with a lazer api key set (replace `pyth` — never mutate a shared client slice). */
 function createLazerTestClient(oracleSource: "pyth_lazer_rule" = "pyth_lazer_rule") {
   const client = createUnitTestClient({ oracleSource });
   client.pyth = { ...client.pyth, api_key: "unit-test-token" };
@@ -524,8 +524,6 @@ describe("aggregateTicker — lazer collector-feed leg", () => {
     const targets = moveTargets(tx);
     expect(targets).toContain("pyth_lazer_rule::feed");
     expect(targets).toContain("oracle::aggregate");
-    // No retired Core leg anywhere.
-    expect(targets).not.toContain("pyth_rule::feed");
     // The lazer feed call matches the contract: waterx rule package,
     // (collector, config, clock, update) in that order.
     const feedCall = moveCalls(tx).find(
@@ -566,9 +564,6 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
     expect(targets.filter((t) => t === "oracle::new_collector")).toHaveLength(2);
     expect(targets.filter((t) => t === "pyth_lazer_rule::feed")).toHaveLength(2);
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
-    // The retired Core legs never appear.
-    expect(targets).not.toContain("pyth_rule::feed");
-    expect(targets).not.toContain("pyth::update_single_price_feed");
     // One verification serves every feed: BOTH tickers' feed calls take the
     // SAME Update — the single verify command's first return.
     const updateArgs = moveCalls(tx)

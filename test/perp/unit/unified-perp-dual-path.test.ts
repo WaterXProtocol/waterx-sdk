@@ -95,6 +95,6 @@ describe("unified Client — perp dual-path PTB equivalence", () => {
     }
   });
 
-  // Pyth helpers (`openPythSponsorFund`, `refreshOraclePrices`, …) are `(tx, client, …)` —
+  // Oracle helpers (`refreshOraclePrices`, …) are `(tx, client, …)` —
   // not client-first. Dual-path registry skips them; keep using flat imports for those.
 });

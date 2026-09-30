@@ -91,11 +91,10 @@ export function skipSimulateIfOracleTransient(
  * (`helpers/e2e/aggregator-weights.ts`). An unreadable aggregator yields an
  * empty list, so an unverifiable environment is never a licence to skip.
  *
- * What triggered it: testnet's aggregators were reconfigured to weight
- * `pyth_rule` + `pyth_lazer_rule` + `waterx_rule` at 1.0 each, so the then-default
- * Pyth-Core-only build could not satisfy the set (the Lazer leg also
- * needs a `pythApiKey` CI does not hold). It reproduces on `main` with no PR
- * code and the same suites passed on 2026-07-27.
+ * What triggers it: an on-chain aggregator that weights a rule the build
+ * cannot feed — e.g. `pyth_lazer_rule`, whose leg needs a `pythApiKey` CI does
+ * not hold, or any rule outside the SDK's source set. It reproduces with no PR
+ * code, so it is an environment shape, not a regression.
  *
  * Wired only into the suites that hit it — deliberately NOT folded into
  * {@link isOracleTransientFailureMessage}. REMOVE once the testnet weights match
@@ -139,10 +138,7 @@ export function isExhaustedQuoteCenterRoute(msg: string): boolean {
  * Skip when the OFF-CHAIN oracle fetch fails before dry-run — source infra, not
  * SDK logic.
  *
- * This used to gate on `"Hermes price fetch failed"`, a message only the
- * retired Pyth Core path ever produced. After 5.0.0 nothing emits it, so the
- * helper was inert: a genuine Lazer/quote-center outage failed the test instead
- * of skipping it. It now matches what the live sources actually throw —
+ * Matches what the live sources actually throw —
  * `FetchPolicyError` (the shared retry wrapper, after its retries are spent),
  * Lazer's `"Lazer price fetch failed: <status>"`, and the quote-center's
  * `"... quote-center leaf fetch failed: <status>"` — plus the Cloudflare error
