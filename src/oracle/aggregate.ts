@@ -287,9 +287,12 @@ export async function refreshOraclePrices(
   // client creation): ONE build carries every listed source's data, and the
   // chain's per-ticker weight tables decide which contributions count —
   // feeding an unweighted rule's PRICE is dropped on-chain, while starving a
-  // weighted one aborts. That asymmetry is what makes weight migrations
-  // safe: flip weights per ticker at any time while the fed set stays a
-  // superset of every ticker's weighted set. (One caveat: waterx's feed call
+  // weighted one aborts. That asymmetry is what makes a weight migration
+  // safe TO SEQUENCE: raise a weight only once the rule is fed everywhere,
+  // and drop it before the feeds go. Nothing here keeps the fed set a
+  // superset of the weighted set — a rule's feed list lives in waterx-config
+  // and its weight on chain — so that ordering is the operator's, and
+  // `assertOracleWeightCoverage` is its gate. (One caveat: waterx's feed call
   // burns a per-symbol signed-timestamp high-water mark regardless of
   // weights — see aggregateTicker's waterx branch.) Still NO fallback
   // BETWEEN sources: each group serves only the tickers its own feeds list.
@@ -431,8 +434,8 @@ export async function refreshOraclePrices(
   // composing its own PTB reads `skipped` and decides for itself.
   //
   // The constant-only exemption applies ONLY at the CONFIG level (a pinned
-  // ticker no source lists at all — the deployed USDCUSD shape, absent from
-  // the `symbols` universe): there the chain cannot weight a source this
+  // ticker no source lists at all — the deployed USDCUSD shape, in no rule's
+  // feed map): there the chain cannot weight a source this
   // deployment doesn't carry, so a constant-only collector is sound. A
   // FETCH-time gap gets no such exemption — the source is configured, the
   // chain may well weight it, and only the skip is provably safe.

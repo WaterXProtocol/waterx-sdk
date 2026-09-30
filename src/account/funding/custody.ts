@@ -21,6 +21,7 @@ import { assertFeaturePackage } from "../../config.ts";
 import * as custody from "../../generated/native_custody/custody_vault.ts";
 import { consumeDepositDirect } from "../../generated/waterx_account/direct_rule.ts";
 import type { AccountClientLike } from "../client.ts";
+import { resolveCreditStack } from "../credit-stack.ts";
 
 // ============================================================================
 // mint — raw Coin<T> → DepositRequest<CREDIT>
@@ -33,7 +34,7 @@ export interface MintCreditParams {
   assetCoin: TransactionArgument;
   /** Fully-qualified backing-asset Move type `T` (must be registered on the vault). */
   assetType: string;
-  /** CREDIT CoinType. Defaults to `client.creditType()`. */
+  /** Credit to mint — an alias (`"SUI"`) or the CREDIT Move type; selects that credit's vault + registry. Default: the default credit (USD). */
   creditType?: string;
   /** Opaque bytes forwarded onto the returned `DepositRequest<CREDIT>`. */
   extraData?: Uint8Array;
@@ -48,22 +49,20 @@ export function mintCredit(
   tx: Transaction,
   params: MintCreditParams,
 ): TransactionArgument {
+  const stack = resolveCreditStack(client.config, params.creditType);
   const [req] = custody.mint({
     package:
       (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
       client.config.packages.native_custody.published_at),
     arguments: {
-      vault: tx.object(client.config.objects.custody.vault),
-      registry: tx.object(client.config.objects.credit.registry),
+      vault: tx.object(stack.vault),
+      registry: tx.object(stack.registry),
       accountRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       assetCoin: params.assetCoin as unknown as TransactionArgument,
       extraData: Array.from(params.extraData ?? new Uint8Array()),
     },
-    typeArguments: [
-      normalizeStructTag(params.assetType),
-      normalizeStructTag(params.creditType ?? client.creditType()),
-    ],
+    typeArguments: [normalizeStructTag(params.assetType), stack.creditType],
   })(tx);
   return req as unknown as TransactionArgument;
 }
@@ -77,7 +76,7 @@ export interface MintCreditFromRequestParams {
   depositRequest: TransactionArgument;
   /** Fully-qualified backing-asset Move type `T`. */
   assetType: string;
-  /** CREDIT CoinType. Defaults to `client.creditType()`. */
+  /** Credit to mint — an alias (`"SUI"`) or the CREDIT Move type; selects that credit's vault + registry. Default: the default credit (USD). */
   creditType?: string;
 }
 
@@ -91,20 +90,18 @@ export function mintCreditFromRequest(
   tx: Transaction,
   params: MintCreditFromRequestParams,
 ): TransactionArgument {
+  const stack = resolveCreditStack(client.config, params.creditType);
   const [req] = custody.mintFromRequest({
     package:
       (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
       client.config.packages.native_custody.published_at),
     arguments: {
-      vault: tx.object(client.config.objects.custody.vault),
-      registry: tx.object(client.config.objects.credit.registry),
+      vault: tx.object(stack.vault),
+      registry: tx.object(stack.registry),
       accountRegistry: tx.object(client.config.objects.account.registry),
       depositRequest: params.depositRequest as unknown as TransactionArgument,
     },
-    typeArguments: [
-      normalizeStructTag(params.assetType),
-      normalizeStructTag(params.creditType ?? client.creditType()),
-    ],
+    typeArguments: [normalizeStructTag(params.assetType), stack.creditType],
   })(tx);
   return req as unknown as TransactionArgument;
 }
@@ -130,6 +127,6 @@ export function mintCreditToAccount(
       registry: tx.object(client.config.objects.account.registry),
       req: req as unknown as TransactionArgument,
     },
-    typeArguments: [normalizeStructTag(params.creditType ?? client.creditType())],
+    typeArguments: [resolveCreditStack(client.config, params.creditType).creditType],
   })(tx);
 }

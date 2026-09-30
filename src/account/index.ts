@@ -26,5 +26,6 @@
  */
 
 export * from "./account.ts"; // generic waterx_account framework builders
+export * from "./credit-stack.ts"; // per-credit registry / vault / queue resolution
 export * from "./funding/credit.ts"; // cross-chain CREDIT / bridge builders
 export * from "./funding/custody.ts"; // native_custody PSM mint builders

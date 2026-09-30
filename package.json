@@ -1,6 +1,6 @@
 {
   "name": "@waterx/sdk",
-  "version": "5.0.1",
+  "version": "6.0.0",
   "description": "WaterX SDK — perpetuals and prediction markets on Sui",
   "license": "MIT",
   "author": "WaterX",
@@ -252,7 +252,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.2.0",
-    "@waterx/config": "0.1.1-staging.1"
+    "@waterx/config": "0.1.1-staging.2"
   },
   "peerDependencies": {
     "@mysten/bcs": "^1.9.0",

@@ -1,7 +1,7 @@
 /**
  * `resolveOracleReadPlan` — the per-source READ-plane resolver (5.0.0 two-arm
  * shape): integer Lazer ids from `oracle_rules.pyth_lazer.lazer_feed_ids`, the
- * waterx served-set contract over the `symbols` universe, and
+ * waterx served-set contract over `oracle_rules.waterx.feeds`, and
  * `readPlanTickers` over both planes. Every source reads its OWN namespace, so
  * write set == read set by construction — there is no hermes plane, no
  * endpoint resolver, and no `unreadable` diagnostic anymore.
@@ -11,16 +11,34 @@ import { describe, expect, it } from "vitest";
 import type { OracleHost } from "../../../src/oracle/host.ts";
 import { readPlanTickers, resolveOracleReadPlan } from "../../../src/oracle/read-plane.ts";
 
-/** A host whose config wires exactly the given Lazer ids / symbols universe. */
+/** A host whose config wires exactly the given Lazer ids / waterx feeds. */
 function hostWith(
-  wiring: { lazerFeedIds?: Record<string, number>; symbols?: string[] } = {},
+  wiring: {
+    lazerFeedIds?: Record<string, number>;
+    waterxFeeds?: string[];
+    /** Symbols to mark `kind: "prediction"` in the universe. */
+    predictionSymbols?: string[];
+  } = {},
 ): OracleHost {
+  const universe: Record<string, { kind: string }> = {
+    BTCUSD: { kind: "perp" },
+    ETHUSD: { kind: "perp" },
+    XAUUSD: { kind: "perp" },
+  };
+  for (const symbol of wiring.predictionSymbols ?? []) {
+    universe[symbol] = { kind: "prediction" };
+  }
   return {
     config: {
-      oracle_rules: wiring.lazerFeedIds
-        ? { pyth_lazer: { lazer_feed_ids: wiring.lazerFeedIds } }
-        : {},
-      symbols: Object.fromEntries((wiring.symbols ?? []).map((t) => [t, { kind: "perp" }])),
+      oracle_rules: {
+        ...(wiring.lazerFeedIds ? { pyth_lazer: { lazer_feed_ids: wiring.lazerFeedIds } } : {}),
+        // No `feeds` key at all when none are given — the mainnet shape.
+        waterx: wiring.waterxFeeds
+          ? { feeds: Object.fromEntries(wiring.waterxFeeds.map((t) => [t, {}])) }
+          : {},
+      },
+      // The universe is populated on purpose: it must never leak into a plan.
+      symbols: universe,
     },
   } as unknown as OracleHost;
 }
@@ -74,8 +92,8 @@ describe("resolveOracleReadPlan", () => {
     expect([...plan.feedIdByTicker.keys()]).toEqual(["BTCUSD"]);
   });
 
-  it("waterx_rule: serves exactly the symbols-universe tickers", () => {
-    const host = hostWith({ symbols: ["XAUUSD"] });
+  it("waterx_rule: serves exactly the oracle_rules.waterx.feeds tickers", () => {
+    const host = hostWith({ waterxFeeds: ["XAUUSD"] });
 
     const plan = resolveOracleReadPlan(host, "waterx_rule", ["XAUUSD", "EURUSD"]);
 
@@ -83,21 +101,49 @@ describe("resolveOracleReadPlan", () => {
   });
 
   it("waterx_rule: an Object.prototype key name is NOT in the universe — `in`-operator hole closed", () => {
-    // 'toString' in symbols === true via the prototype chain; a ticker named
+    // 'toString' in feeds === true via the prototype chain; a ticker named
     // like a prototype key must not be sent to the quote-center (whole-batch
     // 404 on unknown symbols).
-    const host = hostWith({ symbols: ["XAUUSD"] });
+    const host = hostWith({ waterxFeeds: ["XAUUSD"] });
 
     const plan = resolveOracleReadPlan(host, "waterx_rule", ["XAUUSD", "toString"]);
 
     expect(plan).toEqual({ plane: "quote_center", tickers: ["XAUUSD"] });
   });
 
-  it("waterx_rule: an EMPTY symbols universe serves NOTHING — never a silent quote-center takeover", () => {
+  it("waterx_rule: a LISTED prediction symbol is still not claimed — it would 404 the whole batch", () => {
+    // The read plane must ask the SAME question the served set and the fetch
+    // partition ask (`waterxServes`). Filtering on the raw feed map instead
+    // would route a prediction symbol to the quote-center and fail the batch
+    // for every ticker beside it.
+    const host = hostWith({
+      waterxFeeds: ["BTCUSD", "PREDMKT"],
+      predictionSymbols: ["PREDMKT"],
+    });
+
+    const plan = resolveOracleReadPlan(host, "waterx_rule", ["BTCUSD", "PREDMKT"]);
+
+    expect(plan).toEqual({ plane: "quote_center", tickers: ["BTCUSD"] });
+  });
+
+  it("waterx_rule: a feed key absent from `symbols` is NOT served — the parser does not enforce feeds ⊆ symbols", () => {
+    // The config repo's CI checks the subset relation; the published parser
+    // models `feeds` as an unconstrained record, so a drifted or hand-built
+    // document reaches the SDK unvalidated. An unknown key must fail closed
+    // rather than 404 the whole quote-center batch.
+    const host = hostWith({ waterxFeeds: ["BTCUSD", "GHOSTUSD"] });
+
+    const plan = resolveOracleReadPlan(host, "waterx_rule", ["BTCUSD", "GHOSTUSD"]);
+
+    expect(plan).toEqual({ plane: "quote_center", tickers: ["BTCUSD"] });
+  });
+
+  it("waterx_rule: NO feeds map serves NOTHING, whatever `symbols` says — never a silent quote-center takeover", () => {
     // Claiming unlisted tickers would reroute every read to the quote-center
     // (it serves symbols regardless of on-chain config) and swallow tickers a
     // later-listed source could price; the misconfig is caught loudly by
-    // `assertOracleWriteCoverage` at boot instead.
+    // `assertOracleWriteCoverage` at boot instead. BTCUSD / ETHUSD ARE in the
+    // fixture's `symbols` universe — that must count for nothing here.
     const plan = resolveOracleReadPlan(hostWith(), "waterx_rule", ["BTCUSD", "ETHUSD"]);
 
     expect(plan).toEqual({ plane: "quote_center", tickers: [] });
@@ -113,7 +159,7 @@ describe("readPlanTickers", () => {
   });
 
   it("quote_center plane: the served ticker list verbatim", () => {
-    const host = hostWith({ symbols: ["XAUUSD", "BTCUSD"] });
+    const host = hostWith({ waterxFeeds: ["XAUUSD", "BTCUSD"] });
     const plan = resolveOracleReadPlan(host, "waterx_rule", ["BTCUSD", "XAUUSD", "EURUSD"]);
 
     expect(readPlanTickers(plan)).toEqual(["BTCUSD", "XAUUSD"]);

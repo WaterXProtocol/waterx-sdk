@@ -1,4 +1,5 @@
 export * from "../../account/account.ts";
+export * from "../../account/credit-stack.ts";
 export * from "../../account/funding/credit.ts";
 export * from "../../account/funding/custody.ts";
 export * from "./order.ts";

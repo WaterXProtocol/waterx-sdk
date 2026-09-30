@@ -5,8 +5,9 @@
  * sources a build feeds is a property of the DEPLOYMENT, so it is read from
  * the same canonical document that wires the rules: a source is in the fed
  * set when its rule can serve at least one ticker — `oracle_rules.pyth_lazer`
- * published with `lazer_feed_ids` for Lazer, a non-empty `symbols` universe
- * for the quote-center (its `oracle_rules.waterx` block is schema-required).
+ * published with `lazer_feed_ids` for Lazer, `oracle_rules.waterx` carrying
+ * a non-empty `feeds` map for the quote-center (`served-tickers.ts` is where
+ * each rule's list is read).
  *
  * Why derived rather than declared. The chain arbitrates — per-ticker weights
  * decide which contributions count, feeding an UNWEIGHTED rule is dropped
@@ -14,14 +15,25 @@
  * failure is therefore one-sided: over-feeding is free, under-feeding is fatal.
  * A hand-typed list errs in the fatal direction (the classic being one copied
  * between networks, naming a source that deployment does not carry); the
- * config cannot, because it IS what wires the rules. Mainnet derives
- * `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no
- * per-deployment configuration at all.
+ * config cannot, because it IS what wires the rules — and it is also where a
+ * deployment turns a source OFF: mainnet ships no `waterx.feeds`, so it
+ * derives `[pyth_lazer_rule]`; testnet lists no Lazer block, so it derives
+ * `[waterx_rule]`. No per-deployment SDK configuration either way.
  *
- * Retired rules are inert here by construction: `oracle_rules.pyth` (Pyth
- * Core) is still published, but `pyth_rule` is not an {@link ORACLE_SOURCES}
- * member — there is no rule module that could feed it — so its block is
- * never consulted.
+ * Retired rules are inert here by construction: `pyth_rule` (Pyth Core) is
+ * not an {@link ORACLE_SOURCES} member — there is no rule module that could
+ * feed it. Its `oracle_rules.pyth` block is still SERVED (consumers pinned to
+ * an older parser require the field) and the parsed `WaterXConfig` does not
+ * model it, so it is stripped; present or absent, it can never be derived.
+ *
+ * What derivation does NOT give you: the fed set covering every ticker's
+ * on-chain WEIGHTED rules. Each rule's feed list moves independently of the
+ * weights — `waterx.feeds` is edited in waterx-config, the weights with
+ * `oracle::set_rule_weight` — so the two are kept in step by SEQUENCING, not
+ * by construction: feed a rule everywhere before its weight is raised, and
+ * drop the weight before the feeds go. `assertOracleWeightCoverage`
+ * (`weight-coverage.ts`) reads the aggregators and is the gate for that
+ * rollout; nothing here can see the weights.
  *
  * Deliberately NOT filtered by which credentials the caller holds. A keyless
  * client whose config wires Lazer fails loudly at build

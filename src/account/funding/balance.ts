@@ -53,9 +53,10 @@ export function rescaleRawAmount(
 export async function probeParkedBackingAssets(
   client: AccountClientLike,
   accountId: string,
+  credit?: string,
 ): Promise<ParkedBackingAssetBalance[]> {
   const out: ParkedBackingAssetBalance[] = [];
-  for (const asset of client.config.objects.custody.assets) {
+  for (const asset of client.creditStack(credit).assets) {
     const bal = (await client.getBalance({
       owner: accountId,
       coinType: asset.type,
@@ -97,8 +98,9 @@ export async function probeParkedBackingAssets(
 export async function probeAddressCreditBalance(
   client: AccountClientLike,
   accountId: string,
+  credit?: string,
 ): Promise<AddressCreditBalance> {
-  const creditType = client.creditType();
+  const creditType = client.creditStack(credit).creditType;
 
   const bal = (await client.getBalance({
     owner: accountId,

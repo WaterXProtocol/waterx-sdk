@@ -196,10 +196,8 @@ describe("refreshOraclePrices — a ticker the selected source can't serve", () 
       // Constant-pinned, and served by NO source's ticker set.
       client.config.oracle_rules.constant.constant_prices = { USDCUSD: { price: "1000000000" } };
       delete client.config.oracle_rules.pyth_lazer!.lazer_feed_ids.USDCUSD;
+      delete client.config.oracle_rules.waterx.feeds!.USDCUSD;
       delete client.config.symbols.USDCUSD;
-      // The retired Pyth Core block is schema-required but never read — an
-      // empty feed map here, and no `pyth_rule` leg below either way.
-      expect(client.config.oracle_rules.pyth.pyth_price_feeds).toEqual({});
 
       const tx = new Transaction();
       await expect(refreshOraclePrices(tx, client, ["USDCUSD"])).resolves.toEqual({

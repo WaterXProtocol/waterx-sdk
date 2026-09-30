@@ -21,8 +21,8 @@ import {
 interface HostOpts {
   /**
    * Tickers each source serves, keyed by source — Lazer's become
-   * `oracle_rules.pyth_lazer.lazer_feed_ids`, the quote-center's the `symbols`
-   * universe.
+   * `oracle_rules.pyth_lazer.lazer_feed_ids`, the quote-center's
+   * `oracle_rules.waterx.feeds`.
    */
   feeds?: Partial<Record<"pyth_lazer_rule" | "waterx_rule", string[]>>;
   constantTickers?: string[];
@@ -43,8 +43,13 @@ function hostWith(
   const lazerFeedIds = Object.fromEntries(
     (opts.feeds?.pyth_lazer_rule ?? []).map((t, i) => [t, i + 1]),
   );
+  const waterxFeeds = Object.fromEntries((opts.feeds?.waterx_rule ?? []).map((t) => [t, {}]));
+  // The universe names every ticker any source serves; it is never a served set.
   const symbols = Object.fromEntries(
-    (opts.feeds?.waterx_rule ?? []).map((t) => [t, { kind: "perp" }]),
+    [...(opts.feeds?.pyth_lazer_rule ?? []), ...(opts.feeds?.waterx_rule ?? [])].map((t) => [
+      t,
+      { kind: "perp" },
+    ]),
   );
 
   return {
@@ -55,6 +60,7 @@ function hostWith(
       symbols,
       objects: { oracle: { oracle: "0xoracle", aggregators } },
       oracle_rules: {
+        waterx: { package: "waterx_rule", feeds: waterxFeeds },
         pyth_lazer: {
           package: "pyth_lazer_rule",
           lazer_state_object: "0xs",
@@ -86,7 +92,7 @@ function hostWith(
 
 describe("readOracleWeightCoverage — unsuppliable weights", () => {
   it("flags a ticker weighted to a RETIRED rule even though a listed source feeds it", async () => {
-    // The live mainnet shape: XAGUSD is in the `symbols` universe (so every
+    // The old mainnet shape: XAGUSD is in `oracle_rules.waterx.feeds` (so every
     // config check passes) while its aggregator still weights the retired
     // PythRule. Aggregating it emits a collector with no weighted
     // contribution, and remove_outliers aborts EMissingPriceSource — taking
@@ -157,7 +163,7 @@ describe("readOracleWeightCoverage — a LISTED source is not suppliable everywh
   // source with no feed for THIS ticker emits no leg for it.
 
   it("flags a lazer-weighted ticker that only WaterX feeds, even with lazer listed", async () => {
-    // Both sources listed; XAUUSD is in the symbols universe only, but the
+    // Both sources listed; XAUUSD is in waterx.feeds only, but the
     // aggregator weights PythLazerRule. No lazer leg is ever emitted for
     // XAUUSD, so the weighted rule is starved and remove_outliers aborts —
     // while a fed-set membership check waves it through.

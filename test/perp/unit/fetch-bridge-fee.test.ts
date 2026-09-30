@@ -7,9 +7,16 @@
  * (fee ≥ amount) path.
  */
 import { bcs } from "@mysten/sui/bcs";
+import type { Transaction } from "@mysten/sui/transactions";
+import { normalizeStructTag } from "@mysten/sui/utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getBridgeFee } from "../../../src/perp/fetch.ts";
+import {
+  MOCK_CREDIT_TYPE,
+  MOCK_SUI_CREDIT,
+  MOCK_TESTNET_CONFIG,
+} from "../../helpers/fixtures/mock-testnet-config.ts";
 import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const u64Ret = (v: bigint) => ({ bcs: bcs.u64().serialize(v).toBytes() });
@@ -25,6 +32,27 @@ const mockSimulate = (
     $kind: "Success",
     commandResults: asCommands(rets),
   } as never);
+
+/** Mock simulate AND hand back the PTB it was given, so the view calls can be inspected. */
+const mockSimulateCapturing = (
+  client: ReturnType<typeof createUnitTestClient>,
+  rets: Array<{ bcs: Uint8Array }>,
+): { tx?: Transaction } => {
+  const captured: { tx?: Transaction } = {};
+  vi.spyOn(client, "simulate").mockImplementation(async (tx) => {
+    captured.tx = tx;
+    return { $kind: "Success", commandResults: asCommands(rets) } as never;
+  });
+  return captured;
+};
+
+const viewCalls = (tx: Transaction) =>
+  tx
+    .getData()
+    .commands.filter((c) => "MoveCall" in c && c.MoveCall)
+    .map((c) => c.MoveCall!);
+const objectInputIds = (tx: Transaction) =>
+  tx.getData().inputs.map((input) => input.UnresolvedObject?.objectId);
 
 const CHAIN = 10002; // a wormhole destination chain id
 
@@ -48,6 +76,48 @@ describe("getBridgeFee", () => {
       effectiveMinFee: 50n,
       netAmount: 9_900n, // amount - feeAmount
     });
+  });
+
+  it("quotes the requested credit's OWN queue with its normalized type (alias or Move type)", async () => {
+    const OK = [u64Ret(1n), boolRet(true), u128Ret(0n), u64Ret(0n)];
+    for (const creditType of ["SUI", "sui", MOCK_SUI_CREDIT.creditType]) {
+      const captured = mockSimulateCapturing(client, OK);
+      await getBridgeFee(client, { evmDestinationChain: CHAIN, amount: 10_000n, creditType });
+      const calls = viewCalls(captured.tx!);
+      expect(calls).toHaveLength(4);
+      for (const call of calls) {
+        expect(call.typeArguments, `creditType=${creditType}`).toEqual([
+          normalizeStructTag(MOCK_SUI_CREDIT.creditType),
+        ]);
+      }
+      const ids = objectInputIds(captured.tx!);
+      expect(ids).toContain(MOCK_SUI_CREDIT.queue);
+      expect(ids).not.toContain(MOCK_TESTNET_CONFIG.objects.withdrawal_queue.queue);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("defaults to the USD queue + type, and rejects an unknown credit before simulating", async () => {
+    const captured = mockSimulateCapturing(client, [
+      u64Ret(1n),
+      boolRet(true),
+      u128Ret(0n),
+      u64Ret(0n),
+    ]);
+    await getBridgeFee(client, { evmDestinationChain: CHAIN, amount: 10_000n });
+    expect(viewCalls(captured.tx!)[0]!.typeArguments).toEqual([
+      normalizeStructTag(MOCK_CREDIT_TYPE),
+    ]);
+    expect(objectInputIds(captured.tx!)).toContain(
+      MOCK_TESTNET_CONFIG.objects.withdrawal_queue.queue,
+    );
+
+    const simulate = vi.spyOn(client, "simulate");
+    simulate.mockClear();
+    await expect(
+      getBridgeFee(client, { evmDestinationChain: CHAIN, amount: 1n, creditType: "DEEP" }),
+    ).rejects.toThrow(/no credit stack named DEEP/);
+    expect(simulate).not.toHaveBeenCalled();
   });
 
   it("netAmount is 0n when the exit wouldn't execute (fee ≥ amount)", async () => {

@@ -22,7 +22,11 @@ import * as predFetch from "../../../src/prediction/fetch.ts";
 import * as predGift from "../../../src/prediction/gift.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
 import { Client, perp, prediction, WaterXClient } from "../../../src/sdk.ts";
-import { MOCK_TESTNET_CONFIG } from "../../helpers/fixtures/mock-testnet-config.ts";
+import {
+  MOCK_SUI_CREDIT,
+  MOCK_TESTNET_CONFIG,
+} from "../../helpers/fixtures/mock-testnet-config.ts";
+import { createUnitTestClient } from "../helpers/test-client.ts";
 
 const predAccountSpecific = {
   setDelegatePredictionPermission,
@@ -36,6 +40,12 @@ const predAccountSpecific = {
 // Mirrors `NON_CLIENT_FIRST` in src/unified-client.ts.
 const NON_CLIENT_FIRST = [
   "extractReturnBytes",
+  "creditStacks",
+  "resolveCreditStack",
+  "creditStackForAsset",
+  "refreshOraclePrices",
+  "refreshWlpPoolOracles",
+  "parseWholeDollarU64",
   "base64UrlNoPadEncode",
   "base64UrlNoPadDecode",
   "generateGiftSeed",
@@ -87,6 +97,25 @@ const fnNames = (ns: object): string[] =>
   Object.entries(ns)
     .filter(([, v]) => typeof v === "function")
     .map(([k]) => k);
+
+/**
+ * First declared parameter name of a function, read off its source. vitest
+ * runs the TS through esbuild, which keeps parameter names, so this turns the
+ * "audit `export function` first-params" note on `NON_CLIENT_FIRST` into a
+ * check. A destructured first parameter reports as `{…}` / `[…]`.
+ */
+const firstParamName = (fn: (...args: never[]) => unknown): string | undefined => {
+  const src = fn.toString();
+  const parenthesised = /^(?:async\s+)?(?:function\s*\*?\s*[\w$]*\s*)?\(\s*(\{|\[|[\w$]+)?/.exec(
+    src,
+  );
+  if (parenthesised) {
+    const p = parenthesised[1];
+    return p === "{" ? "{…}" : p === "[" ? "[…]" : p;
+  }
+  return /^(?:async\s+)?([\w$]+)\s*=>/.exec(src)?.[1];
+};
+const LOOKS_LIKE_CLIENT = /client$/i;
 
 describe("umbrella WaterXClient", () => {
   afterEach(() => {
@@ -196,6 +225,54 @@ describe("umbrella WaterXClient", () => {
     expect(accountExpected.length).toBeGreaterThan(10);
     expect(perpExpected.length).toBeGreaterThan(20);
     expect(predExpected.length).toBeGreaterThan(20);
+  });
+
+  it("first-param audit: every bound facade method takes the line client first, every excused name does not", () => {
+    const audit = (label: string, ns: object) => {
+      for (const [name, value] of Object.entries(ns)) {
+        if (typeof value !== "function") continue;
+        const first = firstParamName(value as (...args: never[]) => unknown);
+        if (NON_CLIENT_FIRST.includes(name)) {
+          expect(
+            first === undefined || !LOOKS_LIKE_CLIENT.test(first),
+            `${label}.${name} is excused from binding but its first param is "${first}" — a real client-first builder is missing from the facade`,
+          ).toBe(true);
+        } else {
+          expect(
+            first !== undefined && LOOKS_LIKE_CLIENT.test(first),
+            `${label}.${name} is bound client-first but its first param is "${first}" — binding would pass the client where "${first}" is expected; add it to NON_CLIENT_FIRST`,
+          ).toBe(true);
+        }
+      }
+    };
+    audit("account", { ...accountOps });
+    audit("perp", perpOps);
+    audit("predict", predictOps);
+  });
+
+  it("credit-stack resolvers are `(config, …)` helpers: absent from client.account, reachable as client.perp.creditStack(s)", () => {
+    // A bound `client.account.creditStacks()` would pass the PerpClient where a
+    // WaterXConfig is expected and throw — so they are not bound at all.
+    const account = client.account as unknown as Record<string, unknown>;
+    expect(account.creditStacks).toBeUndefined();
+    expect(account.resolveCreditStack).toBeUndefined();
+    expect(account.creditStackForAsset).toBeUndefined();
+    // Nor onto perp / predict, whose namespaces do not spread them.
+    expect((client.perp as unknown as Record<string, unknown>).resolveCreditStack).toBeUndefined();
+
+    // The bound surface is the PerpClient method, grafted onto `client.perp`.
+    const real = WaterXClient.fromClients(createUnitTestClient(), {} as never);
+    expect(real.perp.creditStack("SUI").queue).toBe(MOCK_SUI_CREDIT.queue);
+    expect(real.perp.creditStack().alias).toBe("USD");
+    expect(Object.keys(real.perp.creditStacks()).sort()).toEqual(["SUI", "USD"]);
+
+    // And the free functions stay importable for callers that hold a config.
+    expect(perp.resolveCreditStack(real.perp.config, "sui").registry).toBe(
+      MOCK_SUI_CREDIT.registry,
+    );
+    expect(accountOps.creditStackForAsset(real.perp.config, MOCK_SUI_CREDIT.assetType)?.alias).toBe(
+      "SUI",
+    );
   });
 
   it("graft guard: builder names never collide with sub-client prototype methods", () => {

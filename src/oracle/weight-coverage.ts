@@ -17,11 +17,12 @@
  * groups a ticker under a source only when that source's feeds have it — so the
  * leg never appears and the weighted rule is starved just the same.
  *
- * That is live on mainnet today, not hypothetical. `XAGUSD` / `WTIUSD` /
- * `BRENTUSD` are in the `symbols` universe (so: servable by the quote-center)
- * while their aggregators still weight the retired `PythRule@1`, which 5.0.0
- * cannot feed at all. The config-only asserts wave all three through; only
- * reading the weights catches them.
+ * That was live on mainnet, not hypothetical: `XAGUSD` / `WTIUSD` /
+ * `BRENTUSD` were listed for the quote-center while their aggregators still
+ * weighted the retired `PythRule@1`, which 5.0.0 cannot feed at all. The
+ * config-only asserts wave such a shape through; only reading the weights
+ * catches it — and the reverse shape too, a symbol the chain weights to
+ * `WaterxRule` that the document dropped from `oracle_rules.waterx.feeds`.
  *
  * Async and chain-reading, so it is NOT on the build path — it belongs in a
  * deployment's boot sequence or a pre-release check, next to

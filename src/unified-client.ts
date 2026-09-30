@@ -81,6 +81,16 @@ import {
  */
 const NON_CLIENT_FIRST = [
   "extractReturnBytes",
+  // account/credit-stack.ts — pure `(config, …)` resolvers; the bound surface is
+  // `client.perp.creditStack(s)` (PerpClient methods over the same functions).
+  "creditStacks",
+  "resolveCreditStack",
+  "creditStackForAsset",
+  // perp/tx-builders.ts — `(tx, host | client, …)` oracle refreshers; call the free function.
+  "refreshOraclePrices",
+  "refreshWlpPoolOracles",
+  // perp/fetch.ts — `(value)` parser re-exported next to the position views.
+  "parseWholeDollarU64",
   // gift.ts — pure crypto / URL helpers (first arg is not PredictClient)
   "base64UrlNoPadEncode",
   "base64UrlNoPadDecode",

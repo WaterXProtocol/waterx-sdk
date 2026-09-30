@@ -16,6 +16,51 @@ from the version number alone.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A quote-center route outage is no longer swallowed by the second skip
+  predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
+  exhausted route ladder, but the e2e suites call `skipIfOracleFetchUnavailable`
+  and then `skipIfTransientInfrastructureError` on the same error, and
+  `isInfrastructureTransientError` still said "transient" — the exhausted
+  message contains the bare substring `fetch failed`, which the generic RPC
+  heuristic matches. Both predicates now consult ONE
+  `isExhaustedQuoteCenterRoute`, keyed on `QUOTE_CENTER_FALLBACK_MARKER`
+  exported from the rule that emits it, so rewording the message breaks
+  compilation instead of silently restoring the swallow. The predicate also
+  existed in a second, subtly different copy that additionally required
+  `/quote-center.*fetch failed/` and so read the over-the-cap batch error as a
+  blip (#96).
+- **A later leaf chunk can no longer retract a route the probe proved.** In
+  `fetchWaterxSignedLeaves`, an `unavailable` from any chunk after the first was
+  returned as the ladder's verdict — so a >32-symbol refresh whose second chunk
+  drew an anonymous 404 abandoned a WORKING leaf route and escalated every
+  symbol to the indivisible envelope, which over the enclave's cap cannot be
+  requested at all and surfaced as a misleading "needs N symbols" error. It now
+  throws, naming the route that served the probe (#96).
+- `WaterxAccessConfig.endpoint`'s doc no longer re-spells the three
+  quote-center routes a same-origin proxy must forward; it points at
+  `WATERX_LEAF_ROUTES` / `WATERX_ENVELOPE_ROUTE`, which cannot go stale (#96).
+
+## [6.0.0] - 2026-09-22
+
+_MAJOR: three BREAKING changes, each detailed in its own note below. (1) The quote-center
+leg is GATED by `oracle_rules.waterx.feeds` — `waterx_rule` serves exactly the tickers that
+map lists, the way `lazer_feed_ids` already gates the Lazer leg, and `symbols` is no
+longer a served set. The live mainnet document lists none, so mainnet derives
+`[pyth_lazer_rule]` alone and the five markets outside its 25 Lazer feeds (`BRENTUSD`,
+`EURUSD`, `USDJPY`, `WTIUSD`, `XAGUSD`) are SKIPPED by `refreshOraclePrices` and rejected
+by the `build*Tx` composers until the document lists them under `waterx.feeds`;
+`oracle_rules.pyth` is also STRIPPED from the parsed `WaterXConfig` (#98). (2) The legacy
+per-package `waterx-config` shape is ABANDONED for the strictly parsed `schema_version: 2`
+document (#93). (3) The quote-center leaf route MOVED, so a `waterxEndpoint` proxy must
+forward `GET /v1/sign/bbo/consensus` (#94). All of it rides `@waterx/config`
+`0.1.1-staging.2`, whose schema REQUIRES the per-credit maps — a document predating
+waterx-config #77 fails at `create()`, so point at `staging-v2` / `main-v2`. The
+multi-credit stacks themselves are additive: every `creditType?` still defaults to USD
+(#97). Registry note: an intermediate `5.0.1` (2026-09-16, from #92–#94) was published
+without a changelog cut; this section covers everything since 5.0.0._
+
 _BREAKING: the legacy per-package `waterx-config` shape is ABANDONED. `client.config` is
 now the STRICTLY PARSED `schema_version: 2` document (`@waterx/config`, one consolidated
 document for BOTH lines), and every SDK read moved to where that schema puts things —
@@ -36,6 +81,26 @@ leaf route) in addition to `GET /v1/quotes/leaves` and `GET /v1/quotes/update`, 
 `?symbols=`. No SDK API changed, so nothing surfaces this at compile time; browser
 consumers routing quote-center egress through their own backend must update that route in
 the same change set (#94)._
+
+### BREAKING — the quote-center leg is gated by `oracle_rules.waterx.feeds`
+
+- **`waterx_rule` serves exactly the tickers `oracle_rules.waterx.feeds` lists**, the
+  same way `pyth_lazer_rule` serves `lazer_feed_ids`; the `symbols` universe is no longer
+  a served set. A document with no `feeds` map (mainnet today) derives a fed set WITHOUT
+  the quote-center — no `waterx_rule::collect_*` command is built and no quote-center
+  fetch is made — and a symbol in neither rule's map is skipped by `refreshOraclePrices`
+  and rejected by the composers' `assertTickersRefreshed`, exactly as an unlisted ticker
+  always was. A `prediction` symbol is never served even when the feed map lists one —
+  the quote-center 404s the whole batch on it — and one predicate (`waterxServes`)
+  answers "does the quote-center serve this ticker" for the fed set, the read plane and
+  the fetch partition alike. Requires `@waterx/config` ≥ `0.1.1-staging.2`, published
+  from waterx-config `a9fc5e5`; the deployment document decides which symbols get which
+  legs, so a consumer that relied on "every symbol gets a quote-center leaf" must list
+  those symbols there.
+- **`oracle_rules.pyth` is gone from the parsed `WaterXConfig`** — the retired Pyth Core
+  block is still SERVED (consumers pinned to an older parser require the field), but
+  this package's types no longer model it and the strict parse strips it, so a consumer
+  that read `config.oracle_rules.pyth` must stop.
 
 ### BREAKING — the v2 `waterx-config` document is the config
 
@@ -149,6 +214,13 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Changed
 
+- **`@waterx/config` is `0.1.1-staging.2`, straight from the registry.** That
+  version — published from `waterx-config` `a9fc5e5` — carries both the
+  per-credit maps and `oracle_rules.waterx.feeds`, so the temporary
+  `vendor/waterx-config` bridge #97 added (a build of `e21549f`, routed in by a
+  `pnpm.overrides` entry while the registry still only had `0.1.1-staging.1`) is
+  removed again: no override, no vendored build, and the publish workflow is
+  unblocked (#97, #98).
 - **`WATERX_CONFIG_URL` is now a CDN BASE root** (no file name) across every repo
   harness — scripts, e2e/integration helpers, examples, CI — with the boundary
   composing `${base}/${network}.json` (`scripts/waterx-config-url.ts`). One
@@ -173,30 +245,13 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Fixed
 
-- **A quote-center route outage is no longer swallowed by the second skip
-  predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
-  exhausted route ladder, but the e2e suites call `skipIfOracleFetchUnavailable`
-  and then `skipIfTransientInfrastructureError` on the same error, and
-  `isInfrastructureTransientError` still said "transient" — the exhausted
-  message contains the bare substring `fetch failed`, which the generic RPC
-  heuristic matches. Both predicates now consult ONE
-  `isExhaustedQuoteCenterRoute`, keyed on `QUOTE_CENTER_FALLBACK_MARKER`
-  exported from the rule that emits it, so rewording the message breaks
-  compilation instead of silently restoring the swallow. The predicate also
-  existed in a second, subtly different copy that additionally required
-  `/quote-center.*fetch failed/` and so read the over-the-cap batch error as a
-  blip (#96).
-- **A later leaf chunk can no longer retract a route the probe proved.** In
-  `fetchWaterxSignedLeaves`, an `unavailable` from any chunk after the first was
-  returned as the ladder's verdict — so a >32-symbol refresh whose second chunk
-  drew an anonymous 404 abandoned a WORKING leaf route and escalated every
-  symbol to the indivisible envelope, which over the enclave's cap cannot be
-  requested at all and surfaced as a misleading "needs N symbols" error. It now
-  throws, naming the route that served the probe (#96).
-- `WaterxAccessConfig.endpoint`'s doc no longer re-spells the three
-  quote-center routes a same-origin proxy must forward; it points at
-  `WATERX_LEAF_ROUTES` / `WATERX_ENVELOPE_ROUTE`, which cannot go stale (#96).
-
+- **`client.perp.refreshOraclePrices` / `refreshWlpPoolOracles` / `parseWholeDollarU64`
+  are no longer grafted onto the umbrella facade.** They are `(tx, …)` / `(value)`
+  helpers, so the bound methods passed the client where a transaction or string was
+  expected and threw on every call. They stay importable as free functions (`perp.*`
+  and the module paths); the umbrella now audits every bound builder's first
+  parameter in unit tests so a non-client-first export cannot be mis-bound again
+  (#97).
 - **`waterx_rule` reads the quote-center's current leaf route.** The leaf fetch now hits
   `GET /v1/sign/bbo/consensus?symbols=…` — the quote-center renamed it from
   `/v1/quotes/leaves` with its Spot-BBO consensus API (waterx-quote-center#191,
@@ -262,6 +317,45 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
 
 ### Added
 
+- **Multi-credit stacks — SUI / DEEP / WAL beside USD.** The chain now runs one
+  `CreditRegistry<CREDIT>` + `CustodyVault<CREDIT>` + `Queue<CREDIT>` per credit
+  coin (`usd_credit::usd::USD`, `sui_credit::sui::SUI`, `deep_credit::deep::DEEP`,
+  `wal_credit::wal::WAL`, all 6-decimal, NativeCustody-only for the new three), and
+  the v2 config carries them as three parallel alias-keyed maps
+  (`objects.credit.registries` / `objects.custody.vaults` /
+  `objects.withdrawal_queue.queues`) next to the singular USD fields. New
+  `account/credit-stack.ts` (exported from `@waterx/sdk/account` and the root) is
+  the ONLY join point: `resolveCreditStack(config, ref?)` takes an alias
+  (case-insensitive) or a Move type and returns the credit's `{ registry, vault,
+  assets, queue, executors, creditType, decimals, metadataCap? }`; it defaults to
+  the credit `objects.credit.credit_type` names (USD) and **throws on an unknown
+  credit — there is no fallback to USD**, so a non-USD credit can never be paired
+  with the USD registry. `creditStacks(config)` lists every stack (throws on a
+  half-wired one) and `creditStackForAsset(config, T)` finds the stack whose vault
+  registers backing asset `T`. Surfaced as `client.creditStack(credit?)` /
+  `client.creditStacks()` on `AccountClientLike` / `PerpClient` — on the umbrella
+  that is `client.perp.creditStack(…)`; the `(config, …)` functions are exported
+  for callers holding a config but are deliberately NOT bound onto
+  `client.account` (#97).
+  - Every credit builder's `creditType?` now accepts an alias OR a type and routes
+    to that credit's own objects: `mintCredit`, `mintCreditFromRequest`,
+    `mintCreditToAccount`, `custodyMint`, `redeemVaa`, `enqueueWithdrawal`,
+    `executeWithdrawalNative`, `executeWithdrawalWormhole`, `requestCreditWithdraw`,
+    and the `getBridgeFee` quote (which now reads that credit's queue).
+    Omitting it still means USD, so existing calls are unchanged.
+  - The consolidate sweep is per credit: `probeParkedBackingAssets`,
+    `probeAddressCreditBalance`, `appendConsolidateToUsd`,
+    `appendConsolidateAddressCredit`, `appendConsolidateForSpend`,
+    `buildConsolidateToUsdTx` gain a trailing `credit?`. Perp `build*Tx` composers
+    keep sweeping the default USD collateral; the prediction `buildPlaceOrderTx` /
+    `buildBatchClaimTx` now sweep into the market's **settlement coin**, so an
+    order on a SUI-settled market folds parked SUI into the SUI credit instead of
+    USD. `getCustodyVaultData(client, credit?)` / `getCustodyAssetData(client, T,
+    credit?)` read a chosen credit's vault (the asset read defaults to the credit
+    whose vault registers `T`); `getNativeAsset` searches every credit's vault.
+  - Requires a config document that carries the maps (`staging-v2` /
+    `main-v2` after waterx-config #77) — see the `@waterx/config` note under
+    Changed.
 - **`PythProHistoryError`** — typed error thrown by `fetchPythProHistory` on a
   non-2xx response, carrying `.status`. The message format is unchanged, so
   existing message-parsing consumers keep working; consumers can migrate from

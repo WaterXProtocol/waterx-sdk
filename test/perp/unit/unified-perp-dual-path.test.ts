@@ -27,6 +27,12 @@ const NON_CLIENT_FIRST = new Set([
   "appendConsolidateAddressCredit",
   "appendConsolidateForSpend",
   "buildConsolidateToUsdTx",
+  // Pure `(config, …)` credit-stack resolvers — no PTB, no client; covered in credit-stack.test.ts.
+  "creditStacks",
+  "resolveCreditStack",
+  "creditStackForAsset",
+  // `(value)` parser re-exported from fetch/positions.ts — not a client-first read.
+  "parseWholeDollarU64",
 ]);
 
 const fnNames = (ns: object): string[] =>
@@ -81,7 +87,7 @@ describe("unified Client — perp dual-path PTB equivalence", () => {
   );
 
   it("fetch helpers are bound wrappers (async parity in e2e)", () => {
-    for (const name of fnNames(perpFetch)) {
+    for (const name of fnNames(perpFetch).filter((n) => !NON_CLIENT_FIRST.has(n))) {
       expect((unified.perp as unknown as Record<string, unknown>)[name]).toBeTypeOf("function");
       expect((unified.perp as unknown as Record<string, unknown>)[name]).not.toBe(
         (perpFetch as Record<string, unknown>)[name],

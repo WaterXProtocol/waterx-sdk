@@ -58,9 +58,10 @@ feeds is **derived from the config, not passed as an argument** — see below.
 
 There is no `oracleSource` create option and no `ORACLE_SOURCE` env var. A source is fed
 when its rule can serve at least one ticker — `oracle_rules.pyth_lazer` carrying
-`lazer_feed_ids` for Lazer, a non-empty `symbols` universe for the quote-center. So
-mainnet derives `[pyth_lazer_rule, waterx_rule]` and testnet `[waterx_rule]` with no
-per-environment wiring at all.
+`lazer_feed_ids` for Lazer, `oracle_rules.waterx` carrying a non-empty `feeds` map for
+the quote-center — and each rule feeds exactly the tickers its own map lists. So mainnet
+(no `waterx.feeds`) derives `[pyth_lazer_rule]` and testnet (no Lazer block) derives
+`[waterx_rule]` with no per-environment wiring at all.
 
 The reason is that the chain arbitrates and the failure is one-sided: feeding an
 **unweighted** rule is dropped on-chain, while starving a **weighted** one aborts
@@ -68,9 +69,7 @@ The reason is that the chain arbitrates and the failure is one-sided: feeding an
 answer, and a hand-typed list could only err in the fatal direction — the classic being one
 copied between networks, naming a source that deployment does not carry.
 
-The retired blocks above are inert for a structural reason worth knowing: neither is a
-member of `ORACLE_SOURCES`, so no rule module exists that could feed one. The continued
-presence of `oracle_rules.pyth` in the live configs changes nothing.
+Retired rules are inert for a structural reason worth knowing: `pyth_rule` (Pyth Core) is not an `ORACLE_SOURCES` member, so no rule module exists that could feed it. Its `oracle_rules.pyth` block is still SERVED — consumers pinned to an older parser require the field — and the SDK's parsed `WaterXConfig` does not model it, so it is simply stripped. Present or absent, it can never enter a fed set.
 
 ```ts
 import { deriveOracleSources } from "@waterx/sdk/oracle";

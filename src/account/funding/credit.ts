@@ -37,6 +37,7 @@ import { redeemVaa as redeemVaaCall } from "../../generated/wormhole_bridge/worm
 import { toU16, toU64 } from "../../utils/validate.ts";
 import { makeSenderRequest } from "../account-request.ts";
 import type { AccountClientLike } from "../client.ts";
+import { resolveCreditStack } from "../credit-stack.ts";
 
 // ============================================================================
 // Byte helpers
@@ -65,7 +66,11 @@ function toEvmAddressBytes(
 }
 
 function creditTypeOf(client: AccountClientLike, override?: string): string {
-  return normalizeStructTag(override ?? client.creditType());
+  return resolveCreditStack(client.config, override).creditType;
+}
+/** The credit stack a builder operates on — an alias or Move type override, else the default credit. */
+function stackOf(client: AccountClientLike, override?: string) {
+  return resolveCreditStack(client.config, override);
 }
 
 // ============================================================================
@@ -75,7 +80,7 @@ function creditTypeOf(client: AccountClientLike, override?: string): string {
 export interface RedeemVaaParams {
   /** Signed Wormhole MINT VAA (raw bytes / number[] / hex). */
   vaaBytes: Uint8Array | number[] | string;
-  /** Override the CREDIT Move type (defaults to `client.creditType()`). */
+  /** Credit to operate on — an alias (`"SUI"`) or the CREDIT Move type; selects that credit's registry / vault / queue. Default: the default credit (USD). */
   creditType?: string;
 }
 
@@ -95,7 +100,7 @@ export function redeemVaa(
       client.config.packages.wormhole_bridge.published_at),
     arguments: {
       bridge: tx.object(client.config.objects.bridge.state),
-      registry: tx.object(client.config.objects.credit.registry),
+      registry: tx.object(stackOf(client, params.creditType).registry),
       accountRegistry: tx.object(client.config.objects.account.registry),
       wormholeState: tx.object(client.config.objects.bridge.wormhole_state),
       vaaBytes: toBytes(params.vaaBytes),
@@ -252,7 +257,7 @@ export function enqueueWithdrawal(
       (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
       client.config.packages.withdrawal_queue.published_at),
     arguments: {
-      queue: tx.object(client.config.objects.withdrawal_queue.queue),
+      queue: tx.object(stackOf(client, params.creditType).queue),
       registry: tx.object(client.config.objects.account.registry),
       req: params.withdrawRequest as unknown as TransactionArgument,
     },
@@ -287,11 +292,11 @@ export function executeWithdrawalWormhole(
       (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
       client.config.packages.withdrawal_queue.published_at),
     arguments: {
-      queue: tx.object(client.config.objects.withdrawal_queue.queue),
+      queue: tx.object(stackOf(client, params.creditType).queue),
       key: toU64(params.key, "key"),
       request: request as unknown as TransactionArgument,
       bridge: tx.object(client.config.objects.bridge.state),
-      creditRegistry: tx.object(client.config.objects.credit.registry),
+      creditRegistry: tx.object(stackOf(client, params.creditType).registry),
       wormholeState: tx.object(client.config.objects.bridge.wormhole_state),
       wormholeFee: params.wormholeFee as unknown as TransactionArgument,
     },
@@ -319,11 +324,11 @@ export function executeWithdrawalNative(
       (assertFeaturePackage(client.config, "withdrawal_queue", "the withdrawal queue"),
       client.config.packages.withdrawal_queue.published_at),
     arguments: {
-      queue: tx.object(client.config.objects.withdrawal_queue.queue),
+      queue: tx.object(stackOf(client, params.creditType).queue),
       key: toU64(params.key, "key"),
       request: request as unknown as TransactionArgument,
-      vault: tx.object(client.config.objects.custody.vault),
-      creditRegistry: tx.object(client.config.objects.credit.registry),
+      vault: tx.object(stackOf(client, params.creditType).vault),
+      creditRegistry: tx.object(stackOf(client, params.creditType).registry),
     },
     typeArguments: [normalizeStructTag(params.assetType), creditTypeOf(client, params.creditType)],
   })(tx);
@@ -365,8 +370,8 @@ export function custodyMint(
       (assertFeaturePackage(client.config, "native_custody", "the native custody PSM"),
       client.config.packages.native_custody.published_at),
     arguments: {
-      vault: tx.object(client.config.objects.custody.vault),
-      registry: tx.object(client.config.objects.credit.registry),
+      vault: tx.object(stackOf(client, params.creditType).vault),
+      registry: tx.object(stackOf(client, params.creditType).registry),
       accountRegistry: tx.object(client.config.objects.account.registry),
       accountId: params.accountId,
       assetCoin: params.assetCoin as unknown as TransactionArgument,

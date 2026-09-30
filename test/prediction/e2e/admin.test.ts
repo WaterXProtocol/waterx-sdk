@@ -36,18 +36,21 @@ describe(`admin PTB simulate (${predictE2eNetwork})`, () => {
   let fx: E2eFixtures;
   let guard: ReturnType<typeof fixtureGuards>;
   let cap: string;
+  /** Whoever holds the AdminCap on this network — admin PTBs must simulate as that address (not as the default keeper sender). */
+  let adminOwner: string;
 
   beforeAll(async () => {
     client = await createE2eClient();
     fx = await discoverFixtures(client);
     guard = fixtureGuards(fx);
     cap = requirePredictionAdminCap(client);
+    adminOwner = await resolveObjectOwner(client, cap);
   }, 120_000);
 
   it("createMarketRegistry", async () => {
     const tx = new Transaction();
     createMarketRegistry(client, tx, { adminCap: cap });
-    await expectSimulateSuccess(client, tx);
+    await expectSimulateSuccess(client, tx, adminOwner);
   });
 
   it("depositSettlement", async (ctx) => {
@@ -58,7 +61,6 @@ describe(`admin PTB simulate (${predictE2eNetwork})`, () => {
           : "depositSettlement dry-run requires Coin<::usd::USD> owned by the AdminCap holder (see test/prediction/scripts/probe-admin-coins.ts).";
       guard.skipPermanent(ctx, hint);
     }
-    const adminOwner = await resolveObjectOwner(client, cap);
     const tx = new Transaction();
     depositSettlement(client, tx, { adminCap: cap, payment: fx.adminUsdCoinObjectId });
     await expectSimulateSuccess(client, tx, adminOwner);
@@ -81,7 +83,7 @@ describe(`admin PTB simulate (${predictE2eNetwork})`, () => {
       amount: headroom >= 1n ? 1n : headroom,
       recipient: PTB_DUMMY.recipient,
     });
-    await expectSimulateSuccess(client, tx);
+    await expectSimulateSuccess(client, tx, adminOwner);
   });
 
   it("adminWithdraw aborts with EBelowMinReserve when amount exceeds headroom", async (ctx) => {
@@ -98,7 +100,7 @@ describe(`admin PTB simulate (${predictE2eNetwork})`, () => {
       amount: headroom + 1n,
       recipient: PTB_DUMMY.recipient,
     });
-    const result = await expectSimulateFailure(client, tx);
+    const result = await expectSimulateFailure(client, tx, adminOwner);
     const code = parseMoveAbortCode(simulateErrorMessage(result));
     expect(code).toBe(PREDICTION_ERROR_CODES.EBelowMinReserve);
   });
@@ -106,32 +108,32 @@ describe(`admin PTB simulate (${predictE2eNetwork})`, () => {
   it("parameter tuning PTBs", async () => {
     const txMin = new Transaction();
     setMinReserve(client, txMin, { adminCap: cap, newReserve: 1n });
-    await expectSimulateSuccess(client, txMin);
+    await expectSimulateSuccess(client, txMin, adminOwner);
 
     const txCd = new Transaction();
     setOrderCancelCooldownMs(client, txCd, { adminCap: cap, cooldownMs: 1n });
-    await expectSimulateSuccess(client, txCd);
+    await expectSimulateSuccess(client, txCd, adminOwner);
   });
 
   it("pause / unpause market", async (ctx) => {
     guard.skipUnlessDefined(ctx, fx.marketIdBytes, "marketIdBytes");
     const txP = new Transaction();
     pauseMarket(client, txP, { adminCap: cap, marketId: fx.marketIdBytes });
-    await expectSimulateSuccess(client, txP);
+    await expectSimulateSuccess(client, txP, adminOwner);
 
     const txU = new Transaction();
     unpauseMarket(client, txU, { adminCap: cap, marketId: fx.marketIdBytes });
-    await expectSimulateSuccess(client, txU);
+    await expectSimulateSuccess(client, txU, adminOwner);
   });
 
   it("keeper admin PTBs", async () => {
     const txAdd = new Transaction();
     addKeeper(client, txAdd, { adminCap: cap, keeper: PTB_DUMMY.delegate });
-    await expectSimulateSuccess(client, txAdd);
+    await expectSimulateSuccess(client, txAdd, adminOwner);
 
     const txRm = new Transaction();
     removeKeeper(client, txRm, { adminCap: cap, keeper: PTB_DUMMY.delegate });
-    await expectSimulateSuccess(client, txRm);
+    await expectSimulateSuccess(client, txRm, adminOwner);
   });
 });
 

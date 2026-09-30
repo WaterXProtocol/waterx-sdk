@@ -55,8 +55,8 @@ the SDK never does. Look up ids through the client (`client.perp.getMarket(ticke
 
 **The oracle fed set is DERIVED from that config** — there is no `oracleSource` option
 and no `ORACLE_SOURCE` env var. A source is fed when its rule can serve at least one
-ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, a non-empty
-`symbols` universe for the quote-center. Every derived source's data is
+ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, `oracle_rules.waterx`
+carrying a non-empty `feeds` map for the quote-center. Every derived source's data is
 fetched and fed in one PTB, and the chain's per-ticker weight tables arbitrate. Read the
 answer for a live deployment with `client.perp.oracleSources`, or before a client exists
 with `deriveOracleSources(config)`.
@@ -66,15 +66,22 @@ with `deriveOracleSources(config)`.
 | `pyth_lazer_rule` | one signed verify per PTB, no per-feed fees; **requires `pythApiKey`**           |
 | `waterx_rule`     | first-party TEE quote-center; no credential; browser needs a CORS-allowed origin |
 
-(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0. Its block is still published
-in the live configs and is inert: it is not a derivable source, so nothing feeds it.)
+(`pyth_rule` — Pyth Core / Hermes — was retired in 5.0.0. Its `oracle_rules.pyth` block
+is still served — consumers on an older parser require the field — and the SDK's parsed
+`WaterXConfig` does not model it, so it is stripped. It is not a derivable source either
+way, so nothing feeds it.)
 
 Why derived rather than declared: **the fed set must be a superset of every ticker's
 on-chain weighted rules.** Starving a weighted rule aborts `EMissingPriceSource`; feeding
 an unweighted one is silently dropped. Because the failure is one-sided, taking every
 source the config wires is the fail-safe answer — and a hand-typed list could only err
-in the fatal direction (the classic being one copied between networks). A weight
-migration is then a config change, never an env edit and never an SDK release.
+in the fatal direction (the classic being one copied between networks).
+
+Derivation does not ESTABLISH that superset, though: a rule's feed list lives in
+waterx-config and its weight on chain, so the two move independently. A weight migration
+is a sequenced rollout — feed the rule everywhere first, raise the weight after; drop the
+weight before removing feeds — and `assertOracleWeightCoverage` reads the aggregators to
+gate it. No env edit and no SDK release either way.
 
 Inspect what a network actually weights when you are debugging:
 
