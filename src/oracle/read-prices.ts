@@ -5,7 +5,7 @@
  * with which ids; these functions execute that plan. Consumers (FE/BE price
  * facades) fold onto these instead of hand-rolling per-source fetch + decode —
  * the price DECODING here is the one place each source's wire scaling is
- * interpreted (the retired hermes decode was deleted, not re-homed).
+ * interpreted.
  *
  * Both executors return a Map keyed the way the plan is keyed (integer Lazer
  * feed id / ticker) of {@link OraclePriceEntry} — plain numbers, for display

@@ -71,7 +71,7 @@ export interface CreateClientOptions extends LoadConfigOptions {
 }
 
 export class PerpClient extends BaseLineClient<PerpLineConfig> {
-  /** Caller-supplied Pyth credential + fetch policy — NO infra; each source owns its own tables. */
+  /** Caller-supplied Pyth Lazer / Pro credential + fetch policy — NO infra; each source owns its own tables. */
   pyth: PythAccessConfig;
   /**
    * Caller-supplied quote-center overrides for `waterx_rule`

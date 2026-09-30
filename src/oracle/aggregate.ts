@@ -327,11 +327,10 @@ export async function refreshOraclePrices(
   // loses its last source this round belongs in `skipped` too — same
   // authority, applied once, after coverage is actually known.)
 
-  // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below
-  // (the position the retired fee-source pre-check held). It consults only
-  // `rule.credential` — known without fetching anything — so a keyless build
-  // against an auth-first source (Lazer) in the fed set throws with ZERO
-  // wasted ORACLE calls and zero PTB commands, rather than waiting for that
+  // Credential pre-check, hoisted ABOVE the oracle fetches and PTB build below.
+  // It consults only `rule.credential` — known without fetching anything — so
+  // a keyless build against an auth-first source (Lazer) in the fed set throws
+  // with ZERO wasted ORACLE calls and zero PTB commands, rather than waiting for that
   // group's own fetch guard to fire after sibling groups' fetches already ran.
   // Fully generic: the kind→value mapping is the port's
   // (`oracleCredentialsFromHost`) and the ERROR is the rule's own, so this

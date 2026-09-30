@@ -20,11 +20,8 @@
  * derives `[pyth_lazer_rule]`; testnet lists no Lazer block, so it derives
  * `[waterx_rule]`. No per-deployment SDK configuration either way.
  *
- * Retired rules are inert here by construction: `pyth_rule` (Pyth Core) is
- * not an {@link ORACLE_SOURCES} member — there is no rule module that could
- * feed it. Its `oracle_rules.pyth` block is still SERVED (consumers pinned to
- * an older parser require the field) and the parsed `WaterXConfig` does not
- * model it, so it is stripped; present or absent, it can never be derived.
+ * Only {@link ORACLE_SOURCES} members can ever be derived: a rule with no
+ * rule module behind it is never fed, whatever the document carries.
  *
  * What derivation does NOT give you: the fed set covering every ticker's
  * on-chain WEIGHTED rules. Each rule's feed list moves independently of the

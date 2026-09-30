@@ -15,7 +15,7 @@
  * `MMDD/HHMM-HHMM` modified-hours entry is NOT a closure and is skipped, as
  * are non-MMDD sentinels like Pyth's `"0"`). This is the reconciled SUPERSET
  * of the two prior ports — accepting either era's tokens is what lets one
- * parser serve the `v1/symbols` catalog and any cached Hermes-era strings.
+ * parser serve the `v1/symbols` catalog and any cached old-encoding strings.
  *
  * Pyth weekday order is Mon=0..Sun=6; `TradingHours.days` uses ISO-ish
  * Sun=0..Sat=6 (converted in `groupIntoSessions`).

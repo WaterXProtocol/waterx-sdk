@@ -40,7 +40,7 @@ const HELPER_FILES = [
 
 const OTHER_FILES = [
   // The env-boundary URL rule is shared with the SDK harnesses; vendor it so
-  // this package applies the SAME base-vs-legacy-file semantics rather than a
+  // this package applies the SAME root-only semantics rather than a
   // drifting copy. Imports of it are rewritten to the vendored path below.
   ["scripts/waterx-config-url.ts", "src/helpers/waterx-config-url.ts"],
   ["test/prediction/contract/event-fields.ts", "src/contract/event-fields.ts"],
@@ -71,6 +71,9 @@ function rewriteSdkImports(content) {
       .replace(/from "(?:\.\.\/)+src\/base-client\.ts"/g, 'from "@waterx/sdk/prediction"')
       .replace(/from '(?:\.\.\/)+src\/base-client\.ts'/g, "from '@waterx/sdk/prediction'")
       // The env-boundary URL rule is vendored next to the helpers (OTHER_FILES).
+      // ...and it composes through the SDK's public `waterxConfigUrlFromRoot`.
+      .replace(/from "(?:\.\.\/)+src\/config-url\.ts"/g, 'from "@waterx/sdk/config"')
+      .replace(/from '(?:\.\.\/)+src\/config-url\.ts'/g, "from '@waterx/sdk/config'")
       .replace(/from "(?:\.\.\/)+scripts\/waterx-config-url\.ts"/g, 'from "./waterx-config-url.ts"')
       .replace(/from '(?:\.\.\/)+scripts\/waterx-config-url\.ts'/g, "from './waterx-config-url.ts'")
   );
@@ -187,7 +190,7 @@ import { PredictClient } from "@waterx/sdk/prediction/client";
 import { readE2eClientOverrides } from "./e2e-env.ts";
 
 /** Testnet client. \`loadConfig\` has no default and never reads env, so the
- *  \`waterxConfigUrl\` opt comes from \`E2E_CONFIG_URL\` / \`WATERX_CONFIG_URL\`
+ *  \`waterxConfigUrl\` opt comes from the \`WATERX_CONFIG_URL\` root
  *  via \`readE2eClientOverrides()\`; other \`E2E_*\` overrides are optional. */
 export function createE2eClient(): Promise<PredictClient> {
   return PredictClient.testnet({ ...readE2eClientOverrides(), cache: true });

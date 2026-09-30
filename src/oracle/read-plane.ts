@@ -4,10 +4,7 @@
  * reads through ITS OWN feeds namespace — `pyth_lazer_rule` via its integer
  * ids on the Lazer HTTP API, `waterx_rule` via its tickers on the
  * quote-center — so a source's write set and read set coincide by
- * construction. (Until 5.0.0 Lazer reads borrowed `pyth_rule.feeds` hex ids
- * on a Hermes-compatible endpoint; that cross-block dependency, the whole
- * hermes plane, and the `unreadable` diagnostic are gone with the `pyth_rule`
- * retirement.) Consumers (FE/BE price facades) resolve through this instead
+ * construction. Consumers (FE/BE price facades) resolve through this instead
  * of hardcoding feed namespaces, and execute plans via the sibling
  * `read-prices.ts` executors.
  */

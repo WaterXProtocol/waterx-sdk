@@ -11,6 +11,7 @@ export {
   clearConfigCache,
   loadConfig,
   parseConfigDocument,
+  waterxConfigUrlFromRoot,
 } from "../config.ts";
 export type {
   LoadConfigOptions,
@@ -20,6 +21,7 @@ export type {
   RequiredPackage,
   RewarderEntry,
   WaterXConfig,
+  WaterxConfigNetwork,
 } from "../config.ts";
 export { WORMHOLE_DEFAULTS } from "../account/config.ts";
 /** Public fullnode default per network — what a client uses when `grpcUrl` is unset. */

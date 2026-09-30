@@ -1,76 +1,111 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { waterxConfigUrlForNetwork } from "../../../scripts/load-repo-env.ts";
-import { resolveWaterxConfigUrl } from "../../../scripts/waterx-config-url.ts";
+import {
+  assertNoRetiredConfigUrlAliases,
+  RETIRED_CONFIG_URL_ALIASES,
+  waterxConfigUrlFromEnv,
+} from "../../../scripts/waterx-config-url.ts";
+import { waterxConfigUrlFromRoot } from "../../../src/config.ts";
 
-const BASE = "https://staging-v2.waterx-config.pages.dev";
+const ROOT = "https://staging-v2.waterx-config.pages.dev";
 
-describe("resolveWaterxConfigUrl", () => {
-  describe("base form (the convention)", () => {
-    it("appends the requested network's document to a base root", () => {
-      expect(resolveWaterxConfigUrl(BASE, "testnet")).toBe(`${BASE}/testnet.json`);
-      expect(resolveWaterxConfigUrl(BASE, "mainnet")).toBe(`${BASE}/mainnet.json`);
-    });
-
-    it("accepts the upper-case network spelling the SDK uses", () => {
-      expect(resolveWaterxConfigUrl(BASE, "MAINNET")).toBe(`${BASE}/mainnet.json`);
-    });
-
-    it("trims trailing slashes rather than doubling them", () => {
-      expect(resolveWaterxConfigUrl(`${BASE}//`, "testnet")).toBe(`${BASE}/testnet.json`);
-    });
-
-    it("preserves a base PATH, so a mirror under a sub-path still resolves", () => {
-      expect(resolveWaterxConfigUrl("https://cdn.example/waterx/config", "testnet")).toBe(
-        "https://cdn.example/waterx/config/testnet.json",
-      );
-    });
+describe("waterxConfigUrlFromRoot (public)", () => {
+  it("composes ${root}/${network}.json for either network spelling", () => {
+    expect(waterxConfigUrlFromRoot(ROOT, "TESTNET")).toBe(`${ROOT}/testnet.json`);
+    expect(waterxConfigUrlFromRoot(ROOT, "MAINNET")).toBe(`${ROOT}/mainnet.json`);
+    expect(waterxConfigUrlFromRoot(ROOT, "testnet")).toBe(`${ROOT}/testnet.json`);
+    expect(waterxConfigUrlFromRoot("https://main-v2.waterx-config.pages.dev", "mainnet")).toBe(
+      "https://main-v2.waterx-config.pages.dev/mainnet.json",
+    );
   });
 
-  describe("legacy complete-file form (transitional)", () => {
-    it("uses a matching file URL as-is", () => {
-      expect(resolveWaterxConfigUrl(`${BASE}/testnet.json`, "testnet")).toBe(
-        `${BASE}/testnet.json`,
-      );
-    });
-
-    it("still swaps testnet.json ↔ mainnet.json to follow the caller's network", () => {
-      expect(resolveWaterxConfigUrl("https://cdn.example/testnet.json", "mainnet")).toBe(
-        "https://cdn.example/mainnet.json",
-      );
-      expect(resolveWaterxConfigUrl("https://cdn.example/mainnet.json", "testnet")).toBe(
-        "https://cdn.example/testnet.json",
-      );
-    });
-
-    it("recognizes the file shape by PATH, so a query string cannot disguise it", () => {
-      expect(resolveWaterxConfigUrl("https://cdn.example/testnet.json?v=2", "testnet")).toBe(
-        "https://cdn.example/testnet.json?v=2",
-      );
-    });
+  it("strips trailing slashes and surrounding whitespace", () => {
+    expect(waterxConfigUrlFromRoot(`${ROOT}/`, "TESTNET")).toBe(`${ROOT}/testnet.json`);
+    expect(waterxConfigUrlFromRoot(`  ${ROOT}/// `, "TESTNET")).toBe(`${ROOT}/testnet.json`);
   });
 
-  it("returns undefined for an unset or blank value", () => {
-    expect(resolveWaterxConfigUrl(undefined, "testnet")).toBeUndefined();
-    expect(resolveWaterxConfigUrl("   ", "testnet")).toBeUndefined();
+  it("keeps a path prefix on the root", () => {
+    expect(waterxConfigUrlFromRoot("https://cdn.example/waterx/config/", "TESTNET")).toBe(
+      "https://cdn.example/waterx/config/testnet.json",
+    );
+  });
+
+  it("rejects a full document URL (.json) instead of rewriting it, naming the fix", () => {
+    for (const bad of [
+      `${ROOT}/testnet.json`,
+      `${ROOT}/mainnet.json/`,
+      `${ROOT}/TESTNET.JSON`,
+      `${ROOT}/testnet.json?v=2`,
+    ]) {
+      expect(() => waterxConfigUrlFromRoot(bad, "TESTNET"), bad).toThrow(
+        /full document URL \(the old format\)\. Set the CDN ROOT/,
+      );
+    }
+  });
+
+  it("rejects non-https schemes", () => {
+    expect(() =>
+      waterxConfigUrlFromRoot("http://staging-v2.waterx-config.pages.dev", "TESTNET"),
+    ).toThrow(/must use https/);
+    expect(() => waterxConfigUrlFromRoot("file:///tmp/config", "TESTNET")).toThrow(
+      /must use https/,
+    );
+  });
+
+  it("rejects GitHub hosts", () => {
+    for (const bad of [
+      "https://github.com/WaterXProtocol/waterx-config",
+      "https://raw.githubusercontent.com/WaterXProtocol/waterx-config/main",
+      "https://objects.githubusercontent.com/x",
+    ]) {
+      expect(() => waterxConfigUrlFromRoot(bad, "TESTNET"), bad).toThrow(/GitHub host/);
+    }
+  });
+
+  it("rejects a query string or fragment, an empty value, a non-URL and an unknown network", () => {
+    expect(() => waterxConfigUrlFromRoot(`${ROOT}?ref=x`, "TESTNET")).toThrow(/query string/);
+    expect(() => waterxConfigUrlFromRoot(`${ROOT}#x`, "TESTNET")).toThrow(/query string/);
+    expect(() => waterxConfigUrlFromRoot("  ", "TESTNET")).toThrow(/empty config root/);
+    expect(() => waterxConfigUrlFromRoot("staging-v2.waterx-config.pages.dev", "TESTNET")).toThrow(
+      /is not a URL/,
+    );
+    expect(() => waterxConfigUrlFromRoot(ROOT, "DEVNET" as never)).toThrow(/unknown network/);
   });
 });
 
-describe("waterxConfigUrlForNetwork", () => {
-  const prev = process.env.WATERX_CONFIG_URL;
-
-  afterEach(() => {
-    if (prev === undefined) delete process.env.WATERX_CONFIG_URL;
-    else process.env.WATERX_CONFIG_URL = prev;
+describe("waterxConfigUrlFromEnv (env boundary)", () => {
+  it("returns undefined for an unset/blank value so create() throws its own error", () => {
+    expect(waterxConfigUrlFromEnv("testnet", {})).toBeUndefined();
+    expect(waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: "   " })).toBeUndefined();
   });
 
-  it("composes the document URL from the env base", () => {
-    process.env.WATERX_CONFIG_URL = BASE;
-    expect(waterxConfigUrlForNetwork("MAINNET")).toBe(`${BASE}/mainnet.json`);
+  it("composes a root and prefixes errors with the variable name", () => {
+    expect(waterxConfigUrlFromEnv("MAINNET", { WATERX_CONFIG_URL: `${ROOT}/` })).toBe(
+      `${ROOT}/mainnet.json`,
+    );
+    expect(() =>
+      waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: `${ROOT}/testnet.json` }),
+    ).toThrow(/^WATERX_CONFIG_URL: .*full document URL/);
+  });
+});
+
+describe("retired aliases", () => {
+  it("names E2E_CONFIG_URL and PREDICT_CONFIG_URL", () => {
+    expect([...RETIRED_CONFIG_URL_ALIASES]).toEqual(["E2E_CONFIG_URL", "PREDICT_CONFIG_URL"]);
   });
 
-  it("returns undefined when unset, leaving the 'no config URL' throw to the client", () => {
-    delete process.env.WATERX_CONFIG_URL;
-    expect(waterxConfigUrlForNetwork("TESTNET")).toBeUndefined();
+  it("throws, naming WATERX_CONFIG_URL, when a retired alias is set", () => {
+    expect(() => assertNoRetiredConfigUrlAliases({ E2E_CONFIG_URL: ROOT })).toThrow(
+      /E2E_CONFIG_URL is retired\. Unset it and set WATERX_CONFIG_URL/,
+    );
+    expect(() =>
+      waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: ROOT, PREDICT_CONFIG_URL: ROOT }),
+    ).toThrow(/PREDICT_CONFIG_URL is retired/);
+  });
+
+  it("ignores an empty alias and resolves WATERX_CONFIG_URL", () => {
+    expect(waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: ROOT, E2E_CONFIG_URL: "" })).toBe(
+      `${ROOT}/testnet.json`,
+    );
   });
 });

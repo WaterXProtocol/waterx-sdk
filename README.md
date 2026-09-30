@@ -122,7 +122,7 @@ walkthrough as one runnable file** — being real code, it is covered by `pnpm l
 `pnpm typecheck`, so the API it exercises cannot go stale unnoticed:
 
 ```bash
-export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev          # CDN base; the harness appends /<network>.json
+export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev          # CDN root; the harness appends /<network>.json
 export PYTH_API_KEY=...                          # required iff the config wires pyth_lazer_rule
 pnpm exec tsx examples/quickstart.ts             # simulate-only; WATERX_EXECUTE=1 to sign + send
 ```
@@ -132,9 +132,18 @@ pnpm exec tsx examples/quickstart.ts             # simulate-only; WATERX_EXECUTE
 the consolidated `schema_version: 2` shape — the SDK parses it strictly (`@waterx/config`)
 and rejects a legacy per-package file at load. There is no built-in default and the SDK
 never reads `process.env`: your app reads the URL and passes it in. Hardcoding object ids
-instead is the single most common integration mistake. (The `staging-v2` mirror serves v2
-today; `https://config.waterx.app/<network>.json` is the canonical CDN once the config
-repo's v2 promotion lands there.)
+instead is the single most common integration mistake. The v2 CDN roots are
+`https://main-v2.waterx-config.pages.dev` (production) and
+`https://staging-v2.waterx-config.pages.dev` (staging); each serves `/<network>.json`. If
+your env holds a ROOT (the fleet's `WATERX_CONFIG_URL` convention), compose the document URL
+with the exported helper, which strips trailing slashes and throws for a full document URL
+(`…/testnet.json`), a non-https value, a GitHub host or a query/fragment:
+
+```ts
+import { waterxConfigUrlFromRoot } from "@waterx/sdk"; // also on /config, /perp, /prediction
+
+const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL!, "TESTNET");
+```
 
 **2 — Nothing to pick: the fed set is derived.** Every source the config wires
 (`oracle_rules.pyth_lazer` with `lazer_feed_ids` for Lazer; `oracle_rules.waterx` with a
@@ -239,14 +248,14 @@ Read-only queries use gRPC `simulateTransaction` (no signer) — the `getX` view
 
 The fed set is **derived from the deployment config** — there is no `oracleSource` create option and no `ORACLE_SOURCE` env var. A source is fed when its rule can serve at least one ticker — `oracle_rules.pyth_lazer` carrying `lazer_feed_ids` for Lazer, `oracle_rules.waterx` carrying a non-empty `feeds` map for the quote-center — and each rule feeds exactly the tickers its own map lists; the `symbols` universe is never a served set. That is also how a deployment turns a source off: mainnet ships no `waterx.feeds` and derives `[pyth_lazer_rule]`; testnet has no Lazer block and derives `[waterx_rule]`. No per-environment SDK wiring either way. Each source remains **self-contained** — it owns its own infra + config and does **not** back-stop any other source.
 
-Why derived rather than declared: the chain arbitrates. Per-ticker weights decide which contributions count, feeding an **unweighted** rule is dropped on-chain, and starving a **weighted** one aborts `EMissingPriceSource`. The failure is one-sided, so a hand-typed list can only err in the fatal direction — the classic being one copied between networks, naming a source that deployment does not carry. The config cannot, because it _is_ what wires the rules. Retired rules are inert: `pyth_rule` (Pyth Core) is not an `ORACLE_SOURCES` member, so no rule module exists that could feed it. Its `oracle_rules.pyth` block is still SERVED — consumers pinned to an older parser require the field — and the SDK's parsed `WaterXConfig` does not model it, so it is simply stripped. Present or absent, it can never enter a fed set.
+Why derived rather than declared: the chain arbitrates. Per-ticker weights decide which contributions count, feeding an **unweighted** rule is dropped on-chain, and starving a **weighted** one aborts `EMissingPriceSource`. The failure is one-sided, so a hand-typed list can only err in the fatal direction — the classic being one copied between networks, naming a source that deployment does not carry. The config cannot, because it _is_ what wires the rules.
 
 | Source            | Fed when                                                        | What it is                                                                                                                                                                |
 | ----------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `pyth_lazer_rule` | `oracle_rules.pyth_lazer` carries at least one `lazer_feed_ids` | Pyth Lazer signed updates — ONE `leEcdsa` verify per PTB, no per-feed fees. Auth-first, so it needs a `pythApiKey`.                                                       |
 | `waterx_rule`     | `oracle_rules.waterx` carries at least one `feeds` entry        | The first-party WaterX quote-center (Nautilus-TEE, ed25519-signed CEX prices): one signed Merkle leaf per ticker, batch-envelope fallback. No API key, no per-update fee. |
 
-`deriveOracleSources(config)` is exported if you need the answer before a client exists (e.g. to pair with `missingOracleCredentials` in a boot assert); `client.oracleSources` is the same value on a live client. (`pyth_rule` — Pyth Core / Hermes — was RETIRED in 5.0.0.)
+`deriveOracleSources(config)` is exported if you need the answer before a client exists (e.g. to pair with `missingOracleCredentials` in a boot assert); `client.oracleSources` is the same value on a live client.
 
 **Multi-source fed sets.** When the config wires more than one, ONE build fetches and feeds EVERY derived source's data in the same PTB; the chain's per-ticker aggregator **weight tables** decide which contributions count. Feeding an unweighted rule is dropped harmlessly; starving a weighted one aborts `EMissingPriceSource`. That one-sided failure is what makes a weight migration (Lazer↔waterx coexistence) safe to SEQUENCE — but nothing makes the derived set a superset of the weighted set automatically: a rule's feed list lives in waterx-config and its weight on chain, so the order is the operator's. Feed the rule everywhere first, raise its weight after; drop the weight before removing its feeds. `assertOracleWeightCoverage` reads the aggregators and is the gate for that rollout. Either half is a config or chain change — never an SDK release and never an env edit. (One caveat: waterx's feed call burns a per-symbol signed-timestamp high-water mark regardless of weights — see the replay note below.)
 

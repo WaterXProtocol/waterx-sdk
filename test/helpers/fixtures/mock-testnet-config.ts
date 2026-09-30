@@ -247,13 +247,6 @@ export const MOCK_TESTNET_CONFIG_RAW = {
       // the `symbols` universe.
       feeds: { BTCUSD: {}, ETHUSD: {}, USDCUSD: {} },
     },
-    // Pyth Core is RETIRED (5.0.0) but its block is schema-required; the SDK
-    // never reads it (`pyth_rule` is not an ORACLE_SOURCES member).
-    pyth: {
-      package: "pyth_rule",
-      pyth_config_object: stub(0x971),
-      pyth_price_feeds: {},
-    },
     constant: {
       package: "constant_rule",
       rule_config_object: "0xc04574571e0002000000000000000000000000000000000000000000c0577cf9",

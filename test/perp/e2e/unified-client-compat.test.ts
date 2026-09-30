@@ -1,6 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { waterxConfigUrlFromEnv } from "../../../scripts/waterx-config-url.ts";
 import {
   buildPlaceOrderTx,
   createAccount,
@@ -20,7 +21,6 @@ import {
   client as legacyPerpClient,
   rawPrice,
   resolveE2eGrpcUrlOverride,
-  resolveE2eWaterxConfigUrl,
 } from "../helpers/e2e/e2e-client.ts";
 import {
   assertSimulateReached,
@@ -38,7 +38,7 @@ describe(`unified Client perp compat (${e2eNetwork})`, () => {
     unified = await Client.create({
       network: e2eNetwork === "mainnet" ? "MAINNET" : "TESTNET",
       cache: true,
-      waterxConfigUrl: resolveE2eWaterxConfigUrl(e2eNetwork),
+      waterxConfigUrl: waterxConfigUrlFromEnv(e2eNetwork),
       ...(grpcUrl ? { grpcUrl } : {}),
     });
     expect(unified.perp.config.network).toBe(legacyPerpClient.config.network);

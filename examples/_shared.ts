@@ -21,7 +21,7 @@ import { fromBase64 } from "@mysten/bcs";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
-import { resolveWaterxConfigUrl } from "../scripts/waterx-config-url.ts";
+import { waterxConfigUrlFromEnv } from "../scripts/waterx-config-url.ts";
 import { AccountCreated } from "../src/generated/waterx_account/events.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import { DRY_RUN_SENDER } from "../src/perp/constants.ts";
@@ -31,10 +31,10 @@ const KEYSTORE = resolve(homedir(), ".sui/sui_config/sui.keystore");
 const CLIENT_YAML = resolve(homedir(), ".sui/sui_config/client.yaml");
 
 export async function buildClient(network: Network = "TESTNET"): Promise<PerpClient> {
-  const waterxConfigUrl = resolveWaterxConfigUrl(process.env.WATERX_CONFIG_URL, network);
+  const waterxConfigUrl = waterxConfigUrlFromEnv(network);
   if (!waterxConfigUrl) {
     throw new Error(
-      "buildClient: set WATERX_CONFIG_URL to a waterx-config CDN base " +
+      "buildClient: set WATERX_CONFIG_URL to a waterx-config CDN root " +
         "(e.g. https://staging-v2.waterx-config.pages.dev) — the network's " +
         "document name is appended for you",
     );

@@ -119,8 +119,8 @@ jobs:
           SUI_ACTIVE_ADDRESS: ${{ secrets.SUI_ACTIVE_ADDRESS }}
           WATERX_SMOKE_ACCOUNT_ID: ${{ secrets.WATERX_SMOKE_ACCOUNT_ID }}
           # `loadConfig` (and smoke-remote step 0) has no built-in default; supply the
-          # `WATERX_CONFIG_URL` is a CDN BASE root serving schema_version 2 documents (override
-          # via the repo variable; a legacy full-file value is still accepted).
+          # `WATERX_CONFIG_URL` is a CDN ROOT serving schema_version 2 documents (override
+          # via the repo variable; a full document URL is rejected).
           WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev' }}
         run: |
           if [ "$SMOKE_MODE" = "execute" ]; then

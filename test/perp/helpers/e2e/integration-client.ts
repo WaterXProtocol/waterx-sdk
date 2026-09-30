@@ -3,12 +3,12 @@
  *
  * Network: {@link resolveIntegrationNetwork} → `PerpClient.create(TESTNET | MAINNET)`.
  */
+import { waterxConfigUrlFromEnv } from "../../../../scripts/waterx-config-url.ts";
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
 import {
   resolveE2eGrpcUrlOverride,
   resolveE2eNetwork,
-  resolveE2eWaterxConfigUrl,
   wrapGrpcClientForE2eRetry,
   type E2eNetwork,
 } from "./e2e-client.ts";
@@ -28,7 +28,7 @@ export async function createIntegrationWaterXClient(): Promise<PerpClient> {
   const pythApiKey = process.env.PYTH_API_KEY?.trim() || undefined;
   const c = await PerpClient.create(integrationNetworkToClientKey(resolveIntegrationNetwork()), {
     cache: true,
-    waterxConfigUrl: resolveE2eWaterxConfigUrl(resolveIntegrationNetwork()),
+    waterxConfigUrl: waterxConfigUrlFromEnv(resolveIntegrationNetwork()),
     ...(pythApiKey ? { pythApiKey } : {}),
     ...(grpcUrl ? { grpcUrl } : {}),
   });

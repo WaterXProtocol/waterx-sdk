@@ -82,11 +82,8 @@ describe("tx-builders (v3)", () => {
     // The waterx leaf leg feeds each refreshed ticker …
     expect(targets.filter((t) => t === "waterx_rule::collect_single_with_proof")).toHaveLength(2); // BTCUSD (market) + USDCUSD (collateral/pool)
     expect(targets.filter((t) => t === "oracle::aggregate")).toHaveLength(2);
-    // … and NOTHING fee-shaped remains: no gas split, no sponsor fund legs.
+    // … and nothing fee-shaped: no gas split for oracle fees.
     expect(tx.getData().commands?.some((c) => c.$kind === "SplitCoins")).toBe(false);
-    expect(targets).not.toContain("pyth_sponsor_rule::split");
-    expect(targets).not.toContain("pyth_sponsor_rule::request");
-    expect(targets).not.toContain("pyth_sponsor_rule::reimburse");
   });
 
   it("buildClosePositionTx / increase / decrease / collateral adjust", async () => {

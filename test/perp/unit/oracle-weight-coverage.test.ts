@@ -91,20 +91,19 @@ function hostWith(
 }
 
 describe("readOracleWeightCoverage — unsuppliable weights", () => {
-  it("flags a ticker weighted to a RETIRED rule even though a listed source feeds it", async () => {
-    // The old mainnet shape: XAGUSD is in `oracle_rules.waterx.feeds` (so every
-    // config check passes) while its aggregator still weights the retired
-    // PythRule. Aggregating it emits a collector with no weighted
-    // contribution, and remove_outliers aborts EMissingPriceSource — taking
-    // the WHOLE PTB down.
+  it("flags a ticker weighted to an UNKNOWN rule even though a listed source feeds it", async () => {
+    // XAGUSD is in `oracle_rules.waterx.feeds` (so every config check passes)
+    // while its aggregator weights a rule the SDK has no source for.
+    // Aggregating it emits a collector with no weighted contribution, and
+    // remove_outliers aborts EMissingPriceSource — taking the WHOLE PTB down.
     const host = hostWith(
       ["waterx_rule"],
-      { XAGUSD: ["PythRule"], BTCUSD: ["WaterxRule"] },
+      { XAGUSD: ["UnknownRule"], BTCUSD: ["WaterxRule"] },
       { feeds: { waterx_rule: ["XAGUSD", "BTCUSD"] } },
     );
     const rows = await readOracleWeightCoverage(host, ["XAGUSD", "BTCUSD"]);
 
-    expect(rows.find((r) => r.ticker === "XAGUSD")?.unsuppliable).toEqual(["PythRule"]);
+    expect(rows.find((r) => r.ticker === "XAGUSD")?.unsuppliable).toEqual(["UnknownRule"]);
     expect(rows.find((r) => r.ticker === "BTCUSD")?.unsuppliable).toEqual([]);
   });
 
@@ -130,7 +129,7 @@ describe("readOracleWeightCoverage — unsuppliable weights", () => {
   it("throws naming EVERY offender, not just the first", async () => {
     const host = hostWith(
       ["waterx_rule"],
-      { XAGUSD: ["PythRule"], WTIUSD: ["PythRule"], BTCUSD: ["WaterxRule"] },
+      { XAGUSD: ["UnknownRule"], WTIUSD: ["UnknownRule"], BTCUSD: ["WaterxRule"] },
       { feeds: { waterx_rule: ["XAGUSD", "WTIUSD", "BTCUSD"] } },
     );
     let caught: unknown;
@@ -221,7 +220,7 @@ describe("readOracleWeightCoverage — auxiliary legs are PER TICKER", () => {
 
   it("SupraRule is never suppliable — the SDK feeds no supra leg at any fed set", async () => {
     // The config's optional supra block is never read, so a supra weight is
-    // exactly as unsuppliable as a retired rule's.
+    // exactly as unsuppliable as an unknown rule's.
     const host = hostWith(
       ["waterx_rule"],
       { XAUUSD: ["WaterxRule", "SupraRule"] },
