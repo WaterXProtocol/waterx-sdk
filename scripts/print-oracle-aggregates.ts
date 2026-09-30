@@ -128,8 +128,8 @@ function parseArgs(argv: string[]): {
   signed leaves/envelope). There is NO cross-source fallback — a missing feed or
   refresh failure fails the ticker.
 
-  Requires WATERX_CONFIG_URL (or .env) — a CDN base; /<network>.json is appended
-  for the selected network (a legacy full-file value is swapped instead).
+  Requires WATERX_CONFIG_URL (or .env) — a CDN root; /<network>.json is appended
+  for the selected network (a full document URL is rejected).
 
   -h, --help        Show this message.`);
       process.exit(0);

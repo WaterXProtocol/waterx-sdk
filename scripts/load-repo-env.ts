@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
-import { resolveWaterxConfigUrl, type ConfigUrlNetwork } from "./waterx-config-url.ts";
+import { waterxConfigUrlFromEnv, type ConfigUrlNetwork } from "./waterx-config-url.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,12 +43,12 @@ export function loadRepoEnvFiles(opts?: { repoRoot?: string }): void {
  * `WATERX_CONFIG_URL` at this script (harness) boundary and passed to the SDK
  * as the `waterxConfigUrl` opt — `loadConfig` never reads env itself.
  *
- * The env var is a CDN BASE root; this appends `/<network>.json`. A legacy
- * complete-file value still works during the transition (one-time warning) —
- * see {@link resolveWaterxConfigUrl} for the full convention. Call
+ * The env var is a CDN ROOT; this appends `/<network>.json`. A full document
+ * URL, a non-https value, a GitHub host or a set retired alias
+ * (`E2E_CONFIG_URL`) throws — see {@link waterxConfigUrlFromEnv}. Call
  * {@link loadRepoEnvFiles} first so `.env` values are visible. Returns
  * `undefined` when unset, so client creation throws its own error.
  */
 export function waterxConfigUrlForNetwork(network: ConfigUrlNetwork): string | undefined {
-  return resolveWaterxConfigUrl(process.env.WATERX_CONFIG_URL, network);
+  return waterxConfigUrlFromEnv(network);
 }

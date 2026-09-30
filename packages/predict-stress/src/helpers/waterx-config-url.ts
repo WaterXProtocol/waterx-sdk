@@ -1,59 +1,58 @@
 /**
  * `WATERX_CONFIG_URL` → a concrete `waterx-config` document URL.
  *
- * THE env-boundary convention, shared by every harness (scripts, e2e/integration
- * helpers, examples): **`WATERX_CONFIG_URL` is a CDN base root, without a file
- * name**, and the consumer composes `${base}/${network}.json`. Keeping the
- * network out of the env var is what lets one exported value drive both
- * networks — `run-e2e.ts --mainnet` no longer has to rewrite the string, and a
- * mainnet script can never silently load a testnet document because the value
- * happened to end in `testnet.json`.
+ * THE env-boundary rule, shared by every harness (scripts, e2e/integration
+ * helpers, examples): **`WATERX_CONFIG_URL` is a CDN ROOT, without a file
+ * name**, and the harness composes `${root}/${network}.json` for the network
+ * it already runs against. One exported value drives both networks, and a
+ * mainnet run can never load a testnet document.
  *
- * The SDK itself is unaffected and still knows nothing about env: `loadConfig`
- * takes a COMPLETE URL via the `waterxConfigUrl` opt. Composing it is this
- * boundary's job, which is exactly why this module lives outside `src/`.
+ * The SDK itself still knows nothing about env: `loadConfig` takes a COMPLETE
+ * URL via the `waterxConfigUrl` opt. The composition and its validation are
+ * the SDK's public `waterxConfigUrlFromRoot`; this module adds only the env
+ * reading, which is why it lives outside `src/`.
  *
- * TRANSITIONAL COMPATIBILITY: a value ending in `.json` is read as a complete
- * legacy file URL and used as-is (still swapping `testnet.json` ↔
- * `mainnet.json` when the requested network disagrees, as it always has),
- * emitting a one-time deprecation warning. That keeps an already-exported
- * `.env.local`, or a repo variable set in the old shape, working while the
- * bases roll out. Remove the compat arm once no environment sets a file URL.
+ * Rejected loudly, never rewritten: a value ending in `.json` (the old
+ * full-document form), a non-https value, a GitHub host, and any retired alias
+ * variable ({@link RETIRED_CONFIG_URL_ALIASES}) being set.
  *
- * Reference bases: production `https://config.waterx.app`, v2 staging
- * `https://staging-v2.waterx-config.pages.dev`. Never
- * `raw.githubusercontent.com` — it rate-limits (429) and the config repo
- * forbids it.
+ * Reference roots: production `https://main-v2.waterx-config.pages.dev`,
+ * staging `https://staging-v2.waterx-config.pages.dev`.
  */
+
+import { waterxConfigUrlFromRoot } from "@waterx/sdk/config";
 
 export type ConfigUrlNetwork = "testnet" | "mainnet" | "TESTNET" | "MAINNET";
 
-/** True when `raw` is a legacy complete-file URL rather than a base root. */
-function isLegacyConfigFileUrl(raw: string): boolean {
-  // Compare against the PATH only: a base carrying `?ref=…` must not be
-  // mistaken for a file, and a file URL with a query must still be recognized.
-  const path = raw.split(/[?#]/, 1)[0] ?? raw;
-  return /\.json$/i.test(path);
-}
+/**
+ * Env names that used to carry the config URL. Setting one now throws, so a
+ * deployment that relies on the old name cannot silently lose its override.
+ */
+export const RETIRED_CONFIG_URL_ALIASES = Object.freeze([
+  "E2E_CONFIG_URL",
+  "PREDICT_CONFIG_URL",
+] as const);
 
-let warnedLegacyFileUrl = false;
-
-/** One-time deprecation notice for a file-shaped `WATERX_CONFIG_URL`. */
-function warnLegacyFileUrlOnce(raw: string): void {
-  if (warnedLegacyFileUrl) return;
-  warnedLegacyFileUrl = true;
-  console.warn(
-    `[waterx] WATERX_CONFIG_URL is a complete file URL (${raw}). It is now expected to be a ` +
-      `CDN BASE root — e.g. https://config.waterx.app — and the harness appends ` +
-      `/<network>.json. The file form still works for now and will stop being read.`,
-  );
+/** Throw when any retired alias of `WATERX_CONFIG_URL` is set in `env`. */
+export function assertNoRetiredConfigUrlAliases(
+  env: Record<string, string | undefined> = process.env,
+): void {
+  const set = RETIRED_CONFIG_URL_ALIASES.filter((name) => env[name]?.trim());
+  if (set.length > 0) {
+    throw new Error(
+      `${set.join(", ")} ${set.length === 1 ? "is" : "are"} retired. Unset ` +
+        `${set.length === 1 ? "it" : "them"} and set WATERX_CONFIG_URL to the config CDN ROOT ` +
+        `instead (e.g. https://staging-v2.waterx-config.pages.dev); /<network>.json is appended.`,
+    );
+  }
 }
 
 /**
  * Resolve `raw` (a `WATERX_CONFIG_URL`-shaped value) to the document URL for
  * `network`. Returns `undefined` for an unset/blank value, so a caller can
  * pass it straight through to `waterxConfigUrl` and let client creation throw
- * its own "no config URL" error.
+ * its own "no config URL" error. Throws for an invalid root (see
+ * `waterxConfigUrlFromRoot`).
  */
 export function resolveWaterxConfigUrl(
   raw: string | undefined,
@@ -61,22 +60,21 @@ export function resolveWaterxConfigUrl(
 ): string | undefined {
   const value = raw?.trim();
   if (!value) return undefined;
-  const net = network.toLowerCase() as "testnet" | "mainnet";
-
-  if (isLegacyConfigFileUrl(value)) {
-    warnLegacyFileUrlOnce(value);
-    // Preserve the long-standing swap so a legacy value still follows the
-    // caller's network rather than the one baked into the string. Swap on the
-    // PATH — the same slice detection keys off — then re-attach any
-    // query/fragment: anchoring `$` against the whole value silently skipped
-    // the swap for `…/testnet.json?ref=x`, handing a MAINNET caller the
-    // TESTNET document, which is the exact failure this module exists to stop.
-    const cut = value.search(/[?#]/);
-    const path = cut === -1 ? value : value.slice(0, cut);
-    const suffix = cut === -1 ? "" : value.slice(cut);
-    const other = net === "mainnet" ? "testnet" : "mainnet";
-    return path.replace(new RegExp(`/${other}\\.json$`, "i"), `/${net}.json`) + suffix;
+  try {
+    return waterxConfigUrlFromRoot(value, network);
+  } catch (err) {
+    throw new Error(`WATERX_CONFIG_URL: ${(err as Error).message}`, { cause: err });
   }
+}
 
-  return `${value.replace(/\/+$/, "")}/${net}.json`;
+/**
+ * The document URL for `network` from `env.WATERX_CONFIG_URL`, after checking
+ * that no retired alias is set. `undefined` when the variable is unset.
+ */
+export function waterxConfigUrlFromEnv(
+  network: ConfigUrlNetwork,
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  assertNoRetiredConfigUrlAliases(env);
+  return resolveWaterxConfigUrl(env.WATERX_CONFIG_URL, network);
 }

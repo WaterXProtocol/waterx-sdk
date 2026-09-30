@@ -6,7 +6,7 @@
  *   2. `WATERX_E2E_NETWORK`
  *   3. **testnet** (default; use `--mainnet` / env when canonical mainnet.json is ready)
  */
-import { resolveWaterxConfigUrl } from "../../../../scripts/waterx-config-url.ts";
+import { waterxConfigUrlFromEnv } from "../../../../scripts/waterx-config-url.ts";
 import { PerpClient } from "../../../../src/perp/client.ts";
 import type { Network } from "../../../../src/perp/constants.ts";
 import { resolveE2eNetwork, type E2eNetwork } from "./e2e-network.ts";
@@ -30,8 +30,8 @@ export function resolveE2eGrpcUrlOverride(): string | undefined {
 
 /**
  * Canonical `waterx-config` document URL for e2e, composed from the
- * `WATERX_CONFIG_URL` BASE and the harness's own network (see
- * `resolveWaterxConfigUrl` for the base-vs-legacy-file convention).
+ * `WATERX_CONFIG_URL` ROOT and the harness's own network (see
+ * `waterxConfigUrlFromEnv`; a full document URL or a retired alias throws).
  * `loadConfig` never reads env — it only takes the `waterxConfigUrl` opt — so
  * the e2e client must pass it explicitly. Unset → `PerpClient.create` throws
  * (the e2e job sets it; see `.github/workflows`).
@@ -39,7 +39,7 @@ export function resolveE2eGrpcUrlOverride(): string | undefined {
 export function resolveE2eWaterxConfigUrl(
   network: E2eNetwork = resolveE2eNetwork(),
 ): string | undefined {
-  return resolveWaterxConfigUrl(process.env.WATERX_CONFIG_URL, network);
+  return waterxConfigUrlFromEnv(network);
 }
 
 async function withGrpcRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {

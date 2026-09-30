@@ -4,8 +4,9 @@
  *
  *   WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev tsx scripts/smoke-remote.ts
  *
- * The config base is read from `WATERX_CONFIG_URL` (there is no default) — set it
- * in the environment or in a repo `.env` file.
+ * The config ROOT is read from `WATERX_CONFIG_URL` (there is no default) — set it
+ * in the environment or in a repo `.env` file. A full document URL (`…/testnet.json`)
+ * or the retired `E2E_CONFIG_URL` alias is rejected.
  */
 import { waterxQuoteCenterEndpoint } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
@@ -16,7 +17,7 @@ async function main(): Promise<void> {
   const configUrl = waterxConfigUrlForNetwork("TESTNET");
   if (!configUrl) {
     throw new Error(
-      "smoke-remote: set WATERX_CONFIG_URL to a waterx-config CDN base " +
+      "smoke-remote: set WATERX_CONFIG_URL to a waterx-config CDN root " +
         "(e.g. https://staging-v2.waterx-config.pages.dev)",
     );
   }
