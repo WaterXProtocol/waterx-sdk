@@ -6,8 +6,7 @@
  * type, state, and fastest channel. It serves two jobs: the schedule catalog
  * for market hours AND the hex↔integer feed-id map.
  *
- * KEYLESS — the catalog read requires no Bearer (probed 2026-08-19;
- * re-verified 2026-08-26), so
+ * KEYLESS — the catalog read requires no Bearer (probed 2026-08-19), so
  * schedule consumers need no credential. It is also BIG (~4.6MB, ~3.6k
  * records), hence the generous default timeout; consumers cache the result
  * (BE service interval-refreshes; FE route caches) rather than fetch per

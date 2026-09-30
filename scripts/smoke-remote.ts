@@ -10,11 +10,12 @@
  */
 import { waterxQuoteCenterEndpoint } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 
 async function main(): Promise<void> {
   loadRepoEnvFiles();
-  const configUrl = waterxConfigUrlForNetwork("TESTNET");
+  const configUrl = waterxConfigUrlFromEnv("TESTNET");
   if (!configUrl) {
     throw new Error(
       "smoke-remote: set WATERX_CONFIG_URL to a waterx-config CDN root " +

@@ -21,18 +21,11 @@ export type WaterxConfigNetwork = Network | "mainnet" | "testnet";
 const EXAMPLE_ROOT = "https://staging-v2.waterx-config.pages.dev";
 
 function fail(detail: string): never {
-  throw new Error(`waterxConfigUrlFromRoot: ${detail}`);
+  throw new Error(`waterxConfigUrlFromRoot: ${detail}. Use a CDN root such as ${EXAMPLE_ROOT}`);
 }
 
-function isGithubHost(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return (
-    h === "github.com" ||
-    h.endsWith(".github.com") ||
-    h === "githubusercontent.com" ||
-    h.endsWith(".githubusercontent.com")
-  );
-}
+/** `github.com`, `githubusercontent.com` and their subdomains. */
+const GITHUB_HOST = /(^|\.)github(usercontent)?\.com$/i;
 
 /**
  * Compose the `waterx-config` document URL `${root}/${network}.json`.
@@ -52,25 +45,24 @@ function isGithubHost(hostname: string): boolean {
 export function waterxConfigUrlFromRoot(root: string, network: WaterxConfigNetwork): string {
   const net = String(network).toLowerCase();
   if (net !== "mainnet" && net !== "testnet") {
-    fail(`unknown network ${JSON.stringify(network)} (expected MAINNET or TESTNET)`);
+    throw new Error(
+      `waterxConfigUrlFromRoot: unknown network ${JSON.stringify(network)} (expected MAINNET or TESTNET)`,
+    );
   }
+  // `String(... ?? "")`: an unset env root reaches here as `undefined` through a
+  // `!` assertion or plain JS, and must still get the "empty config root" error.
   const value = String(root ?? "").trim();
-  if (!value) fail(`empty config root. Set it to a CDN root such as ${EXAMPLE_ROOT}`);
+  if (!value) fail("empty config root");
 
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    fail(`${JSON.stringify(value)} is not a URL. Set it to a CDN root such as ${EXAMPLE_ROOT}`);
+    fail(`${JSON.stringify(value)} is not a URL`);
   }
-  if (url.protocol !== "https:") {
-    fail(`${value} must use https (got ${url.protocol}). Use a CDN root such as ${EXAMPLE_ROOT}`);
-  }
-  if (isGithubHost(url.hostname)) {
-    fail(
-      `${value} is a GitHub host, which is not a supported config origin (it rate-limits). ` +
-        `Use a CDN root such as ${EXAMPLE_ROOT}`,
-    );
+  if (url.protocol !== "https:") fail(`${value} must use https (got ${url.protocol})`);
+  if (GITHUB_HOST.test(url.hostname)) {
+    fail(`${value} is a GitHub host, which is not a supported config origin (it rate-limits)`);
   }
   const path = url.pathname.replace(/\/+$/, "");
   if (/\.json$/i.test(path)) {
@@ -79,10 +71,6 @@ export function waterxConfigUrlFromRoot(root: string, network: WaterxConfigNetwo
         `the file name (e.g. ${url.origin}); /${net}.json is appended for you`,
     );
   }
-  if (url.search || url.hash) {
-    fail(
-      `${value} carries a query string or fragment. Set a bare CDN root such as ${EXAMPLE_ROOT}`,
-    );
-  }
+  if (url.search || url.hash) fail(`${value} carries a query string or fragment`);
   return `${url.origin}${path}/${net}.json`;
 }

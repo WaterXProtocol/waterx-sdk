@@ -16,7 +16,8 @@ import {
 } from "../src/oracle/index.ts";
 import { PerpClient } from "../src/perp/client.ts";
 import type { Network } from "../src/perp/constants.ts";
-import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
+import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 
 type OutputFormat = "pretty" | "raw";
 
@@ -505,7 +506,7 @@ async function runOne(
 async function main() {
   loadRepoEnvFiles();
   const { format, network, tickers } = parseArgs(process.argv);
-  const waterxConfigUrl = waterxConfigUrlForNetwork(network);
+  const waterxConfigUrl = waterxConfigUrlFromEnv(network);
   const pythApiKey = resolvePythApiKey();
   const client = await PerpClient.create(network, {
     cache: true,

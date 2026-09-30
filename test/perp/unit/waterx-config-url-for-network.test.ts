@@ -1,9 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { waterxConfigUrlForNetwork } from "../../../scripts/load-repo-env.ts";
 import {
   assertNoRetiredConfigUrlAliases,
-  resolveWaterxConfigUrl,
   RETIRED_CONFIG_URL_ALIASES,
   waterxConfigUrlFromEnv,
 } from "../../../scripts/waterx-config-url.ts";
@@ -75,17 +73,19 @@ describe("waterxConfigUrlFromRoot (public)", () => {
   });
 });
 
-describe("resolveWaterxConfigUrl (env boundary)", () => {
+describe("waterxConfigUrlFromEnv (env boundary)", () => {
   it("returns undefined for an unset/blank value so create() throws its own error", () => {
-    expect(resolveWaterxConfigUrl(undefined, "testnet")).toBeUndefined();
-    expect(resolveWaterxConfigUrl("   ", "testnet")).toBeUndefined();
+    expect(waterxConfigUrlFromEnv("testnet", {})).toBeUndefined();
+    expect(waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: "   " })).toBeUndefined();
   });
 
   it("composes a root and prefixes errors with the variable name", () => {
-    expect(resolveWaterxConfigUrl(`${ROOT}/`, "MAINNET")).toBe(`${ROOT}/mainnet.json`);
-    expect(() => resolveWaterxConfigUrl(`${ROOT}/testnet.json`, "testnet")).toThrow(
-      /^WATERX_CONFIG_URL: .*full document URL/,
+    expect(waterxConfigUrlFromEnv("MAINNET", { WATERX_CONFIG_URL: `${ROOT}/` })).toBe(
+      `${ROOT}/mainnet.json`,
     );
+    expect(() =>
+      waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: `${ROOT}/testnet.json` }),
+    ).toThrow(/^WATERX_CONFIG_URL: .*full document URL/);
   });
 });
 
@@ -107,33 +107,5 @@ describe("retired aliases", () => {
     expect(waterxConfigUrlFromEnv("testnet", { WATERX_CONFIG_URL: ROOT, E2E_CONFIG_URL: "" })).toBe(
       `${ROOT}/testnet.json`,
     );
-  });
-});
-
-describe("waterxConfigUrlForNetwork", () => {
-  const prev = { url: process.env.WATERX_CONFIG_URL, alias: process.env.E2E_CONFIG_URL };
-
-  afterEach(() => {
-    if (prev.url === undefined) delete process.env.WATERX_CONFIG_URL;
-    else process.env.WATERX_CONFIG_URL = prev.url;
-    if (prev.alias === undefined) delete process.env.E2E_CONFIG_URL;
-    else process.env.E2E_CONFIG_URL = prev.alias;
-  });
-
-  it("composes the document for the requested network from the env root", () => {
-    process.env.WATERX_CONFIG_URL = ROOT;
-    expect(waterxConfigUrlForNetwork("MAINNET")).toBe(`${ROOT}/mainnet.json`);
-  });
-
-  it("returns undefined when WATERX_CONFIG_URL is unset", () => {
-    delete process.env.WATERX_CONFIG_URL;
-    delete process.env.E2E_CONFIG_URL;
-    expect(waterxConfigUrlForNetwork("TESTNET")).toBeUndefined();
-  });
-
-  it("throws when the retired E2E_CONFIG_URL is set", () => {
-    process.env.WATERX_CONFIG_URL = ROOT;
-    process.env.E2E_CONFIG_URL = ROOT;
-    expect(() => waterxConfigUrlForNetwork("TESTNET")).toThrow(/E2E_CONFIG_URL is retired/);
   });
 });

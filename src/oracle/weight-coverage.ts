@@ -44,8 +44,9 @@ import { resolveOracleRule } from "./rule-registry.ts";
  * set, so an unknown witness name is always reported as unsuppliable. That
  * includes `SupraRule`, whose `oracle_rules.supra` block DOES exist in v2 and
  * carries `pair_ids`, but which v2 cannot make feedable, because feeding it
- * needs an `oracle_holder` the schema has no field for. A ticker whose aggregator weights `SupraRule` is therefore unsuppliable
- * and this check must report it.
+ * needs an `oracle_holder` the schema has no field for. A ticker whose
+ * aggregator weights `SupraRule` is therefore unsuppliable and this check must
+ * report it.
  */
 const WITNESS_TO_SOURCE: Readonly<Record<string, OracleSource>> = Object.freeze({
   PythLazerRule: "pyth_lazer_rule",

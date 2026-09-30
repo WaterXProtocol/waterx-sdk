@@ -68,8 +68,9 @@ import {
   refreshWlpPoolOracles,
 } from "../src/perp/index.ts";
 import { rawPrice } from "../src/utils/math.ts";
-import { loadRepoEnvFiles, waterxConfigUrlForNetwork } from "./load-repo-env.ts";
+import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair } from "./load-signer.ts";
+import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
 
 const BTC = "BTCUSD";
 
@@ -198,7 +199,7 @@ async function main(): Promise<void> {
 
   const client = await PerpClient.create("TESTNET", {
     cache: true,
-    waterxConfigUrl: waterxConfigUrlForNetwork("TESTNET"),
+    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
   });
   const usdcType = client.getPoolTokenType("USD");
 

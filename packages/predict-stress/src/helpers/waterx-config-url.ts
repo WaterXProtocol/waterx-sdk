@@ -20,9 +20,9 @@
  * staging `https://staging-v2.waterx-config.pages.dev`.
  */
 
-import { waterxConfigUrlFromRoot } from "@waterx/sdk/config";
+import { waterxConfigUrlFromRoot, type WaterxConfigNetwork } from "@waterx/sdk/config";
 
-export type ConfigUrlNetwork = "testnet" | "mainnet" | "TESTNET" | "MAINNET";
+export type ConfigUrlNetwork = WaterxConfigNetwork;
 
 /**
  * Env names that used to carry the config URL. Setting one now throws, so a
@@ -48,33 +48,22 @@ export function assertNoRetiredConfigUrlAliases(
 }
 
 /**
- * Resolve `raw` (a `WATERX_CONFIG_URL`-shaped value) to the document URL for
- * `network`. Returns `undefined` for an unset/blank value, so a caller can
- * pass it straight through to `waterxConfigUrl` and let client creation throw
- * its own "no config URL" error. Throws for an invalid root (see
- * `waterxConfigUrlFromRoot`).
- */
-export function resolveWaterxConfigUrl(
-  raw: string | undefined,
-  network: ConfigUrlNetwork,
-): string | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  try {
-    return waterxConfigUrlFromRoot(value, network);
-  } catch (err) {
-    throw new Error(`WATERX_CONFIG_URL: ${(err as Error).message}`, { cause: err });
-  }
-}
-
-/**
  * The document URL for `network` from `env.WATERX_CONFIG_URL`, after checking
- * that no retired alias is set. `undefined` when the variable is unset.
+ * that no retired alias is set. Returns `undefined` for an unset/blank value,
+ * so a caller can pass it straight through to `waterxConfigUrl` and let client
+ * creation throw its own "no config URL" error. Throws, prefixed with the
+ * variable name, for an invalid root (see `waterxConfigUrlFromRoot`).
  */
 export function waterxConfigUrlFromEnv(
   network: ConfigUrlNetwork,
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
   assertNoRetiredConfigUrlAliases(env);
-  return resolveWaterxConfigUrl(env.WATERX_CONFIG_URL, network);
+  const value = env.WATERX_CONFIG_URL?.trim();
+  if (!value) return undefined;
+  try {
+    return waterxConfigUrlFromRoot(value, network);
+  } catch (err) {
+    throw new Error(`WATERX_CONFIG_URL: ${(err as Error).message}`, { cause: err });
+  }
 }
