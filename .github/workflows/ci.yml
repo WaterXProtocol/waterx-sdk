@@ -186,8 +186,6 @@ jobs:
       - name: Vitest e2e (dot + JUnit)
         env:
           NODE_NO_WARNINGS: "1"
-          # Testnet feed ids are on Hermes Beta (prod Hermes 404s them). Uses PYTH_DEFAULTS.TESTNET;
-          # SDK single-fetch only — e2e skips Hermes 429/5xx via skipHermesIfFeedUnavailable.
           WATERX_E2E_NETWORK: testnet
           # `WATERX_CONFIG_URL` is a CDN BASE root; the harness appends `/<network>.json`.
           # Override via the repo variable (a legacy full-file value is still accepted).
