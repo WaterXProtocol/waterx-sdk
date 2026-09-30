@@ -36,11 +36,6 @@ export type PriceUpdateRuleKind = "pyth_lazer_rule" | "constant_rule" | "waterx_
  * source itself — the `satisfies` keeps entries inside `PriceUpdateRuleKind`
  * but adding an auxiliary rule to this list is an (incorrect) editorial
  * decision this comment exists to prevent.
- *
- * `pyth_rule` (Pyth Core, Hermes VAA) was RETIRED in 5.0.0 — it is no longer
- * a `PriceUpdateRuleKind` at all. Its config block is still published in the
- * live deployments and is inert precisely because it is absent from this
- * list: `deriveOracleSources` can never select it.
  */
 export const ORACLE_SOURCES = Object.freeze([
   "pyth_lazer_rule",

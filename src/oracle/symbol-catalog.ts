@@ -3,13 +3,11 @@
  * every Lazer feed's integer id, its legacy Hermes hex id, its
  * fully-qualified reference symbol (`Crypto.BTC/USD`, `Equity.US.AAPL/USD`),
  * its `schedule` string (same grammar `parsePythSchedule` implements), asset
- * type, state, and fastest channel. This replaces the retired Hermes
- * `/v2/price_feeds` catalog for BOTH of its jobs: the schedule catalog for
- * market hours AND the hex↔integer feed-id map.
+ * type, state, and fastest channel. It serves two jobs: the schedule catalog
+ * for market hours AND the hex↔integer feed-id map.
  *
  * KEYLESS — the catalog read requires no Bearer (probed 2026-08-19;
- * re-verified 2026-08-26 at the Core retirement cutover — the catalog stayed
- * keyless while the Hermes update surfaces went key-only), so
+ * re-verified 2026-08-26), so
  * schedule consumers need no credential. It is also BIG (~4.6MB, ~3.6k
  * records), hence the generous default timeout; consumers cache the result
  * (BE service interval-refreshes; FE route caches) rather than fetch per

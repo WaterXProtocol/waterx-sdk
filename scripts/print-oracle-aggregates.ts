@@ -414,7 +414,7 @@ async function runOne(
 
   try {
     // No cross-source fallback and no stale-continue: a refresh failure for
-    // the fed set fails the ticker (the retired Hermes stale path is gone).
+    // the fed set fails the ticker.
     await refreshOraclePrices(tx, client, [feed.ticker], { updateDataProvider });
 
     const res = await client.grpcClient.simulateTransaction({
