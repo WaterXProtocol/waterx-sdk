@@ -40,7 +40,7 @@ import {
 } from "../src/perp/index.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 /** Raw units split off a discovered coin for the write-builder dry-runs. */
 const SMOKE_AMOUNT = 1000n;
@@ -165,10 +165,7 @@ async function coinRefsOwnedBy(
 async function main(): Promise<void> {
   loadRepoEnvFiles();
   const address = resolveActiveAddress();
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
 
   const accountId = process.env.WATERX_SMOKE_ACCOUNT_ID;
   const doExecute = process.env.WATERX_CUSTODY_EXECUTE === "1";

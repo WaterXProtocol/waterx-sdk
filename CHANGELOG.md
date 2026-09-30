@@ -17,8 +17,10 @@ from the version number alone.
 ## [Unreleased]
 
 _MINOR: one additive public export, `waterxConfigUrlFromRoot`. No existing export, type or
-runtime behaviour changes; `waterxConfigUrl` still takes a COMPLETE document URL. The repo's
-own harnesses (scripts, examples, e2e helpers — not published) now REJECT a
+runtime behaviour changes beyond one fix: `fetchWaterxSignedLeaves` now THROWS when a leaf
+chunk after the first reports the route unavailable, instead of returning `unavailable` and
+escalating to the envelope (#96). `waterxConfigUrl` still takes a COMPLETE document URL. The
+repo's own harnesses (scripts, examples, e2e helpers — not published) now REJECT a
 `WATERX_CONFIG_URL` in the old full-document form and the retired `E2E_CONFIG_URL`._
 
 ### Added
@@ -30,7 +32,8 @@ own harnesses (scripts, examples, e2e helpers — not published) now REJECT a
   trailing slashes are stripped, and it returns `${root}/${network}.json` for `MAINNET` /
   `TESTNET` (either case). It THROWS, naming the fix, for a path ending in `.json` (the old
   full-document form, never rewritten), a non-https value, a GitHub host (`github.com`,
-  `*.githubusercontent.com`), a query/fragment, or an empty value. The SDK still reads no env
+  `*.githubusercontent.com`), a query/fragment, or an empty value (`root` may be `undefined`, so
+  an unset env var can be passed straight in and get that error). The SDK still reads no env
   and `waterxConfigUrl` is unchanged; this only composes the value you pass it. Covered by
   the post-build export tests (ESM + CJS on all four entries) (#99).
 
@@ -43,7 +46,8 @@ own harnesses (scripts, examples, e2e helpers — not published) now REJECT a
   silently overriding it: the prediction e2e helpers (`test/prediction/helpers/e2e-env.ts`
   and the vendored `packages/predict-stress` copy) read `WATERX_CONFIG_URL` alone. Every
   harness (scripts, `examples/_shared.ts`, both e2e clients) now calls the one
-  `waterxConfigUrlFromEnv(network)`; the pass-through `waterxConfigUrlForNetwork`,
+  `waterxConfigUrlFromEnv(network)`, which also THROWS, naming the variable, when it is unset
+  (the testnet scripts share one `createTestnetScriptClient()`); the pass-through `waterxConfigUrlForNetwork`,
   `resolveWaterxConfigUrl` and `resolveE2eWaterxConfigUrl` wrappers are gone.
   `.env.example`, the CI workflow comments and the docs describe the root form, with
   `main-v2` as the production root (#99).
@@ -64,6 +68,32 @@ own harnesses (scripts, examples, e2e helpers — not published) now REJECT a
   `PythRule` anywhere: its docs and tests describe the generic case, where ANY weighted
   rule the SDK has no source for (unknown, `SupraRule`, or unlisted) is reported as
   unsuppliable and the assert throws `OracleWeightCoverageError` (#99).
+
+### Fixed
+
+- **A quote-center route outage is no longer swallowed by the second skip
+  predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
+  exhausted route ladder, but the e2e suites call `skipIfOracleFetchUnavailable`
+  and then `skipIfTransientInfrastructureError` on the same error, and
+  `isInfrastructureTransientError` still said "transient" — the exhausted
+  message contains the bare substring `fetch failed`, which the generic RPC
+  heuristic matches. Both predicates now consult ONE
+  `isExhaustedQuoteCenterRoute`, keyed on `QUOTE_CENTER_FALLBACK_MARKER`
+  exported from the rule that emits it, so rewording the message breaks
+  compilation instead of silently restoring the swallow. The predicate also
+  existed in a second, subtly different copy that additionally required
+  `/quote-center.*fetch failed/` and so read the over-the-cap batch error as a
+  blip (#96).
+- **A later leaf chunk can no longer retract a route the probe proved.** In
+  `fetchWaterxSignedLeaves`, an `unavailable` from any chunk after the first was
+  returned as the ladder's verdict — so a >32-symbol refresh whose second chunk
+  drew an anonymous 404 abandoned a WORKING leaf route and escalated every
+  symbol to the indivisible envelope, which over the enclave's cap cannot be
+  requested at all and surfaced as a misleading "needs N symbols" error. It now
+  throws, naming the route that served the probe (#96).
+- `WaterxAccessConfig.endpoint`'s doc no longer re-spells the three
+  quote-center routes a same-origin proxy must forward; it points at
+  `WATERX_LEAF_ROUTES` / `WATERX_ENVELOPE_ROUTE`, which cannot go stale (#96).
 
 ## [6.0.0] - 2026-09-22
 

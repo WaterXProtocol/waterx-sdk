@@ -84,13 +84,11 @@ export interface WaterxAccessConfig {
    * `…/api/quote-center/<route>` and a proxy route is not rewritten away. A
    * trailing slash is trimmed.
    *
-   * A same-origin proxy must forward EVERY route the rule reads, spelled out
-   * here because a proxy author has to copy them:
-   *
-   * - `GET /v1/sign/bbo/consensus` — the per-symbol leaf route it prefers.
-   * - `GET /v1/quotes/leaves` — the same shape on a quote-center predating the
-   *   rename; tried second.
-   * - `GET /v1/quotes/update` — the batch envelope, tried last.
+   * A same-origin proxy must forward EVERY route the rule reads. Read the list
+   * off the exported constants rather than a copy here that can go stale:
+   * `WATERX_LEAF_ROUTES` (the per-symbol leaf ladder, tried in order — the
+   * route it prefers first, then the same shape on a quote-center predating the
+   * rename) followed by `WATERX_ENVELOPE_ROUTE` (the batch envelope, last).
    *
    * Forwarding only some of them is not a soft failure: once every rung 404s
    * the rule throws and NO tx can be built. `?symbols=` must be preserved.

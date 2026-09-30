@@ -29,12 +29,11 @@
 import { Transaction } from "@mysten/sui/transactions";
 
 import { aggregateTickerWithConstant } from "../src/oracle/index.ts";
-import { PerpClient } from "../src/perp/client.ts";
 import { getAccountBalance } from "../src/perp/fetch.ts";
 import { buildMintAndStakeWlpTx } from "../src/perp/tx-builders.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 const TICKER = "USDCUSD"; // WLP pool's only token's ticker
 
@@ -52,10 +51,7 @@ async function main(): Promise<void> {
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
   const doExecute = process.env.EXECUTE === "1";
 
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
   const usdType = client.creditType();
   const wlpType = client.wlpType();
 

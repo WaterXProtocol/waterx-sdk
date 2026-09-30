@@ -33,7 +33,7 @@ import { getAccountBalance, getGlobalConfigData } from "../src/perp/fetch.ts";
 import { mintWlp, updateTokenValue } from "../src/perp/user/wlp.ts";
 import { loadRepoEnvFiles } from "./load-repo-env.ts";
 import { loadActiveKeypair, resolveActiveAddress } from "./load-signer.ts";
-import { waterxConfigUrlFromEnv } from "./waterx-config-url.ts";
+import { createTestnetScriptClient } from "./testnet-client.ts";
 
 async function isUsdAllowed(
   client: PerpClient,
@@ -98,10 +98,7 @@ async function main(): Promise<void> {
   // `skipOraclePriceRefresh: true`.
   const skipPriceUpdate = process.env.SKIP_PRICE_UPDATE === "1";
 
-  const client = await PerpClient.create("TESTNET", {
-    cache: true,
-    waterxConfigUrl: waterxConfigUrlFromEnv("TESTNET"),
-  });
+  const client = await createTestnetScriptClient();
 
   const usdType = client.creditType();
   const wlpType = client.wlpType();

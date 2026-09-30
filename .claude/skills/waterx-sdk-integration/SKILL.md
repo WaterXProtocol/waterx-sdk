@@ -57,7 +57,7 @@ the document URL with the exported helper instead of by hand:
 ```ts
 import { waterxConfigUrlFromRoot } from "@waterx/sdk"; // also on /config, /perp, /prediction
 
-const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL!, "TESTNET");
+const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL, "TESTNET");
 // → https://staging-v2.waterx-config.pages.dev/testnet.json
 ```
 

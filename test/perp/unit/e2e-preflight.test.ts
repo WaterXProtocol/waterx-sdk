@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { shouldRunE2ePersistentPreflight } from "../helpers/e2e/e2e-persistent-preflight.ts";
+import { skipIfOracleFetchUnavailable } from "../helpers/e2e/simulate-assertions.ts";
 import {
   isExhaustedQuoteCenterRoute,
-  skipIfOracleFetchUnavailable,
-} from "../helpers/e2e/simulate-assertions.ts";
-import { isOracleTransientFailureMessage } from "../helpers/e2e/transient-rpc.ts";
+  isInfrastructureTransientError,
+  isOracleTransientFailureMessage,
+  isTransientRpcErrorMessage,
+} from "../helpers/e2e/transient-rpc.ts";
 
 describe("e2e persistent preflight flags", () => {
   const prev: Record<string, string | undefined> = {};
@@ -72,11 +74,39 @@ describe("oracle skip predicates — a route outage is never an environment blip
     expect(skipped).toMatch(/mismatch/);
   });
 
-  it("a single-route quote-center 404 with no fallback clause is still transient", () => {
-    // The leaf route alone 404ing (no `fell back from`) is what a per-symbol
-    // registry gap looks like, and stays skippable.
-    expect(isOracleTransientFailureMessage("WaterX quote-center leaf fetch failed: 404")).toBe(
-      true,
-    );
+  it("isInfrastructureTransientError does NOT classify it transient either", () => {
+    // The suites call skipIfOracleFetchUnavailable and then
+    // skipIfTransientInfrastructureError on the SAME error, so one predicate
+    // refusing the outage achieves nothing on its own. This one needs an
+    // explicit guard because the message contains the bare substring
+    // "fetch failed", which the generic RPC heuristic matches:
+    expect(isTransientRpcErrorMessage(exhausted)).toBe(true);
+    expect(isInfrastructureTransientError(new Error(exhausted))).toBe(false);
+  });
+
+  it("the over-the-cap batch error is an outage too, though it says no 'fetch failed'", () => {
+    // The marker is what identifies an exhausted ladder. A second copy of this
+    // predicate additionally required /quote-center.*fetch failed/ and so read
+    // this one as a blip.
+    const overCap =
+      "WaterX quote-center batch fetch needs 40 symbols but the enclave signs at most 32 " +
+      "per request, and a batch envelope cannot be split (one signature covers the whole " +
+      "batch). Request fewer tickers, or use a quote-center that serves the per-symbol " +
+      "leaf route, which IS chunked. (fell back from GET /v1/sign/bbo/consensus → 404)";
+    expect(isExhaustedQuoteCenterRoute(overCap)).toBe(true);
+    expect(isOracleTransientFailureMessage(overCap)).toBe(false);
+    expect(isInfrastructureTransientError(new Error(overCap))).toBe(false);
+  });
+
+  it("a leaf fetch that failed on a retryable status is still transient", () => {
+    // Not `…leaf fetch failed: 404`: fetchLeafChunk answers 404 in its own
+    // branch (unknown symbol, or walk the ladder), so that message is
+    // unreachable. What this arm actually sees is a status the fetch policy
+    // retried and gave up on.
+    expect(
+      isOracleTransientFailureMessage(
+        "WaterX quote-center leaf fetch failed: 503 Service Unavailable",
+      ),
+    ).toBe(true);
   });
 });

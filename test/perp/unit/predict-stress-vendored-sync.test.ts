@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { rewriteSdkImports } from "../../../packages/predict-stress/scripts/rewrite-sdk-imports.mjs";
+
 /**
  * `packages/predict-stress` is a standalone workspace package that cannot
  * import across its own root, so `pnpm sync` VENDORS shared modules into it.
@@ -14,7 +16,7 @@ import { describe, expect, it } from "vitest";
  * so the next drift fails here instead of in a stress run.
  */
 describe("predict-stress vendored modules", () => {
-  it("waterx-config-url.ts is byte-identical to its source (modulo the SDK import)", () => {
+  it("waterx-config-url.ts is its source after the sync import rewrite", () => {
     const source = readFileSync(
       new URL("../../../scripts/waterx-config-url.ts", import.meta.url),
       "utf8",
@@ -23,9 +25,9 @@ describe("predict-stress vendored modules", () => {
       new URL("../../../packages/predict-stress/src/helpers/waterx-config-url.ts", import.meta.url),
       "utf8",
     );
-    // The one rewrite `pnpm sync` applies: the standalone package reaches the
+    // The same rewrite `pnpm sync` applies: the standalone package reaches the
     // SDK's `waterxConfigUrlFromRoot` through the export map, not `../src/`.
-    const expected = source.replace('from "../src/config-url.ts"', 'from "@waterx/sdk/config"');
+    const expected = rewriteSdkImports(source);
     expect(expected).not.toBe(source);
     expect(vendored).toBe(expected);
   });

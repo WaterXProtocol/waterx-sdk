@@ -101,8 +101,8 @@ function verifyCommandIndex(tx: Transaction): number {
 }
 
 /** Client with a lazer api key set (replace `pyth` — never mutate a shared client slice). */
-function createLazerTestClient(oracleSource: "pyth_lazer_rule" = "pyth_lazer_rule") {
-  const client = createUnitTestClient({ oracleSource });
+function createLazerTestClient() {
+  const client = createUnitTestClient({ oracleSource: "pyth_lazer_rule" });
   client.pyth = { ...client.pyth, api_key: "unit-test-token" };
   return client;
 }
@@ -551,7 +551,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
   });
 
   it("verifies once and feeds every lazer-routed ticker from the same Update", async () => {
-    const client = createLazerTestClient("pyth_lazer_rule");
+    const client = createLazerTestClient();
     mockLazerFetch(); // every requested ticker is lazer-supported
 
     const tx = new Transaction();
@@ -576,7 +576,7 @@ describe("refreshOraclePrices — real PythLazerRule routing (no overrides)", ()
   });
 
   it("skips a ticker lacking a lazer feed while still refreshing the rest (no cross-source fallback)", async () => {
-    const client = createLazerTestClient("pyth_lazer_rule");
+    const client = createLazerTestClient();
     // ETHUSD drops out of lazer support. There is no fallback: it is skipped
     // and named, BTCUSD still goes through, and no other source is consulted.
     delete client.config.oracle_rules.pyth_lazer?.lazer_feed_ids.ETHUSD;
