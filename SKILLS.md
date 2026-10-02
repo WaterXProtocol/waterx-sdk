@@ -10,20 +10,23 @@ skill here: it covers integrating the SDK into an app, keeper, or bot. Its front
 
 ## Using it in this repo
 
-Nothing to do. Claude Code discovers `.claude/skills/` automatically; ask for the skill by
-name, or just describe an integration task and it loads.
+Nothing to do. Claude Code discovers `.claude/skills/` and Codex discovers the `.agents/skills/`
+symlinks automatically; ask for the skill by name, or just describe an integration task and it loads.
 
 ## Using it in your own repo
 
-The skill ships inside the published package, so copy it out of `node_modules`:
+The skill ships inside the published package. Copy it out of `node_modules` for Claude Code, and
+expose the same directory to Codex (Codex scans `.agents/skills/` and follows a **directory**
+symlink; a symlinked `SKILL.md` file is skipped):
 
 ```bash
-mkdir -p .claude/skills
+mkdir -p .claude/skills .agents/skills
 cp -r node_modules/@waterx/sdk/.claude/skills/waterx-sdk-integration .claude/skills/
+ln -s ../../.claude/skills/waterx-sdk-integration .agents/skills/waterx-sdk-integration
 ```
 
-Agents other than Claude Code can read the file directly — it is plain Markdown with a
-YAML header, and nothing in it is Claude-specific.
+Other agents can read the file directly — it is plain Markdown with a YAML header, and nothing
+in it is Claude-specific — but only the two locations above are auto-discovered.
 
 Re-copy after upgrading the SDK; the skill tracks the API surface and changes with it.
 

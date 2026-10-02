@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(npm publish:*)",
+      "Bash(pnpm publish:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh release create:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)"
+    ]
+  }
+}
