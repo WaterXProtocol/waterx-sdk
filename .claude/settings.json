@@ -1,4 +1,15 @@
 {
+  "extraKnownMarketplaces": {
+    "waterx-commons": {
+      "source": { "source": "github", "repo": "Bucket-Protocol/waterx-commons" }
+    }
+  },
+  "enabledPlugins": {
+    "waterx-harness@waterx-commons": true,
+    "waterx-review@waterx-commons": true,
+    "waterx-sui@waterx-commons": true,
+    "waterx-delivery@waterx-commons": true
+  },
   "permissions": {
     "ask": [
       "Bash(npm publish:*)",

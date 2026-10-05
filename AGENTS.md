@@ -23,6 +23,8 @@ Read the matching file before changing anything there:
   package** (`SKILLS.md` tells consumers how to install it for Claude Code and Codex). It may only name
   things a consumer has: package exports, `node_modules/@waterx/sdk/README.md`, or GitHub URLs —
   `scripts/agent-hooks/check-skill-paths.mjs` enforces that in CI.
+- `.claude/settings.json` enables the waterx-commons plugins waterx-harness (`/waterx-harness:adopt-harness-standard`, `/waterx-harness:harness-transform`, `/waterx-harness:knowledge-hub-lesson`), waterx-review (`/waterx-review:waterx-code-review`), waterx-sui (`/waterx-sui:sui-coin-balances`) and waterx-delivery (`/waterx-delivery:release-npm-package`, `/waterx-delivery:deploy-via-k8s-infra`). They load after you accept the workspace-trust prompt, with your own GitHub access to the private Bucket-Protocol/waterx-commons (a different organization from this repository, so you need read access there as well), and not in cloud sessions; Codex users link them into `~/.agents/skills` ([waterx-commons plugins, "Codex"](https://github.com/Bucket-Protocol/waterx-commons/tree/main/plugins)).
+  This file and `.claude/skills/` win over a plugin skill. Known conflict: `release-npm-package` says a human dispatches `publish.yml` ("Do not run it yourself"), while `waterx-sdk-release` step 1 says "Run the `Publish package` workflow"; the local skill wins, and `gh workflow run` still prompts.
 
 ## Changelog
 
