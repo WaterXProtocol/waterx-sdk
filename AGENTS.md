@@ -10,6 +10,27 @@ The request sets the scope. When asked to assess, review, or explain, report fin
 apply the fix until asked. Keep changes to what the task needs; cleanup, extra tests, or refactors you
 notice go in the summary as suggestions, not into the diff.
 
+An approval covers the one action it names. Approval to plan, prepare, or open something is not approval to
+apply, deploy, publish, or merge it; approval for testnet is not approval for mainnet; approval for one PR,
+release or publish does not carry over to the next, even in the same session. Commands that look
+administrative change state too (`gh pr merge` or enabling auto-merge; `gh workflow run publish.yml` or
+`npm publish`; pushing a tag or creating a GitHub Release). When the next step needs an approval you do not
+have, report where you stopped and ask. Before saying a change is on `main`, check the PR's base branch and
+that its merge commit is an ancestor of `origin/main`.
+
+This repository is one part of the WaterX system; the waterx-commons handbook names each repository and what
+it owns. When a change here makes a waterx-commons handbook page, architecture map or plugin skill wrong,
+name it in your summary; fix it in waterx-commons only when asked. A sibling checkout (waterx-contract
+beside this repo, waterx-config, waterx-quote-center, and the consumers waterx-fe and waterx-keeper) may be
+on another branch with uncommitted work: inspect its branch, commit and worktree before relying on it, and
+read the default branch (`git show origin/main:<path>`) when the question is what is current. When sources
+disagree, code on the owning repository's default branch wins over docs, plans and copies; a path the user
+gives wins over an old plan's. Do not write internal topology into versioned files (no internal IPs, bastion
+hostnames, access-tunnel projects, credentials, or personal absolute paths such as
+`/Users/...`): point at gcp-infra's
+[access and connection guide](https://github.com/Bucket-Protocol/gcp-infra/blob/main/docs/access-and-connection-guide.md)
+and use placeholders.
+
 Lessons from earlier sessions live in `docs/knowledge-hub/` (one lesson per file; format in its `README.md`).
 Scan its titles before starting in an unfamiliar area; add a lesson when something cost real time.
 
@@ -17,6 +38,8 @@ Read the matching file before changing anything there:
 
 - `src/AGENTS.md` — the source layout: what each folder owns, the import direction between `account/`,
   `perp/`, `prediction/` and `oracle/`, and the per-file invariants.
+- `src/oracle/AGENTS.md` — how the fed source set is derived, the no-fallback rule, the leaf routes and
+  the replay disposition.
 - `.claude/skills/waterx-sdk-release/` — publishing, cutting the changelog, tagging and the GitHub
   Release (an exact, ordered procedure; load it before any release step).
 - `.claude/skills/waterx-sdk-integration/` — the consumer-facing integration skill, **shipped in the npm
@@ -87,46 +110,6 @@ in `src/oracle/rules/pyth-lazer-rule.ts`, `WATERX_INFRA` in `src/oracle/rules/wa
 `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides; fetch policy `waterxFetch` → the
 `fetchWithPolicy` defaults, never `pythFetch` — sources do not share config).
 
-## Oracle: the fed set is derived, never declared
-
-Which price-update sources run is derived from the config (`deriveOracleSources`,
-`src/oracle/source-list.ts`): a source is fed when its rule serves at least one ticker —
-`PriceUpdateRule.supportedTickers(config)` is the definition of "wired" (`oracle_rules.pyth_lazer.lazer_feed_ids`
-for Lazer, `oracle_rules.waterx.feeds` for the quote-center; the `symbols` universe is never a served set).
-There is no `oracleSource` create option and no `ORACLE_SOURCE` env var, so the fed set and per-ticker
-routing cannot disagree. The reason it is derived: the chain's per-ticker weight tables arbitrate —
-over-feeding is dropped on-chain, while starving a weighted rule aborts `EMissingPriceSource` in
-`aggregator::remove_outliers` — so the maximal wired set is the fail-safe direction. `ORACLE_SOURCES` is
-exactly `["pyth_lazer_rule", "waterx_rule"]` plus the auxiliary `constant_rule`; `supra_rule` is never fed.
-`USDCUSD` is the one constant pin and is deliberately not in `symbols`.
-
-There is **no cross-source fallback**: a ticker no derived source serves is skipped by
-`refreshOraclePrices` (`OracleRefreshSummary.skipped`; constant-pinned tickers need no leg), and the
-`build*Tx` composers then fail closed with `OracleTickerUnservedError` on the tickers their action needs
-(traded ticker + collateral; every pool asset for WLP) unless `allowUnrefreshedPrices` is set. Construction
-throws only when the config wires no source at all; a present-but-wrong feed id is left to abort at dry-run.
-`WaterxRule.supportedTickers = Object.keys(oracle_rules.waterx.feeds)`, so the document — not a live
-probe — is what promises the quote-center serves a symbol; keep that list to what the deployed quote-center
-signs. To fail at boot instead of at the first trade: `assertOracleWriteCoverage(client.perp, tickers)`;
-to check on-chain weights against the fed set during a weight migration: `assertOracleWeightCoverage`
-(`src/oracle/weight-coverage.ts`); `pnpm oracle:aggregates:testnet` prints the per-ticker table.
-
-PTB refresh per ticker is one `feed` leg per rule the ticker is configured for, then one `aggregate`
-(`oracle/aggregate.ts::refreshOraclePrices`). The `waterx_rule` leg pulls one signed Merkle **leaf** per
-ticker and verifies + feeds in a single `collect_single_with_proof`. The fetch walks `WATERX_LEAF_ROUTES`:
-`GET /v1/sign/bbo/consensus`, then `GET /v1/quotes/leaves` (same shape at the pre-rename path), and only
-when no leaf route answers falls back to the indivisible batch envelope `GET /v1/quotes/update` fed through
-`collect_batch_latest`, which rebuilds every item in-PTB to use one symbol's price. A 404 counts as "route
-missing" only when its body names neither an error `code` nor a symbol; every other status throws (see
-`fetchWaterxSignedLeaves`). A response that does not cover every requested ticker is rejected at fetch.
-
-**Replay disposition** (the `waterx_rule` module in `waterx-contract`): on the `collect_*` paths a replayed
-per-symbol signed timestamp **abstains** (`WaterxRuleDeclined { reason: Replay }`) — the chain already
-holds a price at least that fresh — and `remove_outliers` drops the abstention, so two concurrent builds may
-share one snapshot where another weighted rule can price the ticker. Where `waterx_rule` is the only
-weighted rule (testnet today), the second build's `aggregate` aborts `ETotalWeightNotEnough`. No path aborts
-with a replay-specific code (there is no `EReplayedSignature` in the contract); fetch a fresh snapshot per build.
-
 ## Development commands
 
 ```bash
@@ -196,5 +179,5 @@ named in "Definition of done".
 paths or URLs (`node scripts/agent-hooks/check-skill-paths.mjs`). The harness layout itself — this file
 as the only instruction file (no `CLAUDE.md`), skills mirrored under `.agents/skills/` — is checked by
 `scripts/agent-hooks/check-harness.sh`, vendored from `Bucket-Protocol/waterx-commons` (update it there, not
-here). Before claiming a check passed, point at the tool output from this session that shows it; say plainly
+here). Before claiming a check passed, point at the tool output from this session that shows it; say plainly <!-- harness: grounding -->
 what you did not run or could not verify.
