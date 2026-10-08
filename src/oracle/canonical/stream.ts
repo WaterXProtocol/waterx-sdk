@@ -174,16 +174,32 @@ interface TickerState {
 
 type ConnectionEvent = Parameters<NonNullable<CanonicalStreamOptions["onConnection"]>>[0];
 
-/** Load the optional `ws` peer. A `let` so a test can prove the missing-peer path without uninstalling it. */
-const loadWs = async (): Promise<new (url: string, opts: object) => SocketLike> => {
-  const mod = (await import("ws")) as unknown as {
-    WebSocket?: new (url: string, opts: object) => SocketLike;
-    default?: new (url: string, opts: object) => SocketLike;
-  };
+/** The optional `ws` peer could not be loaded — permanent, so the stream stops instead of retrying into it. */
+class WsPeerUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `cannot load the optional peer dependency "ws", which a stream opened with \`headers\` ` +
+        `dials with (the WHATWG WebSocket cannot send handshake headers): ${errorText(cause)} ` +
+        `— install it (pnpm add ws) or drop \`headers\``,
+    );
+    this.name = "WsPeerUnavailableError";
+  }
+}
+
+/** Load the optional `ws` peer (tests mock the module to prove the missing-peer path). */
+async function loadWs(): Promise<new (url: string, opts: object) => SocketLike> {
+  let mod: { WebSocket?: unknown; default?: unknown };
+  try {
+    mod = (await import("ws")) as typeof mod;
+  } catch (err) {
+    throw new WsPeerUnavailableError(err);
+  }
   const ctor = mod.WebSocket ?? mod.default;
-  if (typeof ctor !== "function") throw new Error("the ws module exports no WebSocket class");
-  return ctor;
-};
+  if (typeof ctor !== "function") {
+    throw new WsPeerUnavailableError(new Error("the ws module exports no WebSocket class"));
+  }
+  return ctor as new (url: string, opts: object) => SocketLike;
+}
 
 const textDecoder = new TextDecoder();
 
@@ -302,17 +318,11 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
       socket = await this.dial();
     } catch (err) {
       if (attempt.settled) return; // stop() won the race during the import
-      // Loading `ws` is the only thing that can throw here, and a missing peer
-      // is permanent: say so once and stop, rather than retry into the same
-      // import error every backoff.
-      this.settle(attempt, {
-        type: "failed",
-        reason:
-          `cannot load the optional peer dependency "ws", which a stream opened with ` +
-          `\`headers\` dials with (the WHATWG WebSocket cannot send handshake headers): ` +
-          `${errorText(err)} — install it (pnpm add ws) or drop \`headers\``,
-      });
-      this.stop();
+      // A missing `ws` peer is permanent: say so once and stop, rather than
+      // retry into the same import error every backoff. Anything else a
+      // constructor can throw is reported and retried like a failed handshake.
+      this.settle(attempt, { type: "failed", reason: errorText(err) });
+      if (err instanceof WsPeerUnavailableError) this.stop();
       return;
     }
     if (attempt.settled) {
