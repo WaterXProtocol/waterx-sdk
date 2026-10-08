@@ -1,0 +1,9 @@
+# Twin of .claude/settings.json `permissions.ask`: the release steps in
+# .claude/skills/waterx-sdk-release/SKILL.md are irreversible (npm publish,
+# a pushed tag, a GitHub Release), so a human confirms each one.
+prefix_rule(pattern = ["npm", "publish"], decision = "prompt", justification = "publishes to the npm registry; the Publish workflow is the supported path")
+prefix_rule(pattern = ["pnpm", "publish"], decision = "prompt", justification = "publishes to the npm registry; the Publish workflow is the supported path")
+prefix_rule(pattern = ["gh", "workflow", "run"], decision = "prompt", justification = "dispatches a workflow (Publish package is irreversible)")
+prefix_rule(pattern = ["gh", "release", "create"], decision = "prompt", justification = "creates a public GitHub Release")
+prefix_rule(pattern = ["git", "tag"], decision = "prompt", justification = "release tags are created by hand after npm publish; confirm the commit")
+prefix_rule(pattern = ["git", "push"], decision = "prompt", justification = "pushes a branch or tag; main and tags are release surfaces")

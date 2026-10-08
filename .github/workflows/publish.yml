@@ -321,7 +321,7 @@ jobs:
           if [ "$RELEASE_TYPE" != "prerelease" ] && [ "$state" = "published" ]; then
             {
               echo
-              echo "### By hand next — CLAUDE.md, Release flow steps 2-4"
+              echo "### By hand next — .claude/skills/waterx-sdk-release/SKILL.md, steps 2-4"
               echo
               echo '```bash'
               echo "# 2. CHANGELOG.md: [Unreleased] -> [$VERSION] - ${published_at%%T*}, lead with the breaking changes"
