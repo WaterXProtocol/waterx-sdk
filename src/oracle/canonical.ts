@@ -28,5 +28,9 @@ export type {
 } from "./canonical/frame.ts";
 export { readCanonicalPrices } from "./canonical/read.ts";
 export type { CanonicalReadOptions } from "./canonical/read.ts";
-export { canonicalReconnectDelayMs, openCanonicalStream } from "./canonical/stream.ts";
-export type { CanonicalStreamHandle, CanonicalStreamOptions } from "./canonical/stream.ts";
+export { openCanonicalStream } from "./canonical/stream.ts";
+export type {
+  CanonicalConnectionEvent,
+  CanonicalStreamHandle,
+  CanonicalStreamOptions,
+} from "./canonical/stream.ts";

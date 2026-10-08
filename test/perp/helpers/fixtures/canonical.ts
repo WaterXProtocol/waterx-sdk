@@ -8,6 +8,8 @@
  */
 import { vi } from "vitest";
 
+import { respondWith, type MockRoute } from "./quote-center.ts";
+
 /** The contract's BTCUSD example, as the quote-center would serialise it, with `symbol` substituted. */
 const CONTRACT_FIELDS: Record<string, string> = {
   status: '"ok"',
@@ -35,8 +37,10 @@ export function rawCanonicalQuoteText(
   symbol: string,
   overrides: Record<string, unknown> = {},
 ): string {
-  const fields: Record<string, string | undefined> = { symbol: JSON.stringify(symbol) };
-  for (const [key, token] of Object.entries(CONTRACT_FIELDS)) fields[key] = token;
+  const fields: Record<string, string | undefined> = {
+    symbol: JSON.stringify(symbol),
+    ...CONTRACT_FIELDS,
+  };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) {
       delete fields[key];
@@ -88,28 +92,6 @@ export function rawUnavailableQuote(symbol: string, reason: string): Record<stri
   };
 }
 
-export interface CanonicalMockRoute {
-  status?: number;
-  /** Object body — stringified. Use `text` when the exact token matters. */
-  body?: unknown;
-  /** Verbatim response text. */
-  text?: string;
-}
-
-function respond(route: CanonicalMockRoute | undefined): Response {
-  const status = route?.status ?? (route ? 200 : 404);
-  const text =
-    route?.text ?? (route?.body === undefined ? "Not Found" : JSON.stringify(route.body));
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    text: async () => text,
-    json: async () => JSON.parse(text) as unknown,
-    headers: new Headers(),
-    body: null,
-  } as unknown as Response;
-}
-
 /**
  * Route-aware canonical mock: the batch route and the per-symbol route each
  * get their own answer, and an unconfigured route 404s anonymously — the way a
@@ -117,16 +99,16 @@ function respond(route: CanonicalMockRoute | undefined): Response {
  * proxy base path (`/api/quote-center/v1/canonical`) routes the same.
  */
 export function mockCanonicalRoutes(routes: {
-  batch?: CanonicalMockRoute;
-  single?: (symbol: string) => CanonicalMockRoute | undefined;
+  batch?: MockRoute;
+  single?: (symbol: string) => MockRoute | undefined;
 }): ReturnType<typeof vi.spyOn> {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
     const { pathname } = new URL(String(input));
-    if (pathname.endsWith("/v1/canonical")) return Promise.resolve(respond(routes.batch));
+    if (pathname.endsWith("/v1/canonical")) return Promise.resolve(respondWith(routes.batch));
     const single = /\/v1\/canonical\/([^/]+)$/.exec(pathname);
     if (single) {
-      return Promise.resolve(respond(routes.single?.(decodeURIComponent(single[1]!))));
+      return Promise.resolve(respondWith(routes.single?.(decodeURIComponent(single[1]!))));
     }
-    return Promise.resolve(respond(undefined));
+    return Promise.resolve(respondWith(undefined));
   }) as ReturnType<typeof vi.spyOn>;
 }

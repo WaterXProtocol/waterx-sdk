@@ -15,34 +15,25 @@ import {
 import {
   canonicalReconnectDelayMs,
   openCanonicalStream,
+  type CanonicalConnectionEvent,
   type CanonicalStreamHandle,
   type CanonicalStreamOptions,
 } from "../../../src/oracle/canonical/stream.ts";
 import {
   startFakeCanonicalStreamServer,
+  until,
   type FakeCanonicalStreamServer,
 } from "../helpers/fake-canonical-stream-server.ts";
 import { rawCanonicalQuote, rawUnavailableQuote } from "../helpers/fixtures/canonical.ts";
 
-type ConnectionEvent = Parameters<NonNullable<CanonicalStreamOptions["onConnection"]>>[0];
-
 interface Harness {
   stream: CanonicalStreamHandle;
   frames: CanonicalQuote[];
-  events: ConnectionEvent[];
+  events: CanonicalConnectionEvent[];
 }
 
 const FAST = { backoff: { initialMs: 10, maxMs: 40 }, handshakeTimeoutMs: 200 } as const;
 const TICKERS = ["BTCUSD", "ETHUSD"] as const;
-
-/** Poll `predicate` every 5 ms until true, or fail after `timeoutMs`. */
-async function until(predicate: () => boolean, what: string, timeoutMs = 2_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -55,7 +46,7 @@ function open(
   tickers: readonly string[] = TICKERS,
 ): Harness {
   const frames: CanonicalQuote[] = [];
-  const events: ConnectionEvent[] = [];
+  const events: CanonicalConnectionEvent[] = [];
   const stream = openCanonicalStream({
     endpoint,
     tickers,

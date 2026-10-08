@@ -61,15 +61,25 @@ export { deriveOracleSources } from "./source-list.ts";
 // the shared wire contract for consumers' own tests.
 export * from "./canonical.ts";
 
+// The quote-center's error contract (numeric code table, body parser, the
+// shared 404 classifier) — one home for the leaf fetch and the canonical reads.
+// Public so a consumer rendering a quote's `reason` can name the vocabulary.
+export {
+  QUOTE_CENTER_ERROR_CODES,
+  parseQuoteCenterError,
+  quoteCenterErrorMeaning,
+} from "./quote-center-error.ts";
+export type { QuoteCenterError, QuoteCenterErrorMeaning } from "./quote-center-error.ts";
+
 // Per-source READ-plane resolution — which tickers a source can price
 // off-chain and with which ids (`resolveOracleReadPlan`; every source reads
 // its OWN feeds namespace, so write set == read set), plus the executors that
 // run a plan (`readLazerPrices` / `readQuoteCenterPrices`) and decode each
-// source's wire scaling in ONE place. Both executors read ONE LEG of the
-// on-chain price and are `@deprecated` for price reads (use the canonical
-// surface above); they stay for per-leg diagnostics. `LazerNotEntitledError`
-// is re-exported (not just the type) for the same `instanceof` reason as
-// `FetchPolicyError` above: a consumer drops unentitled feeds and retries.
+// source's wire scaling in ONE place. Both executors read ONE LEG and are
+// `@deprecated` for price reads — see `canonical/frame.ts` for why.
+// `LazerNotEntitledError` is re-exported (not just the type) for the same
+// `instanceof` reason as `FetchPolicyError` above: a consumer drops
+// unentitled feeds and retries.
 export { resolveOracleReadPlan, readPlanTickers } from "./read-plane.ts";
 export type { OracleReadPlan } from "./read-plane.ts";
 export { LazerNotEntitledError, readLazerPrices, readQuoteCenterPrices } from "./read-prices.ts";
@@ -134,15 +144,8 @@ export {
   // hand-cast the payload shape, and never assume which variant it is.
   waterxLeavesOf,
   waterxEnvelopeOf,
-  // The quote-center's NUMERIC error contract + its parser. The canonical
-  // reader maps a per-symbol refusal's code through the table into the
-  // quote's `reason`, so a consumer rendering reasons can name the vocabulary.
-  QUOTE_CENTER_ERROR_CODES,
-  parseQuoteCenterError,
 } from "./rules/waterx-rule.ts";
 export type {
-  QuoteCenterError,
-  QuoteCenterErrorMeaning,
   WaterxUpdatePayload,
   WaterxLeafPayload,
   WaterxEnvelopePayload,

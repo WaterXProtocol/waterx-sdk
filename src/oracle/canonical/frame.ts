@@ -20,14 +20,11 @@
  * {@link parseCanonicalQuote} and cannot disagree about a field.
  *
  * `*_scaled` ARE STRINGS. `price_scaled` / `confidence_scaled` (and a leg's
- * `price_scaled`) are u64s on the wire — JSON integer literals. A plain
- * `JSON.parse` yields IEEE-754 doubles that lose precision above 2^53, so the
- * reviver recovers each literal's exact source text (ES2023 `context.source`,
- * Node ≥ 21 — the same mechanism the rule's signed-payload parser relies on)
- * and keeps it as the decimal string the fixed contract type promises. On a
- * runtime without source access the value is stringified from the double,
- * which is exact up to 2^53 — ample for a 1e9-scaled price, lossy only for a
- * literal nobody's display path reads exactly.
+ * `price_scaled`) are u64s on the wire — JSON integer literals that a double
+ * cannot hold exactly above 2^53. {@link parseCanonicalText} keeps them as the
+ * decimal strings the fixed contract type promises, through the SDK's shared
+ * source-token mechanism (`utils/json-exact.ts`) when, and only when, a literal
+ * needs it.
  *
  * ONLY THE PRICE AND ITS TIME CAN REJECT A QUOTE. An `ok` quote whose `price`
  * is not a positive finite number, or whose `timestamp_ms` is missing, not a
@@ -48,6 +45,8 @@
  * backend's `MAX_FUTURE_DRIFT_MS`. Freshness (how OLD a price may be) stays
  * with the consumer.
  */
+
+import { INTEGER_TOKEN, parseJsonWithNumberSource } from "../../utils/json-exact.ts";
 
 /** `GET /v1/canonical?symbols=A,B` → `{ items: CanonicalQuote[] }`; `GET /v1/canonical/{symbol}` → one `CanonicalQuote`. */
 export const CANONICAL_BATCH_ROUTE = "v1/canonical";
@@ -116,24 +115,46 @@ export type CanonicalDropReason = (typeof CANONICAL_DROP_REASONS)[number];
 
 /** The fields whose JSON integer literal must survive as an exact string. */
 const SCALED_KEYS = new Set(["price_scaled", "confidence_scaled"]);
-/** A JSON number token that is lexically an integer: no `.`, no `e`/`E`. */
-const INTEGER_TOKEN = /^-?\d+$/;
 
 /**
- * `JSON.parse` with every `*_scaled` value decoded as a string — exact when the
- * runtime hands the reviver its source token, else from the double (see the
- * module header). Exported for the REST reader, which parses the batch body
- * ONCE with this and hands the items to {@link parseCanonicalQuote}.
+ * Parse a canonical body (one quote, or the batch `{ items }`) so every
+ * `*_scaled` literal can be recovered EXACTLY. Exported for the REST reader,
+ * which parses the batch body ONCE and hands the items to
+ * {@link parseCanonicalQuote}.
+ *
+ * Fast path first: a plain `JSON.parse`, and `scaledOr0` stringifies the
+ * doubles — exact up to 2^53, which at 1e9 scaling is a $9M price, so every
+ * live quote takes it. Only when some `*_scaled` double is NOT a safe integer
+ * is the text re-parsed with the source-token reviver, which costs ~7× (it
+ * materialises a context per primitive). The stream's message handler calls
+ * this per frame, so the common case must not pay for the rare one.
  */
 export function parseCanonicalText(text: string): unknown {
-  return JSON.parse(text, (key: string, value: unknown, context?: { source?: string }): unknown => {
-    if (!SCALED_KEYS.has(key)) return value;
-    if (typeof value === "string") return value;
-    if (typeof value !== "number") return value;
-    const token = context?.source;
-    if (token !== undefined && INTEGER_TOKEN.test(token)) return token;
-    return Number.isFinite(value) ? String(value) : value;
-  });
+  const parsed: unknown = JSON.parse(text);
+  if (!hasUnsafeScaled(parsed)) return parsed;
+  return parseJsonWithNumberSource(text, (value, source, key) =>
+    SCALED_KEYS.has(key) && source !== undefined && INTEGER_TOKEN.test(source) ? source : value,
+  );
+}
+
+/** Does any `*_scaled` value, at any depth, exceed what a double holds exactly? Allocation-free. */
+function hasUnsafeScaled(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  if (Array.isArray(value)) {
+    for (const item of value) if (hasUnsafeScaled(item)) return true;
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  for (const key in record) {
+    if (!Object.hasOwn(record, key)) continue;
+    const v = record[key];
+    if (SCALED_KEYS.has(key)) {
+      if (typeof v === "number" && !Number.isSafeInteger(v)) return true;
+    } else if (hasUnsafeScaled(v)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -144,11 +165,15 @@ function numberOr0(value: unknown): number {
   return isFiniteNumber(value) ? value : 0;
 }
 
+/** The ONE place a scaled double becomes its string — exact up to 2^53 (see `parseCanonicalText`). */
 function scaledOr0(value: unknown): string {
   if (typeof value === "string" && value !== "") return value;
-  // An already-parsed object (not run through `parseCanonicalText`) still
-  // carries the literal as a number — stringify it; exact up to 2^53.
   return isFiniteNumber(value) ? String(value) : "0";
+}
+
+/** A positive, finite instant not implausibly ahead of `nowMs` (see the module header). */
+function isPlausibleTimestamp(ts: unknown, nowMs: number): ts is number {
+  return isFiniteNumber(ts) && ts > 0 && ts <= nowMs + CANONICAL_MAX_FUTURE_DRIFT_MS;
 }
 
 function parseLeg(raw: unknown): CanonicalLeg | undefined {
@@ -200,21 +225,18 @@ export function parseCanonicalQuote(
   const status = frame.status;
   if (status !== "ok" && status !== "unavailable") return "malformed";
 
-  const plausible = (ts: unknown): ts is number =>
-    isFiniteNumber(ts) && ts > 0 && ts <= nowMs + CANONICAL_MAX_FUTURE_DRIFT_MS;
-
   let price: number;
   let timestamp_ms: number;
   let reason: string;
   if (status === "ok") {
     if (!isFiniteNumber(frame.price) || frame.price <= 0) return "non_positive_price";
-    if (!plausible(frame.timestamp_ms)) return "bad_timestamp";
+    if (!isPlausibleTimestamp(frame.timestamp_ms, nowMs)) return "bad_timestamp";
     price = frame.price;
     timestamp_ms = frame.timestamp_ms;
     reason = "";
   } else {
     price = numberOr0(frame.price);
-    timestamp_ms = plausible(frame.timestamp_ms) ? frame.timestamp_ms : 0;
+    timestamp_ms = isPlausibleTimestamp(frame.timestamp_ms, nowMs) ? frame.timestamp_ms : 0;
     reason = typeof frame.reason === "string" && frame.reason !== "" ? frame.reason : "unspecified";
   }
 

@@ -20,24 +20,27 @@
  * THE ONLY FALLBACK: per-symbol GETs when the batch route is ABSENT. On
  * 2026-10-08 production exposed `/v1/canonical/{symbol}` only through the
  * gateway's catch-all and had no batch route at all, so a reader that insisted
- * on the batch would have priced nothing. "Absent" is decided exactly as the
- * leaf path decides it ({@link fetchLeafChunk}'s rule): a 404 whose body
- * carries NEITHER an error `code` NOR a `symbol` — a proxy's default 404 page,
- * usually JSON — means nothing served the path; a 404 that carries one is the
- * quote-center itself refusing, which is an error here (the batch route never
- * 404s a symbol, per the contract) and an unavailable quote on the per-symbol
- * route. Nothing else falls back: a 5xx has already spent `fetchWithPolicy`'s
+ * on the batch would have priced nothing. "Absent" is decided by the ONE
+ * classifier the leaf path also uses (`classifyQuoteCenter404`): a 404 whose
+ * body names neither an error `code` nor a `symbol` — a proxy's default 404
+ * page, usually JSON — means nothing served the path; a 404 that carries one is
+ * the quote-center itself refusing, which is an error here (the batch route
+ * never 404s a symbol, per the contract) and an unavailable quote on the
+ * per-symbol route. Nothing else falls back: a 5xx has already spent `fetchWithPolicy`'s
  * retry budget and throws as `FetchPolicyError` verbatim (consumers
  * `instanceof` it), and a 4xx is deterministic and thrown with the server's
  * own wording.
  */
 
-import { parseQuoteCenterError, QUOTE_CENTER_ERROR_CODES } from "../rules/waterx-rule.ts";
+import {
+  classifyQuoteCenter404,
+  describeQuoteCenterFailure,
+  quoteCenterErrorMeaning,
+} from "../quote-center-error.ts";
 import {
   bodySnippet,
   fetchWithPolicy,
   joinEndpointPath,
-  readBodySnippet,
   type FetchPolicy,
 } from "../update-fetch.ts";
 import {
@@ -99,17 +102,16 @@ async function fetchBatch(
   url.searchParams.set("symbols", tickers.join(","));
   const res = await fetchWithPolicy(url.toString(), { headers: ACCEPT_JSON }, policy);
   if (res.status === 404) {
-    const body = (await res.text()).trim();
-    const refusal = parseQuoteCenterError(body);
-    if (isRouteMissing(refusal)) {
-      return { routeMissing: `GET /${CANONICAL_BATCH_ROUTE} → 404 ${bodySnippet(body)}`.trim() };
-    }
-    throw new Error(
-      `Canonical price read refused: 404 code ${String(refusal!.code)} ` +
-        bodySnippet(refusal!.message || body),
-    );
+    const verdict = await classifyQuoteCenter404(res, CANONICAL_BATCH_ROUTE);
+    if (verdict.kind === "route_missing") return { routeMissing: verdict.detail };
+    // The batch route never 404s a symbol (an unknown one is an item), so a
+    // refusal here is the service rejecting the REQUEST — surface it.
+    const code = verdict.refusal.code === undefined ? "" : `code ${String(verdict.refusal.code)} `;
+    throw new Error(`Canonical price read refused: 404 ${code}${verdict.shown}`);
   }
-  if (!res.ok) throw new Error(`Canonical price read failed: ${await describeFailure(res)}`);
+  if (!res.ok) {
+    throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
+  }
   const text = await res.text();
   const parsed = parseCanonicalText(text) as { items?: unknown } | null;
   if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.items)) {
@@ -155,20 +157,19 @@ async function fetchSingle(
     policy,
   );
   if (res.status === 404) {
-    const body = (await res.text()).trim();
-    const refusal = parseQuoteCenterError(body);
-    if (isRouteMissing(refusal)) {
-      throw new Error(
-        `Canonical price routes unavailable: ${batchMissing}; GET /${route} → 404 ${bodySnippet(body)}`.trim(),
-      );
+    const verdict = await classifyQuoteCenter404(res, route);
+    if (verdict.kind === "route_missing") {
+      throw new Error(`Canonical price routes unavailable: ${batchMissing}; ${verdict.detail}`);
     }
     // The route answered and refused THIS symbol — that is an answer. Code
     // first (the service's contract), then its human text, then the status.
-    const meaning =
-      refusal!.code === undefined ? undefined : QUOTE_CENTER_ERROR_CODES[refusal!.code];
-    return [ticker, syntheticUnavailable(ticker, meaning ?? (refusal!.message || "http_404"))];
+    const { refusal } = verdict;
+    const reason = quoteCenterErrorMeaning(refusal) ?? (refusal.message || "http_404");
+    return [ticker, syntheticUnavailable(ticker, reason)];
   }
-  if (!res.ok) throw new Error(`Canonical price read failed: ${await describeFailure(res)}`);
+  if (!res.ok) {
+    throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
+  }
   const parsed = parseCanonicalQuote(await res.text(), now);
   if (typeof parsed === "string")
     return [ticker, syntheticUnavailable(ticker, `invalid_${parsed}`)];
@@ -176,22 +177,4 @@ async function fetchSingle(
     return [ticker, syntheticUnavailable(ticker, "invalid_symbol_mismatch")];
   }
   return [ticker, parsed];
-}
-
-/**
- * A 404 is "nothing served this path" only when its body names neither an
- * error `code` nor a `symbol` — the leaf path's rule, minus its transitional
- * message shim (the canonical routes postdate the numeric contract).
- */
-function isRouteMissing(refusal: ReturnType<typeof parseQuoteCenterError>): boolean {
-  return !refusal || (refusal.code === undefined && !refusal.symbol);
-}
-
-/** `<status> [code N] <message|snippet>` — the same rendering the rule gives every non-ok response. */
-async function describeFailure(res: Response): Promise<string> {
-  const body = (await readBodySnippet(res)).trim();
-  const parsed = parseQuoteCenterError(body);
-  if (!parsed) return `${String(res.status)} ${body}`.trim();
-  const code = parsed.code === undefined ? "" : ` code ${String(parsed.code)}`;
-  return `${String(res.status)}${code} ${parsed.message || body}`.trim();
 }

@@ -117,6 +117,27 @@ export interface MockRoute {
 }
 
 /**
+ * THE stubbed `Response` every routed quote-center mock answers with: an
+ * unconfigured route (`undefined`) 404s anonymously, the way a service that
+ * never had it would. Carries `headers` (read by `fetchWithPolicy`'s
+ * Retry-After probe) and `body: null` (its doomed-response cancel) so the stub
+ * survives the policy wrapper's own reads.
+ */
+export function respondWith(route: MockRoute | undefined): Response {
+  const status = route?.status ?? (route ? 200 : 404);
+  const text =
+    route?.text ?? (route?.body === undefined ? "Not Found" : JSON.stringify(route.body));
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => text,
+    json: async () => JSON.parse(text) as unknown,
+    headers: new Headers(),
+    body: null,
+  } as unknown as Response;
+}
+
+/**
  * Route-aware quote-center mock: each route the rule reads gets its own
  * response, and an unconfigured route 404s the way a quote-center that never
  * had it would. A single blanket mock cannot express the central case — the
@@ -132,23 +153,14 @@ export function mockQuoteCenter(routes: {
   legacyLeaves?: MockRoute;
   update?: MockRoute;
 }): ReturnType<typeof vi.spyOn> {
-  const respond = (route: MockRoute | undefined): Response => {
-    const status = route?.status ?? (route ? 200 : 404);
-    const text =
-      route?.text ?? (route?.body === undefined ? "Not Found" : JSON.stringify(route.body));
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      text: async () => text,
-    } as unknown as Response;
-  };
   return vi.spyOn(globalThis, "fetch").mockImplementation((input: unknown) => {
     const { pathname } = new URL(String(input));
-    if (pathname.endsWith("/v1/sign/bbo/consensus")) return Promise.resolve(respond(routes.leaves));
+    if (pathname.endsWith("/v1/sign/bbo/consensus"))
+      return Promise.resolve(respondWith(routes.leaves));
     if (pathname.endsWith("/v1/quotes/leaves"))
-      return Promise.resolve(respond(routes.legacyLeaves));
-    if (pathname.endsWith("/v1/quotes/update")) return Promise.resolve(respond(routes.update));
-    return Promise.resolve(respond(undefined));
+      return Promise.resolve(respondWith(routes.legacyLeaves));
+    if (pathname.endsWith("/v1/quotes/update")) return Promise.resolve(respondWith(routes.update));
+    return Promise.resolve(respondWith(undefined));
   }) as ReturnType<typeof vi.spyOn>;
 }
 

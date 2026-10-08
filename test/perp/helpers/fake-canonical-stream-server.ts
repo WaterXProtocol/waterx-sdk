@@ -45,6 +45,19 @@ export interface FakeCanonicalStreamServer {
 /** Derived from the module under test, so a route edit cannot leave the fake serving the old path. */
 const STREAM_PATH = `/${CANONICAL_STREAM_ROUTE}`;
 
+/** Poll `predicate` every 5 ms until it holds, or fail naming `what` after `timeoutMs`. */
+export async function until(
+  predicate: () => boolean,
+  what: string,
+  timeoutMs = 2_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 export async function startFakeCanonicalStreamServer(
   mode: FakeCanonicalStreamServer["mode"] = "serve",
 ): Promise<FakeCanonicalStreamServer> {
@@ -55,6 +68,9 @@ export async function startFakeCanonicalStreamServer(
     res.end();
   });
 
+  const forEachOpen = (fn: (ws: WebSocket) => void): void => {
+    for (const ws of fake.sockets) if (ws.readyState === ws.OPEN) fn(ws);
+  };
   const fake: FakeCanonicalStreamServer = {
     endpoint: "",
     mode,
@@ -62,25 +78,20 @@ export async function startFakeCanonicalStreamServer(
     sockets: [],
     send(frame) {
       const text = typeof frame === "string" ? frame : JSON.stringify(frame);
-      for (const ws of fake.sockets) if (ws.readyState === ws.OPEN) ws.send(text);
+      forEachOpen((ws) => ws.send(text));
     },
     sendBinary(bytes) {
-      for (const ws of fake.sockets)
-        if (ws.readyState === ws.OPEN) ws.send(bytes, { binary: true });
+      forEachOpen((ws) => ws.send(bytes, { binary: true }));
     },
     closeClients(code = 1000, reason = "") {
-      for (const ws of fake.sockets) if (ws.readyState === ws.OPEN) ws.close(code, reason);
+      forEachOpen((ws) => ws.close(code, reason));
     },
-    async waitForConnect(count, timeoutMs = 2_000) {
-      const deadline = Date.now() + timeoutMs;
-      while (fake.connects.length < count) {
-        if (Date.now() > deadline) {
-          throw new Error(
-            `fake quote-center: expected ${String(count)} connect(s), saw ${String(fake.connects.length)}`,
-          );
-        }
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
+    waitForConnect(count, timeoutMs) {
+      return until(
+        () => fake.connects.length >= count,
+        `${String(count)} connect(s) at the fake quote-center`,
+        timeoutMs,
+      );
     },
     async close() {
       for (const ws of fake.sockets) ws.terminate();

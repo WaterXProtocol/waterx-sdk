@@ -54,6 +54,9 @@ import {
   type CanonicalQuote,
 } from "./frame.ts";
 
+/** The `onConnection` payload — structurally the fixed block's inline type, named so consumers and tests can refer to it. */
+export type CanonicalConnectionEvent = { type: "opened" | "closed" | "failed"; reason?: string };
+
 /** Signature fixed by the cross-repo plan (plus the one additive option, `handshakeTimeoutMs`). */
 export interface CanonicalStreamOptions {
   /** Quote-center http(s) base URL; the ws(s) URL is derived from it, a proxy base path preserved. */
@@ -72,7 +75,7 @@ export interface CanonicalStreamOptions {
    * `failed` the cause (`handshake answered HTTP 404`, `handshake timed out after Nms`,
    * `closed before open (code N)`, the socket's error text, or the missing-`ws` message).
    */
-  onConnection?: (event: { type: "opened" | "closed" | "failed"; reason?: string }) => void;
+  onConnection?: (event: CanonicalConnectionEvent) => void;
   /** Default 1 s doubling to 30 s (20% proportional jitter); reset by the first frame a connection delivers. */
   backoff?: { initialMs?: number; maxMs?: number };
   /**
@@ -167,13 +170,6 @@ interface Attempt {
   handshakeTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
-/** Per-ticker ordering mark — MUTATED in place (one frame per ticker per tick allocates otherwise). */
-interface TickerState {
-  timestampMs: number;
-}
-
-type ConnectionEvent = Parameters<NonNullable<CanonicalStreamOptions["onConnection"]>>[0];
-
 /** The optional `ws` peer could not be loaded — permanent, so the stream stops instead of retrying into it. */
 class WsPeerUnavailableError extends Error {
   constructor(cause: unknown) {
@@ -230,7 +226,8 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
   private lastFrameAt: number | undefined;
   private framesAccepted = 0;
   private readonly dropped: Record<CanonicalDropReason, number>;
-  private readonly marks = new Map<string, TickerState>();
+  /** Per-ticker ordering mark: the `timestamp_ms` of the last delivered `ok` quote. */
+  private readonly marks = new Map<string, number>();
   private readonly subscribed: ReadonlySet<string>;
   private readonly url: string;
   private readonly headers: Record<string, string> | undefined;
@@ -276,11 +273,7 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
     }
     const attempt = this.attempt;
     this.attempt = undefined;
-    if (attempt !== undefined) {
-      attempt.settled = true;
-      this.clearHandshakeTimer(attempt);
-      this.dropSocket(attempt);
-    }
+    if (attempt !== undefined) this.teardown(attempt);
   }
 
   reconnectNow(): void {
@@ -398,22 +391,14 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
     }
     // Binary frames as ArrayBuffer, so UTF-8 JSON on a binary frame still
     // decodes (the default `Blob` would need an async read on the hot path).
-    try {
-      socket.binaryType = "arraybuffer";
-    } catch {
-      /* a transport without the setter — text frames still decode */
-    }
+    socket.binaryType = "arraybuffer";
     return socket;
   }
 
-  private settle(attempt: Attempt, event: Exclude<ConnectionEvent, { type: "opened" }>): void {
+  private settle(attempt: Attempt, event: CanonicalConnectionEvent): void {
     if (attempt.settled) return;
-    attempt.settled = true;
-    this.clearHandshakeTimer(attempt);
     if (this.attempt === attempt) this.attempt = undefined;
-    // The socket may still be half-open (a handshake we aborted, a failed
-    // upgrade); dropping it is idempotent and guarantees the fd is released.
-    this.dropSocket(attempt);
+    this.teardown(attempt);
     // The ONLY writer of the counter besides delivery. A `failed` event can
     // only reach here with `opened === false`, i.e. having delivered nothing;
     // a `closed` one is productive iff it delivered — the first delivery
@@ -437,6 +422,19 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
       clearTimeout(attempt.handshakeTimer);
       attempt.handshakeTimer = undefined;
     }
+  }
+
+  /**
+   * Mark the attempt final and release its socket. The socket may still be
+   * half-open (a handshake we aborted, a failed upgrade); dropping it is
+   * idempotent and guarantees the fd is released. `terminate()` (ws) skips the
+   * close handshake a half-open peer would never answer; `close()` is the
+   * WHATWG best.
+   */
+  private teardown(attempt: Attempt): void {
+    attempt.settled = true;
+    this.clearHandshakeTimer(attempt);
+    this.dropSocket(attempt);
   }
 
   private dropSocket(attempt: Attempt): void {
@@ -469,23 +467,14 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
     this.lastFrameAt = now;
 
     const mark = this.marks.get(quote.symbol);
+    const ts = quote.timestamp_ms;
     if (quote.status === "ok") {
-      if (mark === undefined) {
-        this.marks.set(quote.symbol, { timestampMs: quote.timestamp_ms });
-      } else if (quote.timestamp_ms < mark.timestampMs) {
-        this.dropped.out_of_order++;
+      if (mark !== undefined && ts <= mark) {
+        this.dropped[ts === mark ? "duplicate" : "out_of_order"]++;
         return;
-      } else if (quote.timestamp_ms === mark.timestampMs) {
-        this.dropped.duplicate++;
-        return;
-      } else {
-        mark.timestampMs = quote.timestamp_ms;
       }
-    } else if (
-      mark !== undefined &&
-      quote.timestamp_ms !== 0 &&
-      quote.timestamp_ms < mark.timestampMs
-    ) {
+      this.marks.set(quote.symbol, ts);
+    } else if (mark !== undefined && ts !== 0 && ts < mark) {
       // A verdict from before the last price is stale news; a verdict at or
       // after it (or unstamped) is the consumer's to act on. Never moves the mark.
       this.dropped.out_of_order++;

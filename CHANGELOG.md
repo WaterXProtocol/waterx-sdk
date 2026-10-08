@@ -50,9 +50,11 @@ runtime behaviour changes._
   - `CanonicalQuote` / `CanonicalLeg` / `CanonicalStatus`, `parseCanonicalQuote` (the ONE
     parser both transports share; `*_scaled` u64s survive as exact decimal strings),
     `CANONICAL_DROP_REASONS`, `CANONICAL_BATCH_ROUTE` / `CANONICAL_STREAM_ROUTE`,
-    `CANONICAL_MAX_FUTURE_DRIFT_MS`, `canonicalReconnectDelayMs`.
-- `QUOTE_CENTER_ERROR_CODES[10009] = "no_canonical_evaluation"` (+ `QuoteCenterErrorMeaning`);
-  the table and `parseQuoteCenterError` are now exported from `@waterx/sdk/oracle` (#101).
+    `CANONICAL_MAX_FUTURE_DRIFT_MS`, `CanonicalConnectionEvent`.
+- `QUOTE_CENTER_ERROR_CODES[10009] = "no_canonical_evaluation"` (+ `QuoteCenterErrorMeaning`).
+  The quote-center's error contract — the code table, `parseQuoteCenterError`,
+  `quoteCenterErrorMeaning` — now lives in `src/oracle/quote-center-error.ts`, shared by the
+  leaf fetch and the canonical reads, and is exported from `@waterx/sdk/oracle` (#101).
 - `ws` is an optional `peerDependency` (`^8.18`), devDependency for the loopback stream server
   the tests run against (#101).
 
