@@ -43,10 +43,10 @@ export interface CommonBuildOpts {
    * Sharing one fetched waterx snapshot across CONCURRENT builds is safe on
    * these paths: every builder here feeds through `collect_*`, where a
    * replayed per-symbol timestamp ABSTAINS rather than aborting — the chain
-   * already holds a price at least that fresh. `EReplayedSignature` is raised
-   * only by the single-rule `feed_*` entries, which no `build*Tx` uses. The
-   * cost of sharing is a contribution that does not count, not a failed
-   * transaction.
+   * already holds a price at least that fresh (the single-rule `feed_*`
+   * entries, which no `build*Tx` uses, skip the item instead; no path aborts
+   * on a replay). The cost of sharing is a contribution that does not count —
+   * a failed transaction only where this rule was the sole weighted one.
    */
   skipOraclePriceRefresh?: boolean;
   /**

@@ -1,6 +1,6 @@
 ---
 name: waterx-sdk-integration
-description: Use when integrating @waterx/sdk into an app, keeper, or bot — wiring a WaterX client, creating and funding a wxa account, building perp or prediction transactions, or debugging a WaterX build/simulate failure. Covers the required waterxConfigUrl option, the config-derived oracle fed set, the build→simulate→execute discipline, and the aborts integrators hit first.
+description: Use when integrating @waterx/sdk into an app, keeper, or bot — wiring a WaterX client, creating and funding a wxa account, building perp or prediction transactions, or debugging a WaterX build/simulate failure (a Move abort, an OracleTickerUnservedError, a missing config URL). Covers the required waterxConfigUrl option, the config-derived oracle fed set, the build→simulate→execute discipline, and the aborts integrators hit first. Not for developing the SDK itself (the repo's AGENTS.md), releasing it, or operating a keeper's price pushes.
 ---
 
 # Integrating `@waterx/sdk`
@@ -90,11 +90,9 @@ is a sequenced rollout — feed the rule everywhere first, raise the weight afte
 weight before removing feeds — and `assertOracleWeightCoverage` reads the aggregators to
 gate it. No env edit and no SDK release either way.
 
-Inspect what a network actually weights when you are debugging:
-
-```bash
-pnpm oracle:aggregates:testnet   # per-ticker aggregator sources + weights
-```
+Inspect what a network actually weights when you are debugging: `assertOracleWeightCoverage` reads
+the on-chain aggregators, and `deriveOracleSources(config)` shows what the document derives. (Inside
+the SDK repository only, `pnpm oracle:aggregates:testnet` prints the per-ticker table.)
 
 Want to fail at BOOT rather than at the first trade that needs a missing feed? Pass the
 tickers you care about to `assertOracleWriteCoverage(client.perp, tickers)`.
@@ -127,8 +125,8 @@ const accountId = ev ? AccountCreated.parse(ev.bcs).account_object_address : und
 
 A **simulate emits the same `AccountCreated` event but creates nothing** — the address
 in a dry run's events is not on chain and reusing it aborts `EAccountNotFound`. Only read
-an id back after a real execute. Runnable version:
-`accountIdFromDigest` in `examples/_shared.ts`.
+an id back after a real execute. Runnable version: `accountIdFromDigest` in
+https://github.com/WaterXProtocol/waterx-sdk/blob/main/examples/_shared.ts.
 
 ## Step 4 — Fund it
 
@@ -201,20 +199,22 @@ Stop if you catch yourself doing any of these:
 - **Passing a plain number as a price or size.** Wrap in `rawPrice()`. The exception:
   view `basePriceUsd` arguments take a whole-dollar u64 — `parseWholeDollarU64`.
 - **Skipping simulate.** Every failure in the table below is free to find at simulate.
-- **Reusing one `waterx_rule` envelope across concurrent builds for the same symbol.**
-  A signed timestamp is single-use per symbol and the second one aborts
-  `EReplayedSignature` — weight-independent (audit F-014). Fetch per build.
+- **Reusing one `waterx_rule` leaf or envelope across concurrent builds for the same symbol.**
+  A signed timestamp is single-use per symbol: the second submission **abstains**
+  (`WaterxRuleDeclined { reason: Replay }`), and where `waterx_rule` is the only weighted rule
+  for that ticker the PTB then aborts `ETotalWeightNotEnough` at `aggregate`. Fetch per build.
 - **Expecting a fallback between oracle sources.** There is none. Sources are
   self-contained; an absent feed fails at tx-build.
 - **Reaching for `process.env` inside SDK calls.** Read env at your app's boundary and
   pass values in.
 - **Assuming SemVer.** This package may ship a breaking change in a patch. Pin exact and
-  read the CHANGELOG before upgrading.
+  read https://github.com/WaterXProtocol/waterx-sdk/blob/main/CHANGELOG.md before upgrading.
 
 ## Aborts and errors
 
 Which step a failure sends you back to. The **full messages, causes, and fixes live in
-one place** — `README.md`'s Troubleshooting table — so that they stay accurate; do not
+one place** — the Troubleshooting table in the package README
+(`node_modules/@waterx/sdk/README.md#troubleshooting`) — so that they stay accurate; do not
 re-derive them from here.
 
 | Error                                                                 | Go back to                                         |
@@ -224,19 +224,22 @@ re-derive them from here.
 | `EMissingPriceSource`                                                 | Step 2 — the fed set is too narrow for that ticker |
 | `LazerApiKeyMissing …`                                                | Step 2 — `pythApiKey`                              |
 | `EAccountNotFound`                                                    | Step 3 — the account id is not on this network     |
-| `EReplayedSignature`                                                  | Step 5 — an envelope was reused across builds      |
+| `ETotalWeightNotEnough` (after a `WaterxRuleDeclined` replay event)   | Step 5 — a signed leaf was reused across builds    |
 
 ## Verifying an integration
 
 1. `client.perp.simulate(tx)` returns without `FailedTransaction` for one order build.
 2. A read path returns real rows for a funded account.
-3. The fed set covers every ticker you trade — cross-check `pnpm oracle:aggregates`.
+3. The fed set covers every ticker you trade — `assertOracleWriteCoverage(client.perp, tickers)` at boot.
 4. Only then execute, and confirm the digest.
 
 ## Reference
 
-- Runnable walkthrough: `examples/quickstart.ts`
-- Every perp recipe, one file per entry point: `examples/`
-- Prediction reference flows: `test/prediction/e2e/`
-- Authoritative export lists: `src/perp/index.ts`, `src/prediction/index.ts`
-- Architecture and contract surface: `CLAUDE.md`
+These live in the SDK repository, not in the npm package:
+
+- Runnable walkthrough: https://github.com/WaterXProtocol/waterx-sdk/blob/main/examples/quickstart.ts
+- Every perp recipe, one file per entry point: https://github.com/WaterXProtocol/waterx-sdk/tree/main/examples
+- Prediction reference flows: https://github.com/WaterXProtocol/waterx-sdk/tree/main/test/prediction/e2e
+- Architecture and contract surface (the repository root and its agent instruction file): https://github.com/WaterXProtocol/waterx-sdk
+
+In the package: the authoritative export lists are `dist/src/perp/index.d.ts` and `dist/src/prediction/index.d.ts`.

@@ -279,8 +279,8 @@ export interface PriceUpdateRule {
    * when this rule's updates carry no replay-guarded identity (then the
    * method may also be absent entirely). This is the rule-owned key of the
    * on-chain F-014 replay guard: submitting the SAME identity twice for a
-   * symbol is at best a paid-for abstain (the dual-rule collect entries) and
-   * at worst an `EReplayedSignature` abort (the single-rule feed entries) —
+   * symbol is a paid-for abstain (the `collect_*` entries) or a skipped item
+   * (the single-rule `feed_*` entries), never a replay-specific abort —
    * so a consumer serving cached update data (e.g. a BE serve-at-most-once
    * cache) keys its guard off this map instead of re-implementing each
    * rule's payload anatomy.

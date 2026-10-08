@@ -63,6 +63,24 @@ jobs:
       # Sub-second, pure filesystem — rides the lint job rather than its own.
       - run: pnpm docs:check
 
+  # Agent-harness guards: shell + node only, no node_modules, so they run in
+  # seconds and do not wait on the setup cache. check-harness.sh (vendored from
+  # Bucket-Protocol/waterx-commons) keeps AGENTS.md the only instruction file
+  # (no CLAUDE.md), .agents/skills symlinks for Codex, and the root under the size both tools
+  # read whole; check-skill-paths.mjs keeps the SHIPPED skill from naming repo
+  # paths a consumer's node_modules lacks.
+  agent-guards:
+    runs-on: ubuntu-latest
+    name: Agent harness guards
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bash scripts/agent-hooks/check-harness.sh
+      - run: node scripts/agent-hooks/check-skill-paths.mjs
+
   typecheck:
     needs: setup
     runs-on: ubuntu-latest
