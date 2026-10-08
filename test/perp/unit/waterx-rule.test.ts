@@ -28,14 +28,16 @@ import {
   type PriceUpdateRule,
 } from "../../../src/oracle/index.ts";
 import {
+  parseQuoteCenterError,
+  QUOTE_CENTER_ERROR_CODES,
+} from "../../../src/oracle/quote-center-error.ts";
+import {
   fetchWaterxSignedLeaves,
   fetchWaterxSignedUpdate,
   fetchWaterxUpdateData,
   isFreshWaterxEntry,
-  parseQuoteCenterError,
   parseSignedEnvelope,
   parseSignedLeaves,
-  QUOTE_CENTER_ERROR_CODES,
   WATERX_MAX_PRICE_AGE_MS,
   WaterxRule,
   type WaterxSignedEnvelope,
@@ -1082,5 +1084,24 @@ describe("WaterxRule — routing", () => {
         ruleOverrides: { waterx_rule: emptyLeaves },
       }),
     ).rejects.toThrow(/carries no signed price for ticker\(s\): BTCUSD/);
+  });
+});
+
+describe("QUOTE_CENTER_ERROR_CODES — the numeric contract table", () => {
+  it("maps 10001 to unknown_symbol and 10009 to no_canonical_evaluation", () => {
+    expect(QUOTE_CENTER_ERROR_CODES[10001]).toBe("unknown_symbol");
+    expect(QUOTE_CENTER_ERROR_CODES[10009]).toBe("no_canonical_evaluation");
+  });
+
+  it("a 10009 on the LEAF route is not peelable — it throws naming the code", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"code":10009,"symbol":"ETHUSD","error":"no canonical evaluation"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /404 code 10009/,
+    );
   });
 });

@@ -16,7 +16,80 @@ from the version number alone.
 
 ## [Unreleased]
 
-_MINOR: one additive public export, `waterxConfigUrlFromRoot`. No existing export, type or
+_MINOR: additive — the canonical price reader (`readCanonicalPrices`, `openCanonicalStream`,
+`CanonicalQuote`), an OPTIONAL peer dependency on `ws` (loaded by dynamic import only when a
+stream is opened with `headers`), and two `@deprecated` tags. No existing export, type or
+runtime behaviour changes._
+
+### Added
+
+- **The canonical price reader** — `@waterx/sdk/oracle/canonical`, re-exported from
+  `@waterx/sdk/oracle` and (the two entry points + types) from the root. What goes on chain as
+  an oracle leg reads its raw source; everything else now reads the quote-center's CANONICAL
+  plane, the off-chain replica of `oracle::aggregate` over the per-ticker weight tables — the
+  only off-chain price with the settlement's definition (production weights the waterx leg at
+  0 on every market but DOGE, so the BBO leaf was never the mark price). Signatures are fixed
+  by the cross-repo canonical plan; BE / FE are coded against them (#101).
+  - `readCanonicalPrices({ endpoint, tickers, fetch? })` → `Map<ticker, CanonicalQuote>`:
+    `GET /v1/canonical?symbols=`, with a per-symbol `GET /v1/canonical/{symbol}` fallback ONLY
+    when the batch route is absent (a 404 naming neither a code nor a symbol — the leaf path's
+    rule). Every requested ticker is a key: a symbol the server refused, omitted or answered
+    unparseably comes back `status: "unavailable"` with a `reason` (`unknown_symbol` /
+    `no_canonical_evaluation` via the server's code table, `not_in_response`,
+    `invalid_<defect>`). A coded batch 404 and every non-404 failure throw;
+    `FetchPolicyError` propagates verbatim.
+  - `openCanonicalStream({ endpoint, tickers, onFrame, onConnection?, headers?, backoff? })`
+    → `{ stop, reconnectNow, snapshot }`: WebSocket `GET /v1/canonical/stream?symbols=`, capped
+    exponential backoff with proportional jitter reset by the first delivered frame, and a
+    per-ticker ordering guard on the quote-center bridge's own key — `evaluated_at_ms`, else
+    `timestamp_ms` — applied alike to `ok` and non-ok frames: a key below the highest delivered
+    is `out_of_order`, an `ok` frame repeating the last `ok`'s key is a `duplicate`, an
+    unstamped non-ok frame is always delivered. `timestamp_ms` alone is not monotonic (a
+    Lazer tick carries the feed time, a liveness tick the evaluation clock), so ordering on it
+    dropped a Lazer price that followed a liveness verdict. A non-ok quote's price fields are
+    zeroed whichever path produced it. The per-symbol
+    fallback fans out at most 8 requests at a time, and every response's timestamps are judged
+    against the clock when that response arrives, not when the call began. Dials the global `WebSocket`, or the optional peer `ws` when `headers` are set (the
+    WHATWG constructor cannot send handshake headers; `ws` also exposes a refused handshake's
+    HTTP status, so a 404 reads `handshake answered HTTP 404`). No route ladder, no SSE. One
+    additive option beyond the fixed block: `handshakeTimeoutMs` (default 10 s).
+  - **The server's 32-symbol cap is handled for the caller** (`CANONICAL_MAX_SYMBOLS_PER_REQUEST`
+    = 32; the quote-center answers more with 400 code 10003). `readCanonicalPrices`
+    de-duplicates the tickers, fetches ≤32-symbol chunks (two at a time, the per-symbol
+    fallback's 8-in-flight bound shared between them) and merges them; one failing chunk
+    fails the whole read. `openCanonicalStream` opens one connection per ≤32-ticker shard
+    behind the single handle — `stop` / `reconnectNow` fan out, `snapshot()` is `connected`
+    only when every shard is, `lastFrameAt` is the latest and the counters are summed, and a
+    shard's lifecycle events carry `reason: "shard i/n"` (prefixed onto any existing reason).
+    An unsharded stream's events are unchanged.
+  - `CanonicalQuote.evaluated_at_ms` — ADDITIVE to the fixed contract shape: the
+    quote-center's evaluation clock (the ordering key above), parsed leniently (missing,
+    invalid or implausibly far-future → `0`, never a drop); synthesised unavailable quotes
+    carry `0`. Freshness still reads `timestamp_ms`.
+  - `CanonicalQuote` / `CanonicalLeg` / `CanonicalStatus`, `parseCanonicalQuote` (the ONE
+    parser both transports share; `*_scaled` u64s survive as exact decimal strings),
+    `CANONICAL_DROP_REASONS`, `CANONICAL_BATCH_ROUTE` / `CANONICAL_STREAM_ROUTE`,
+    `CANONICAL_MAX_FUTURE_DRIFT_MS`, `CANONICAL_MAX_SYMBOLS_PER_REQUEST`, `CanonicalConnectionEvent`.
+- `QUOTE_CENTER_ERROR_CODES[10009] = "no_canonical_evaluation"` (+ `QuoteCenterErrorMeaning`).
+  The quote-center's error contract — the code table, `parseQuoteCenterError`,
+  `quoteCenterErrorMeaning` — now lives in `src/oracle/quote-center-error.ts`, shared by the
+  leaf fetch and the canonical reads, and is exported from `@waterx/sdk/oracle` (#101).
+- `ws` is an optional `peerDependency` (`^8.18`), devDependency for the loopback stream server
+  the tests run against (#101).
+
+### Deprecated
+
+- **`readQuoteCenterPrices` and `readLazerPrices` for price READS.** Each reads ONE LEG of the
+  on-chain aggregate (the signed BBO leaves / the Lazer parsed read). Read
+  `readCanonicalPrices` / `openCanonicalStream` instead. Both stay for per-leg diagnostics;
+  the tx-build leg fetchers (`fetchWaterxUpdateData`, `pullWaterxQuotes`,
+  `PythLazerRule.fetchUpdateData`) are not deprecated (#101).
+
+<!-- The entries below shipped in 6.1.0 (npm publish 2026-10-01T03:19:46Z, bump commit
+285035a) but the changelog was never cut. Before the next release, move them under
+`## [6.1.0] - 2026-10-01` per the release flow in CLAUDE.md. -->
+
+_6.1.0 — MINOR: one additive public export, `waterxConfigUrlFromRoot`. No existing export, type or
 runtime behaviour changes beyond one fix: `fetchWaterxSignedLeaves` now THROWS when a leaf
 chunk after the first reports the route unavailable, instead of returning `unavailable` and
 escalating to the envelope (#96). `waterxConfigUrl` still takes a COMPLETE document URL. The

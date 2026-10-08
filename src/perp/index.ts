@@ -174,8 +174,17 @@ export {
   parseSignedLeaves,
   MERKLE_ROOT_INTENT,
   waterxQuoteCenterEndpoint,
+  // THE price read (canonical plane). On this surface too so a root-only
+  // consumer finds the right reader without discovering `@waterx/sdk/oracle`;
+  // the full canonical contract (parser, constants) lives there.
+  readCanonicalPrices,
+  openCanonicalStream,
 } from "../oracle/index.ts";
 export type {
+  CanonicalQuote,
+  CanonicalReadOptions,
+  CanonicalStreamHandle,
+  CanonicalStreamOptions,
   FetchPolicy,
   HolidayDate,
   MarketStatusResult,

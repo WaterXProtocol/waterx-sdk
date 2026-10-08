@@ -1,11 +1,16 @@
 /**
- * `read-prices.ts` — the READ-plane executors for the two live sources: parsed
- * (display-grade) prices from the Lazer HTTP API and the WaterX quote-center.
- * The sibling `read-plane.ts` resolves WHICH tickers a source can price and
- * with which ids; these functions execute that plan. Consumers (FE/BE price
- * facades) fold onto these instead of hand-rolling per-source fetch + decode —
- * the price DECODING here is the one place each source's wire scaling is
- * interpreted.
+ * `read-prices.ts` — the per-LEG read executors: parsed (display-grade) prices
+ * from the Lazer HTTP API (the `pyth_lazer_rule` leg) and from the WaterX
+ * quote-center's signed BBO leaves (the `waterx_rule` leg). The sibling
+ * `read-plane.ts` resolves WHICH tickers a source can serve and with which
+ * ids; these functions execute that plan.
+ *
+ * DEPRECATED FOR PRICE READS. A leg is not "the price" — `canonical/frame.ts`
+ * has the principle. The price a consumer shows, sizes with, or stores is the
+ * canonical plane (`readCanonicalPrices` / `openCanonicalStream`); these two
+ * stay for per-leg diagnostics. The tx-build leg FETCHERS
+ * (`fetchWaterxUpdateData`, `pullWaterxQuotes`, `PythLazerRule.fetchUpdateData`)
+ * are not deprecated: carrying the signed bytes a PTB verifies is what a leg is for.
  *
  * Both executors return a Map keyed the way the plan is keyed (integer Lazer
  * feed id / ticker) of {@link OraclePriceEntry} — plain numbers, for display
@@ -73,6 +78,9 @@ interface LazerParsedFeed {
 }
 
 /**
+ * @deprecated for price READS — reads the `pyth_lazer_rule` LEG only; use
+ * `readCanonicalPrices` / `openCanonicalStream` (see the module header).
+ *
  * Read parsed prices for `feedIds` (integer Lazer ids — the `"lazer"` arm of
  * `resolveOracleReadPlan`) via `POST /v1/latest_price`.
  *
@@ -156,6 +164,9 @@ export async function readLazerPrices(opts: {
 }
 
 /**
+ * @deprecated for price READS — reads the `waterx_rule` LEG (signed BBO leaves)
+ * only; use `readCanonicalPrices` / `openCanonicalStream` (see the module header).
+ *
  * Read prices for `tickers` (the `"quote_center"` arm of
  * `resolveOracleReadPlan`) through {@link pullWaterxQuotes}, the rule-owned
  * route ladder the write path uses: per-symbol Merkle leaves by default, the

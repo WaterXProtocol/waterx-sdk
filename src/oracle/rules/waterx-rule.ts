@@ -51,20 +51,25 @@ import {
   newBatchPayload,
   pushBatchItem,
 } from "../../generated/waterx_rule/waterx_rule.ts";
+import { INTEGER_TOKEN, parseJsonWithNumberSource } from "../../utils/json-exact.ts";
 import type { OracleHost } from "../host.ts";
 import {
   assertRuleUpdateData,
   type PriceUpdateRule,
   type RuleUpdateData,
 } from "../price-update-rule.ts";
+import {
+  classifyQuoteCenter404,
+  describeQuoteCenterFailure,
+  namedQuoteCenterSymbol,
+  quoteCenterErrorMeaning,
+} from "../quote-center-error.ts";
 import type { OraclePriceEntry } from "../read-prices.ts";
 import { waterxServedTickers, waterxServes } from "../served-tickers.ts";
 import {
-  bodySnippet,
   FetchPolicyError,
   fetchWithPolicy,
   joinEndpointPath,
-  readBodySnippet,
   type FetchPolicy,
 } from "../update-fetch.ts";
 
@@ -377,54 +382,35 @@ function isWaterxUpdatePayloadShape(payload: unknown): payload is WaterxUpdatePa
   return isWaterxLeafPayloadShape(payload) || isWaterxEnvelopePayloadShape(payload);
 }
 
-/** A JSON number token that is lexically an integer: no `.`, no `e`/`E`. */
-const INTEGER_TOKEN = /^-?\d+$/;
-
 /**
- * `JSON.parse` with every integer decoded as an exact `bigint`.
+ * `JSON.parse` with every integer TOKEN decoded as an exact `bigint`
+ * (`parseJsonWithNumberSource` — the shared source-token mechanism and the
+ * `0.0`-is-not-an-integer rationale live with it).
  *
  * The signature is over `BCS(IntentMessage<…>)`, so every u64 the SDK rebuilds
  * in-PTB must equal the enclave's byte-for-byte or the on-chain verify fails and
- * ABORTS the whole trade PTB (a bad signature is not an abstain). A plain
- * `JSON.parse` yields IEEE-754 doubles that lose precision above 2^53, so
- * instead we recover each integer's exact source literal via the ES2023 reviver
- * `context.source` (Node 21+ / modern browsers) and `BigInt()` it. On an older
- * runtime that passes no `context`, a value within 2^53 is still exact
- * (`BigInt(number)`); a value ABOVE it throws loudly here rather than silently
- * corrupting the payload into an on-chain abort.
- *
- * Integrality is decided from the SOURCE TOKEN, never from the parsed value: a
- * display float can be lexically `0.0` while `JSON.parse` hands back the number
- * `0`, which `Number.isInteger` accepts — and `BigInt("0.0")` throws
- * `SyntaxError`. The leaf endpoint really does emit that (Rust `f64` serializes
- * a whole number as `0.0`), so keying off the value crashed every fetch that
- * included, say, a `confidence: 0.0` leaf. Exponent tokens (`1e3`) throw the
- * same way. Only `-?\d+` becomes a `bigint`; every other numeric token stays a
- * number, which is right for the display-only `price` / `confidence` fields —
- * they are not part of any signed byte string.
+ * ABORTS the whole trade PTB (a bad signature is not an abstain). Only `-?\d+`
+ * tokens become `bigint`; every other numeric token stays a number, which is
+ * right for the display-only `price` / `confidence` fields — they are not part
+ * of any signed byte string. On a runtime without source access a value within
+ * 2^53 is still exact (`BigInt(number)`); one ABOVE it throws loudly here rather
+ * than silently corrupting the payload into an on-chain abort.
  */
 function parseWithExactIntegers(text: string, what: string): unknown {
-  return JSON.parse(
-    text,
-    (_key: string, value: unknown, context?: { source?: string }): unknown => {
-      if (typeof value !== "number") return value;
-      const token = context?.source;
-      if (token !== undefined) {
-        return INTEGER_TOKEN.test(token) ? BigInt(token) : value;
-      }
-      // No JSON source access on this runtime: fall back to the parsed value.
-      // A display float that happens to be whole (`0.0` → `0`) becomes a bigint
-      // here, which is harmless — no signed field is read off those two.
-      if (!Number.isInteger(value)) return value;
-      if (!Number.isSafeInteger(value)) {
-        throw new Error(
-          `waterx ${what} carries an integer above 2^53 and this runtime lacks JSON ` +
-            "source access — cannot preserve u64 precision for the signed payload",
-        );
-      }
-      return BigInt(value);
-    },
-  );
+  return parseJsonWithNumberSource(text, (value, source) => {
+    if (source !== undefined) return INTEGER_TOKEN.test(source) ? BigInt(source) : value;
+    // No JSON source access on this runtime: fall back to the parsed value.
+    // A display float that happens to be whole (`0.0` → `0`) becomes a bigint
+    // here, which is harmless — no signed field is read off those two.
+    if (!Number.isInteger(value)) return value;
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(
+        `waterx ${what} carries an integer above 2^53 and this runtime lacks JSON ` +
+          "source access — cannot preserve u64 precision for the signed payload",
+      );
+    }
+    return BigInt(value);
+  });
 }
 
 /**
@@ -636,7 +622,9 @@ export async function fetchWaterxSignedUpdate(
   }
   const res = await fetchQuoteCenter(endpoint, WATERX_ENVELOPE_ROUTE, symbols, "fetch", fetchOpts);
   if (!res.ok) {
-    throw new Error(`WaterX quote-center fetch failed: ${await describeFailure(res)}${context}`);
+    throw new Error(
+      `WaterX quote-center fetch failed: ${await describeQuoteCenterFailure(res)}${context}`,
+    );
   }
   // Parse from raw text (not res.json()) so the u64 fields are decoded exact as
   // bigint — see parseSignedEnvelope. Malformed-shape check lives there.
@@ -764,100 +752,6 @@ function chunkSymbols(symbols: string[]): string[][] {
   return out;
 }
 
-/**
- * One rendering for every non-ok quote-center response: status, the numeric
- * code when the body carries one, and the human message. Codes reach the
- * operator on EVERY error path, not just the 404 the classifier inspects, so a
- * service that starts emitting them is immediately legible in logs.
- */
-async function describeFailure(res: Response): Promise<string> {
-  // `readBodySnippet`, not a bare `res.text()`: a proxy can answer a 502 with
-  // a multi-kilobyte HTML page, and this string ends up inside a thrown Error
-  // on the tx-build path.
-  const body = (await readBodySnippet(res)).trim();
-  const parsed = parseQuoteCenterError(body);
-  if (!parsed) return `${String(res.status)} ${body}`.trim();
-  const code = parsed.code === undefined ? "" : ` code ${String(parsed.code)}`;
-  return `${String(res.status)}${code} ${parsed.message || body}`.trim();
-}
-
-/**
- * The quote-center's NUMERIC error contract.
- *
- * Error identity belongs to the service, not to prose: a reworded message must
- * never change SDK behaviour. This table is the ONE place a wire code is given
- * meaning, so adopting the contract is a single edit here — no call site
- * branches on a number, and no number appears anywhere else.
- *
- * Values are the quote-center's published enum (`ErrorCode` in
- * `quote-service/src/api.rs`), which is APPEND-ONLY — a number is never reused
- * or renumbered, because clients pin it. Add a row here when the service adds
- * one; nothing else in the SDK changes.
- */
-export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">> = {
-  /** `ErrorCode::UnknownSymbol` — the symbol is not one the service signs. */
-  10001: "unknown_symbol",
-};
-
-/** One quote-center error body, parsed. `code` is the contract; `message` is for humans. */
-export interface QuoteCenterError {
-  /** Numeric wire code (`ErrorCode as u32`). Absent on deployments predating the contract. */
-  code?: number;
-  /** Symbol the service named, when it named one. */
-  symbol?: string;
-  /** Human-readable text. NEVER used for control flow — display and debugging only. */
-  message: string;
-}
-
-/**
- * Parse any quote-center error body. Returns `null` when the body is not a JSON
- * object, which is itself the signal that nothing served the path (see
- * {@link fetchLeafChunk}).
- *
- * `code` is a JSON NUMBER: the service serializes `ErrorCode as u32`. The
- * previous version required a string and so dropped it entirely.
- */
-export function parseQuoteCenterError(body: string): QuoteCenterError | null {
-  if (!body) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(body);
-  } catch {
-    return null;
-  }
-  if (!json || typeof json !== "object" || Array.isArray(json)) return null;
-  const o = json as Record<string, unknown>;
-  const code = typeof o.code === "number" && Number.isFinite(o.code) ? o.code : undefined;
-  const message =
-    typeof o.error === "string" ? o.error : typeof o.message === "string" ? o.message : "";
-  const symbol = typeof o.symbol === "string" && o.symbol ? o.symbol : undefined;
-  return { code, symbol, message };
-}
-
-/** Semantic meaning of a parsed error, via the contract table — `undefined` when unmapped. */
-function meaningOf(err: QuoteCenterError): "unknown_symbol" | undefined {
-  return err.code === undefined ? undefined : QUOTE_CENTER_ERROR_CODES[err.code];
-}
-
-/**
- * Recover the symbol an unknown-symbol refusal names.
- *
- * TRANSITIONAL. `symbol` is the field that should carry this and is read first.
- * The message parse exists only because today's quote-center sends neither a
- * code nor a symbol field — it is the one place text is still read, it can only
- * ever produce a NAME (never a routing decision), and it is deleted the moment
- * the service emits `{ code, symbol }`.
- */
-function namedSymbol(err: QuoteCenterError): string | undefined {
-  if (err.symbol) return err.symbol;
-  const raw = /unknown (?:signed )?symbol[:\s]+(\S+)/i.exec(err.message)?.[1];
-  // Trim quoting/punctuation the wording may wrap the name in. A capture of
-  // `"XAGUSD"` or `XAGUSD,` is not a ticker: it fails the caller's
-  // `remaining.includes` check and turns a graceful per-symbol peel into a
-  // thrown refresh.
-  return raw?.replace(/^["'`]+|["'`.,;:]+$/g, "") || undefined;
-}
-
 async function fetchLeafChunk(
   endpoint: string,
   route: string,
@@ -866,26 +760,12 @@ async function fetchLeafChunk(
 ): Promise<LeafPull> {
   const res = await fetchQuoteCenter(endpoint, route, symbols, "leaf fetch", fetchOpts);
   if (res.status === 404) {
-    const body = (await res.text()).trim();
-    const refusal = parseQuoteCenterError(body);
-    // Every 404 message below is truncated: `body` is parsed in full, but these
-    // strings ride `fellBackFrom` into a thrown Error on the tx-build path, and
-    // a proxy or CDN can 404 with a multi-kilobyte HTML page. `refusal.message`
-    // needs it too — this function parses the WHOLE body, so unlike
-    // `describeFailure` (which truncates before parsing) the parsed field is
-    // itself unbounded.
-    const shown = bodySnippet(refusal?.message || body);
-    // A refusal is only credible as "the ROUTE answered" when the body carries
-    // something only the quote-center would send: a `code` from its error
-    // contract, or the name of a symbol. A 404 with NEITHER is indistinguishable
-    // from a generic 404 page — and every framework-default 404 is JSON
-    // (`{"error":"not found"}` from Express/Next/Cloudflare), so keying
-    // route-missing on "body did not parse as JSON" would strand exactly the
-    // same-origin proxy this rule documents: it would throw about an unnamed
-    // symbol instead of trying the next rung. Structured-but-anonymous ⇒ next
-    // rung, and if none answers the final error names every attempt.
-    if (!refusal || (refusal.code === undefined && !namedSymbol(refusal)))
-      return { unavailable: `GET /${route} → 404 ${shown}`.trim() };
+    // Route-missing vs refusal is decided ONCE, in `classifyQuoteCenter404`:
+    // structured-but-anonymous ⇒ next rung of the ladder, and if none answers
+    // the final error names every attempt.
+    const verdict = await classifyQuoteCenter404(res, route);
+    if (verdict.kind === "route_missing") return { unavailable: verdict.detail };
+    const { refusal, shown } = verdict;
     // The ROUTE answered and refused. Without this split the whole batch fell
     // through to the envelope route, 404'd again there, and threw — one
     // unknown symbol cost every sibling its refresh.
@@ -898,7 +778,7 @@ async function fetchLeafChunk(
     // `{"code":10007,"symbol":"X","error":"feed stale"}` would bury the
     // service's actual, actionable error under an opaque `skipped: [X]`, which
     // is precisely what keying on the code is meant to prevent.
-    if (refusal.code !== undefined && meaningOf(refusal) !== "unknown_symbol") {
+    if (refusal.code !== undefined && quoteCenterErrorMeaning(refusal) !== "unknown_symbol") {
       throw new Error(
         `WaterX quote-center refused the leaf request: 404 code ` +
           `${String(refusal.code)} ${shown}`,
@@ -917,12 +797,14 @@ async function fetchLeafChunk(
     }
     // No code at all: a deployment predating the contract, the only place the
     // message shim applies. A codeless refusal that reaches here ALWAYS names a
-    // symbol — the route-missing guard above already sent the anonymous ones
-    // down the ladder — so there is no unnamed-symbol arm left to throw from.
-    return { unknownSymbol: namedSymbol(refusal)! };
+    // symbol — the classifier already sent the anonymous ones down the ladder —
+    // so there is no unnamed-symbol arm left to throw from.
+    return { unknownSymbol: namedQuoteCenterSymbol(refusal)! };
   }
   if (!res.ok) {
-    throw new Error(`WaterX quote-center leaf fetch failed: ${await describeFailure(res)}`);
+    throw new Error(
+      `WaterX quote-center leaf fetch failed: ${await describeQuoteCenterFailure(res)}`,
+    );
   }
   // Raw text, not res.json(): u64s must survive as exact bigints.
   return { leaves: parseSignedLeaves(await res.text()) };

@@ -81,7 +81,10 @@ src/
   (`aggregateTicker` / `aggregateTickerWithConstant` / `refreshOraclePrices`); `validate.ts`
   (`assertOracleWriteCoverage`, `servableTickers`, `missingOracleCredentials`), `weight-coverage.ts`
   (`assertOracleWeightCoverage`, reads the on-chain aggregators), `served-tickers.ts`, `update-fetch.ts`,
-  `read-plane.ts` + `read-prices.ts` (the lazer / quote-center read plan), `schedule.ts` (Pyth market hours,
+  `canonical.ts` + `canonical/{frame,read,stream}.ts` (THE price read — see `src/oracle/AGENTS.md`),
+  `quote-center-error.ts` (the quote-center error contract shared by the leaf fetch and the canonical reads),
+  `read-plane.ts` + `read-prices.ts` (the per-LEG lazer / quote-center readers, `@deprecated` for price
+  reads), `schedule.ts` (Pyth market hours,
   `getMarketStatus`), `symbol-catalog.ts` + `pyth-pro-history.ts`, `rule-registry.ts` (`resolveOracleRule`).
   Public surface is re-exported from `oracle/index.ts`.
 - **`prediction/tx-builders.ts`** — async `buildPlaceOrderTx` / `buildBatchClaimTx` with the same optional

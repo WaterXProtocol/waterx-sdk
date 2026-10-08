@@ -1,0 +1,243 @@
+/**
+ * `canonical/read.ts` — `readCanonicalPrices`, the REST read of the canonical
+ * price plane (see `frame.ts` for what canonical IS and why it is the only
+ * off-chain price with the settlement's definition).
+ *
+ * REST is the SEED, the stream is steady state. A consumer reads this once at
+ * boot (the backend's `PriceService` seed), or on every request when nothing
+ * else is available (the frontend's BE-down fallback), then follows
+ * `openCanonicalStream`. Nothing here reaches a tx build.
+ *
+ * EVERY REQUESTED TICKER IS A KEY. A consumer iterating its own request list
+ * must never find a hole: a symbol the server refused, omitted, or answered
+ * with something unparseable comes back as a `status: "unavailable"` quote
+ * whose `reason` says which (`unknown_symbol` / `no_canonical_evaluation` from
+ * the server's own code table, `not_in_response`, `invalid_<drop reason>`).
+ * The contract already makes the SERVER do this for a batch's unknown symbols;
+ * the reader extends it to every way a symbol can go unanswered, so "no fresh
+ * price" is one branch (`status !== "ok"`) and never an `undefined` check.
+ *
+ * THE ONLY FALLBACK: per-symbol GETs when the batch route is ABSENT. On
+ * 2026-10-08 production exposed `/v1/canonical/{symbol}` only through the
+ * gateway's catch-all and had no batch route at all, so a reader that insisted
+ * on the batch would have priced nothing. "Absent" is decided by the ONE
+ * classifier the leaf path also uses (`classifyQuoteCenter404`): a 404 whose
+ * body names neither an error `code` nor a `symbol` — a proxy's default 404
+ * page, usually JSON — means nothing served the path; a 404 that carries one is
+ * the quote-center itself refusing, which is an error here (the batch route
+ * never 404s a symbol, per the contract) and an unavailable quote on the
+ * per-symbol route. Nothing else falls back: a 5xx has already spent `fetchWithPolicy`'s
+ * retry budget and throws as `FetchPolicyError` verbatim (consumers
+ * `instanceof` it), and a 4xx is deterministic and thrown with the server's
+ * own wording.
+ *
+ * CHUNKED AT THE SERVER'S CAP. The quote-center refuses more than
+ * `CANONICAL_MAX_SYMBOLS_PER_REQUEST` (32) symbols in one request with a 400,
+ * and a consumer's priced-ticker list is caller-sized. The request is
+ * de-duplicated (the server collapses repeats anyway; a repeat still maps to
+ * the one quote), split into chunks of ≤32, and the chunks are fetched at most
+ * {@link CHUNK_CONCURRENCY} at a time and merged. Each chunk decides the
+ * batch-route-missing fallback for its own tickers. A chunk that FAILS fails
+ * the whole read — the same semantics as the single request it replaces: the
+ * caller gets every ticker answered or an error, never a map half of which is
+ * synthesised `unavailable` because one HTTP call broke.
+ */
+
+import { mapWithConcurrency } from "../../utils/concurrency.ts";
+import {
+  classifyQuoteCenter404,
+  describeQuoteCenterFailure,
+  quoteCenterErrorMeaning,
+} from "../quote-center-error.ts";
+import {
+  bodySnippet,
+  fetchWithPolicy,
+  joinEndpointPath,
+  type FetchPolicy,
+} from "../update-fetch.ts";
+import {
+  CANONICAL_BATCH_ROUTE,
+  chunkCanonicalTickers,
+  parseCanonicalQuote,
+  parseCanonicalText,
+  syntheticUnavailable,
+  type CanonicalQuote,
+} from "./frame.ts";
+
+/** Signature fixed by the cross-repo plan; consumers are coded against it. */
+export interface CanonicalReadOptions {
+  /** Quote-center base URL. A proxy's own base path is preserved. */
+  endpoint: string;
+  /** Oracle TICKERS (repo convention); the wire calls them `symbols`. */
+  tickers: readonly string[];
+  /** The same policy object every oracle fetch takes (timeout / retries / `fetchImpl` / Bearer). */
+  fetch?: FetchPolicy;
+}
+
+/**
+ * `GET /v1/canonical?symbols=…` (per-symbol `GET /v1/canonical/{symbol}`
+ * fallback on a bare 404). Never drops a symbol: every requested ticker is a
+ * key, a refused or unanswered one `status: "unavailable"` with its `reason`.
+ * See the module header for the exact dispositions.
+ */
+export async function readCanonicalPrices(
+  opts: CanonicalReadOptions,
+): Promise<Map<string, CanonicalQuote>> {
+  const out = new Map<string, CanonicalQuote>();
+  if (opts.tickers.length === 0) return out;
+
+  const chunked = chunkCanonicalTickers(opts.tickers);
+  // The per-symbol fallback's bound is TOTAL, not per chunk: concurrent chunks
+  // split it, so a gateway without the batch route still sees at most
+  // FALLBACK_CONCURRENCY per-symbol GETs in flight.
+  const chunkConcurrency = Math.min(CHUNK_CONCURRENCY, chunked.length);
+  const fallbackPerChunk = Math.max(1, Math.floor(FALLBACK_CONCURRENCY / chunkConcurrency));
+  const chunks = await mapWithConcurrency(chunked, chunkConcurrency, (chunk) =>
+    readChunk(opts.endpoint, chunk, opts.fetch, fallbackPerChunk),
+  );
+  for (const chunk of chunks) for (const [ticker, quote] of chunk) out.set(ticker, quote);
+  for (const ticker of opts.tickers) {
+    if (!out.has(ticker)) out.set(ticker, syntheticUnavailable(ticker, "not_in_response"));
+  }
+  return out;
+}
+
+/** One ≤32-symbol chunk: the batch route, or this chunk's per-symbol fallback when it is absent. */
+async function readChunk(
+  endpoint: string,
+  tickers: readonly string[],
+  policy: FetchPolicy | undefined,
+  fallbackConcurrency: number,
+): Promise<Map<string, CanonicalQuote>> {
+  const out = new Map<string, CanonicalQuote>();
+  const batch = await fetchBatch(endpoint, tickers, policy);
+  if ("items" in batch) {
+    foldItems(out, batch.items, new Set(tickers), batch.receivedAt);
+  } else {
+    const singles = await mapWithConcurrency(tickers, fallbackConcurrency, (ticker) =>
+      fetchSingle(endpoint, ticker, policy, batch.routeMissing),
+    );
+    for (const [ticker, quote] of singles) out.set(ticker, quote);
+  }
+  return out;
+}
+
+const ACCEPT_JSON = { accept: "application/json" } as const;
+/**
+ * Batch chunks in flight at once. Two covers today's universe (31 priced
+ * tickers fit one chunk; 64 fit two) without a wider fan-out against one
+ * upstream. When the batch route is absent the chunks share
+ * {@link FALLBACK_CONCURRENCY} between them.
+ */
+const CHUNK_CONCURRENCY = 2;
+/**
+ * Per-symbol fallback fan-out bound. A 31-ticker seed is 31 GETs, each with its
+ * own retry budget; unbounded, that saturates a browser's per-origin connection
+ * limit and makes a slow quote-center slower to surface. Same bound the
+ * backend's interim shim used.
+ */
+const FALLBACK_CONCURRENCY = 8;
+
+async function fetchBatch(
+  endpoint: string,
+  tickers: readonly string[],
+  policy: FetchPolicy | undefined,
+): Promise<{ items: unknown[]; receivedAt: number } | { routeMissing: string }> {
+  const url = joinEndpointPath(endpoint, CANONICAL_BATCH_ROUTE);
+  url.searchParams.set("symbols", tickers.join(","));
+  const res = await fetchWithPolicy(url.toString(), { headers: ACCEPT_JSON }, policy);
+  if (res.status === 404) {
+    const verdict = await classifyQuoteCenter404(res, CANONICAL_BATCH_ROUTE);
+    if (verdict.kind === "route_missing") return { routeMissing: verdict.detail };
+    // The batch route never 404s a symbol (an unknown one is an item), so a
+    // refusal here is the service rejecting the REQUEST — surface it.
+    const code = verdict.refusal.code === undefined ? "" : `code ${String(verdict.refusal.code)} `;
+    throw new Error(`Canonical price read refused: 404 ${code}${verdict.shown}`);
+  }
+  if (!res.ok) {
+    throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
+  }
+  const text = await res.text();
+  // The plausibility clock is read when THIS response has arrived, not when the
+  // call began: retries, long custom timeouts and slow bodies all sit between
+  // the two, and a server stamp that is current on arrival must stay valid.
+  const receivedAt = Date.now();
+  const unexpected = (): Error =>
+    new Error(`Canonical price read returned an unexpected body: ${bodySnippet(text)}`);
+  let parsed: { items?: unknown } | null;
+  try {
+    parsed = parseCanonicalText(text) as { items?: unknown } | null;
+  } catch (err) {
+    // A 200 that is not JSON (a proxy's HTML page, a truncated body) is the
+    // same "unexpected body" as JSON of the wrong shape — bounded, with the
+    // snippet. Anything else (a precision refusal) is its own error and propagates.
+    if (err instanceof SyntaxError) throw unexpected();
+    throw err;
+  }
+  if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.items)) {
+    throw unexpected();
+  }
+  return { items: parsed.items, receivedAt };
+}
+
+/** Decode a batch's items into `out`: requested symbols only, first answer per symbol wins. */
+function foldItems(
+  out: Map<string, CanonicalQuote>,
+  items: unknown[],
+  requested: ReadonlySet<string>,
+  now: number,
+): void {
+  for (const item of items) {
+    const parsed = parseCanonicalQuote(item, now);
+    if (typeof parsed === "string") {
+      // The defect is keyed on the item's own symbol when it has a usable one;
+      // an item with none is unanswerable and its ticker lands in
+      // `not_in_response` like any omitted symbol.
+      const symbol = (item as { symbol?: unknown } | null)?.symbol;
+      if (typeof symbol === "string" && requested.has(symbol) && !out.has(symbol)) {
+        out.set(symbol, syntheticUnavailable(symbol, `invalid_${parsed}`));
+      }
+      continue;
+    }
+    if (requested.has(parsed.symbol) && !out.has(parsed.symbol)) out.set(parsed.symbol, parsed);
+  }
+}
+
+async function fetchSingle(
+  endpoint: string,
+  ticker: string,
+  policy: FetchPolicy | undefined,
+  batchMissing: string,
+): Promise<[string, CanonicalQuote]> {
+  const route = `${CANONICAL_BATCH_ROUTE}/${encodeURIComponent(ticker)}`;
+  const res = await fetchWithPolicy(
+    joinEndpointPath(endpoint, route).toString(),
+    { headers: ACCEPT_JSON },
+    policy,
+  );
+  if (res.status === 404) {
+    const verdict = await classifyQuoteCenter404(res, route);
+    if (verdict.kind === "route_missing") {
+      throw new Error(`Canonical price routes unavailable: ${batchMissing}; ${verdict.detail}`);
+    }
+    // The route answered and refused THIS symbol — that is an answer. Code
+    // first (the service's contract), then its human text, then the status.
+    const { refusal } = verdict;
+    const reason = quoteCenterErrorMeaning(refusal) ?? (refusal.message || "http_404");
+    return [ticker, syntheticUnavailable(ticker, reason)];
+  }
+  if (!res.ok) {
+    throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
+  }
+  const text = await res.text();
+  // Judged on this response's own arrival clock — see `fetchBatch`. A fallback
+  // over many tickers runs in several waves; one start-of-call clock would age
+  // the last wave by the duration of all the earlier ones.
+  const parsed = parseCanonicalQuote(text, Date.now());
+  if (typeof parsed === "string")
+    return [ticker, syntheticUnavailable(ticker, `invalid_${parsed}`)];
+  if (parsed.symbol !== ticker) {
+    return [ticker, syntheticUnavailable(ticker, "invalid_symbol_mismatch")];
+  }
+  return [ticker, parsed];
+}
