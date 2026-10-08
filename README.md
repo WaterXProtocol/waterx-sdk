@@ -261,7 +261,7 @@ Why derived rather than declared: the chain arbitrates. Per-ticker weights decid
 
 **No cross-source fallback.** Construction fails only when the config wires **no** price-update source at all (nothing could ever be priced). A derived source whose feed for a particular ticker is absent is not an error: `refreshOraclePrices` **skips** that ticker and reports it in `OracleRefreshSummary.skipped`, so a sweep over 30 markets does not lose 29 because the 30th is unconfigured. The `build*Tx` composers then fail closed with `OracleTickerUnservedError` on the tickers their specific action depends on — the traded market plus collateral, or **every pool asset** for WLP — unless you pass `allowUnrefreshedPrices: true`. Constant-only tickers need no price update and are exempt. A present-but-wrong feed id is not validated by the SDK; it aborts on-chain at dry-run.
 
-Every source's external infra is a **rule-owned per-network table**, never deployment-overridable and never in the config JSON: `LAZER_INFRA` (`src/oracle/rules/pyth-lazer-rule.ts` — Lazer HTTP endpoint, verifier package, per-network channel), `WATERX_INFRA` (`src/oracle/rules/waterx-rule.ts` — testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`, accessor `waterxQuoteCenterEndpoint(network)`). For **price READS**, every source reads through its OWN feeds namespace (write set == read set by construction): resolve the per-source served-set/ids with `resolveOracleReadPlan` (`lazer` = integer Lazer ids, `quote_center` = tickers; `readPlanTickers` flattens either) and execute the plan with `readLazerPrices` / `readQuoteCenterPrices` (`src/oracle/read-prices.ts`). `client.pyth` is the access-only `PythAccessConfig` — just the caller-supplied `pythApiKey` / `pythFetch` create options (a secret has no place in a public CDN JSON); `client.waterx` is likewise `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides only; fetch policy resolves **`waterxFetch` → built-in defaults** — deliberately no `pythFetch` fallback, sources never share config). See the browser/CORS note below.
+Every source's external infra is a **rule-owned per-network table**, never deployment-overridable and never in the config JSON: `LAZER_INFRA` (`src/oracle/rules/pyth-lazer-rule.ts` — Lazer HTTP endpoint, verifier package, per-network channel), `WATERX_INFRA` (`src/oracle/rules/waterx-rule.ts` — testnet `quote-center-staging.waterx.app` / mainnet `quote-center.waterx.app`, accessor `waterxQuoteCenterEndpoint(network)`). For **price READS** use the canonical plane — [Reading prices: canonical, not legs](#reading-prices-canonical-not-legs). The per-source readers (`resolveOracleReadPlan` + `readLazerPrices` / `readQuoteCenterPrices`, `src/oracle/read-prices.ts`) each read ONE LEG of the on-chain price and are **deprecated for price reads**; they remain for per-leg diagnostics. `client.pyth` is the access-only `PythAccessConfig` — just the caller-supplied `pythApiKey` / `pythFetch` create options (a secret has no place in a public CDN JSON); `client.waterx` is likewise `WaterxAccessConfig` (`waterxEndpoint` / `waterxFetch` overrides only; fetch policy resolves **`waterxFetch` → built-in defaults** — deliberately no `pythFetch` fallback, sources never share config). See the browser/CORS note below.
 
 ```ts
 // Need the fed set before a client exists (boot asserts, health checks)?
@@ -280,6 +280,44 @@ const missing = missingOracleCredentials(deriveOracleSources(config), {
 ```
 
 This is the coexistence rollout pattern: staging's config wires every source under migration while production's trails until its weight tables move — flipping an environment is a **config** change, never an env edit and never an SDK release.
+
+### Reading prices: canonical, not legs
+
+One rule: **what goes on chain as an oracle leg reads its raw source; everything else reads the canonical price.** The signed BBO leaves (`/v1/sign/bbo/consensus`) are the `waterx_rule` leg and the Lazer parsed read is the `pyth_lazer_rule` leg — neither is "the price". `oracle::aggregate` combines them by the per-ticker weight table (on production every market but DOGE weights the waterx leg at **zero**), and the quote-center's **canonical plane** mirrors those tables and re-runs the aggregator off-chain. Its output is the only off-chain price with the settlement's definition, so it is what a consumer displays, sizes a market order with, or writes to a database. Two readers, signatures fixed by the cross-repo plan:
+
+```ts
+import {
+  openCanonicalStream,
+  readCanonicalPrices,
+  waterxQuoteCenterEndpoint,
+} from "@waterx/sdk/oracle";
+
+const endpoint = waterxQuoteCenterEndpoint("MAINNET"); // or your client's `waterx.endpoint`
+
+// REST seed — GET /v1/canonical?symbols=…; falls back to GET /v1/canonical/{symbol} per
+// ticker only when the batch route is ABSENT (a bare 404). EVERY requested ticker is a key:
+const seed = await readCanonicalPrices({ endpoint, tickers: ["BTCUSD", "AAPLXUSD"] });
+seed.get("BTCUSD"); // { symbol, status: "ok", price, price_scaled, confidence, timestamp_ms, legs, … }
+seed.get("AAPLXUSD"); // outside RTH → { status: "unavailable", reason: "no_canonical_evaluation", … } — never a hole
+
+// Live — WebSocket GET /v1/canonical/stream?symbols=…, one CanonicalQuote per frame.
+const stream = openCanonicalStream({
+  endpoint,
+  tickers: ["BTCUSD", "ETHUSD"],
+  onFrame: (q) =>
+    q.status === "ok" ? cache.set(q.symbol, q) : cache.markStale(q.symbol, q.reason),
+  onConnection: (e) => log.info(e), // { type: "opened" | "closed" | "failed", reason? }
+  headers: { "X-Internal-Key": key }, // optional — see below
+});
+stream.snapshot(); // { connected, lastFrameAt?, framesAccepted, droppedByReason }
+stream.stop();
+```
+
+- **`status !== "ok"` is "no fresh price".** Every evaluation is a frame / an item, including the unavailable ones (`reason`: the server's `unknown_symbol` / `no_canonical_evaluation`, or the SDK's `not_in_response` / `invalid_<defect>` for a symbol the server did not answer). Mark the ticker stale; never freeze on the last price, and never read `price` off a non-ok quote.
+- **Ordering guard.** `timestamp_ms` is the evaluation's price time. An `ok` frame is delivered only when strictly newer than the last delivered `ok` for that ticker (else counted `out_of_order` / `duplicate`); a non-ok frame is delivered unless it is stamped before that mark, and never moves it. `CANONICAL_MAX_FUTURE_DRIFT_MS` (60 s) rejects a far-future stamp that would otherwise win every comparison for the process lifetime.
+- **Reconnect.** Capped exponential backoff with proportional jitter (`backoff: { initialMs: 1_000, maxMs: 30_000 }` defaults), reset by the first frame a connection delivers. There is **no route ladder and no SSE**: the quote-center must serve `/v1/canonical/stream` before a consumer rolls out; until then every handshake fails (`failed`, reason `handshake answered HTTP 404` when the transport can see the status) and the client keeps retrying.
+- **`headers` need the optional peer `ws`.** The WHATWG `WebSocket` cannot send handshake headers, so a stream opened with `headers` loads `ws` by dynamic import (`pnpm add ws`); without it, one `failed` event names the fix and the stream stops. Without `headers` the client dials the global `WebSocket` (Node ≥ 22, browsers) and the SDK stays dependency-free. `ws` is also the only transport that exposes a refused handshake's HTTP status.
+- `*_scaled` fields are u64s and come back as exact decimal **strings**; `price` / `confidence` are display floats.
 
 ### Adding an oracle source (runbook)
 
