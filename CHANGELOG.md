@@ -29,7 +29,7 @@ runtime behaviour changes._
   plane, the off-chain replica of `oracle::aggregate` over the per-ticker weight tables — the
   only off-chain price with the settlement's definition (production weights the waterx leg at
   0 on every market but DOGE, so the BBO leaf was never the mark price). Signatures are fixed
-  by the cross-repo canonical plan; BE / FE are coded against them.
+  by the cross-repo canonical plan; BE / FE are coded against them (#101).
   - `readCanonicalPrices({ endpoint, tickers, fetch? })` → `Map<ticker, CanonicalQuote>`:
     `GET /v1/canonical?symbols=`, with a per-symbol `GET /v1/canonical/{symbol}` fallback ONLY
     when the batch route is absent (a 404 naming neither a code nor a symbol — the leaf path's
@@ -52,9 +52,9 @@ runtime behaviour changes._
     `CANONICAL_DROP_REASONS`, `CANONICAL_BATCH_ROUTE` / `CANONICAL_STREAM_ROUTE`,
     `CANONICAL_MAX_FUTURE_DRIFT_MS`, `canonicalReconnectDelayMs`.
 - `QUOTE_CENTER_ERROR_CODES[10009] = "no_canonical_evaluation"` (+ `QuoteCenterErrorMeaning`);
-  the table and `parseQuoteCenterError` are now exported from `@waterx/sdk/oracle`.
+  the table and `parseQuoteCenterError` are now exported from `@waterx/sdk/oracle` (#101).
 - `ws` is an optional `peerDependency` (`^8.18`), devDependency for the loopback stream server
-  the tests run against.
+  the tests run against (#101).
 
 ### Deprecated
 
@@ -62,7 +62,7 @@ runtime behaviour changes._
   on-chain aggregate (the signed BBO leaves / the Lazer parsed read). Read
   `readCanonicalPrices` / `openCanonicalStream` instead. Both stay for per-leg diagnostics;
   the tx-build leg fetchers (`fetchWaterxUpdateData`, `pullWaterxQuotes`,
-  `PythLazerRule.fetchUpdateData`) are not deprecated.
+  `PythLazerRule.fetchUpdateData`) are not deprecated (#101).
 
 <!-- The entries below shipped in 6.1.0 (npm publish 2026-10-01T03:19:46Z, bump commit
 285035a) but the changelog was never cut. Before the next release, move them under
