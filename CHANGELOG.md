@@ -44,7 +44,8 @@ runtime behaviour changes._
     per-ticker newest-`timestamp_ms` guard on `ok` prices (`out_of_order` / `duplicate`); a
     `status !== "ok"` frame IS delivered (unless stamped before the mark) and never moves the
     mark; a non-ok quote's price fields are zeroed whichever path produced it. The per-symbol
-    fallback fans out at most 8 requests at a time. Dials the global `WebSocket`, or the optional peer `ws` when `headers` are set (the
+    fallback fans out at most 8 requests at a time, and every response's timestamps are judged
+    against the clock when that response arrives, not when the call began. Dials the global `WebSocket`, or the optional peer `ws` when `headers` are set (the
     WHATWG constructor cannot send handshake headers; `ws` also exposes a refused handshake's
     HTTP status, so a 404 reads `handshake answered HTTP 404`). No route ladder, no SSE. One
     additive option beyond the fixed block: `handshakeTimeoutMs` (default 10 s).

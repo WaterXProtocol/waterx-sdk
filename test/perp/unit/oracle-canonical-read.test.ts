@@ -184,6 +184,59 @@ describe("readCanonicalPrices — the batch route", () => {
   });
 });
 
+describe("readCanonicalPrices — timestamps are judged when each response ARRIVES", () => {
+  // A quote stamped by the server at arrival time T is legitimate even when the
+  // call started more than CANONICAL_MAX_FUTURE_DRIFT_MS before T (long custom
+  // timeouts, retries, several fallback waves). Judging it against the call's
+  // start clock would turn a current price into `invalid_bad_timestamp`.
+  const START = 1_791_425_000_000;
+  const LATER = START + 61_000;
+
+  /** The mocked clock is START until the response is produced, LATER from then on. */
+  function clockAdvancesDuringFetch(answer: (pathname: string) => Response): void {
+    let now = START;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+      now = LATER;
+      return answer(new URL(String(input)).pathname);
+    });
+  }
+  const okResponse = (text: string): Response =>
+    ({
+      ok: true,
+      status: 200,
+      text: async () => text,
+      headers: new Headers(),
+    }) as unknown as Response;
+
+  it("batch: a quote stamped at arrival time is ok, not invalid_bad_timestamp", async () => {
+    clockAdvancesDuringFetch(() =>
+      okResponse(batchText([rawCanonicalQuoteText("BTCUSD", { timestamp_ms: LATER })])),
+    );
+
+    const out = await read(["BTCUSD"]);
+
+    expect(out.get("BTCUSD")).toMatchObject({ status: "ok", timestamp_ms: LATER });
+  });
+
+  it("per-symbol fallback: each response is judged on its own arrival clock", async () => {
+    clockAdvancesDuringFetch((pathname) =>
+      pathname.endsWith("/v1/canonical")
+        ? ({
+            ok: false,
+            status: 404,
+            text: async () => "Not Found",
+            headers: new Headers(),
+          } as unknown as Response)
+        : okResponse(rawCanonicalQuoteText("BTCUSD", { timestamp_ms: LATER })),
+    );
+
+    const out = await read(["BTCUSD"]);
+
+    expect(out.get("BTCUSD")).toMatchObject({ status: "ok", timestamp_ms: LATER });
+  });
+});
+
 describe("readCanonicalPrices — per-symbol fallback when the batch route is absent", () => {
   const singles = (bodies: Record<string, Record<string, unknown>>) => (symbol: string) =>
     bodies[symbol] ? { body: bodies[symbol] } : undefined;

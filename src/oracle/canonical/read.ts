@@ -73,14 +73,13 @@ export async function readCanonicalPrices(
 ): Promise<Map<string, CanonicalQuote>> {
   const out = new Map<string, CanonicalQuote>();
   if (opts.tickers.length === 0) return out;
-  const now = Date.now();
 
   const batch = await fetchBatch(opts.endpoint, opts.tickers, opts.fetch);
   if ("items" in batch) {
-    foldItems(out, batch.items, new Set(opts.tickers), now);
+    foldItems(out, batch.items, new Set(opts.tickers), batch.receivedAt);
   } else {
     const singles = await mapWithConcurrency(opts.tickers, FALLBACK_CONCURRENCY, (ticker) =>
-      fetchSingle(opts.endpoint, ticker, opts.fetch, batch.routeMissing, now),
+      fetchSingle(opts.endpoint, ticker, opts.fetch, batch.routeMissing),
     );
     for (const [ticker, quote] of singles) out.set(ticker, quote);
   }
@@ -103,7 +102,7 @@ async function fetchBatch(
   endpoint: string,
   tickers: readonly string[],
   policy: FetchPolicy | undefined,
-): Promise<{ items: unknown[] } | { routeMissing: string }> {
+): Promise<{ items: unknown[]; receivedAt: number } | { routeMissing: string }> {
   const url = joinEndpointPath(endpoint, CANONICAL_BATCH_ROUTE);
   url.searchParams.set("symbols", tickers.join(","));
   const res = await fetchWithPolicy(url.toString(), { headers: ACCEPT_JSON }, policy);
@@ -119,6 +118,10 @@ async function fetchBatch(
     throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
   }
   const text = await res.text();
+  // The plausibility clock is read when THIS response has arrived, not when the
+  // call began: retries, long custom timeouts and slow bodies all sit between
+  // the two, and a server stamp that is current on arrival must stay valid.
+  const receivedAt = Date.now();
   const unexpected = (): Error =>
     new Error(`Canonical price read returned an unexpected body: ${bodySnippet(text)}`);
   let parsed: { items?: unknown } | null;
@@ -134,7 +137,7 @@ async function fetchBatch(
   if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.items)) {
     throw unexpected();
   }
-  return { items: parsed.items };
+  return { items: parsed.items, receivedAt };
 }
 
 /** Decode a batch's items into `out`: requested symbols only, first answer per symbol wins. */
@@ -165,7 +168,6 @@ async function fetchSingle(
   ticker: string,
   policy: FetchPolicy | undefined,
   batchMissing: string,
-  now: number,
 ): Promise<[string, CanonicalQuote]> {
   const route = `${CANONICAL_BATCH_ROUTE}/${encodeURIComponent(ticker)}`;
   const res = await fetchWithPolicy(
@@ -187,7 +189,11 @@ async function fetchSingle(
   if (!res.ok) {
     throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
   }
-  const parsed = parseCanonicalQuote(await res.text(), now);
+  const text = await res.text();
+  // Judged on this response's own arrival clock — see `fetchBatch`. A fallback
+  // over many tickers runs in several waves; one start-of-call clock would age
+  // the last wave by the duration of all the earlier ones.
+  const parsed = parseCanonicalQuote(text, Date.now());
   if (typeof parsed === "string")
     return [ticker, syntheticUnavailable(ticker, `invalid_${parsed}`)];
   if (parsed.symbol !== ticker) {
