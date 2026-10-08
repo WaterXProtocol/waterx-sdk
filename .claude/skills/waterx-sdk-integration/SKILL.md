@@ -191,6 +191,30 @@ const positions = await client.perp.getAccountPositions({
 Returned structs keep their **snake_case** Move field names
 (`account_object_address`, `create_timestamp`) — use them as-is.
 
+**Prices** come from the quote-center's CANONICAL plane, never from a single oracle leg:
+
+```ts
+import {
+  openCanonicalStream,
+  readCanonicalPrices,
+  waterxQuoteCenterEndpoint,
+} from "@waterx/sdk/oracle";
+
+const endpoint = client.perp.waterx.endpoint ?? waterxQuoteCenterEndpoint(client.perp.network);
+const quotes = await readCanonicalPrices({ endpoint, tickers: ["BTCUSD", "ETHUSD"] }); // seed
+const stream = openCanonicalStream({
+  endpoint,
+  tickers,
+  onFrame: (q) => {
+    /* q.status === "ok" ? price : stale */
+  },
+});
+```
+
+Every requested ticker is a key; a quote with `status !== "ok"` means "no fresh price" and
+carries a `reason` — mark the ticker stale, never read its `price`. `readQuoteCenterPrices`
+and `readLazerPrices` read one LEG each and are deprecated for price reads.
+
 ## Red flags
 
 Stop if you catch yourself doing any of these:
