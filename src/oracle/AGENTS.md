@@ -48,8 +48,9 @@ CANONICAL plane — its off-chain replica of the aggregate. `readCanonicalPrices
 → `Map<ticker, CanonicalQuote>` (every requested ticker is a key; `status !== "ok"` carries a `reason` and
 zeroed price fields) and `openCanonicalStream({ endpoint, tickers, onFrame, onConnection?, headers?, backoff? })`
 → `{ stop, reconnectNow, snapshot }` have signatures FIXED by the cross-repo canonical plan: the backend and
-frontend code against them, so add only fields and never change a shape (`CanonicalQuote.evaluated_at_ms`
-is the one added field). `readQuoteCenterPrices` /
+frontend code against them, so add only optional fields and never change a shape
+(`CanonicalQuote.evaluated_at_ms` is optional for source compatibility and normalised to `0` by the parser).
+`readQuoteCenterPrices` /
 `readLazerPrices` are `@deprecated` for price reads; the tx-build leg fetchers are not.
 
 - One parser (`canonical/frame.ts::parseCanonicalQuote`) serves REST items and stream frames. `*_scaled` are

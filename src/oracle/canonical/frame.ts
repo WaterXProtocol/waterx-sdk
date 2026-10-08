@@ -121,7 +121,7 @@ export interface CanonicalQuote {
    * pre-field server, a synthesised quote), never a drop. Not a price time —
    * freshness still reads `timestamp_ms`.
    */
-  evaluated_at_ms: number;
+  evaluated_at_ms?: number;
   config_epoch: number;
   weight_threshold: number;
   outlier_tolerance: number;

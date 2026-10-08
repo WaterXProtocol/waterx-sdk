@@ -271,7 +271,8 @@ interface OrderMark {
 
 /** The server bridge's ordering key: the evaluation clock, else the price time. */
 function orderingKey(quote: CanonicalQuote): number {
-  return quote.evaluated_at_ms > 0 ? quote.evaluated_at_ms : quote.timestamp_ms;
+  const evaluatedAt = quote.evaluated_at_ms ?? 0;
+  return evaluatedAt > 0 ? evaluatedAt : quote.timestamp_ms;
 }
 
 /** ONE connection over at most `CANONICAL_MAX_SYMBOLS_PER_REQUEST` tickers. */
