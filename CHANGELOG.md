@@ -62,10 +62,11 @@ runtime behaviour changes._
     only when every shard is, `lastFrameAt` is the latest and the counters are summed, and a
     shard's lifecycle events carry `reason: "shard i/n"` (prefixed onto any existing reason).
     An unsharded stream's events are unchanged.
-  - `CanonicalQuote.evaluated_at_ms` — ADDITIVE to the fixed contract shape: the
-    quote-center's evaluation clock (the ordering key above), parsed leniently (missing,
-    invalid or implausibly far-future → `0`, never a drop); synthesised unavailable quotes
-    carry `0`. Freshness still reads `timestamp_ms`.
+  - `CanonicalQuote.evaluated_at_ms` — optional on the public type to preserve the fixed
+    cross-repo shape, while the parser still normalises the quote-center's evaluation clock
+    (the ordering key above) to a number: missing, invalid or implausibly far-future → `0`,
+    never a drop; synthesised unavailable quotes carry `0`. Freshness still reads
+    `timestamp_ms` (#102).
   - `CanonicalQuote` / `CanonicalLeg` / `CanonicalStatus`, `parseCanonicalQuote` (the ONE
     parser both transports share; `*_scaled` u64s survive as exact decimal strings),
     `CANONICAL_DROP_REASONS`, `CANONICAL_BATCH_ROUTE` / `CANONICAL_STREAM_ROUTE`,
