@@ -103,3 +103,25 @@ describe("waterxConfigUrlFromRoot is public on every config-bearing entry (ESM +
     },
   );
 });
+
+describe("the canonical price reader is public on the oracle entries (ESM + CJS)", () => {
+  type Mod = { readCanonicalPrices: unknown; openCanonicalStream: unknown };
+
+  it.each([".", "./oracle", "./oracle/canonical"])("import %s", async (subpath) => {
+    const entry = pkg.exports[subpath] ?? pkg.exports["./oracle/*"];
+    const pattern = typeof entry === "string" ? entry : entry.import.default;
+    const target = join(repoRoot, pattern.replace("*", subpath.replace("./oracle/", "")));
+    const mod = (await import(pathToFileURL(target).href)) as Mod;
+    expect(mod.readCanonicalPrices).toBeTypeOf("function");
+    expect(mod.openCanonicalStream).toBeTypeOf("function");
+  });
+
+  it.each(["@waterx/sdk", "@waterx/sdk/oracle", "@waterx/sdk/oracle/canonical"])(
+    "require('%s')",
+    (specifier) => {
+      const mod = require(specifier) as Mod;
+      expect(mod.readCanonicalPrices).toBeTypeOf("function");
+      expect(mod.openCanonicalStream).toBeTypeOf("function");
+    },
+  );
+});

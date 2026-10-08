@@ -10,7 +10,11 @@
  *                             routing across rules.
  *   - `rules/*`             — one file per oracle rule (lazer / waterx / constant).
  *   - `aggregate.ts`        — the orchestrator that feeds rules into a collector + aggregates.
- *   - `read-plane.ts` / `read-prices.ts` — per-source READ plans + their executors.
+ *   - `canonical.ts` (+ `canonical/*`) — THE price read: the quote-center's canonical
+ *                             plane (off-chain replica of the on-chain weighted aggregate),
+ *                             REST seed + WebSocket stream.
+ *   - `read-plane.ts` / `read-prices.ts` — per-source READ plans + their LEG executors
+ *                             (deprecated for price reads — see `canonical.ts`).
  *   - `validate.ts`         — consumers' boot-time coverage/credential asserts.
  *   - `schedule.ts` / `symbol-catalog.ts` / `pyth-pro-history.ts` — market hours
  *                             (parser + status walker), the Pyth Pro symbol catalog,
@@ -48,13 +52,24 @@ export { oracleCredentialsFromHost } from "./price-update-rule.ts";
 export { ORACLE_SOURCES } from "./price-update-rule.ts";
 export { deriveOracleSources } from "./source-list.ts";
 
+// THE price read. What goes on chain as a leg reads its raw source (the
+// signed leaves / the Lazer update, below); everything else reads the
+// quote-center's CANONICAL plane — the off-chain replica of `oracle::aggregate`
+// over the per-ticker weight tables, so the only off-chain price with the
+// settlement's definition. Signatures fixed by the cross-repo plan
+// (`readCanonicalPrices`, `openCanonicalStream`, `CanonicalQuote`); the rest is
+// the shared wire contract for consumers' own tests.
+export * from "./canonical.ts";
+
 // Per-source READ-plane resolution — which tickers a source can price
 // off-chain and with which ids (`resolveOracleReadPlan`; every source reads
 // its OWN feeds namespace, so write set == read set), plus the executors that
 // run a plan (`readLazerPrices` / `readQuoteCenterPrices`) and decode each
-// source's wire scaling in ONE place. `LazerNotEntitledError` is re-exported
-// (not just the type) for the same `instanceof` reason as `FetchPolicyError`
-// above: a consumer drops unentitled feeds and retries.
+// source's wire scaling in ONE place. Both executors read ONE LEG of the
+// on-chain price and are `@deprecated` for price reads (use the canonical
+// surface above); they stay for per-leg diagnostics. `LazerNotEntitledError`
+// is re-exported (not just the type) for the same `instanceof` reason as
+// `FetchPolicyError` above: a consumer drops unentitled feeds and retries.
 export { resolveOracleReadPlan, readPlanTickers } from "./read-plane.ts";
 export type { OracleReadPlan } from "./read-plane.ts";
 export { LazerNotEntitledError, readLazerPrices, readQuoteCenterPrices } from "./read-prices.ts";
@@ -119,8 +134,15 @@ export {
   // hand-cast the payload shape, and never assume which variant it is.
   waterxLeavesOf,
   waterxEnvelopeOf,
+  // The quote-center's NUMERIC error contract + its parser. The canonical
+  // reader maps a per-symbol refusal's code through the table into the
+  // quote's `reason`, so a consumer rendering reasons can name the vocabulary.
+  QUOTE_CENTER_ERROR_CODES,
+  parseQuoteCenterError,
 } from "./rules/waterx-rule.ts";
 export type {
+  QuoteCenterError,
+  QuoteCenterErrorMeaning,
   WaterxUpdatePayload,
   WaterxLeafPayload,
   WaterxEnvelopePayload,
