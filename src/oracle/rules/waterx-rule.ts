@@ -73,16 +73,6 @@ import {
   type FetchPolicy,
 } from "../update-fetch.ts";
 
-// The quote-center's error contract lives in `../quote-center-error.ts` (it has
-// two consumers: this rule and the canonical reads). Re-exported here because
-// this file is where it was first published and where its tests import it.
-export {
-  QUOTE_CENTER_ERROR_CODES,
-  parseQuoteCenterError,
-  type QuoteCenterError,
-  type QuoteCenterErrorMeaning,
-} from "../quote-center-error.ts";
-
 /** Intent the quote-center signs a whole BATCH payload under. Exported to NAME
  *  the signing scheme only — consumers no longer mirror the intent gate
  *  themselves: every quote-center pull (tx-build fetch, read executor, BE

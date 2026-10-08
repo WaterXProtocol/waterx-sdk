@@ -18,6 +18,7 @@ export {
   CANONICAL_DROP_REASONS,
   CANONICAL_MAX_FUTURE_DRIFT_MS,
   CANONICAL_STREAM_ROUTE,
+  CanonicalPrecisionError,
   parseCanonicalQuote,
 } from "./canonical/frame.ts";
 export type {

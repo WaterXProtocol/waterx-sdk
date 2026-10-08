@@ -35,7 +35,9 @@
  * the wrong type rather than used to refuse a price. A non-ok quote is never
  * rejected for its numbers at all: it carries no price, only a `reason`, and
  * the contract says every evaluation is delivered so consumers mark the ticker
- * stale instead of freezing on the last price.
+ * stale instead of freezing on the last price. Its price fields are ZEROED on
+ * the way through, so every unavailable quote — parsed or synthesised — reads
+ * the same and none can leak a stale real value.
  *
  * `CANONICAL_MAX_FUTURE_DRIFT_MS` is a WEDGING guard, not a freshness policy.
  * Both the stream guard here and every consumer cache treat "newer timestamp"
@@ -95,7 +97,10 @@ export interface CanonicalQuote {
 /**
  * Why a frame / item was not a usable quote. Closed on purpose — consumers
  * label metrics with it, and the REST reader prefixes it (`invalid_<reason>`)
- * into the `reason` of the entry it synthesises in the item's place.
+ * into the `reason` of the entry it synthesises in the item's place. The reader
+ * adds exactly two values of its own that no frame can produce:
+ * `not_in_response` (a requested symbol the batch omitted) and
+ * `invalid_symbol_mismatch` (a per-symbol body answering for another symbol).
  */
 export const CANONICAL_DROP_REASONS = [
   /** Not JSON, not an object, no usable `symbol`, or a `status` outside the contract. */
@@ -132,9 +137,29 @@ const SCALED_KEYS = new Set(["price_scaled", "confidence_scaled"]);
 export function parseCanonicalText(text: string): unknown {
   const parsed: unknown = JSON.parse(text);
   if (!hasUnsafeScaled(parsed)) return parsed;
-  return parseJsonWithNumberSource(text, (value, source, key) =>
-    SCALED_KEYS.has(key) && source !== undefined && INTEGER_TOKEN.test(source) ? source : value,
-  );
+  return parseJsonWithNumberSource(text, (value, source, key) => {
+    if (!SCALED_KEYS.has(key)) return value;
+    if (source !== undefined) return INTEGER_TOKEN.test(source) ? source : value;
+    // No source access and a literal a double cannot hold: refuse, as the
+    // signed-payload parser does, rather than hand back fabricated digits
+    // under a type that promises an exact string. `parseCanonicalQuote` turns
+    // this into a `malformed` drop; the batch reader lets it propagate.
+    if (!Number.isSafeInteger(value)) {
+      throw new CanonicalPrecisionError();
+    }
+    return value;
+  });
+}
+
+/** A `*_scaled` literal above 2^53 on a runtime without JSON reviver source access. */
+export class CanonicalPrecisionError extends Error {
+  constructor() {
+    super(
+      "canonical quote carries a *_scaled integer above 2^53 and this runtime lacks JSON " +
+        "source access — cannot preserve u64 precision",
+    );
+    this.name = "CanonicalPrecisionError";
+  }
 }
 
 /** Does any `*_scaled` value, at any depth, exceed what a double holds exactly? Allocation-free. */
@@ -214,6 +239,8 @@ export function parseCanonicalQuote(
     try {
       raw = parseCanonicalText(input);
     } catch {
+      // Not JSON — or a `CanonicalPrecisionError`: a quote whose exact digits
+      // this runtime cannot recover is dropped, never delivered approximated.
       return "malformed";
     }
   }
@@ -226,16 +253,30 @@ export function parseCanonicalQuote(
   if (status !== "ok" && status !== "unavailable") return "malformed";
 
   let price: number;
+  let price_scaled: string;
+  let confidence: number;
+  let confidence_scaled: string;
   let timestamp_ms: number;
   let reason: string;
   if (status === "ok") {
     if (!isFiniteNumber(frame.price) || frame.price <= 0) return "non_positive_price";
     if (!isPlausibleTimestamp(frame.timestamp_ms, nowMs)) return "bad_timestamp";
     price = frame.price;
+    price_scaled = scaledOr0(frame.price_scaled);
+    confidence = numberOr0(frame.confidence);
+    confidence_scaled = scaledOr0(frame.confidence_scaled);
     timestamp_ms = frame.timestamp_ms;
     reason = "";
   } else {
-    price = numberOr0(frame.price);
+    // A non-ok evaluation carries no price — whatever the wire put in these
+    // fields (a last value, a zero) is ZEROED, exactly as the reader's
+    // synthesised quotes are, so a consumer that reads `price` off a non-ok
+    // quote by mistake sees 0 and never a stale real value. Every unavailable
+    // quote looks the same, whichever path produced it.
+    price = 0;
+    price_scaled = "0";
+    confidence = 0;
+    confidence_scaled = "0";
     timestamp_ms = isPlausibleTimestamp(frame.timestamp_ms, nowMs) ? frame.timestamp_ms : 0;
     reason = typeof frame.reason === "string" && frame.reason !== "" ? frame.reason : "unspecified";
   }
@@ -253,9 +294,9 @@ export function parseCanonicalQuote(
     status,
     reason,
     price,
-    price_scaled: scaledOr0(frame.price_scaled),
-    confidence: numberOr0(frame.confidence),
-    confidence_scaled: scaledOr0(frame.confidence_scaled),
+    price_scaled,
+    confidence,
+    confidence_scaled,
     timestamp_ms,
     config_epoch: numberOr0(frame.config_epoch),
     weight_threshold: numberOr0(frame.weight_threshold),

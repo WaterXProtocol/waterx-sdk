@@ -28,14 +28,16 @@ import {
   type PriceUpdateRule,
 } from "../../../src/oracle/index.ts";
 import {
+  parseQuoteCenterError,
+  QUOTE_CENTER_ERROR_CODES,
+} from "../../../src/oracle/quote-center-error.ts";
+import {
   fetchWaterxSignedLeaves,
   fetchWaterxSignedUpdate,
   fetchWaterxUpdateData,
   isFreshWaterxEntry,
-  parseQuoteCenterError,
   parseSignedEnvelope,
   parseSignedLeaves,
-  QUOTE_CENTER_ERROR_CODES,
   WATERX_MAX_PRICE_AGE_MS,
   WaterxRule,
   type WaterxSignedEnvelope,

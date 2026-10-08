@@ -116,6 +116,22 @@ const MAX_BACKOFF_EXPONENT = 10;
 const JITTER_FRACTION = 0.2;
 /** WHATWG + `ws` agree: `readyState === 1` is OPEN. */
 const OPEN = 1;
+/** Endpoint scheme → stream scheme. TLS is preserved, never downgraded. */
+const WS_SCHEME_BY_PROTOCOL: Readonly<Record<string, "ws:" | "wss:">> = {
+  "https:": "wss:",
+  "wss:": "wss:",
+  "http:": "ws:",
+  "ws:": "ws:",
+};
+/**
+ * The optional peer's specifier, held in a variable so bundlers cannot resolve
+ * the import statically: a browser or Next.js build that only wants
+ * `readCanonicalPrices` shares this module graph and must not be asked to
+ * resolve `ws` at build time. The magic comments cover webpack, Turbopack and
+ * Vite; Node resolves the specifier at runtime from the SDK's own location,
+ * where pnpm links the peer when the consumer installs it.
+ */
+const WS_SPECIFIER = "ws";
 
 /**
  * Capped exponential backoff plus PROPORTIONAL jitter. Pure, so the spread is
@@ -186,7 +202,9 @@ class WsPeerUnavailableError extends Error {
 async function loadWs(): Promise<new (url: string, opts: object) => SocketLike> {
   let mod: { WebSocket?: unknown; default?: unknown };
   try {
-    mod = (await import("ws")) as typeof mod;
+    mod = (await import(
+      /* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ WS_SPECIFIER
+    )) as typeof mod;
   } catch (err) {
     throw new WsPeerUnavailableError(err);
   }
@@ -238,7 +256,16 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
   constructor(private readonly options: CanonicalStreamOptions) {
     this.subscribed = new Set(options.tickers);
     const url = joinEndpointPath(options.endpoint, CANONICAL_STREAM_ROUTE);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    // Secure stays secure: an `https:` OR `wss:` endpoint dials `wss:`. Anything
+    // that is not http(s)/ws(s) is a misconfiguration, not a scheme to guess —
+    // the old `https: ? wss: : ws:` quietly downgraded a `wss://` endpoint.
+    const scheme = WS_SCHEME_BY_PROTOCOL[url.protocol];
+    if (scheme === undefined) {
+      throw new Error(
+        `openCanonicalStream: endpoint must be http(s) or ws(s), got ${url.protocol}//`,
+      );
+    }
+    url.protocol = scheme;
     url.searchParams.set("symbols", options.tickers.join(","));
     this.url = url.toString();
     const headers = options.headers;
@@ -404,8 +431,11 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
     // a `closed` one is productive iff it delivered — the first delivery
     // already reset the counter, so only the fruitless case is counted here.
     if (attempt.frames === 0) this.fruitlessAttempts++;
-    this.options.onConnection?.(event);
+    // Redial is scheduled BEFORE the consumer hears about it: a throwing
+    // `onConnection` must not be able to leave the stream with no attempt, no
+    // timer and `stopped === false` — connected to nothing, forever.
     this.scheduleReconnect();
+    this.options.onConnection?.(event);
   }
 
   private scheduleReconnect(): void {

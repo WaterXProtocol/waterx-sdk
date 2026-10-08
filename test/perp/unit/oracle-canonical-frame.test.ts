@@ -6,12 +6,14 @@
  * u64s and must survive as exact decimal STRINGS; only the price and its time
  * can reject an `ok` quote; a non-ok quote is never rejected for its numbers.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CANONICAL_DROP_REASONS,
   CANONICAL_MAX_FUTURE_DRIFT_MS,
+  CanonicalPrecisionError,
   parseCanonicalQuote,
+  parseCanonicalText,
 } from "../../../src/oracle/canonical/frame.ts";
 import { rawCanonicalQuote, rawCanonicalQuoteText } from "../helpers/fixtures/canonical.ts";
 
@@ -56,6 +58,27 @@ describe("parseCanonicalQuote — the contract example", () => {
     const quote = parseCanonicalQuote(text, NOW);
     expect(typeof quote).toBe("object");
     expect((quote as { price_scaled: string }).price_scaled).toBe("18446744073709551615");
+  });
+
+  it("on a runtime without reviver source access, such a literal is REFUSED (malformed), never approximated", () => {
+    // Simulate a pre-ES2023 JSON.parse: call the reviver without its `context`.
+    const realParse = JSON.parse.bind(JSON);
+    vi.spyOn(JSON, "parse").mockImplementation((text: string, reviver?: unknown) =>
+      reviver === undefined
+        ? realParse(text)
+        : realParse(text, (k: string, v: unknown) =>
+            (reviver as (k: string, v: unknown) => unknown)(k, v),
+          ),
+    );
+    const text = rawCanonicalQuoteText("BTCUSD", { price_scaled: "18446744073709551615" });
+    expect(parseCanonicalQuote(text, NOW)).toBe("malformed");
+    expect(() => parseCanonicalText(text)).toThrow(CanonicalPrecisionError);
+    // A safe literal still parses on that runtime — the fast path never needs the source.
+    expect(
+      (parseCanonicalQuote(rawCanonicalQuoteText("BTCUSD"), NOW) as { price_scaled: string })
+        .price_scaled,
+    ).toBe("82996707900600");
+    vi.restoreAllMocks();
   });
 
   it("accepts an already-parsed object (the batch body is parsed once, items handed in)", () => {
@@ -191,10 +214,30 @@ describe("parseCanonicalQuote — an unavailable quote carries its reason and is
     expect((quote as { timestamp_ms: number }).timestamp_ms).toBe(NOW - 5);
   });
 
+  it("its price fields are ZEROED whatever the wire sent — a stale last value can never leak", () => {
+    expect(
+      parseCanonicalQuote(
+        unavailable({
+          price: 61234.5,
+          price_scaled: 61234500000000,
+          confidence: 3,
+          confidence_scaled: 3000000000,
+        }),
+        NOW,
+      ),
+    ).toMatchObject({
+      status: "unavailable",
+      price: 0,
+      price_scaled: "0",
+      confidence: 0,
+      confidence_scaled: "0",
+    });
+  });
+
   it("a negative price does not reject it", () => {
     expect(parseCanonicalQuote(unavailable({ price: -5 }), NOW)).toMatchObject({
       status: "unavailable",
-      price: -5,
+      price: 0,
     });
   });
 

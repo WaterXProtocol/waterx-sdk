@@ -120,6 +120,13 @@ describe("readCanonicalPrices — the batch route", () => {
     );
   });
 
+  it("a 200 whose body is not JSON at all (a proxy's HTML page) is the same bounded error, not a raw SyntaxError", async () => {
+    mockCanonicalRoutes({ batch: { text: "<html><body>Maintenance</body></html>" } });
+    await expect(read(["BTCUSD"])).rejects.toThrow(
+      /Canonical price read returned an unexpected body: <html><body>Maintenance/,
+    );
+  });
+
   it("a batch 404 WITH a coded body is a refusal — thrown, no per-symbol fallback", async () => {
     const spy = mockCanonicalRoutes({
       batch: { status: 404, body: { code: 10042, error: "weights unreadable" } },
@@ -254,6 +261,41 @@ describe("readCanonicalPrices — per-symbol fallback when the batch route is ab
 
     expect(out.get("BTCUSD")?.reason).toBe("invalid_symbol_mismatch");
     expect(out.get("SOLUSD")?.reason).toBe("invalid_non_positive_price");
+  });
+
+  it("fans out at most 8 per-symbol requests at a time", async () => {
+    const tickers = Array.from({ length: 20 }, (_, i) => `T${String(i)}USD`);
+    let inFlight = 0;
+    let peak = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+      const { pathname } = new URL(String(input));
+      if (pathname.endsWith("/v1/canonical")) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => "Not Found",
+          headers: new Headers(),
+        } as unknown as Response;
+      }
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      inFlight--;
+      const symbol = decodeURIComponent(pathname.split("/").pop()!);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(rawCanonicalQuote(symbol)),
+        headers: new Headers(),
+      } as unknown as Response;
+    });
+
+    const out = await read(tickers);
+
+    expect(out.size).toBe(20);
+    expect([...out.values()].every((q) => q.status === "ok")).toBe(true);
+    expect(peak).toBeLessThanOrEqual(8);
+    expect(peak).toBeGreaterThan(1);
   });
 
   it("a per-symbol non-404 failure throws", async () => {

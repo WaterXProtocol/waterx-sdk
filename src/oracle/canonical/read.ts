@@ -32,6 +32,7 @@
  * own wording.
  */
 
+import { mapWithConcurrency } from "../../utils/concurrency.ts";
 import {
   classifyQuoteCenter404,
   describeQuoteCenterFailure,
@@ -78,10 +79,8 @@ export async function readCanonicalPrices(
   if ("items" in batch) {
     foldItems(out, batch.items, new Set(opts.tickers), now);
   } else {
-    const singles = await Promise.all(
-      opts.tickers.map((ticker) =>
-        fetchSingle(opts.endpoint, ticker, opts.fetch, batch.routeMissing, now),
-      ),
+    const singles = await mapWithConcurrency(opts.tickers, FALLBACK_CONCURRENCY, (ticker) =>
+      fetchSingle(opts.endpoint, ticker, opts.fetch, batch.routeMissing, now),
     );
     for (const [ticker, quote] of singles) out.set(ticker, quote);
   }
@@ -92,6 +91,13 @@ export async function readCanonicalPrices(
 }
 
 const ACCEPT_JSON = { accept: "application/json" } as const;
+/**
+ * Per-symbol fallback fan-out bound. A 31-ticker seed is 31 GETs, each with its
+ * own retry budget; unbounded, that saturates a browser's per-origin connection
+ * limit and makes a slow quote-center slower to surface. Same bound the
+ * backend's interim shim used.
+ */
+const FALLBACK_CONCURRENCY = 8;
 
 async function fetchBatch(
   endpoint: string,
@@ -113,9 +119,20 @@ async function fetchBatch(
     throw new Error(`Canonical price read failed: ${await describeQuoteCenterFailure(res)}`);
   }
   const text = await res.text();
-  const parsed = parseCanonicalText(text) as { items?: unknown } | null;
+  const unexpected = (): Error =>
+    new Error(`Canonical price read returned an unexpected body: ${bodySnippet(text)}`);
+  let parsed: { items?: unknown } | null;
+  try {
+    parsed = parseCanonicalText(text) as { items?: unknown } | null;
+  } catch (err) {
+    // A 200 that is not JSON (a proxy's HTML page, a truncated body) is the
+    // same "unexpected body" as JSON of the wrong shape — bounded, with the
+    // snippet. Anything else (a precision refusal) is its own error and propagates.
+    if (err instanceof SyntaxError) throw unexpected();
+    throw err;
+  }
   if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.items)) {
-    throw new Error(`Canonical price read returned an unexpected body: ${bodySnippet(text)}`);
+    throw unexpected();
   }
   return { items: parsed.items };
 }

@@ -129,6 +129,68 @@ describe("openCanonicalStream — connecting", () => {
     ]);
   });
 
+  it.each([
+    ["wss://qc.example", "wss:"],
+    ["ws://qc.example", "ws:"],
+    ["http://qc.example", "ws:"],
+  ])("%s dials %s — TLS is never downgraded", (endpoint, scheme) => {
+    const dialed: string[] = [];
+    class RecordingSocket {
+      readyState = 0;
+      constructor(url: string) {
+        dialed.push(url);
+      }
+      addEventListener(): void {}
+      close(): void {}
+    }
+    vi.stubGlobal("WebSocket", RecordingSocket);
+
+    open(endpoint).stream.stop();
+
+    expect(new URL(dialed[0]!).protocol).toBe(scheme);
+  });
+
+  it("a non-http(s)/ws(s) endpoint throws at open rather than guessing a scheme", () => {
+    expect(() => open("ftp://qc.example")).toThrow(/must be http\(s\) or ws\(s\), got ftp:/);
+    harness = undefined;
+  });
+
+  it("a throwing onConnection does not stop the stream: the redial is scheduled before the callback runs", async () => {
+    type Listener = (event: unknown) => void;
+    const sockets: FakeSocket[] = [];
+    class FakeSocket {
+      readyState = 0;
+      listeners = new Map<string, Listener[]>();
+      constructor() {
+        sockets.push(this);
+      }
+      addEventListener(type: string, listener: Listener): void {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+      }
+      close(): void {
+        this.readyState = 3;
+      }
+      fire(type: string, event: unknown = {}): void {
+        for (const listener of this.listeners.get(type) ?? []) listener(event);
+      }
+    }
+    vi.stubGlobal("WebSocket", FakeSocket);
+
+    const h = open("http://qc.example", {
+      onConnection: (event) => {
+        if (event.type === "closed") throw new Error("consumer bug");
+      },
+    });
+    // Listeners attach after the (async) dial resolves — wait for them.
+    await until(() => (sockets[0]?.listeners.size ?? 0) > 0, "listeners attached");
+    sockets[0]!.readyState = 1;
+    sockets[0]!.fire("open");
+    // The consumer's throw escapes the socket's close listener (that is the
+    // runtime's business), but the transport has already queued its redial.
+    expect(() => sockets[0]!.fire("close", { code: 1006, reason: "" })).toThrow(/consumer bug/);
+    await until(() => sockets.length === 2, "a second dial after the throwing callback");
+  });
+
   it("throws synchronously when there is no WebSocket implementation to dial with", () => {
     vi.stubGlobal("WebSocket", undefined);
     expect(() => open("http://127.0.0.1:1")).toThrow(/no WebSocket implementation/);
