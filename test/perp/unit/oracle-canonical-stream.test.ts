@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CANONICAL_MAX_FUTURE_DRIFT_MS,
+  CANONICAL_MAX_SYMBOLS_PER_REQUEST,
   type CanonicalQuote,
 } from "../../../src/oracle/canonical/frame.ts";
 import {
@@ -224,7 +225,7 @@ describe("openCanonicalStream — frames", () => {
     expect(snap.lastFrameAt).toBeTypeOf("number");
   });
 
-  it("delivers a status != ok frame with its reason, and it does NOT move the ordering mark", async () => {
+  it("delivers a status != ok frame with its reason, and a verdict at T does not block the ok price at T", async () => {
     const h = await connected();
     const T = 1_791_425_996_375;
 
@@ -232,8 +233,9 @@ describe("openCanonicalStream — frames", () => {
     await until(() => h.frames.length === 1, "unavailable frame");
     expect(h.frames[0]).toMatchObject({ status: "unavailable", reason: "no_canonical_evaluation" });
 
-    // An unavailable frame stamped T, then an ok frame stamped the SAME T: the
-    // verdict never advanced the mark, so the price is still new.
+    // An unavailable frame stamped T, then an ok frame stamped the SAME T: only
+    // a key BELOW the watermark is out of order, and `duplicate` compares an ok
+    // frame against the last delivered OK frame, so the price is still new.
     server!.send({ ...rawUnavailableQuote("BTCUSD", "weight_threshold"), timestamp_ms: T });
     server!.send(rawCanonicalQuote("BTCUSD", { timestamp_ms: T }));
     await until(() => h.frames.length === 3, "three frames");
@@ -300,6 +302,142 @@ describe("openCanonicalStream — frames", () => {
     await until(() => h.frames.length === 1, "binary frame decoded");
     server!.sendBinary(new Uint8Array([0xff, 0xfe, 0x00, 0x01]));
     await until(() => h.stream.snapshot().droppedByReason.malformed === 1, "garbage dropped");
+  });
+});
+
+describe("openCanonicalStream — ordering on evaluated_at_ms (the server bridge's key)", () => {
+  async function connected(): Promise<Harness> {
+    server = await startFakeCanonicalStreamServer();
+    const h = open(server.endpoint);
+    await until(() => opened(h) === 1, "opened");
+    return h;
+  }
+  const T = 1_791_425_996_375;
+  const ok = (ts: number, evaluatedAt?: number) =>
+    rawCanonicalQuote("BTCUSD", { timestamp_ms: ts, evaluated_at_ms: evaluatedAt });
+  const unavailable = (reason: string, ts: number, evaluatedAt?: number) => ({
+    ...rawUnavailableQuote("BTCUSD", reason),
+    timestamp_ms: ts,
+    ...(evaluatedAt === undefined ? {} : { evaluated_at_ms: evaluatedAt }),
+  });
+  const shape = (f: CanonicalQuote) =>
+    `${f.status}:${String(f.timestamp_ms)}:${String(f.evaluated_at_ms)}`;
+
+  it("a liveness verdict then a Lazer price whose feed time LAGS it are both delivered — evaluated_at_ms orders them", async () => {
+    const h = await connected();
+
+    server!.send(ok(T, T)); // clock-driven ok: price time = evaluation clock
+    server!.send(unavailable("stale", T + 20, T + 20)); // liveness sweep at the evaluation clock
+    server!.send(ok(T - 5, T + 30)); // Lazer ok: feed time older than BOTH, evaluated later
+    server!.send(unavailable("weight_threshold", T - 3, T + 40)); // Lazer-driven verdict, feed time older than the last ok
+    await until(() => h.frames.length === 4, "all four delivered");
+
+    expect(h.frames.map(shape)).toEqual([
+      `ok:${String(T)}:${String(T)}`,
+      `unavailable:${String(T + 20)}:${String(T + 20)}`,
+      `ok:${String(T - 5)}:${String(T + 30)}`,
+      `unavailable:${String(T - 3)}:${String(T + 40)}`,
+    ]);
+    expect(h.stream.snapshot().droppedByReason).toMatchObject({ out_of_order: 0, duplicate: 0 });
+  });
+
+  it("a genuinely OLDER evaluation is out_of_order whatever its price time; the same evaluation re-sent is a duplicate", async () => {
+    const h = await connected();
+
+    server!.send(ok(T, T + 50));
+    server!.send(ok(T + 100, T + 40)); // newer price time, older evaluation ⇒ out_of_order
+    server!.send(unavailable("stale", T + 100, T + 45)); // older evaluation ⇒ out_of_order
+    server!.send(ok(T, T + 50)); // same evaluation key as the last ok ⇒ duplicate
+    server!.send(unavailable("stale", 0)); // key 0 ⇒ always delivered
+    server!.send(ok(T + 1, T + 60));
+    await until(() => h.frames.length === 3, "three delivered");
+
+    expect(h.frames.map(shape)).toEqual([
+      `ok:${String(T)}:${String(T + 50)}`,
+      "unavailable:0:0",
+      `ok:${String(T + 1)}:${String(T + 60)}`,
+    ]);
+    expect(h.stream.snapshot().droppedByReason).toMatchObject({ out_of_order: 2, duplicate: 1 });
+  });
+
+  it("a frame without evaluated_at_ms (a pre-field server) orders on timestamp_ms, against the same watermark", async () => {
+    const h = await connected();
+
+    server!.send(ok(T)); // key T
+    server!.send(ok(T - 1)); // key T - 1 ⇒ out_of_order
+    server!.send(ok(T + 10, 0)); // evaluated_at 0 ⇒ falls back: key T + 10
+    server!.send(unavailable("stale", T + 5)); // key T + 5 < T + 10 ⇒ out_of_order
+    server!.send(ok(T + 11)); // key T + 11
+    await until(() => h.frames.length === 3, "three delivered");
+
+    expect(h.frames.map((f) => f.timestamp_ms)).toEqual([T, T + 10, T + 11]);
+    expect(h.stream.snapshot().droppedByReason).toMatchObject({ out_of_order: 2, duplicate: 0 });
+  });
+});
+
+describe("openCanonicalStream — more than CANONICAL_MAX_SYMBOLS_PER_REQUEST tickers shard", () => {
+  const MANY = Array.from(
+    { length: CANONICAL_MAX_SYMBOLS_PER_REQUEST + 1 },
+    (_, i) => `T${String(i).padStart(2, "0")}USD`,
+  );
+
+  it("33 tickers open TWO sockets of ≤32 behind one handle, and the snapshot aggregates them", async () => {
+    server = await startFakeCanonicalStreamServer();
+    const h = open(server.endpoint, {}, [...MANY, MANY[0]!]); // a repeat does not widen a shard
+
+    await until(() => opened(h) === 2, "both shards opened");
+    expect(server.connects).toHaveLength(2);
+    const subscribed = server.connects.map((c) => c.symbols!.split(","));
+    expect(subscribed.map((s) => s.length).sort((a, b) => b - a)).toEqual([32, 1]);
+    expect(new Set(subscribed.flat())).toEqual(new Set(MANY));
+    expect(h.stream.snapshot().connected).toBe(true);
+
+    // The fake sends every frame to every socket: the shard that owns the
+    // ticker delivers it, the other counts it unsolicited.
+    server.send(rawCanonicalQuote(MANY[0]!));
+    server.send(rawCanonicalQuote(MANY[32]!));
+    await until(() => h.frames.length === 2, "one frame per shard");
+    await until(() => h.stream.snapshot().droppedByReason.unsolicited === 2, "cross-shard drops");
+    const snap = h.stream.snapshot();
+    expect(snap.framesAccepted).toBe(2);
+    expect(snap.lastFrameAt).toBeTypeOf("number");
+    expect(new Set(h.frames.map((f) => f.symbol))).toEqual(new Set([MANY[0], MANY[32]]));
+  });
+
+  it("connected is false while any shard is down; reconnectNow and stop fan out", async () => {
+    server = await startFakeCanonicalStreamServer();
+    const h = open(server.endpoint, {}, MANY);
+    await until(() => opened(h) === 2, "both shards opened");
+
+    // Hold the dropped shard down (its redials 404) so "down" is observable.
+    server.mode = "404";
+    server.sockets[0]!.close(1012, "restart");
+    await until(() => h.events.some((e) => e.type === "closed"), "one shard closed");
+    expect(h.stream.snapshot().connected).toBe(false);
+    server.mode = "serve";
+    await until(() => opened(h) === 3 && h.stream.snapshot().connected, "shard redialled");
+    const connectsBefore = server.connects.length;
+
+    h.stream.reconnectNow();
+    await until(() => opened(h) === 5, "both shards redialled");
+    expect(server.connects).toHaveLength(connectsBefore + 2);
+
+    h.stream.stop();
+    await sleep(FAST.backoff.initialMs * 6);
+    expect(server.connects).toHaveLength(connectsBefore + 2);
+    expect(h.stream.snapshot().connected).toBe(false);
+  });
+
+  it("a shard's lifecycle events name the shard; an unsharded stream's do not", async () => {
+    server = await startFakeCanonicalStreamServer();
+    const h = open(server.endpoint, {}, MANY);
+    await until(() => opened(h) === 2, "both shards opened");
+    expect(h.events.map((e) => e.reason).sort()).toEqual(["shard 1/2", "shard 2/2"]);
+    h.stream.stop();
+
+    const single = open(server.endpoint, {}, MANY.slice(0, CANONICAL_MAX_SYMBOLS_PER_REQUEST));
+    await until(() => opened(single) === 1, "unsharded opened");
+    expect(single.events[0]).toEqual({ type: "opened" });
   });
 });
 

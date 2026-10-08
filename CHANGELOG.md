@@ -41,18 +41,35 @@ runtime behaviour changes._
   - `openCanonicalStream({ endpoint, tickers, onFrame, onConnection?, headers?, backoff? })`
     → `{ stop, reconnectNow, snapshot }`: WebSocket `GET /v1/canonical/stream?symbols=`, capped
     exponential backoff with proportional jitter reset by the first delivered frame, and a
-    per-ticker newest-`timestamp_ms` guard on `ok` prices (`out_of_order` / `duplicate`); a
-    `status !== "ok"` frame IS delivered (unless stamped before the mark) and never moves the
-    mark; a non-ok quote's price fields are zeroed whichever path produced it. The per-symbol
+    per-ticker ordering guard on the quote-center bridge's own key — `evaluated_at_ms`, else
+    `timestamp_ms` — applied alike to `ok` and non-ok frames: a key below the highest delivered
+    is `out_of_order`, an `ok` frame repeating the last `ok`'s key is a `duplicate`, an
+    unstamped non-ok frame is always delivered. `timestamp_ms` alone is not monotonic (a
+    Lazer tick carries the feed time, a liveness tick the evaluation clock), so ordering on it
+    dropped a Lazer price that followed a liveness verdict. A non-ok quote's price fields are
+    zeroed whichever path produced it. The per-symbol
     fallback fans out at most 8 requests at a time, and every response's timestamps are judged
     against the clock when that response arrives, not when the call began. Dials the global `WebSocket`, or the optional peer `ws` when `headers` are set (the
     WHATWG constructor cannot send handshake headers; `ws` also exposes a refused handshake's
     HTTP status, so a 404 reads `handshake answered HTTP 404`). No route ladder, no SSE. One
     additive option beyond the fixed block: `handshakeTimeoutMs` (default 10 s).
+  - **The server's 32-symbol cap is handled for the caller** (`CANONICAL_MAX_SYMBOLS_PER_REQUEST`
+    = 32; the quote-center answers more with 400 code 10003). `readCanonicalPrices`
+    de-duplicates the tickers, fetches ≤32-symbol chunks (two at a time, the per-symbol
+    fallback's 8-in-flight bound shared between them) and merges them; one failing chunk
+    fails the whole read. `openCanonicalStream` opens one connection per ≤32-ticker shard
+    behind the single handle — `stop` / `reconnectNow` fan out, `snapshot()` is `connected`
+    only when every shard is, `lastFrameAt` is the latest and the counters are summed, and a
+    shard's lifecycle events carry `reason: "shard i/n"` (prefixed onto any existing reason).
+    An unsharded stream's events are unchanged.
+  - `CanonicalQuote.evaluated_at_ms` — ADDITIVE to the fixed contract shape: the
+    quote-center's evaluation clock (the ordering key above), parsed leniently (missing,
+    invalid or implausibly far-future → `0`, never a drop); synthesised unavailable quotes
+    carry `0`. Freshness still reads `timestamp_ms`.
   - `CanonicalQuote` / `CanonicalLeg` / `CanonicalStatus`, `parseCanonicalQuote` (the ONE
     parser both transports share; `*_scaled` u64s survive as exact decimal strings),
     `CANONICAL_DROP_REASONS`, `CANONICAL_BATCH_ROUTE` / `CANONICAL_STREAM_ROUTE`,
-    `CANONICAL_MAX_FUTURE_DRIFT_MS`, `CanonicalConnectionEvent`.
+    `CANONICAL_MAX_FUTURE_DRIFT_MS`, `CANONICAL_MAX_SYMBOLS_PER_REQUEST`, `CanonicalConnectionEvent`.
 - `QUOTE_CENTER_ERROR_CODES[10009] = "no_canonical_evaluation"` (+ `QuoteCenterErrorMeaning`).
   The quote-center's error contract — the code table, `parseQuoteCenterError`,
   `quoteCenterErrorMeaning` — now lives in `src/oracle/quote-center-error.ts`, shared by the

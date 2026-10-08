@@ -14,6 +14,7 @@ import {
   CanonicalPrecisionError,
   parseCanonicalQuote,
   parseCanonicalText,
+  syntheticUnavailable,
 } from "../../../src/oracle/canonical/frame.ts";
 import { rawCanonicalQuote, rawCanonicalQuoteText } from "../helpers/fixtures/canonical.ts";
 
@@ -31,6 +32,7 @@ describe("parseCanonicalQuote — the contract example", () => {
       confidence: 24.903161963,
       confidence_scaled: "24903161963",
       timestamp_ms: 1_791_425_996_375,
+      evaluated_at_ms: 0,
       config_epoch: 1,
       weight_threshold: 1,
       outlier_tolerance: 5_000_000,
@@ -244,6 +246,41 @@ describe("parseCanonicalQuote — an unavailable quote carries its reason and is
   it("the ok arm normalises reason to '' whatever the wire says", () => {
     const quote = parseCanonicalQuote(rawCanonicalQuote("BTCUSD", { reason: "ignored" }), NOW);
     expect((quote as { reason: string }).reason).toBe("");
+  });
+});
+
+describe("parseCanonicalQuote — evaluated_at_ms (the stream's ordering key) is parsed leniently", () => {
+  it("is kept on an ok quote and on an unavailable one", () => {
+    expect(
+      parseCanonicalQuote(rawCanonicalQuote("BTCUSD", { evaluated_at_ms: NOW - 3 }), NOW),
+    ).toMatchObject({ status: "ok", evaluated_at_ms: NOW - 3 });
+    expect(
+      parseCanonicalQuote(
+        rawCanonicalQuote("BTCUSD", {
+          status: "unavailable",
+          reason: "stale",
+          timestamp_ms: 0,
+          evaluated_at_ms: NOW - 2,
+        }),
+        NOW,
+      ),
+    ).toMatchObject({ status: "unavailable", timestamp_ms: 0, evaluated_at_ms: NOW - 2 });
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["a string", "123"],
+    ["zero", 0],
+    ["negative", -5],
+    ["non-finite", null],
+    ["implausibly far in the future", NOW + CANONICAL_MAX_FUTURE_DRIFT_MS + 1],
+  ])("%s → 0, never a drop", (_label, value) => {
+    const quote = parseCanonicalQuote(rawCanonicalQuote("BTCUSD", { evaluated_at_ms: value }), NOW);
+    expect(quote).toMatchObject({ status: "ok", evaluated_at_ms: 0 });
+  });
+
+  it("a synthesised unavailable quote carries 0", () => {
+    expect(syntheticUnavailable("BTCUSD", "not_in_response").evaluated_at_ms).toBe(0);
   });
 });
 

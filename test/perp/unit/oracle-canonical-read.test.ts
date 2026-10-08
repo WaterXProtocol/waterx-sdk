@@ -8,6 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { CANONICAL_MAX_SYMBOLS_PER_REQUEST } from "../../../src/oracle/canonical/frame.ts";
 import { readCanonicalPrices } from "../../../src/oracle/canonical/read.ts";
 import { FetchPolicyError } from "../../../src/oracle/update-fetch.ts";
 import {
@@ -357,5 +358,132 @@ describe("readCanonicalPrices — per-symbol fallback when the batch route is ab
       single: () => ({ status: 400, text: "bad symbol" }),
     });
     await expect(read(["BTCUSD"])).rejects.toThrow(/Canonical price read failed: 400 bad symbol/);
+  });
+});
+
+describe("readCanonicalPrices — more than CANONICAL_MAX_SYMBOLS_PER_REQUEST tickers are chunked", () => {
+  /** A batch route that answers exactly the symbols its query names — what the server does. */
+  const echoBatch = (opts: { failChunkWith?: string; missing?: boolean } = {}) =>
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/v1/canonical")) {
+        const symbols = url.searchParams.get("symbols")!.split(",");
+        if (opts.missing) {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => "Not Found",
+            headers: new Headers(),
+          } as unknown as Response;
+        }
+        if (opts.failChunkWith !== undefined && symbols.includes(opts.failChunkWith)) {
+          return {
+            ok: false,
+            status: 400,
+            text: async () => '{"code":10003,"error":"too many symbols"}',
+            headers: new Headers(),
+          } as unknown as Response;
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ items: symbols.map((s) => rawCanonicalQuote(s)) }),
+          headers: new Headers(),
+        } as unknown as Response;
+      }
+      const symbol = decodeURIComponent(url.pathname.split("/").pop()!);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(rawCanonicalQuote(symbol)),
+        headers: new Headers(),
+      } as unknown as Response;
+    });
+  const MANY = Array.from(
+    { length: CANONICAL_MAX_SYMBOLS_PER_REQUEST + 1 },
+    (_, i) => `T${String(i).padStart(2, "0")}USD`,
+  );
+  const batchSymbols = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls
+      .map((call) => new URL(String(call[0])))
+      .filter((u) => u.pathname.endsWith("/v1/canonical"))
+      .map((u) => u.searchParams.get("symbols")!.split(","));
+
+  it("the server's cap is 32 symbols per request", () => {
+    expect(CANONICAL_MAX_SYMBOLS_PER_REQUEST).toBe(32);
+  });
+
+  it("33 tickers → TWO batch requests of ≤32, merged into one map with every ticker a key", async () => {
+    const spy = echoBatch();
+
+    const out = await read(MANY);
+
+    const chunks = batchSymbols(spy);
+    expect(chunks.map((c) => c.length)).toEqual([32, 1]);
+    expect(chunks.flat()).toEqual(MANY);
+    expect([...out.keys()]).toEqual(MANY);
+    expect([...out.values()].every((q) => q.status === "ok")).toBe(true);
+  });
+
+  it("duplicates are collapsed before chunking (32 distinct + repeats is ONE request) and still map to the one quote", async () => {
+    const spy = echoBatch();
+    const distinct = MANY.slice(0, 32);
+
+    const out = await read([...distinct, distinct[0]!, distinct[5]!]);
+
+    expect(batchSymbols(spy)).toEqual([distinct]);
+    expect(out.size).toBe(32);
+    expect(out.get(distinct[0]!)?.status).toBe("ok");
+  });
+
+  it("one failing chunk fails the whole read — no half-populated map", async () => {
+    echoBatch({ failChunkWith: MANY[32]! });
+    await expect(read(MANY)).rejects.toThrow(/Canonical price read failed: 400/);
+  });
+
+  it("concurrent chunks SHARE the fallback's bound: still at most 8 per-symbol requests in flight", async () => {
+    const tickers = Array.from({ length: 70 }, (_, i) => `T${String(i)}USD`);
+    let inFlight = 0;
+    let peak = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: unknown) => {
+      const { pathname } = new URL(String(input));
+      if (pathname.endsWith("/v1/canonical")) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => "Not Found",
+          headers: new Headers(),
+        } as unknown as Response;
+      }
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      inFlight--;
+      const symbol = decodeURIComponent(pathname.split("/").pop()!);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(rawCanonicalQuote(symbol)),
+        headers: new Headers(),
+      } as unknown as Response;
+    });
+
+    const out = await read(tickers);
+
+    expect(out.size).toBe(70);
+    expect(peak).toBeLessThanOrEqual(8);
+  });
+
+  it("the per-symbol fallback still works per chunk when the batch route is absent", async () => {
+    const spy = echoBatch({ missing: true });
+
+    const out = await read(MANY);
+
+    expect(out.size).toBe(MANY.length);
+    expect([...out.values()].every((q) => q.status === "ok")).toBe(true);
+    const singles = spy.mock.calls.filter(
+      (call) => !new URL(String(call[0])).pathname.endsWith("/v1/canonical"),
+    );
+    expect(singles).toHaveLength(MANY.length);
   });
 });

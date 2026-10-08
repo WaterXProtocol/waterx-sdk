@@ -56,6 +56,23 @@ export const CANONICAL_BATCH_ROUTE = "v1/canonical";
 export const CANONICAL_STREAM_ROUTE = "v1/canonical/stream";
 /** See the module header — a wedging guard against units slips and skewed clocks. */
 export const CANONICAL_MAX_FUTURE_DRIFT_MS = 60_000;
+/**
+ * The quote-center answers more symbols than this in ONE request — the batch
+ * route or a stream subscription — with a 400 (code 10003, `TooManySymbols`;
+ * `MAX_SIGNED_LEAVES` in its `api.rs`). `readCanonicalPrices` chunks and
+ * `openCanonicalStream` shards at this size, so a caller never sees the cap.
+ */
+export const CANONICAL_MAX_SYMBOLS_PER_REQUEST = 32;
+
+/** De-duplicate (first occurrence wins, order kept) and split into requests of at most {@link CANONICAL_MAX_SYMBOLS_PER_REQUEST}. */
+export function chunkCanonicalTickers(tickers: readonly string[]): string[][] {
+  const distinct = [...new Set(tickers)];
+  const out: string[][] = [];
+  for (let i = 0; i < distinct.length; i += CANONICAL_MAX_SYMBOLS_PER_REQUEST) {
+    out.push(distinct.slice(i, i + CANONICAL_MAX_SYMBOLS_PER_REQUEST));
+  }
+  return out;
+}
 
 export type CanonicalStatus = "ok" | "unavailable";
 
@@ -86,8 +103,25 @@ export interface CanonicalQuote {
   price_scaled: string;
   confidence: number;
   confidence_scaled: string;
-  /** The evaluation's PRICE time (a Lazer-driven tick carries the feed's own feedUpdateTimestamp). `0` when a non-ok quote carries none. */
+  /**
+   * The evaluation's PRICE time: the server's clock for a BBO- or
+   * liveness-driven tick, the feed's own `feedUpdateTimestamp` for a
+   * Lazer-driven one — so it is NOT monotonic per symbol (a Lazer tick can
+   * carry an older time than the liveness verdict before it). `0` when a
+   * non-ok quote carries none.
+   */
   timestamp_ms: number;
+  /**
+   * ADDITIVE to the fixed contract (the quote-center added the field after the
+   * plan was cut). The EVALUATION clock — one clock per quote-center leader,
+   * whatever drove the tick — and therefore the per-symbol ORDER: the server's
+   * own stream bridge, and `openCanonicalStream`'s guard, order on it, falling
+   * back to `timestamp_ms` when it is `0`. Parsed leniently: missing, not a
+   * positive finite number, or implausibly far in the future reads `0` (a
+   * pre-field server, a synthesised quote), never a drop. Not a price time —
+   * freshness still reads `timestamp_ms`.
+   */
+  evaluated_at_ms: number;
   config_epoch: number;
   weight_threshold: number;
   outlier_tolerance: number;
@@ -111,9 +145,9 @@ export const CANONICAL_DROP_REASONS = [
   "bad_timestamp",
   /** Stream only: a symbol this client did not subscribe. */
   "unsolicited",
-  /** Stream only: older than the last delivered `ok` quote for that ticker. */
+  /** Stream only: an ordering key (`evaluated_at_ms`, else `timestamp_ms`) below the last delivered frame's for that ticker. */
   "out_of_order",
-  /** Stream only: the same `timestamp_ms` as the last delivered `ok` quote for that ticker. */
+  /** Stream only: an `ok` quote with the same ordering key as the last delivered `ok` quote for that ticker. */
   "duplicate",
 ] as const;
 export type CanonicalDropReason = (typeof CANONICAL_DROP_REASONS)[number];
@@ -227,8 +261,9 @@ function parseLeg(raw: unknown): CanonicalLeg | undefined {
  * status outside the contract; an `ok` quote is rejected only on `price`
  * (`non_positive_price`) and `timestamp_ms` (`bad_timestamp`); an `unavailable`
  * quote is never rejected for its numbers — its `timestamp_ms` is kept when
- * plausible (the stream guard orders on it) and zeroed otherwise; every
- * diagnostic field is defaulted rather than validated.
+ * plausible (the stream guard's fallback ordering key) and zeroed otherwise; every
+ * diagnostic field is defaulted rather than validated, and `evaluated_at_ms`
+ * (the stream's ordering key) is zeroed rather than rejected when unusable.
  */
 export function parseCanonicalQuote(
   input: unknown,
@@ -298,6 +333,10 @@ export function parseCanonicalQuote(
     confidence,
     confidence_scaled,
     timestamp_ms,
+    // Lenient on both arms: an unusable evaluation clock only costs the
+    // stream guard its preferred key (it falls back to `timestamp_ms`), and
+    // the same plausibility bound keeps a far-future stamp from wedging it.
+    evaluated_at_ms: isPlausibleTimestamp(frame.evaluated_at_ms, nowMs) ? frame.evaluated_at_ms : 0,
     config_epoch: numberOr0(frame.config_epoch),
     weight_threshold: numberOr0(frame.weight_threshold),
     outlier_tolerance: numberOr0(frame.outlier_tolerance),
@@ -322,6 +361,7 @@ export function syntheticUnavailable(symbol: string, reason: string): CanonicalQ
     confidence: 0,
     confidence_scaled: "0",
     timestamp_ms: 0,
+    evaluated_at_ms: 0,
     config_epoch: 0,
     weight_threshold: 0,
     outlier_tolerance: 0,

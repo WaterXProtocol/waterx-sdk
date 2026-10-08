@@ -1,8 +1,8 @@
 /**
  * `canonical/stream.ts` — `openCanonicalStream`, the live read of the canonical
  * price plane: ONE WebSocket carrying every subscribed ticker on
- * `/v1/canonical/stream`, reconnect with capped backoff, and a per-ticker
- * ordering guard. Structured after the backend's `quote-center-price-stream.ts`
+ * `/v1/canonical/stream` (one per ≤32-ticker shard past the server's cap),
+ * reconnect with capped backoff, and a per-ticker ordering guard. Structured after the backend's `quote-center-price-stream.ts`
  * (the BBO-leg stream client it replaces) so that file can be deleted. See
  * `frame.ts` for what canonical IS and why the BBO stream was the wrong price.
  *
@@ -24,18 +24,43 @@
  * as an opaque error. `ws` is a PEER, not a dependency: a browser bundle must
  * never pull it, and a consumer that needs headers already runs on Node.
  *
- * THE GUARD. `timestamp_ms` is the evaluation's PRICE time and the ordering
- * key. An `ok` frame is delivered iff it is strictly newer than the last
- * delivered `ok` frame for that ticker (`out_of_order` / `duplicate`
- * otherwise): a same-instant re-emit is a duplicate whatever its price says —
- * emitting it is how a chart moves while the mark stands still. A non-ok frame
- * carries no price, only a verdict, and the contract says every evaluation is
- * delivered so the consumer marks the ticker stale instead of freezing on the
- * last price; it is delivered when it is unstamped (`timestamp_ms` 0) or
- * stamped at or after the mark, dropped `out_of_order` when stamped before it,
- * and it NEVER advances the mark — a verdict at T must not block the ok price
- * at T that follows, and a replayed pre-recovery verdict must not be able to
- * re-stale a ticker that has since priced.
+ * THE GUARD orders on the server's own key, not on `timestamp_ms`. The
+ * price time is NOT monotonic per symbol: a Lazer-driven tick carries the
+ * feed's `feedUpdateTimestamp`, a liveness or BBO tick the evaluation clock,
+ * so a Lazer price can legitimately arrive stamped BEFORE the liveness verdict
+ * it supersedes. The quote-center's stream bridge orders on
+ * `evaluated_at_ms` (one clock per leader), falling back to `timestamp_ms`
+ * when it is 0, and drops only a key BELOW the last one it forwarded. The
+ * client applies exactly that, per ticker, uniformly to `ok` and non-ok
+ * frames:
+ *
+ *   key = evaluated_at_ms > 0 ? evaluated_at_ms : timestamp_ms
+ *   key === 0            → delivered, state untouched (an unstamped verdict —
+ *                          only a non-ok frame can have one)
+ *   key <  watermark     → `out_of_order` (the watermark is the highest key
+ *                          DELIVERED, ok or not)
+ *   ok, key === last ok  → `duplicate` (the same evaluation re-sent — a replay
+ *                          after reconnect; emitting it is how a chart moves
+ *                          while the mark stands still)
+ *   otherwise            → delivered; the watermark (and, for ok, the last-ok
+ *                          key) moves to `key`
+ *
+ * So a verdict at key K never blocks the ok price at K that follows (only a
+ * LOWER key is out of order, and `duplicate` compares ok against ok), a
+ * replayed pre-recovery verdict cannot re-stale a ticker that has since priced
+ * (its key is below the watermark), and a Lazer ok after a liveness verdict is
+ * never dropped for its older price time. `duplicate` is the one rule the
+ * server does not have: the bridge forwards an equal key, and a client-side
+ * replay of the same evaluation is what the reconnect path produces.
+ *
+ * SHARDED AT THE SERVER'S CAP. The quote-center refuses a subscription of more
+ * than `CANONICAL_MAX_SYMBOLS_PER_REQUEST` (32) symbols. More tickers than
+ * that open one connection per ≤32-ticker shard behind the ONE handle: each
+ * shard reconnects independently with its own backoff, `stop` / `reconnectNow`
+ * fan out, and `snapshot` aggregates (`connected` iff every shard is,
+ * `lastFrameAt` the latest, counters summed). A sharded stream's lifecycle
+ * events name their shard (`reason` is `shard i/n`, or prefixed `shard i/n: `);
+ * an unsharded one's are unchanged. Tickers are de-duplicated first.
  *
  * TWO CLOCKS in the snapshot (carried over from the backend). `lastFrameAt` is
  * socket ACTIVITY — the last parsed, subscribed frame — and a diagnostic. What
@@ -49,6 +74,7 @@ import { joinEndpointPath } from "../update-fetch.ts";
 import {
   CANONICAL_DROP_REASONS,
   CANONICAL_STREAM_ROUTE,
+  chunkCanonicalTickers,
   parseCanonicalQuote,
   type CanonicalDropReason,
   type CanonicalQuote,
@@ -235,6 +261,20 @@ function errorText(event: unknown): string {
   return "socket error";
 }
 
+/** Per-ticker guard state — see "THE GUARD" in the module header. */
+interface OrderMark {
+  /** Highest ordering key delivered (ok or not). */
+  watermark: number;
+  /** Ordering key of the last delivered `ok` frame. */
+  lastOk: number | undefined;
+}
+
+/** The server bridge's ordering key: the evaluation clock, else the price time. */
+function orderingKey(quote: CanonicalQuote): number {
+  return quote.evaluated_at_ms > 0 ? quote.evaluated_at_ms : quote.timestamp_ms;
+}
+
+/** ONE connection over at most `CANONICAL_MAX_SYMBOLS_PER_REQUEST` tickers. */
 class CanonicalPriceStream implements CanonicalStreamHandle {
   private attempt: Attempt | undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -244,8 +284,8 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
   private lastFrameAt: number | undefined;
   private framesAccepted = 0;
   private readonly dropped: Record<CanonicalDropReason, number>;
-  /** Per-ticker ordering mark: the `timestamp_ms` of the last delivered `ok` quote. */
-  private readonly marks = new Map<string, number>();
+  /** Per-ticker ordering state (see "THE GUARD"). */
+  private readonly marks = new Map<string, OrderMark>();
   private readonly subscribed: ReadonlySet<string>;
   private readonly url: string;
   private readonly headers: Record<string, string> | undefined;
@@ -253,8 +293,16 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
   private readonly maxMs: number;
   private readonly handshakeTimeoutMs: number;
 
-  constructor(private readonly options: CanonicalStreamOptions) {
-    this.subscribed = new Set(options.tickers);
+  /**
+   * @param tickers this connection's (de-duplicated, ≤32) share of `options.tickers`.
+   * @param shardLabel `shard i/n` on a sharded stream — named in every lifecycle event.
+   */
+  constructor(
+    private readonly options: CanonicalStreamOptions,
+    tickers: readonly string[],
+    private readonly shardLabel?: string,
+  ) {
+    this.subscribed = new Set(tickers);
     const url = joinEndpointPath(options.endpoint, CANONICAL_STREAM_ROUTE);
     // Secure stays secure: an `https:` OR `wss:` endpoint dials `wss:`. Anything
     // that is not http(s)/ws(s) is a misconfiguration, not a scheme to guess —
@@ -266,7 +314,7 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
       );
     }
     url.protocol = scheme;
-    url.searchParams.set("symbols", options.tickers.join(","));
+    url.searchParams.set("symbols", tickers.join(","));
     this.url = url.toString();
     const headers = options.headers;
     this.headers = headers && Object.keys(headers).length > 0 ? headers : undefined;
@@ -364,7 +412,7 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
       if (attempt.settled) return;
       attempt.opened = true;
       this.clearHandshakeTimer(attempt);
-      this.options.onConnection?.({ type: "opened" });
+      this.emit({ type: "opened" });
     });
     socket.addEventListener("message", (event) => {
       if (attempt.settled) return;
@@ -435,7 +483,20 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
     // `onConnection` must not be able to leave the stream with no attempt, no
     // timer and `stopped === false` — connected to nothing, forever.
     this.scheduleReconnect();
-    this.options.onConnection?.(event);
+    this.emit(event);
+  }
+
+  /** Every lifecycle event leaves through here, so a shard's always names it. */
+  private emit(event: CanonicalConnectionEvent): void {
+    const label = this.shardLabel;
+    if (label === undefined) {
+      this.options.onConnection?.(event);
+      return;
+    }
+    this.options.onConnection?.({
+      type: event.type,
+      reason: event.reason === undefined ? label : `${label}: ${event.reason}`,
+    });
   }
 
   private scheduleReconnect(): void {
@@ -496,19 +557,25 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
     // served — look like a healthy connection.
     this.lastFrameAt = now;
 
-    const mark = this.marks.get(quote.symbol);
-    const ts = quote.timestamp_ms;
-    if (quote.status === "ok") {
-      if (mark !== undefined && ts <= mark) {
-        this.dropped[ts === mark ? "duplicate" : "out_of_order"]++;
-        return;
+    // THE GUARD — the rule table is in the module header.
+    const key = orderingKey(quote);
+    if (key !== 0) {
+      const isOk = quote.status === "ok";
+      const mark = this.marks.get(quote.symbol);
+      if (mark !== undefined) {
+        if (key < mark.watermark) {
+          this.dropped.out_of_order++;
+          return;
+        }
+        if (isOk && key === mark.lastOk) {
+          this.dropped.duplicate++;
+          return;
+        }
+        mark.watermark = key;
+        if (isOk) mark.lastOk = key;
+      } else {
+        this.marks.set(quote.symbol, { watermark: key, lastOk: isOk ? key : undefined });
       }
-      this.marks.set(quote.symbol, ts);
-    } else if (mark !== undefined && ts !== 0 && ts < mark) {
-      // A verdict from before the last price is stale news; a verdict at or
-      // after it (or unstamped) is the consumer's to act on. Never moves the mark.
-      this.dropped.out_of_order++;
-      return;
     }
 
     // DELIVERY. The first frame a connection delivers proves it productive and
@@ -521,15 +588,62 @@ class CanonicalPriceStream implements CanonicalStreamHandle {
   }
 }
 
+/** More than 32 tickers: one {@link CanonicalPriceStream} per shard behind one handle. */
+class ShardedCanonicalStream implements CanonicalStreamHandle {
+  constructor(private readonly shards: readonly CanonicalPriceStream[]) {}
+
+  stop(): void {
+    for (const shard of this.shards) shard.stop();
+  }
+
+  reconnectNow(): void {
+    for (const shard of this.shards) shard.reconnectNow();
+  }
+
+  snapshot(): ReturnType<CanonicalStreamHandle["snapshot"]> {
+    const snaps = this.shards.map((shard) => shard.snapshot());
+    const droppedByReason: Record<string, number> = {};
+    for (const snap of snaps) {
+      for (const [reason, n] of Object.entries(snap.droppedByReason)) {
+        droppedByReason[reason] = (droppedByReason[reason] ?? 0) + n;
+      }
+    }
+    let lastFrameAt: number | undefined;
+    for (const { lastFrameAt: at } of snaps) {
+      if (at !== undefined && (lastFrameAt === undefined || at > lastFrameAt)) lastFrameAt = at;
+    }
+    return {
+      connected: snaps.every((snap) => snap.connected),
+      lastFrameAt,
+      framesAccepted: snaps.reduce((sum, snap) => sum + snap.framesAccepted, 0),
+      droppedByReason,
+    };
+  }
+}
+
 /**
- * WebSocket `GET /v1/canonical/stream?symbols=…`; per-ticker newest-`timestamp_ms`
- * guard; a `status !== "ok"` frame IS delivered to `onFrame`. Connects
- * immediately and keeps reconnecting until `stop()`. Throws synchronously when
- * nothing can dial (no global `WebSocket` and no `headers`). See the module
- * header for every disposition.
+ * WebSocket `GET /v1/canonical/stream?symbols=…`; per-ticker ordering guard
+ * on `evaluated_at_ms` (else `timestamp_ms`), the server bridge's key; a
+ * `status !== "ok"` frame IS delivered to `onFrame`. More than
+ * `CANONICAL_MAX_SYMBOLS_PER_REQUEST` tickers shard into several connections
+ * behind the one handle. Connects immediately and keeps reconnecting until
+ * `stop()`. Throws synchronously when nothing can dial (no global `WebSocket`
+ * and no `headers`). See the module header for every disposition.
  */
 export function openCanonicalStream(opts: CanonicalStreamOptions): CanonicalStreamHandle {
-  const stream = new CanonicalPriceStream(opts);
-  stream.start();
-  return stream;
+  const chunks = chunkCanonicalTickers(opts.tickers);
+  if (chunks.length <= 1) {
+    const stream = new CanonicalPriceStream(opts, chunks[0] ?? []);
+    stream.start();
+    return stream;
+  }
+  // Construct EVERY shard before starting any: a constructor that throws (no
+  // WebSocket implementation, a bad endpoint) must not leave earlier shards
+  // dialling behind a handle the caller never received.
+  const shards = chunks.map(
+    (chunk, i) =>
+      new CanonicalPriceStream(opts, chunk, `shard ${String(i + 1)}/${String(chunks.length)}`),
+  );
+  for (const shard of shards) shard.start();
+  return new ShardedCanonicalStream(shards);
 }

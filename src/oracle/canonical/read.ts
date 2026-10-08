@@ -30,6 +30,17 @@
  * retry budget and throws as `FetchPolicyError` verbatim (consumers
  * `instanceof` it), and a 4xx is deterministic and thrown with the server's
  * own wording.
+ *
+ * CHUNKED AT THE SERVER'S CAP. The quote-center refuses more than
+ * `CANONICAL_MAX_SYMBOLS_PER_REQUEST` (32) symbols in one request with a 400,
+ * and a consumer's priced-ticker list is caller-sized. The request is
+ * de-duplicated (the server collapses repeats anyway; a repeat still maps to
+ * the one quote), split into chunks of ≤32, and the chunks are fetched at most
+ * {@link CHUNK_CONCURRENCY} at a time and merged. Each chunk decides the
+ * batch-route-missing fallback for its own tickers. A chunk that FAILS fails
+ * the whole read — the same semantics as the single request it replaces: the
+ * caller gets every ticker answered or an error, never a map half of which is
+ * synthesised `unavailable` because one HTTP call broke.
  */
 
 import { mapWithConcurrency } from "../../utils/concurrency.ts";
@@ -46,6 +57,7 @@ import {
 } from "../update-fetch.ts";
 import {
   CANONICAL_BATCH_ROUTE,
+  chunkCanonicalTickers,
   parseCanonicalQuote,
   parseCanonicalText,
   syntheticUnavailable,
@@ -74,22 +86,50 @@ export async function readCanonicalPrices(
   const out = new Map<string, CanonicalQuote>();
   if (opts.tickers.length === 0) return out;
 
-  const batch = await fetchBatch(opts.endpoint, opts.tickers, opts.fetch);
-  if ("items" in batch) {
-    foldItems(out, batch.items, new Set(opts.tickers), batch.receivedAt);
-  } else {
-    const singles = await mapWithConcurrency(opts.tickers, FALLBACK_CONCURRENCY, (ticker) =>
-      fetchSingle(opts.endpoint, ticker, opts.fetch, batch.routeMissing),
-    );
-    for (const [ticker, quote] of singles) out.set(ticker, quote);
-  }
+  const chunked = chunkCanonicalTickers(opts.tickers);
+  // The per-symbol fallback's bound is TOTAL, not per chunk: concurrent chunks
+  // split it, so a gateway without the batch route still sees at most
+  // FALLBACK_CONCURRENCY per-symbol GETs in flight.
+  const chunkConcurrency = Math.min(CHUNK_CONCURRENCY, chunked.length);
+  const fallbackPerChunk = Math.max(1, Math.floor(FALLBACK_CONCURRENCY / chunkConcurrency));
+  const chunks = await mapWithConcurrency(chunked, chunkConcurrency, (chunk) =>
+    readChunk(opts.endpoint, chunk, opts.fetch, fallbackPerChunk),
+  );
+  for (const chunk of chunks) for (const [ticker, quote] of chunk) out.set(ticker, quote);
   for (const ticker of opts.tickers) {
     if (!out.has(ticker)) out.set(ticker, syntheticUnavailable(ticker, "not_in_response"));
   }
   return out;
 }
 
+/** One ≤32-symbol chunk: the batch route, or this chunk's per-symbol fallback when it is absent. */
+async function readChunk(
+  endpoint: string,
+  tickers: readonly string[],
+  policy: FetchPolicy | undefined,
+  fallbackConcurrency: number,
+): Promise<Map<string, CanonicalQuote>> {
+  const out = new Map<string, CanonicalQuote>();
+  const batch = await fetchBatch(endpoint, tickers, policy);
+  if ("items" in batch) {
+    foldItems(out, batch.items, new Set(tickers), batch.receivedAt);
+  } else {
+    const singles = await mapWithConcurrency(tickers, fallbackConcurrency, (ticker) =>
+      fetchSingle(endpoint, ticker, policy, batch.routeMissing),
+    );
+    for (const [ticker, quote] of singles) out.set(ticker, quote);
+  }
+  return out;
+}
+
 const ACCEPT_JSON = { accept: "application/json" } as const;
+/**
+ * Batch chunks in flight at once. Two covers today's universe (31 priced
+ * tickers fit one chunk; 64 fit two) without a wider fan-out against one
+ * upstream. When the batch route is absent the chunks share
+ * {@link FALLBACK_CONCURRENCY} between them.
+ */
+const CHUNK_CONCURRENCY = 2;
 /**
  * Per-symbol fallback fan-out bound. A 31-ticker seed is 31 GETs, each with its
  * own retry budget; unbounded, that saturates a browser's per-origin connection

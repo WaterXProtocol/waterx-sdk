@@ -48,7 +48,8 @@ CANONICAL plane — its off-chain replica of the aggregate. `readCanonicalPrices
 → `Map<ticker, CanonicalQuote>` (every requested ticker is a key; `status !== "ok"` carries a `reason` and
 zeroed price fields) and `openCanonicalStream({ endpoint, tickers, onFrame, onConnection?, headers?, backoff? })`
 → `{ stop, reconnectNow, snapshot }` have signatures FIXED by the cross-repo canonical plan: the backend and
-frontend code against them, so add only optional fields and never change a shape. `readQuoteCenterPrices` /
+frontend code against them, so add only fields and never change a shape (`CanonicalQuote.evaluated_at_ms`
+is the one added field). `readQuoteCenterPrices` /
 `readLazerPrices` are `@deprecated` for price reads; the tx-build leg fetchers are not.
 
 - One parser (`canonical/frame.ts::parseCanonicalQuote`) serves REST items and stream frames. `*_scaled` are
@@ -57,7 +58,11 @@ frontend code against them, so add only optional fields and never change a shape
   reviver source access.
 - The REST reader falls back to `GET /v1/canonical/{symbol}` (at most 8 in flight) only when the batch route
   is absent, decided by the shared `classifyQuoteCenter404` (`quote-center-error.ts`). Timestamps are judged
-  against the clock when EACH response arrives, never the call's start.
+  against the clock when EACH response arrives, never the call's start. Tickers are de-duplicated and
+  chunked at `CANONICAL_MAX_SYMBOLS_PER_REQUEST` (32, the server's 400 cap); a failing chunk fails the read.
+- The stream's per-ticker guard orders on `evaluated_at_ms`, else `timestamp_ms` — the quote-center
+  bridge's key, because `timestamp_ms` is not monotonic per symbol — uniformly for ok and non-ok frames.
+  More than 32 tickers shard into several connections behind the one handle.
 - The stream has no route ladder and no SSE. `headers` dial the optional peer `ws` through a bundler-opaque
   dynamic import; everything else dials the global `WebSocket`. The redial is scheduled before
   `onConnection` runs. Its tests run against a real loopback `ws` server
