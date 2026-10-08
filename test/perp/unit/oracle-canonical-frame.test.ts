@@ -15,6 +15,7 @@ import {
   parseCanonicalQuote,
   parseCanonicalText,
   syntheticUnavailable,
+  type CanonicalQuote,
 } from "../../../src/oracle/canonical/frame.ts";
 import { rawCanonicalQuote, rawCanonicalQuoteText } from "../helpers/fixtures/canonical.ts";
 
@@ -90,6 +91,14 @@ describe("parseCanonicalQuote — the contract example", () => {
 
   it("a non-JSON string is malformed", () => {
     expect(parseCanonicalQuote("not json", NOW)).toBe("malformed");
+  });
+
+  it("keeps the fixed CanonicalQuote shape source-compatible when evaluated_at_ms is omitted", () => {
+    const parsed = parseCanonicalQuote(rawCanonicalQuote("BTCUSD"), NOW) as CanonicalQuote;
+    const { evaluated_at_ms: _normalisedEvaluationClock, ...fixedShape } = parsed;
+    const compatible: CanonicalQuote = fixedShape;
+
+    expect(compatible.symbol).toBe("BTCUSD");
   });
 });
 
