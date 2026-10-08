@@ -794,9 +794,16 @@ async function describeFailure(res: Response): Promise<string> {
  * or renumbered, because clients pin it. Add a row here when the service adds
  * one; nothing else in the SDK changes.
  */
-export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, "unknown_symbol">> = {
+export type QuoteCenterErrorMeaning = "unknown_symbol" | "no_canonical_evaluation";
+export const QUOTE_CENTER_ERROR_CODES: Readonly<Record<number, QuoteCenterErrorMeaning>> = {
   /** `ErrorCode::UnknownSymbol` — the symbol is not one the service signs. */
   10001: "unknown_symbol",
+  /**
+   * `ErrorCode::NoCanonicalEvaluation` — a mirrored symbol the canonical plane
+   * has not evaluated (probed 2026-10-08 on production: XAUTUSD / AAPLXUSD).
+   * Read by `canonical/read.ts`; on the leaf route it is simply "not peelable".
+   */
+  10009: "no_canonical_evaluation",
 };
 
 /** One quote-center error body, parsed. `code` is the contract; `message` is for humans. */
@@ -835,7 +842,7 @@ export function parseQuoteCenterError(body: string): QuoteCenterError | null {
 }
 
 /** Semantic meaning of a parsed error, via the contract table — `undefined` when unmapped. */
-function meaningOf(err: QuoteCenterError): "unknown_symbol" | undefined {
+function meaningOf(err: QuoteCenterError): QuoteCenterErrorMeaning | undefined {
   return err.code === undefined ? undefined : QUOTE_CENTER_ERROR_CODES[err.code];
 }
 

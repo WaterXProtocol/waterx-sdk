@@ -1084,3 +1084,22 @@ describe("WaterxRule — routing", () => {
     ).rejects.toThrow(/carries no signed price for ticker\(s\): BTCUSD/);
   });
 });
+
+describe("QUOTE_CENTER_ERROR_CODES — the numeric contract table", () => {
+  it("maps 10001 to unknown_symbol and 10009 to no_canonical_evaluation", () => {
+    expect(QUOTE_CENTER_ERROR_CODES[10001]).toBe("unknown_symbol");
+    expect(QUOTE_CENTER_ERROR_CODES[10009]).toBe("no_canonical_evaluation");
+  });
+
+  it("a 10009 on the LEAF route is not peelable — it throws naming the code", async () => {
+    const client = createUnitTestClient({ oracleSource: "waterx_rule" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => '{"code":10009,"symbol":"ETHUSD","error":"no canonical evaluation"}',
+    } as Response);
+    await expect(WaterxRule.fetchUpdateData(client, ["BTCUSD", "ETHUSD"])).rejects.toThrow(
+      /404 code 10009/,
+    );
+  });
+});
