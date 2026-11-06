@@ -78,6 +78,13 @@ runtime behaviour changes._
 - `ws` is an optional `peerDependency` (`^8.18`), devDependency for the loopback stream server
   the tests run against (#101).
 
+### Changed
+
+- **The production config root is `https://config.waterx.app`.** It now serves the
+  `schema_version: 2` shape, so the README, `AGENTS.md`, `.env.example`, the shipped
+  integration skill and the pre-v2 rejection error name it instead of the outdated `main-v2`
+  mirror. `waterxConfigUrl` is still required; only the error's wording changes at runtime (#TBD).
+
 ### Deprecated
 
 - **`readQuoteCenterPrices` and `readLazerPrices` for price READS.** Each reads ONE LEG of the

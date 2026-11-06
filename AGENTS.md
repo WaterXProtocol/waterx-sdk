@@ -92,7 +92,7 @@ testnet document. The composition is the public `waterxConfigUrlFromRoot(root, n
 (`src/config-url.ts`, exported on `.`, `/config`, `/perp`, `/prediction`): it strips trailing slashes and
 throws for a value ending in `.json`, a non-https value, a GitHub host or a query/fragment. The retired
 aliases `E2E_CONFIG_URL` and `PREDICT_CONFIG_URL` throw when set. The v2 roots are
-`https://main-v2.waterx-config.pages.dev` (production) and `https://staging-v2.waterx-config.pages.dev`
+`https://config.waterx.app` (production) and `https://staging-v2.waterx-config.pages.dev`
 (staging), each serving `/{testnet,mainnet}.json`; CI and `.env.example` point at `staging-v2`. A document
 without `schema_version` is rejected at `create()` with an error naming those roots.
 

@@ -18,7 +18,7 @@ import { WaterXClient } from "@waterx/sdk";
 // sources" below.
 const client = await WaterXClient.create({
   network: "TESTNET",
-  waterxConfigUrl: "https://staging-v2.waterx-config.pages.dev/testnet.json", // a schema_version 2 document
+  waterxConfigUrl: "https://config.waterx.app/testnet.json", // a schema_version 2 document
   pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
 });
 client.account.createAccount(tx, { alias }); // shared waterx_account + funding (credit/custody)
@@ -69,7 +69,7 @@ import { Transaction } from "@mysten/sui/transactions";
 
 const client = await WaterXClient.create({
   network: "TESTNET",
-  waterxConfigUrl: "https://staging-v2.waterx-config.pages.dev/testnet.json",
+  waterxConfigUrl: "https://config.waterx.app/testnet.json",
   // The fed set is derived from this config — nothing to declare. Inspect it
   // with `pnpm oracle:aggregates:testnet`. See "Oracle sources".
   pythApiKey: process.env.PYTH_API_KEY, // required iff the config wires pyth_lazer_rule
@@ -133,7 +133,7 @@ the consolidated `schema_version: 2` shape — the SDK parses it strictly (`@wat
 and rejects a legacy per-package file at load. There is no built-in default and the SDK
 never reads `process.env`: your app reads the URL and passes it in. Hardcoding object ids
 instead is the single most common integration mistake. The v2 CDN roots are
-`https://main-v2.waterx-config.pages.dev` (production) and
+`https://config.waterx.app` (production) and
 `https://staging-v2.waterx-config.pages.dev` (staging); each serves `/<network>.json`. If
 your env holds a ROOT (the fleet's `WATERX_CONFIG_URL` convention), compose the document URL
 with the exported helper, which strips trailing slashes and throws for a full document URL
@@ -233,7 +233,7 @@ If you only need one line, construct it directly (both factories are **async** �
 import { PerpClient } from "@waterx/sdk/perp";
 import { PredictClient } from "@waterx/sdk/prediction";
 
-const waterxConfigUrl = "https://staging-v2.waterx-config.pages.dev/testnet.json";
+const waterxConfigUrl = "https://config.waterx.app/testnet.json";
 // The fed set comes from the config — see "Oracle sources".
 const perp = await PerpClient.create("TESTNET", {
   waterxConfigUrl,
@@ -368,7 +368,7 @@ these surface at simulate, before you spend gas.
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `loadConfig: no config URL — pass opts.waterxConfigUrl`                    | `waterxConfigUrl` is unset; there is no default and no env fallback. Read the URL in your app and pass it to `create()`.                                                                                                                                                                                                                                            |
 | `this deployment's config wires no price-update source …`                  | The loaded config has no `oracle_rules.pyth_lazer` feed ids and no `oracle_rules.waterx.feeds` entries, so nothing could ever be priced. Raised at client creation. Check you loaded the config you meant to.                                                                                                                                                                  |
-| `WaterxConfigError` / a schema issue from `@waterx/config` at `create()`   | `waterxConfigUrl` does not serve a `schema_version: 2` document — a legacy per-package file (the canonical CDN until its v2 promotion), or a malformed id. Point it at a v2 document; there is no cast-and-hope path.                                                                                                                                               |
+| `WaterxConfigError` / a schema issue from `@waterx/config` at `create()`   | `waterxConfigUrl` does not serve a `schema_version: 2` document — a legacy per-package file, or a malformed id. Point it at a v2 document; there is no cast-and-hope path.                                                                                                                                               |
 | `waterx-config (<network>): packages.{…} missing`                          | The document lacks a package entry the SDK reads unconditionally (`REQUIRED_PACKAGES` in `src/config.ts`), or an `oracle_rules.<rule>` block names a package that is not published. Every deployment must carry all of them — fix the document, not the SDK.                                                                                                        |
 | `fed set [...] has no feed for ticker(s): …` (`OracleTickerUnservedError`) | No derived source serves a ticker this build depends on. `refreshOraclePrices` itself SKIPS such tickers; the `build*Tx` composers raise this for the ones their action needs (traded ticker + collateral, or every pool asset for WLP). Add the feed, or pass `allowUnrefreshedPrices: true` to build anyway. Constant-only tickers are exempt.                    |
 | `EMissingPriceSource` (Move abort in `aggregator::remove_outliers`)        | The fed set does not cover that ticker's on-chain weighted rules — starving a weighted rule aborts, feeding an unweighted one is a no-op. Run `pnpm oracle:aggregates:testnet`, then publish the missing source's feeds in the config so it is derived.                                                                                                             |
