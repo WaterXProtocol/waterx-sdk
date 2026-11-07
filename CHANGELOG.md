@@ -83,7 +83,9 @@ runtime behaviour changes._
 - **The production config root is `https://config.waterx.app`.** It now serves the
   `schema_version: 2` shape, so the README, `AGENTS.md`, `.env.example`, the shipped
   integration skill and the pre-v2 rejection error name it instead of the outdated `main-v2`
-  mirror. `waterxConfigUrl` is still required; only the error's wording changes at runtime (#103).
+  mirror. The staging root is now `https://staging.waterx-config.pages.dev`, replacing
+  `staging-v2` in the same places and as the CI fallback. `waterxConfigUrl` is still required;
+  only the error's wording changes at runtime (#103).
 
 ### Deprecated
 

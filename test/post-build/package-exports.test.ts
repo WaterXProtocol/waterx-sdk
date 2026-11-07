@@ -86,7 +86,7 @@ describe("CommonJS consumers can require() the package (dual ESM/CJS build)", ()
 });
 
 describe("waterxConfigUrlFromRoot is public on every config-bearing entry (ESM + CJS)", () => {
-  const ROOT = "https://staging-v2.waterx-config.pages.dev";
+  const ROOT = "https://staging.waterx-config.pages.dev";
   type Mod = { waterxConfigUrlFromRoot: (root: string, network: string) => string };
 
   it.each([".", "./config", "./perp", "./prediction"])("import %s", async (subpath) => {

@@ -122,7 +122,7 @@ walkthrough as one runnable file** — being real code, it is covered by `pnpm l
 `pnpm typecheck`, so the API it exercises cannot go stale unnoticed:
 
 ```bash
-export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev          # CDN root; the harness appends /<network>.json
+export WATERX_CONFIG_URL=https://staging.waterx-config.pages.dev          # CDN root; the harness appends /<network>.json
 export PYTH_API_KEY=...                          # required iff the config wires pyth_lazer_rule
 pnpm exec tsx examples/quickstart.ts             # simulate-only; WATERX_EXECUTE=1 to sign + send
 ```
@@ -134,7 +134,7 @@ and rejects a legacy per-package file at load. There is no built-in default and 
 never reads `process.env`: your app reads the URL and passes it in. Hardcoding object ids
 instead is the single most common integration mistake. The v2 CDN roots are
 `https://config.waterx.app` (production) and
-`https://staging-v2.waterx-config.pages.dev` (staging); each serves `/<network>.json`. If
+`https://staging.waterx-config.pages.dev` (staging); each serves `/<network>.json`. If
 your env holds a ROOT (the fleet's `WATERX_CONFIG_URL` convention), compose the document URL
 with the exported helper, which strips trailing slashes and throws for a full document URL
 (`…/testnet.json`), a non-https value, a GitHub host or a query/fragment:

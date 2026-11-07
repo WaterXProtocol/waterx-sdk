@@ -199,7 +199,7 @@ function assertNotPreV2Document(doc: unknown): void {
   throw new Error(
     "pre-v2 waterx-config is no longer supported — point at a v2 endpoint " +
       "(a document declaring `schema_version: 2`, e.g. under `https://config.waterx.app` " +
-      "or `https://staging-v2.waterx-config.pages.dev`).",
+      "or `https://staging.waterx-config.pages.dev`).",
   );
 }
 

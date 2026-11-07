@@ -2,7 +2,7 @@
  * Remote-config smoke: exercises the full async path
  * `PerpClient.create("TESTNET")` against a remote waterx-config.
  *
- *   WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev tsx scripts/smoke-remote.ts
+ *   WATERX_CONFIG_URL=https://staging.waterx-config.pages.dev tsx scripts/smoke-remote.ts
  *
  * The config ROOT is read from `WATERX_CONFIG_URL` (there is no default) — set it
  * in the environment or in a repo `.env` file. A full document URL (`…/testnet.json`)
