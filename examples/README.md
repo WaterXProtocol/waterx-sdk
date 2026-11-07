@@ -9,7 +9,7 @@ required env vars; run with `pnpm exec tsx examples/<path>`.
 has no default). e.g.
 
 ```
-export WATERX_CONFIG_URL=https://staging-v2.waterx-config.pages.dev
+export WATERX_CONFIG_URL=https://staging.waterx-config.pages.dev
 ```
 
 **Oracle fed set:** derived from the config `buildClient()` loads —

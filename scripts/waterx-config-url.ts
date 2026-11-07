@@ -16,13 +16,13 @@
  * full-document form), a non-https value, a GitHub host, an unset value, and
  * any retired alias variable (`E2E_CONFIG_URL`, `PREDICT_CONFIG_URL`) being set.
  *
- * Reference roots: production `https://main-v2.waterx-config.pages.dev`,
- * staging `https://staging-v2.waterx-config.pages.dev`.
+ * Reference roots: production `https://config.waterx.app`,
+ * staging `https://staging.waterx-config.pages.dev`.
  */
 
 import { waterxConfigUrlFromRoot, type WaterxConfigNetwork } from "../src/config-url.ts";
 
-const EXAMPLE_ROOT = "https://staging-v2.waterx-config.pages.dev";
+const EXAMPLE_ROOT = "https://staging.waterx-config.pages.dev";
 
 /**
  * Env names that used to carry the config URL. Setting one now throws, so a

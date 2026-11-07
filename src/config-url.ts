@@ -4,8 +4,8 @@
  * The fleet-wide `WATERX_CONFIG_URL` standard: the value is a CDN ROOT
  * (`https://<host>`, no file name) and the consumer composes
  * `${root}/${network}.json`. Reference roots: production
- * `https://main-v2.waterx-config.pages.dev`, staging
- * `https://staging-v2.waterx-config.pages.dev`.
+ * `https://config.waterx.app`, staging
+ * `https://staging.waterx-config.pages.dev`.
  *
  * This is a pure helper for code that holds such a root, typically read from
  * `WATERX_CONFIG_URL`. The SDK itself still reads no env: `loadConfig` and
@@ -18,7 +18,7 @@ import type { Network } from "./constants.ts";
 /** The network argument: the SDK's `Network`, or its lowercase document name. */
 export type WaterxConfigNetwork = Network | Lowercase<Network>;
 
-const EXAMPLE_ROOT = "https://staging-v2.waterx-config.pages.dev";
+const EXAMPLE_ROOT = "https://staging.waterx-config.pages.dev";
 
 function fail(detail: string): never {
   throw new Error(`waterxConfigUrlFromRoot: ${detail}. Use a CDN root such as ${EXAMPLE_ROOT}`);
@@ -39,8 +39,8 @@ const GITHUB_HOST = /(^|\.)github(usercontent)?\.com$/i;
  *   is never rewritten;
  * - carrying a query string or fragment, which the composed path would break.
  *
- * @example waterxConfigUrlFromRoot("https://staging-v2.waterx-config.pages.dev/", "TESTNET")
- *   // → "https://staging-v2.waterx-config.pages.dev/testnet.json"
+ * @example waterxConfigUrlFromRoot("https://staging.waterx-config.pages.dev/", "TESTNET")
+ *   // → "https://staging.waterx-config.pages.dev/testnet.json"
  */
 export function waterxConfigUrlFromRoot(
   root: string | undefined,
