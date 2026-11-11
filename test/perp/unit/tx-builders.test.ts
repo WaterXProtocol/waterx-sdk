@@ -375,3 +375,82 @@ describe("tx-builders (v3)", () => {
     expect(tx.getData().commands?.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("v4 oracle-free order submission", () => {
+  const client = createUnitTestClient();
+  client.config.packages.waterx_perp.version = 4;
+
+  it("queues close/increase/decrease and manages orders without fetching prices", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("QC unavailable"));
+    const params = { ...common, skipOraclePriceRefresh: false };
+    try {
+      const transactions = await Promise.all([
+        buildClosePositionTx(client, { ...params, positionId: 1n, acceptablePrice: 1n }),
+        buildIncreasePositionTx(client, {
+          ...params,
+          positionId: 1n,
+          collateralAmount: 1n,
+          size: 1n,
+          acceptablePrice: 1n,
+        }),
+        buildDecreasePositionTx(client, {
+          ...params,
+          positionId: 1n,
+          size: 1n,
+          acceptablePrice: 1n,
+        }),
+        buildPlaceOrderTx(client, { ...params, main: baseOrder }),
+        buildCancelOrderTx(client, { ...params, orderId: 1n }),
+        buildUpdateOrderTx(client, {
+          ...params,
+          orderId: 1n,
+          currentTriggerPrice: 1n,
+          orderTypeTag: 0,
+          newSize: 1n,
+          newTriggerPrice: 1n,
+        }),
+        buildCancelPreOrderTx(client, { ...params, mainOrderId: 1n, preOrderId: 2n }),
+        buildAddPreOrderTx(client, {
+          ...params,
+          mainOrderId: 1n,
+          preOrder: {
+            isLong: false,
+            isStopOrder: true,
+            reduceOnly: true,
+            size: 1n,
+            triggerPrice: 1n,
+            collateralAmount: 0n,
+          },
+        }),
+      ]);
+      expect(fetch).not.toHaveBeenCalled();
+      for (const tx of transactions) {
+        expect(moveTargets(tx)).toContain("trading::execute");
+        expect(moveTargets(tx)).not.toContain("oracle::aggregate");
+      }
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it.each([buildDepositCollateralTx, buildWithdrawCollateralTx])(
+    "still requires oracle prices for collateral changes",
+    async (build) => {
+      const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("QC unavailable"));
+      try {
+        await expect(
+          build(client, {
+            ...common,
+            skipOraclePriceRefresh: false,
+            positionId: 1n,
+            collateralAmount: 1n,
+            amount: 1n,
+          }),
+        ).rejects.toThrow();
+        expect(fetch).toHaveBeenCalled();
+      } finally {
+        fetch.mockRestore();
+      }
+    },
+  );
+});

@@ -143,3 +143,43 @@ describe("user/trading PTB builders (v3)", () => {
     expect(req).toBeDefined();
   });
 });
+
+describe("v4 increase order identity", () => {
+  it("preserves the legacy v3 explicit orderId input", () => {
+    const v3 = createUnitTestClient();
+    v3.config.packages.waterx_perp.version = 3;
+    const tx = new Transaction();
+    expect(() =>
+      increasePositionRequest(v3, tx, {
+        accountId,
+        collateralType,
+        ticker,
+        positionId: 1n,
+        collateralAmount: 1n,
+        size: 1n,
+        acceptablePrice: 1n,
+        orderId: 0n,
+      }),
+    ).not.toThrow();
+    expect(tx.getData().commands.length).toBeGreaterThan(0);
+  });
+
+  it.each([0n, 12n])("rejects caller-supplied orderId %s before appending commands", (orderId) => {
+    const v4 = createUnitTestClient();
+    v4.config.packages.waterx_perp.version = 4;
+    const tx = new Transaction();
+    expect(() =>
+      increasePositionRequest(v4, tx, {
+        accountId,
+        collateralType,
+        ticker,
+        positionId: 1n,
+        collateralAmount: 1n,
+        size: 1n,
+        acceptablePrice: 1n,
+        orderId,
+      }),
+    ).toThrow("omit orderId");
+    expect(tx.getData().commands).toHaveLength(0);
+  });
+});

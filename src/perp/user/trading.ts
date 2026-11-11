@@ -100,7 +100,7 @@ export interface IncreasePositionRequestParams extends CommonTradingParams {
   size: bigint | number;
   /** Raw 1e9-scaled `Float` slippage cap. */
   acceptablePrice: bigint | number;
-  /** Optional opener order id (rare). */
+  /** Legacy v3 opener order id. Must be omitted for contract version 4+. */
   orderId?: bigint | number;
 }
 
@@ -109,6 +109,9 @@ export function increasePositionRequest(
   tx: Transaction,
   params: IncreasePositionRequestParams,
 ): TransactionArgument {
+  if (client.config.packages.waterx_perp.version >= 4 && params.orderId !== undefined) {
+    throw new Error("v4 increases allocate an order ID on-chain; omit orderId");
+  }
   const obj = commonObjects(client);
   const req = makeSenderRequest(client, tx, params.bucketAccount);
   const [tr] = trading.increasePositionRequest({

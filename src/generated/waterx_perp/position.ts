@@ -102,9 +102,12 @@ export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
          * as zero.
          */
         acceptable_price: bcs.u64(),
-        /** Leverage in bps. */
+        /**
+         * Legacy submission metadata; zero means not calculated. Keeper computes actual
+         * leverage.
+         */
         leverage_bps: bcs.u64(),
-        /** Oracle price when order was placed. */
+        /** Legacy snapshot; new oracle-free submissions store zero (no observed price). */
         oracle_price_at_creation: float.Float,
         /** Creation timestamp. */
         create_timestamp: bcs.u64()

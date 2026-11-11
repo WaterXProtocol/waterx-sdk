@@ -12,11 +12,27 @@
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
-import * as type_name from './deps/std/type_name.ts';
 import * as float from './deps/bucket_v2_framework/float.ts';
+import * as type_name from './deps/std/type_name.ts';
 import * as double from './deps/bucket_v2_framework/double.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/perp::events';
+export const ExecutionQueued = new MoveStruct({ name: `${$moduleName}::ExecutionQueued`, fields: {
+        market_id: bcs.Address,
+        account_id: bcs.Address,
+        order_id: bcs.u64(),
+        position_id: bcs.option(bcs.u64()),
+        requested_action: bcs.u8(),
+        size: float.Float,
+        acceptable_price: bcs.u64()
+    } });
+export const OrderRejectedByKeeper = new MoveStruct({ name: `${$moduleName}::OrderRejectedByKeeper`, fields: {
+        market_id: bcs.Address,
+        account_id: bcs.Address,
+        order_id: bcs.u64(),
+        reason: bcs.string(),
+        refunded_collateral_amount: bcs.u64()
+    } });
 export const PositionOpened = new MoveStruct({ name: `${$moduleName}::PositionOpened`, fields: {
         account_object_address: bcs.Address,
         market_id: bcs.Address,
@@ -341,18 +357,42 @@ export const FundingRateUpdated = new MoveStruct({ name: `${$moduleName}::Fundin
         market_id: bcs.Address,
         funding_rate: float.Float,
         /**
-         * `true` when this period's funding has longs paying shorts; `false` when shorts
-         * pay longs.
+         * `true` when longs pay and shorts are paid, `false` for the reverse. The
+         * counterparty on both sides is the **WLP pool**, not the opposite side of the
+         * book — see `trading::settle_funding_to_balance`, where a payer's collateral goes
+         * to `pool.put_collateral` and a receiver is funded by `pool.request_collateral`.
          */
         funding_rate_sign: bcs.bool(),
         cumulative_index: double.Double,
         /**
          * `true` when the cumulative funding index is on the "longs pay" side; `false`
-         * when it's on the "shorts pay" side.
+         * when it is on the "shorts pay" side.
          */
         cumulative_funding_sign: bcs.bool(),
         long_oi: float.Float,
         short_oi: float.Float,
+        memo: bcs.string()
+    } });
+export const FundingSkippedZeroTvl = new MoveStruct({ name: `${$moduleName}::FundingSkippedZeroTvl`, fields: {
+        market_id: bcs.Address,
+        long_oi: float.Float,
+        short_oi: float.Float,
+        /** Whole funding intervals skipped by this call. */
+        skipped_intervals: bcs.u64(),
+        /**
+         * Wall-clock milliseconds the funding clock advanced by, i.e.
+         * `skipped_intervals × funding_interval_ms` **at the time of the skip**. Carried
+         * explicitly so consumers never have to re-derive it by multiplying against the
+         * market's _current_ interval — admin can change `funding_interval_ms` between the
+         * skip and the read, and that product would then be wrong in either direction.
+         */
+        skipped_ms: bcs.u64(),
+        memo: bcs.string()
+    } });
+export const FundingRateParamUpdated = new MoveStruct({ name: `${$moduleName}::FundingRateParamUpdated`, fields: {
+        market_id: bcs.Address,
+        previous_basic_funding_rate: float.Float,
+        new_basic_funding_rate: float.Float,
         memo: bcs.string()
     } });
 export const BorrowRateUpdated = new MoveStruct({ name: `${$moduleName}::BorrowRateUpdated`, fields: {
@@ -410,6 +450,80 @@ export const TokenPoolInfoUpdated = new MoveStruct({ name: `${$moduleName}::Toke
         max_reserve_ratio_bps: bcs.u64(),
         memo: bcs.string()
     } });
+export interface EmitExecutionQueuedArguments {
+    marketId: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint>;
+    positionId: RawTransactionArgument<number | bigint | null>;
+    requestedAction: RawTransactionArgument<number>;
+    size: TransactionArgument;
+    acceptablePrice: RawTransactionArgument<number | bigint>;
+}
+export interface EmitExecutionQueuedOptions {
+    package?: string;
+    arguments: EmitExecutionQueuedArguments | [
+        marketId: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint>,
+        positionId: RawTransactionArgument<number | bigint | null>,
+        requestedAction: RawTransactionArgument<number>,
+        size: TransactionArgument,
+        acceptablePrice: RawTransactionArgument<number | bigint>
+    ];
+}
+export function emitExecutionQueued(options: EmitExecutionQueuedOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        '0x2::object::ID',
+        '0x2::object::ID',
+        'u64',
+        '0x1::option::Option<u64>',
+        'u8',
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketId", "accountId", "orderId", "positionId", "requestedAction", "size", "acceptablePrice"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'events',
+        function: 'emit_execution_queued',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface EmitOrderRejectedByKeeperArguments {
+    marketId: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint>;
+    reason: RawTransactionArgument<string>;
+    refundedCollateralAmount: RawTransactionArgument<number | bigint>;
+}
+export interface EmitOrderRejectedByKeeperOptions {
+    package?: string;
+    arguments: EmitOrderRejectedByKeeperArguments | [
+        marketId: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint>,
+        reason: RawTransactionArgument<string>,
+        refundedCollateralAmount: RawTransactionArgument<number | bigint>
+    ];
+}
+export function emitOrderRejectedByKeeper(options: EmitOrderRejectedByKeeperOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        '0x2::object::ID',
+        '0x2::object::ID',
+        'u64',
+        '0x1::string::String',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketId", "accountId", "orderId", "reason", "refundedCollateralAmount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'events',
+        function: 'emit_order_rejected_by_keeper',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
 export interface EmitPositionOpenedArguments {
     accountObjectAddress: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
@@ -1410,6 +1524,68 @@ export function emitFundingRateUpdated(options: EmitFundingRateUpdatedOptions) {
         package: packageAddress,
         module: 'events',
         function: 'emit_funding_rate_updated',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface EmitFundingSkippedZeroTvlArguments {
+    marketId: RawTransactionArgument<string>;
+    longOi: TransactionArgument;
+    shortOi: TransactionArgument;
+    skippedIntervals: RawTransactionArgument<number | bigint>;
+    skippedMs: RawTransactionArgument<number | bigint>;
+}
+export interface EmitFundingSkippedZeroTvlOptions {
+    package?: string;
+    arguments: EmitFundingSkippedZeroTvlArguments | [
+        marketId: RawTransactionArgument<string>,
+        longOi: TransactionArgument,
+        shortOi: TransactionArgument,
+        skippedIntervals: RawTransactionArgument<number | bigint>,
+        skippedMs: RawTransactionArgument<number | bigint>
+    ];
+}
+export function emitFundingSkippedZeroTvl(options: EmitFundingSkippedZeroTvlOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        '0x2::object::ID',
+        null,
+        null,
+        'u64',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketId", "longOi", "shortOi", "skippedIntervals", "skippedMs"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'events',
+        function: 'emit_funding_skipped_zero_tvl',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface EmitFundingRateParamUpdatedArguments {
+    marketId: RawTransactionArgument<string>;
+    previousBasicFundingRate: TransactionArgument;
+    newBasicFundingRate: TransactionArgument;
+}
+export interface EmitFundingRateParamUpdatedOptions {
+    package?: string;
+    arguments: EmitFundingRateParamUpdatedArguments | [
+        marketId: RawTransactionArgument<string>,
+        previousBasicFundingRate: TransactionArgument,
+        newBasicFundingRate: TransactionArgument
+    ];
+}
+export function emitFundingRateParamUpdated(options: EmitFundingRateParamUpdatedOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        '0x2::object::ID',
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketId", "previousBasicFundingRate", "newBasicFundingRate"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'events',
+        function: 'emit_funding_rate_param_updated',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
