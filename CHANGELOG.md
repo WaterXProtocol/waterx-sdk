@@ -24,7 +24,7 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
 
 - Regenerated legacy perp ABI from contract #167 at `ed63a1d`; exported
   `ExecutionQueuedBcs` / `OrderRejectedByKeeperBcs` schemas. See
-  [v4 integration notes](PERP_V4_INTEGRATION.md) (PR link added before review).
+  [v4 integration notes](PERP_V4_INTEGRATION.md) ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
 
 - **The canonical price reader** — `@waterx/sdk/oracle/canonical`, re-exported from
   `@waterx/sdk/oracle` and (the two entry points + types) from the root. What goes on chain as
@@ -118,7 +118,7 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
 
 - V4 order/position-intent builders skip the unnecessary Oracle prelude; collateral
   operations and v3 builds retain their refresh. Explicit increase `orderId` is
-  rejected on v4, where the queue allocates it (PR link added before review).
+  rejected on v4, where the queue allocates it ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
 
 - **Repo harnesses: `WATERX_CONFIG_URL` is a CDN ROOT only.** `scripts/waterx-config-url.ts`
   now composes through `waterxConfigUrlFromRoot`, so a legacy `…/<network>.json` value THROWS
