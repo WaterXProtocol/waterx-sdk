@@ -17,7 +17,7 @@
  *   6. smoke-staking          — stake → unstake 1 WLP
  *   7. mint-and-stake-wlp     — atomic mint WLP + stake in one PTB
  *   8. smoke-happy-path       — deposit + mint WLP + place + cancel  [execute-only]
- *   9. smoke-keeper-match     — market buy + keeper match + direct close  [execute-only]
+ *   9. smoke-keeper-match     — market buy + keeper match + close  [execute-only]
  *  10. smoke-custody          — mint/burn CREDIT round-trip
  *
  * If WATERX_SMOKE_ACCOUNT_ID is already set in the env, the account-creating

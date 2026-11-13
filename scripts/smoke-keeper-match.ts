@@ -24,9 +24,10 @@
  *      keeper paths skip the witness checklist). Capture `positionId` from
  *      `PositionOpened`. If the event indexer is slow, fall back to
  *      `getAccountPositions(BTCUSD)`.
- *   4. Close via `close_position_request` — direct user-side close
- *      consumed by `trading::execute` in the same PTB. Fills at the live
- *      oracle, no keeper round-trip needed. `PositionClosed` emits pnl,
+ *   4. Close via `close_position_request`. On perp v3 it is consumed by
+ *      `trading::execute` in the same PTB and fills at the live oracle. On
+ *      perp v4 it only queues a market SELL, so the signer plays keeper
+ *      again and matches the LIMIT_SELL book. `PositionClosed` emits pnl,
  *      final views show 0 positions / 0 orders.
  *
  * Required env:
@@ -54,7 +55,7 @@ import {
   marketData as marketDataCall,
 } from "../src/generated/waterx_perp_view/view.ts";
 import { PerpClient } from "../src/perp/client.ts";
-import { DRY_RUN_SENDER, ORDER_LIMIT_BUY } from "../src/perp/constants.ts";
+import { DRY_RUN_SENDER, ORDER_LIMIT_BUY, ORDER_LIMIT_SELL } from "../src/perp/constants.ts";
 import {
   getAccountOrders,
   getAccountPositions,
@@ -335,8 +336,8 @@ async function main(): Promise<void> {
   }
 
   // ============================================================================
-  // 4. Close via close_position_request — direct user-side close (no keeper).
-  //    Fills at the live oracle inside the same execute() call.
+  // 4. Close via close_position_request. v3 fills at the live oracle inside the
+  //    same execute() call; v4 queues a market SELL that a keeper match fills.
   // ============================================================================
   if (process.env.WATERX_SKIP_CLOSE === "1") {
     console.log("\nWATERX_SKIP_CLOSE=1; stopping after match.");
@@ -394,7 +395,28 @@ async function main(): Promise<void> {
   const closeRes = await execute(client, keypair, closeTx, "closePosition (execute)");
   if (!closeRes.success) return;
 
-  const closeEvents = await fetchTxEvents(closeRes.digest);
+  let closeEvents = await fetchTxEvents(closeRes.digest);
+  if (client.config.packages.waterx_perp.version >= 4) {
+    console.log("\n=== Keeper match_orders (LIMIT_SELL book, from tick 0) ===");
+    const closeMatchTx = new Transaction();
+    await refreshWlpPoolOracles(closeMatchTx, client, [BTC, "USDCUSD"], {});
+    matchOrders(client, closeMatchTx, {
+      ticker: BTC,
+      collateralType: usdcType,
+      orderTypeTag: ORDER_LIMIT_SELL,
+      triggerPrice: 0n, // tick 0 — where the queued close parks
+      maxFills: 1n,
+    });
+    if (!(await sim(client, keypair, closeMatchTx, "matchOrders close (sim)"))) return;
+    const closeMatchRes = await execute(
+      client,
+      keypair,
+      closeMatchTx,
+      "matchOrders close (execute)",
+    );
+    if (!closeMatchRes.success) return;
+    closeEvents = await fetchTxEvents(closeMatchRes.digest);
+  }
   const closedEv = findEvent(closeEvents, "::events::PositionClosed");
   if (closedEv?.parsedJson) {
     const pnl = closedEv.parsedJson["pnl_amount"];

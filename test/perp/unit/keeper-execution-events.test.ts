@@ -1,4 +1,4 @@
-/** v4 lifecycle BCS fixtures pinned to waterx-contract #167 ed63a1d. */
+/** v4 lifecycle BCS fixtures pinned to waterx-contract #167 as merged (9607947). */
 import { bcs } from "@mysten/sui/bcs";
 import { describe, expect, it } from "vitest";
 

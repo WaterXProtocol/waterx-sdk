@@ -982,6 +982,45 @@ export function placeOrderRequest(options: PlaceOrderRequestOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface MarketOrderPermissionArguments {
+    market: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
+    main: TransactionArgument;
+}
+export interface MarketOrderPermissionOptions {
+    package?: string;
+    arguments: MarketOrderPermissionArguments | [
+        market: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
+        main: TransactionArgument
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * A market order changes a position as soon as a Keeper matches it, so it needs
+ * the permission of the operation it performs instead of `perm_place_order`: open
+ * (no linked position), increase (same side), close (opposite side, full size) or
+ * decrease (opposite side, partial size).
+ */
+export function marketOrderPermission(options: MarketOrderPermissionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'address',
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["market", "accountObjectAddress", "main"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'market_order_permission',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface ValidatePreOrdersArguments {
     main: TransactionArgument;
     preOrder: TransactionArgument;
@@ -2398,6 +2437,59 @@ export function matchOrders(options: MatchOrdersOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface CancelUnfillableMarketIncreaseArguments {
+    globalConfig: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    order: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+    keeper: RawTransactionArgument<string>;
+}
+export interface CancelUnfillableMarketIncreaseOptions {
+    package?: string;
+    arguments: CancelUnfillableMarketIncreaseArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        order: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>,
+        keeper: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * Keeper: updates funding rate for a market. Keeper: **triggers an accrual** —
+ * settles funding up to now using the market's currently configured `a`. It does
+ * not take or write a rate; to change `a` use
+ * `set_market_basic_funding_rate_by_keeper` (keeper) or
+ * `update_market_funding_config` (admin). Cancels a linked market increase that
+ * cannot execute and refunds its collateral. A linked market order holds the
+ * Position's Keeper reservation; pushing it back into the book would keep the
+ * Position's TP/SL from filling and block collateral withdrawal until someone
+ * cancelled it. The Position must be back in `market.positions`.
+ */
+export function cancelUnfillableMarketIncrease(options: CancelUnfillableMarketIncreaseOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "wxaRegistry", "market", "order", "positionId", "keeper"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'cancel_unfillable_market_increase',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface UpdateFundingRateArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
@@ -2420,13 +2512,6 @@ export interface UpdateFundingRateOptions {
         string
     ];
 }
-/**
- * Keeper: updates funding rate for a market. Keeper: **triggers an accrual** —
- * settles funding up to now using the market's currently configured `a`. It does
- * not take or write a rate; to change `a` use
- * `set_market_basic_funding_rate_by_keeper` (keeper) or
- * `update_market_funding_config` (admin).
- */
 export function updateFundingRate(options: UpdateFundingRateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [

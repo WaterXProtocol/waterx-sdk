@@ -248,6 +248,25 @@ export function orderCancelledInvalidMatch(options: OrderCancelledInvalidMatchOp
         function: 'order_cancelled_invalid_match',
     });
 }
+export interface OrderCancelledCannotIncreaseOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+/**
+ * `match_orders` linked market increase that cannot execute: the position cannot
+ * grow (collateral, leverage, open interest or reserve) or the market is paused. A
+ * market order holds the Position's Keeper reservation, so it is cancelled and
+ * refunded rather than left to block the Position's other orders.
+ */
+export function orderCancelledCannotIncrease(options: OrderCancelledCannotIncreaseOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'memo',
+        function: 'order_cancelled_cannot_increase',
+    });
+}
 export interface OrderCancelledSlippageExceededOptions {
     package?: string;
     arguments?: [

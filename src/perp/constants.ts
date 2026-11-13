@@ -15,6 +15,10 @@
 export * from "../constants.ts";
 
 // ======== Permission Bitmasks (matches account_data.move) ========
+// On perp v4 a market order (no trigger price) is checked against the operation it
+// performs — OPEN (no linked position), INCREASE (same side), DECREASE (opposite
+// side, partial size) or CLOSE (opposite side, full size) — not PLACE_ORDER, which
+// covers limit and stop orders only.
 export const PERM_OPEN_POSITION = 1;
 export const PERM_CLOSE_POSITION = 2;
 export const PERM_INCREASE_POSITION = 4;

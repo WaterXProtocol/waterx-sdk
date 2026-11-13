@@ -1,8 +1,11 @@
 # Perp v4 queued execution
 
-ABI source: WaterXProtocol/waterx-contract#167 at
-`ed63a1d536a71d9c267e9185cea2fd9a523c8d88` (legacy `waterx_perp`, not Broker).
+ABI source: WaterXProtocol/waterx-contract#167 as merged to `main` at
+`96079473d4e5c6c8ae42c0a476fed8e0d48fc6bf` (legacy `waterx_perp`, not Broker).
 Bindings were generated from that checkout with Sui Move summaries and `@mysten/codegen`.
+The public signatures are the ones of the earlier `ed63a1d` head; the behaviour
+changes that landed after it are the delegate-permission rule, the linked-order
+cap and the extra cancellation reason described below.
 
 ## Submission and settlement
 
@@ -20,11 +23,42 @@ deployment; a matching struct suffix alone is not sufficient.
 `increasePositionRequest` requires `orderId` to be omitted in v4, including when
 its value would be zero. The queue allocates the ID. Legacy v3 inputs remain supported.
 
+## Delegate permissions for market orders
+
+On v4 a market order (`triggerPrice: undefined`) is authorized by the operation it
+performs, not by `PERM_PLACE_ORDER`:
+
+| Market order                                 | Permission required      |
+| -------------------------------------------- | ------------------------ |
+| No linked position (opens a position)        | `PERM_OPEN_POSITION`     |
+| Linked position, same side                   | `PERM_INCREASE_POSITION` |
+| Linked position, opposite side, partial size | `PERM_DECREASE_POSITION` |
+| Linked position, opposite side, full size    | `PERM_CLOSE_POSITION`    |
+
+Limit and stop orders still need `PERM_PLACE_ORDER`. A delegate or session key that
+was granted only `PERM_PLACE_ORDER` could submit market orders on v3; on v4 the same
+transaction aborts `EUnauthorized`. Widen the delegate's permissions before the
+cutover.
+
+## Linked orders and cancellation reasons
+
+A position holds at most 10 resting limit / stop orders (`ETooManyLinkedOrders`
+beyond that; the cap was 5 on v3). The pending market order awaiting a Keeper is not
+counted, so a full set of TP/SL orders never blocks a close.
+
+A linked market increase the Keeper cannot execute (collateral, leverage, open
+interest, reserve, or a paused market) is cancelled and refunded with the
+OrderCancelled memo `position cannot be increased`, releasing the position's
+reservation. Treat it like the other cancellation memos: terminal for that order.
+
 ## Oracle policy
 
 Order/position-intent composers skip Oracle refresh for deployments whose
 `config.packages.waterx_perp.version >= 4`. This configuration must describe the
-actual deployed package. V3 composers retain their refresh, and explicit
+actual deployed package. That field is the on-chain upgrade counter, which equals
+the Move `PACKAGE_VERSION` for `waterx_perp` on both networks (3 before this
+upgrade, 4 after); the SDK switches flow when the config document is updated, so
+publish the pin together with the package upgrade. V3 composers retain their refresh, and explicit
 collateral deposit/withdraw composers retain their Oracle/checklist requirements.
 Size/slippage calculations done by a consumer may still need an off-chain price;
 this change only removes unnecessary on-chain refresh from intent submission.

@@ -810,7 +810,13 @@ export interface AddLinkedOrderOptions {
         priceKey: RawTransactionArgument<number | bigint>
     ];
 }
-/** Adds a linked order to a position. */
+/**
+ * Adds a linked order to a position. `MAX_LINKED_ORDERS` bounds the resting limit
+ * / stop orders on a position. A market order (price key 0, the tick-0 sentinel)
+ * awaits Keeper execution and is not counted, so a full set of TP/SL orders never
+ * blocks a close; the pending-Keeper reservation allows one such order per
+ * position.
+ */
 export function addLinkedOrder(options: AddLinkedOrderOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [

@@ -79,7 +79,7 @@ Each builds the PTB, runs `client.simulate(tx)`, optionally executes:
 - `action-update-order.ts` — change size / trigger price in place
 - `action-cancel-pre-order.ts` — drop a TP/SL leg
 - `action-add-pre-order.ts` — add a TP/SL leg
-- `action-close-position.ts` — direct `close_position_request`
+- `action-close-position.ts` — `close_position_request` (direct on v3, queued for a keeper on v4)
 - `action-increase-position.ts` — add size + collateral
 - `action-decrease-position.ts` — partial close
 - `action-deposit-collateral.ts` — top-up collateral (de-lever)
@@ -105,7 +105,7 @@ Each builds the PTB, runs `client.simulate(tx)`, optionally executes:
 
 Higher-level smokes that chain multiple steps live under `scripts/`:
 
-- `scripts/smoke-keeper-match.ts` — market BUY + keeper match + direct close,
+- `scripts/smoke-keeper-match.ts` — market BUY + keeper match + close (keeper-matched on v4),
   with all `simulateTransaction` shapes (dry-run, view helpers, raw simulate,
   inter-step state checks).
 - `scripts/smoke-happy-path.ts` — deposit → mint WLP → place/cancel.
