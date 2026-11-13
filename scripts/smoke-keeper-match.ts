@@ -178,6 +178,16 @@ function findEvent(events: EventLite[], suffix: string): EventLite | undefined {
   return events.find((e) => (e.type ?? "").endsWith(suffix));
 }
 
+function findOrderEvent(
+  events: EventLite[],
+  suffix: string,
+  orderId: bigint,
+): EventLite | undefined {
+  return events.find(
+    (e) => (e.type ?? "").endsWith(suffix) && String(e.parsedJson?.order_id) === String(orderId),
+  );
+}
+
 /** Pretty-print a BCS-parsed struct (or array of structs) with BigInts as strings. */
 function dump(label: string, value: unknown): void {
   const text = JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2);
@@ -397,6 +407,14 @@ async function main(): Promise<void> {
 
   let closeEvents = await fetchTxEvents(closeRes.digest);
   if (client.config.packages.waterx_perp.version >= 4) {
+    // The queued close is one of possibly several tick-0 SELLs; remember its id so
+    // the match below is checked against THIS order, not whichever one it consumed.
+    const queuedRaw = findEvent(closeEvents, "::events::OrderCreated")?.parsedJson?.order_id as
+      | string
+      | undefined;
+    const closeOrderId = queuedRaw ? BigInt(queuedRaw) : undefined;
+    console.log(`  queued close orderId             ${closeOrderId ?? "(not found)"}`);
+
     console.log("\n=== Keeper match_orders (LIMIT_SELL book, from tick 0) ===");
     const closeMatchTx = new Transaction();
     await refreshWlpPoolOracles(closeMatchTx, client, [BTC, "USDCUSD"], {});
@@ -414,8 +432,25 @@ async function main(): Promise<void> {
       closeMatchTx,
       "matchOrders close (execute)",
     );
-    if (!closeMatchRes.success) return;
+    if (!closeMatchRes.success) process.exit(1);
     closeEvents = await fetchTxEvents(closeMatchRes.digest);
+
+    if (closeOrderId !== undefined) {
+      const cancelled = findOrderEvent(closeEvents, "::events::OrderCancelled", closeOrderId);
+      if (cancelled) {
+        console.error(
+          `close order ${closeOrderId} was cancelled, not filled (memo: ${String(cancelled.parsedJson?.memo)})`,
+        );
+        process.exit(1);
+      }
+      const otherFill = findEvent(closeEvents, "::events::OrderFilled");
+      if (!findOrderEvent(closeEvents, "::events::OrderFilled", closeOrderId) && otherFill) {
+        console.error(
+          `match_orders filled order ${String(otherFill.parsedJson?.order_id)}, not the queued close ${closeOrderId}`,
+        );
+        process.exit(1);
+      }
+    }
   }
   const closedEv = findEvent(closeEvents, "::events::PositionClosed");
   if (closedEv?.parsedJson) {
@@ -433,6 +468,8 @@ async function main(): Promise<void> {
     basePriceUsd: 0n,
   });
   dump(`getAccountPositions after close → (${positionsAfter.length})`, positionsAfter);
+  // Events can lag the indexer; the view is the authority on whether the close landed.
+  const stillOpen = positionsAfter.some((p) => BigInt(p.position_id) === positionId);
   const ordersFinal = await getAccountOrders(client, {
     ticker: BTC,
     accountObjectAddress: accountId,
@@ -441,6 +478,10 @@ async function main(): Promise<void> {
   const marketFinal = await getMarketData(client, { ticker: BTC });
   dump("getMarketData(BTC) final →", marketFinal);
 
+  if (stillOpen) {
+    console.error(`positionId=${positionId} is still open after the close flow`);
+    process.exit(1);
+  }
   console.log("\nDone.");
 }
 

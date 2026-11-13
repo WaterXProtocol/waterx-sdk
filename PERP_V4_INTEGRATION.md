@@ -1,7 +1,7 @@
 # Perp v4 queued execution
 
 ABI source: WaterXProtocol/waterx-contract#167 as merged to `main` at
-`96079473d4e5c6c8ae42c0a476fed8e0d48fc6bf` (legacy `waterx_perp`, not Broker).
+`96079479893bf899fd1b751909d59d82eccd6594` (legacy `waterx_perp`, not Broker).
 Bindings were generated from that checkout with Sui Move summaries and `@mysten/codegen`.
 The public signatures are the ones of the earlier `ed63a1d` head; the behaviour
 changes that landed after it are the delegate-permission rule, the linked-order
