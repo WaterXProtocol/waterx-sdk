@@ -18,10 +18,15 @@ from the version number alone.
 
 _MINOR: additive — the canonical price reader (`readCanonicalPrices`, `openCanonicalStream`,
 `CanonicalQuote`), an OPTIONAL peer dependency on `ws` (loaded by dynamic import only when a
-stream is opened with `headers`), and two `@deprecated` tags. No existing export, type or
-runtime behaviour changes._
+stream is opened with `headers`), and two `@deprecated` tags. V4-specific builder changes are described below; v3 behaviour is retained._
 
 ### Added
+
+- Regenerated legacy perp ABI from contract #167 as merged (`9607947`); exported
+  `ExecutionQueuedBcs` / `OrderRejectedByKeeperBcs` schemas. On v4 a market order
+  needs the permission of its operation (open / increase / decrease / close) instead
+  of `PERM_PLACE_ORDER` — widen delegate permissions before the cutover. See
+  [v4 integration notes](PERP_V4_INTEGRATION.md) ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
 
 - **The canonical price reader** — `@waterx/sdk/oracle/canonical`, re-exported from
   `@waterx/sdk/oracle` and (the two entry points + types) from the root. What goes on chain as
@@ -121,6 +126,10 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   the post-build export tests (ESM + CJS on all four entries) (#99).
 
 ### Changed
+
+- V4 order/position-intent builders skip the unnecessary Oracle prelude; collateral
+  operations and v3 builds retain their refresh. Explicit increase `orderId` is
+  rejected on v4, where the queue allocates it ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
 
 - **Repo harnesses: `WATERX_CONFIG_URL` is a CDN ROOT only.** `scripts/waterx-config-url.ts`
   now composes through `waterxConfigUrlFromRoot`, so a legacy `…/<network>.json` value THROWS
@@ -470,7 +479,7 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
   `account/credit-stack.ts` (exported from `@waterx/sdk/account` and the root) is
   the ONLY join point: `resolveCreditStack(config, ref?)` takes an alias
   (case-insensitive) or a Move type and returns the credit's `{ registry, vault,
-  assets, queue, executors, creditType, decimals, metadataCap? }`; it defaults to
+assets, queue, executors, creditType, decimals, metadataCap? }`; it defaults to
   the credit `objects.credit.credit_type` names (USD) and **throws on an unknown
   credit — there is no fallback to USD**, so a non-USD credit can never be paired
   with the USD registry. `creditStacks(config)` lists every stack (throws on a
@@ -494,7 +503,7 @@ point at a v2 endpoint` before the schema parser reports it as a pile of field
     `buildBatchClaimTx` now sweep into the market's **settlement coin**, so an
     order on a SUI-settled market folds parked SUI into the SUI credit instead of
     USD. `getCustodyVaultData(client, credit?)` / `getCustodyAssetData(client, T,
-    credit?)` read a chosen credit's vault (the asset read defaults to the credit
+credit?)` read a chosen credit's vault (the asset read defaults to the credit
     whose vault registers `T`); `getNativeAsset` searches every credit's vault.
   - Requires a config document that carries the maps (`staging-v2` /
     `main-v2` after waterx-config #77) — see the `@waterx/config` note under

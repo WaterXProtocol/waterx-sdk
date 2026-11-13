@@ -27,6 +27,9 @@ import * as keyed_big_vector from './keyed_big_vector.ts';
 import * as order_book from './order_book.ts';
 import * as vec_set from './deps/sui/vec_set.ts';
 const $moduleName = '@waterx/perp::trading';
+export const PendingKeeperOrderKey = new MoveStruct({ name: `${$moduleName}::PendingKeeperOrderKey`, fields: {
+        position_id: bcs.u64()
+    } });
 export const Market = new MoveStruct({ name: `${$moduleName}::Market<phantom LP_TOKEN>`, fields: {
         id: bcs.Address,
         /** Per-market configuration and state. */
@@ -364,6 +367,85 @@ export function updateMarketConfig(options: UpdateMarketConfigOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface SetMarketBasicFundingRateByKeeperArguments {
+    globalConfig: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    ticker: RawTransactionArgument<string>;
+    pool: RawTransactionArgument<string>;
+    oracle: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
+    basicFundingRate: RawTransactionArgument<number | bigint>;
+}
+export interface SetMarketBasicFundingRateByKeeperOptions {
+    package?: string;
+    arguments: SetMarketBasicFundingRateByKeeperArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        ticker: RawTransactionArgument<string>,
+        pool: RawTransactionArgument<string>,
+        oracle: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
+        basicFundingRate: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Keeper: **changes the rate** — writes a single market's funding coefficient `a`
+ * (`basic_funding_rate`), settling first under the previous value.
+ *
+ * **Settled intervals are never re-priced; the current partial one is.**
+ * `update_funding_rate` only accrues whole intervals and snaps
+ * `last_funding_timestamp` back to an interval boundary, so calling this
+ * mid-interval settles nothing for the elapsed remainder — that remainder is then
+ * billed at the _new_ `a` when the next settlement lands. The error is bounded by
+ * one interval times the change in `a`.
+ *
+ * Operationally this is why the keeper should fire **just after the top of an
+ * interval**. At `HH:00:30` with an hourly interval, the call settles
+ * `HH-1:00 → HH:00` under the old `a` and leaves a 30-second remainder — 0.8% of
+ * one interval. Firing at `HH:59` instead leaves nearly a full hour to be
+ * re-priced. Same shape as the AdminCap path (`update_market_funding_config`),
+ * where it never mattered because admin changes are rare; a keeper on a schedule
+ * makes the timing worth getting right.
+ *
+ * Not to be confused with `update_funding_rate` below, which is also
+ * keeper-callable but only **triggers an accrual** at whatever `a` is currently
+ * configured — it never writes the parameter. Before this function existed, `a`
+ * was reachable only through `update_market_funding_config` (AdminCap), so keepers
+ * controlled _when_ funding was charged but not _at what rate_.
+ *
+ * `basic_funding_rate` is the raw 1e9-scaled `Float`. The contract — not the
+ * keeper — owns the permitted range; anything outside
+ * `market_config::basic_funding_rate_bounds()` aborts, which leaves the previous
+ * value in force (the whole transaction reverts, so a rejected or failed keeper
+ * update is a no-op by construction).
+ *
+ * Deliberately does not expose `funding_interval_ms`: the interval is the billing
+ * clock, not a rate knob, and stays on the AdminCap path.
+ */
+export function setMarketBasicFundingRateByKeeper(options: SetMarketBasicFundingRateByKeeperOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x1::string::String',
+        null,
+        null,
+        null,
+        'u128',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "marketRegistry", "ticker", "pool", "oracle", "senderRequest", "basicFundingRate"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'set_market_basic_funding_rate_by_keeper',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface UpdateMarketFundingConfigArguments {
     globalConfig: RawTransactionArgument<string>;
     cap: RawTransactionArgument<string>;
@@ -641,16 +723,15 @@ export interface AssertProtocolPermOptions {
         sender: RawTransactionArgument<string>,
         permission: RawTransactionArgument<number>
     ];
-    typeArguments: [
-        string
-    ];
 }
 /**
  * Permission check on the wxa account for the trading entrypoints. Reads
- * `effective_protocol_permissions<TradingRequest<C_TOKEN>>` so per-collateral
- * granularity is preserved (`PERM_OPEN_POSITION` etc. are bits on that bitmap).
- * Must be called _before_ any `wxa_account::take` so a failed auth doesn't leave
- * the user drained.
+ * `effective_protocol_permissions<WaterXPerp>` — the same protocol scope as `take`
+ * / `put`, the `ProtocolDataKey<WaterXPerp>` data slot, and the WLP path
+ * (`lp_pool`) — so a single delegate slot covers trading and WLP together
+ * (`PERM_OPEN_POSITION` etc. are bits on that shared bitmap). Must be called
+ * _before_ any `wxa_account::take` so a failed auth doesn't leave the user
+ * drained.
  */
 export function assertProtocolPerm(options: AssertProtocolPermOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -667,7 +748,6 @@ export function assertProtocolPerm(options: AssertProtocolPermOptions) {
         module: 'trading',
         function: 'assert_protocol_perm',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
     });
 }
 export interface ClosePositionRequestArguments {
@@ -753,7 +833,10 @@ export interface IncreasePositionRequestOptions {
         string
     ];
 }
-/** Creates a request to increase an existing position at market. */
+/**
+ * Creates a request to increase an existing position at market. `order_id` must be
+ * None; the order book allocates the queued Order ID.
+ */
 export function increasePositionRequest(options: IncreasePositionRequestOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -895,6 +978,45 @@ export function placeOrderRequest(options: PlaceOrderRequestOptions) {
         package: packageAddress,
         module: 'trading',
         function: 'place_order_request',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface MarketOrderPermissionArguments {
+    market: RawTransactionArgument<string>;
+    accountObjectAddress: RawTransactionArgument<string>;
+    main: TransactionArgument;
+}
+export interface MarketOrderPermissionOptions {
+    package?: string;
+    arguments: MarketOrderPermissionArguments | [
+        market: RawTransactionArgument<string>,
+        accountObjectAddress: RawTransactionArgument<string>,
+        main: TransactionArgument
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * A market order changes a position as soon as a Keeper matches it, so it needs
+ * the permission of the operation it performs instead of `perm_place_order`: open
+ * (no linked position), increase (same side), close (opposite side, full size) or
+ * decrease (opposite side, partial size).
+ */
+export function marketOrderPermission(options: MarketOrderPermissionOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'address',
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["market", "accountObjectAddress", "main"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'market_order_permission',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -1468,9 +1590,9 @@ export interface ExecuteOptions {
 }
 /**
  * Executes a trading request. All `*_request` creators return raw
- * `TradingRequest<C>`; pass it straight to `execute` after attaching any witness
- * rules (e.g. `pyth_rule::feed(&mut req, ...)`). Used by both user happy paths and
- * keeper paths.
+ * `TradingRequest<C>`; pass it straight to `execute` after attaching required
+ * witnesses for immediate collateral actions. Order management needs no feeds.
+ * Used by both user happy paths and keeper paths.
  */
 export function execute(options: ExecuteOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -1556,64 +1678,6 @@ export function executeOpenPosition(options: ExecuteOpenPositionOptions) {
         package: packageAddress,
         module: 'trading',
         function: 'execute_open_position',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
-export interface ExecuteIncreasePositionArguments {
-    globalConfig: RawTransactionArgument<string>;
-    market: RawTransactionArgument<string>;
-    pool: RawTransactionArgument<string>;
-    oracle: RawTransactionArgument<string>;
-    marketId: RawTransactionArgument<string>;
-    accountObjectAddress: RawTransactionArgument<string>;
-    orderId: RawTransactionArgument<number | bigint>;
-    positionId: RawTransactionArgument<number | bigint>;
-    collateral: TransactionArgument;
-    size: TransactionArgument;
-    acceptablePrice: RawTransactionArgument<number | bigint>;
-}
-export interface ExecuteIncreasePositionOptions {
-    package?: string;
-    arguments: ExecuteIncreasePositionArguments | [
-        globalConfig: RawTransactionArgument<string>,
-        market: RawTransactionArgument<string>,
-        pool: RawTransactionArgument<string>,
-        oracle: RawTransactionArgument<string>,
-        marketId: RawTransactionArgument<string>,
-        accountObjectAddress: RawTransactionArgument<string>,
-        orderId: RawTransactionArgument<number | bigint>,
-        positionId: RawTransactionArgument<number | bigint>,
-        collateral: TransactionArgument,
-        size: TransactionArgument,
-        acceptablePrice: RawTransactionArgument<number | bigint>
-    ];
-    typeArguments: [
-        string,
-        string
-    ];
-}
-export function executeIncreasePosition(options: ExecuteIncreasePositionOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null,
-        null,
-        null,
-        '0x2::object::ID',
-        'address',
-        'u64',
-        'u64',
-        null,
-        null,
-        'u64',
-        '0x2::clock::Clock'
-    ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "market", "pool", "oracle", "marketId", "accountObjectAddress", "orderId", "positionId", "collateral", "size", "acceptablePrice"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'trading',
-        function: 'execute_increase_position',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -1742,7 +1806,6 @@ export interface ExecutePlaceOrderArguments {
     wxaRegistry: RawTransactionArgument<string>;
     market: RawTransactionArgument<string>;
     pool: RawTransactionArgument<string>;
-    oracle: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     accountId: RawTransactionArgument<string>;
     accountObjectAddress: RawTransactionArgument<string>;
@@ -1763,7 +1826,6 @@ export interface ExecutePlaceOrderOptions {
         wxaRegistry: RawTransactionArgument<string>,
         market: RawTransactionArgument<string>,
         pool: RawTransactionArgument<string>,
-        oracle: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         accountId: RawTransactionArgument<string>,
         accountObjectAddress: RawTransactionArgument<string>,
@@ -1789,7 +1851,6 @@ export function executePlaceOrder(options: ExecutePlaceOrderOptions) {
         null,
         null,
         null,
-        null,
         '0x2::object::ID',
         '0x2::object::ID',
         'address',
@@ -1804,7 +1865,7 @@ export function executePlaceOrder(options: ExecutePlaceOrderOptions) {
         'vector<null>',
         '0x2::clock::Clock'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "wxaRegistry", "market", "pool", "oracle", "marketId", "accountId", "accountObjectAddress", "collateral", "isLong", "isStopOrder", "reduceOnly", "size", "triggerPrice", "acceptablePrice", "linkedPositionId", "preOrders"];
+    const parameterNames = ["globalConfig", "wxaRegistry", "market", "pool", "marketId", "accountId", "accountObjectAddress", "collateral", "isLong", "isStopOrder", "reduceOnly", "size", "triggerPrice", "acceptablePrice", "linkedPositionId", "preOrders"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',
@@ -1823,6 +1884,7 @@ export interface ExecuteCancelOrderArguments {
     orderId: RawTransactionArgument<number | bigint>;
     triggerPriceKey: RawTransactionArgument<number | bigint>;
     orderTypeTag: RawTransactionArgument<number>;
+    cancelMemo: RawTransactionArgument<string>;
 }
 export interface ExecuteCancelOrderOptions {
     package?: string;
@@ -1835,7 +1897,8 @@ export interface ExecuteCancelOrderOptions {
         accountObjId: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
         triggerPriceKey: RawTransactionArgument<number | bigint>,
-        orderTypeTag: RawTransactionArgument<number>
+        orderTypeTag: RawTransactionArgument<number>,
+        cancelMemo: RawTransactionArgument<string>
     ];
     typeArguments: [
         string,
@@ -1853,9 +1916,10 @@ export function executeCancelOrder(options: ExecuteCancelOrderOptions) {
         'address',
         'u64',
         'u128',
-        'u8'
+        'u8',
+        '0x1::string::String'
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "wxaRegistry", "market", "marketId", "accountId", "accountObjId", "orderId", "triggerPriceKey", "orderTypeTag"];
+    const parameterNames = ["globalConfig", "wxaRegistry", "market", "marketId", "accountId", "accountObjId", "orderId", "triggerPriceKey", "orderTypeTag", "cancelMemo"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',
@@ -1865,10 +1929,7 @@ export function executeCancelOrder(options: ExecuteCancelOrderOptions) {
     });
 }
 export interface ExecuteUpdateOrderArguments {
-    globalConfig: RawTransactionArgument<string>;
     market: RawTransactionArgument<string>;
-    pool: RawTransactionArgument<string>;
-    oracle: RawTransactionArgument<string>;
     marketId: RawTransactionArgument<string>;
     accountObjectAddress: RawTransactionArgument<string>;
     orderId: RawTransactionArgument<number | bigint>;
@@ -1880,10 +1941,7 @@ export interface ExecuteUpdateOrderArguments {
 export interface ExecuteUpdateOrderOptions {
     package?: string;
     arguments: ExecuteUpdateOrderArguments | [
-        globalConfig: RawTransactionArgument<string>,
         market: RawTransactionArgument<string>,
-        pool: RawTransactionArgument<string>,
-        oracle: RawTransactionArgument<string>,
         marketId: RawTransactionArgument<string>,
         accountObjectAddress: RawTransactionArgument<string>,
         orderId: RawTransactionArgument<number | bigint>,
@@ -1901,19 +1959,15 @@ export function executeUpdateOrder(options: ExecuteUpdateOrderOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
         null,
-        null,
-        null,
-        null,
         '0x2::object::ID',
         'address',
         'u64',
         'u128',
         'u8',
         null,
-        null,
-        '0x2::clock::Clock'
+        null
     ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "market", "pool", "oracle", "marketId", "accountObjectAddress", "orderId", "triggerPriceKey", "orderTypeTag", "newSize", "newTriggerPrice"];
+    const parameterNames = ["market", "marketId", "accountObjectAddress", "orderId", "triggerPriceKey", "orderTypeTag", "newSize", "newTriggerPrice"];
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'trading',
@@ -2183,6 +2237,151 @@ export function executeLiquidate(options: ExecuteLiquidateOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface RejectOrderByKeeperArguments {
+    globalConfig: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    ticker: RawTransactionArgument<string>;
+    keeperRequest: TransactionArgument;
+    orderId: RawTransactionArgument<number | bigint>;
+    triggerPriceKey: RawTransactionArgument<number | bigint>;
+    orderTypeTag: RawTransactionArgument<number>;
+    reason: RawTransactionArgument<string>;
+}
+export interface RejectOrderByKeeperOptions {
+    package?: string;
+    arguments: RejectOrderByKeeperArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        ticker: RawTransactionArgument<string>,
+        keeperRequest: TransactionArgument,
+        orderId: RawTransactionArgument<number | bigint>,
+        triggerPriceKey: RawTransactionArgument<number | bigint>,
+        orderTypeTag: RawTransactionArgument<number>,
+        reason: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * Reject any pending book Order, refunding collateral to its recorded WXA.
+ * Available during a protocol pause so Keeper can unwind pending custody.
+ */
+export function rejectOrderByKeeper(options: RejectOrderByKeeperOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        '0x1::string::String',
+        null,
+        'u64',
+        'u128',
+        'u8',
+        '0x1::string::String'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "wxaRegistry", "marketRegistry", "ticker", "keeperRequest", "orderId", "triggerPriceKey", "orderTypeTag", "reason"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'reject_order_by_keeper',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PendingKeeperOrderArguments {
+    market: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface PendingKeeperOrderOptions {
+    package?: string;
+    arguments: PendingKeeperOrderArguments | [
+        market: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function pendingKeeperOrder(options: PendingKeeperOrderOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["market", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'pending_keeper_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface AssertNoPendingKeeperOrderArguments {
+    market: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface AssertNoPendingKeeperOrderOptions {
+    package?: string;
+    arguments: AssertNoPendingKeeperOrderArguments | [
+        market: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function assertNoPendingKeeperOrder(options: AssertNoPendingKeeperOrderOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["market", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'assert_no_pending_keeper_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ReleaseKeeperReservationArguments {
+    market: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint>;
+    linkedPositionId: RawTransactionArgument<number | bigint | null>;
+}
+export interface ReleaseKeeperReservationOptions {
+    package?: string;
+    arguments: ReleaseKeeperReservationArguments | [
+        market: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint>,
+        linkedPositionId: RawTransactionArgument<number | bigint | null>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function releaseKeeperReservation(options: ReleaseKeeperReservationOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u64',
+        '0x1::option::Option<u64>'
+    ] satisfies (string | null)[];
+    const parameterNames = ["market", "orderId", "linkedPositionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'release_keeper_reservation',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface MatchOrdersArguments {
     globalConfig: RawTransactionArgument<string>;
     wxaRegistry: RawTransactionArgument<string>;
@@ -2238,6 +2437,59 @@ export function matchOrders(options: MatchOrdersOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface CancelUnfillableMarketIncreaseArguments {
+    globalConfig: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    market: RawTransactionArgument<string>;
+    order: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+    keeper: RawTransactionArgument<string>;
+}
+export interface CancelUnfillableMarketIncreaseOptions {
+    package?: string;
+    arguments: CancelUnfillableMarketIncreaseArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        market: RawTransactionArgument<string>,
+        order: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>,
+        keeper: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string,
+        string
+    ];
+}
+/**
+ * Keeper: updates funding rate for a market. Keeper: **triggers an accrual** —
+ * settles funding up to now using the market's currently configured `a`. It does
+ * not take or write a rate; to change `a` use
+ * `set_market_basic_funding_rate_by_keeper` (keeper) or
+ * `update_market_funding_config` (admin). Cancels a linked market increase that
+ * cannot execute and refunds its collateral. A linked market order holds the
+ * Position's Keeper reservation; pushing it back into the book would keep the
+ * Position's TP/SL from filling and block collateral withdrawal until someone
+ * cancelled it. The Position must be back in `market.positions`.
+ */
+export function cancelUnfillableMarketIncrease(options: CancelUnfillableMarketIncreaseOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        'u64',
+        'address'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "wxaRegistry", "market", "order", "positionId", "keeper"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'trading',
+        function: 'cancel_unfillable_market_increase',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface UpdateFundingRateArguments {
     globalConfig: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
@@ -2260,7 +2512,6 @@ export interface UpdateFundingRateOptions {
         string
     ];
 }
-/** Keeper: updates funding rate for a market. */
 export function updateFundingRate(options: UpdateFundingRateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [
@@ -3483,62 +3734,6 @@ export function canPositionGrow(options: CanPositionGrowOptions) {
         package: packageAddress,
         module: 'trading',
         function: 'can_position_grow',
-        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
-        typeArguments: options.typeArguments
-    });
-}
-export interface ValidatePositionGrowthArguments {
-    globalConfig: RawTransactionArgument<string>;
-    marketConfig: RawTransactionArgument<string>;
-    pool: RawTransactionArgument<string>;
-    isLong: RawTransactionArgument<boolean>;
-    currentSize: TransactionArgument;
-    addedSize: TransactionArgument;
-    effectiveCollateralAmount: RawTransactionArgument<number | bigint>;
-    collateralDecimal: RawTransactionArgument<number>;
-    collateralToken: TransactionArgument;
-    executionPrice: TransactionArgument;
-    collateralPrice: TransactionArgument;
-}
-export interface ValidatePositionGrowthOptions {
-    package?: string;
-    arguments: ValidatePositionGrowthArguments | [
-        globalConfig: RawTransactionArgument<string>,
-        marketConfig: RawTransactionArgument<string>,
-        pool: RawTransactionArgument<string>,
-        isLong: RawTransactionArgument<boolean>,
-        currentSize: TransactionArgument,
-        addedSize: TransactionArgument,
-        effectiveCollateralAmount: RawTransactionArgument<number | bigint>,
-        collateralDecimal: RawTransactionArgument<number>,
-        collateralToken: TransactionArgument,
-        executionPrice: TransactionArgument,
-        collateralPrice: TransactionArgument
-    ];
-    typeArguments: [
-        string
-    ];
-}
-export function validatePositionGrowth(options: ValidatePositionGrowthOptions) {
-    const packageAddress = options.package ?? '@waterx/perp';
-    const argumentsTypes = [
-        null,
-        null,
-        null,
-        'bool',
-        null,
-        null,
-        'u64',
-        'u8',
-        null,
-        null,
-        null
-    ] satisfies (string | null)[];
-    const parameterNames = ["globalConfig", "marketConfig", "pool", "isLong", "currentSize", "addedSize", "effectiveCollateralAmount", "collateralDecimal", "collateralToken", "executionPrice", "collateralPrice"];
-    return (tx: Transaction) => tx.moveCall({
-        package: packageAddress,
-        module: 'trading',
-        function: 'validate_position_growth',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

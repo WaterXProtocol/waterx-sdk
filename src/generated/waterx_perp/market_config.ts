@@ -205,6 +205,84 @@ export function updateMarketConfig(options: UpdateMarketConfigOptions) {
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
     });
 }
+export interface SetBasicFundingRateArguments {
+    marketConfig: RawTransactionArgument<string>;
+    basicFundingRate: RawTransactionArgument<number | bigint>;
+}
+export interface SetBasicFundingRateOptions {
+    package?: string;
+    arguments: SetBasicFundingRateArguments | [
+        marketConfig: RawTransactionArgument<string>,
+        basicFundingRate: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * Writes `a` with no range validation. AdminCap paths only. Admin deliberately
+ * keeps the full range — including `0`, which switches funding off for the market
+ * — as an emergency override, matching the convention that AdminCap setters stay
+ * unconstrained so admin retains control across upgrades.
+ */
+export function setBasicFundingRate(options: SetBasicFundingRateOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketConfig", "basicFundingRate"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'set_basic_funding_rate',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface SetBasicFundingRateCheckedArguments {
+    marketConfig: RawTransactionArgument<string>;
+    basicFundingRate: RawTransactionArgument<number | bigint>;
+}
+export interface SetBasicFundingRateCheckedOptions {
+    package?: string;
+    arguments: SetBasicFundingRateCheckedArguments | [
+        marketConfig: RawTransactionArgument<string>,
+        basicFundingRate: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * Writes `a` after asserting the contract-owned bounds. The keeper path uses this:
+ * the keeper's algorithm drives the value, so the permitted envelope belongs to
+ * the contract rather than to the hot key submitting the update.
+ */
+export function setBasicFundingRateChecked(options: SetBasicFundingRateCheckedOptions) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    const argumentsTypes = [
+        null,
+        'u128'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketConfig", "basicFundingRate"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'set_basic_funding_rate_checked',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface BasicFundingRateBoundsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+/**
+ * Inclusive `a` bounds as raw 1e9-scaled values, for off-chain callers (keeper) to
+ * validate against before submitting.
+ */
+export function basicFundingRateBounds(options: BasicFundingRateBoundsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'market_config',
+        function: 'basic_funding_rate_bounds',
+    });
+}
 export interface UpdateFundingConfigArguments {
     marketConfig: RawTransactionArgument<string>;
     Cap: RawTransactionArgument<string>;
@@ -1240,7 +1318,20 @@ export interface CalculateFundingRateOptions {
 /**
  * Calculates the funding rate based on LP exposure relative to TVL. OI values
  * should be in USD (caller converts via base_price). Returns (sign, rate) where
- * sign=true means longs pay.
+ * sign=true means longs pay. `rate = a × |long_oi_usd − short_oi_usd| ÷ tvl_usd`,
+ * i.e. the coefficient scaled by the market's **net** exposure as a share of WLP
+ * TVL (WL-2245 confirmed net, not gross). `sign = true` means longs pay; the
+ * counterparty on both sides is the WLP pool, not the opposite side of the book.
+ *
+ * **Known precision floor.** `Float` carries 1e9 precision, so the product
+ * underflows to zero once `a × utilisation < 1e-9` — with the WL-2245 default
+ * `a = 0.0000125/N` that is a utilisation below roughly `0.232%` (N = 29). Markets
+ * under that threshold accrue no funding at all. This is accepted rather than
+ * worked around: the amounts involved are negligible (a market at 0.2% utilisation
+ * of a ~$394k TVL owes fractions of a cent per year), and the free-carry it
+ * implies is self-limiting — profiting from it needs size, and size pushes
+ * utilisation back above the threshold. Revisit if `a` is ever tuned far below the
+ * default, which would raise the floor.
  */
 export function calculateFundingRate(options: CalculateFundingRateOptions) {
     const packageAddress = options.package ?? '@waterx/perp';

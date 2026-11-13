@@ -102,9 +102,12 @@ export const Order = new MoveStruct({ name: `${$moduleName}::Order`, fields: {
          * as zero.
          */
         acceptable_price: bcs.u64(),
-        /** Leverage in bps. */
+        /**
+         * Legacy submission metadata; zero means not calculated. Keeper computes actual
+         * leverage.
+         */
         leverage_bps: bcs.u64(),
-        /** Oracle price when order was placed. */
+        /** Legacy snapshot; new oracle-free submissions store zero (no observed price). */
         oracle_price_at_creation: float.Float,
         /** Creation timestamp. */
         create_timestamp: bcs.u64()
@@ -807,7 +810,13 @@ export interface AddLinkedOrderOptions {
         priceKey: RawTransactionArgument<number | bigint>
     ];
 }
-/** Adds a linked order to a position. */
+/**
+ * Adds a linked order to a position. `MAX_LINKED_ORDERS` bounds the resting limit
+ * / stop orders on a position. A market order (price key 0, the tick-0 sentinel)
+ * awaits Keeper execution and is not counted, so a full set of TP/SL orders never
+ * blocks a close; the pending-Keeper reservation allows one such order per
+ * position.
+ */
 export function addLinkedOrder(options: AddLinkedOrderOptions) {
     const packageAddress = options.package ?? '@waterx/perp';
     const argumentsTypes = [

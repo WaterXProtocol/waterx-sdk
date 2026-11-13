@@ -190,6 +190,19 @@ export function orderCancelledByUser(options: OrderCancelledByUserOptions = {}) 
         function: 'order_cancelled_by_user',
     });
 }
+export interface OrderCancelledByKeeperOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function orderCancelledByKeeper(options: OrderCancelledByKeeperOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'memo',
+        function: 'order_cancelled_by_keeper',
+    });
+}
 export interface OrderCancelledMissingLinkedPositionOptions {
     package?: string;
     arguments?: [
@@ -235,15 +248,34 @@ export function orderCancelledInvalidMatch(options: OrderCancelledInvalidMatchOp
         function: 'order_cancelled_invalid_match',
     });
 }
+export interface OrderCancelledCannotIncreaseOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+/**
+ * `match_orders` linked market increase that cannot execute: the position cannot
+ * grow (collateral, leverage, open interest or reserve) or the market is paused. A
+ * market order holds the Position's Keeper reservation, so it is cancelled and
+ * refunded rather than left to block the Position's other orders.
+ */
+export function orderCancelledCannotIncrease(options: OrderCancelledCannotIncreaseOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'memo',
+        function: 'order_cancelled_cannot_increase',
+    });
+}
 export interface OrderCancelledSlippageExceededOptions {
     package?: string;
     arguments?: [
     ];
 }
 /**
- * `place_order` market-order shortcut: oracle price is on the wrong side of the
- * caller-supplied `acceptable_price`. Cancel instead of aborting so the caller's
- * PTB still settles (collateral returns to the wxa account).
+ * `match_orders` market-order slippage check: the live oracle has crossed the
+ * Order's `acceptable_price` since submission. Cancel and refund instead of
+ * filling outside the user's limit.
  */
 export function orderCancelledSlippageExceeded(options: OrderCancelledSlippageExceededOptions = {}) {
     const packageAddress = options.package ?? '@waterx/perp';
@@ -489,6 +521,32 @@ export function borrowRateUpdated(options: BorrowRateUpdatedOptions = {}) {
         package: packageAddress,
         module: 'memo',
         function: 'borrow_rate_updated',
+    });
+}
+export interface FundingSkippedZeroTvlOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function fundingSkippedZeroTvl(options: FundingSkippedZeroTvlOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'memo',
+        function: 'funding_skipped_zero_tvl',
+    });
+}
+export interface FundingRateParamUpdatedOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+export function fundingRateParamUpdated(options: FundingRateParamUpdatedOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/perp';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'memo',
+        function: 'funding_rate_param_updated',
     });
 }
 export interface MarketConfigUpdatedOptions {

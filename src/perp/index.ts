@@ -241,6 +241,12 @@ export { Position as PositionBcs, Order as OrderBcs } from "../generated/waterx_
 export { Market as MarketBcs } from "../generated/waterx_perp/trading.ts";
 export { MarketConfig as MarketConfigBcs } from "../generated/waterx_perp/market_config.ts";
 
+// v4 lifecycle schemas: submission is not a fill; rejection refunds via the contract.
+export {
+  ExecutionQueued as ExecutionQueuedBcs,
+  OrderRejectedByKeeper as OrderRejectedByKeeperBcs,
+} from "../generated/waterx_perp/events.ts";
+
 // Re-export entire generated namespaces for power users.
 export * as tradingCalls from "../generated/waterx_perp/trading.ts";
 export * as lpPoolCalls from "../generated/waterx_perp/lp_pool.ts";

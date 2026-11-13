@@ -54,6 +54,7 @@ export async function buildClosePositionTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => closePositionRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -75,6 +76,7 @@ export async function buildIncreasePositionTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => increasePositionRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -96,6 +98,7 @@ export async function buildDecreasePositionTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => decreasePositionRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -166,6 +169,7 @@ export async function buildPlaceOrderTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => placeOrderRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -186,6 +190,7 @@ export async function buildCancelOrderTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => cancelOrderRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -206,6 +211,7 @@ export async function buildUpdateOrderTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => updateOrderRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -226,6 +232,7 @@ export async function buildCancelPreOrderTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => cancelPreOrderRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }
@@ -246,6 +253,7 @@ export async function buildAddPreOrderTx(
     params.collateralTicker ?? "USDCUSD",
     params,
     () => addPreOrderRequest(client, tx, params),
+    client.config.packages.waterx_perp.version < 4,
   );
   return tx;
 }

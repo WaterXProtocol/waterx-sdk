@@ -266,10 +266,11 @@ export async function wrapRequestAndExecute(
   collateralTicker: string,
   opts: CommonBuildOpts | undefined,
   buildRequest: () => TransactionArgument,
+  requiresOracle = true,
 ): Promise<void> {
   await maybeConsolidate(client, tx, req.accountId, opts);
 
-  if (!opts?.skipOraclePriceRefresh) {
+  if (requiresOracle && !opts?.skipOraclePriceRefresh) {
     // The action-critical pair for a trade — the market being traded and the
     // collateral it is margined in — is passed as the extras, which
     // `refreshWlpPoolOracles` fails closed on before it fetches anything.
