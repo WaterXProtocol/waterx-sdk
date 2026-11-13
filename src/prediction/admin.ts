@@ -20,18 +20,27 @@ export interface AdminBaseParams {
 }
 
 export interface CreateMarketRegistryParams extends AdminBaseParams {
+  globalConfig?: string;
   adminCap: ObjectArgument;
 }
 
+/**
+ * Calls `create_market_registry_in_block`: the contract retired the bare
+ * `create_market_registry` (it aborts `EDeprecated`), and the replacement draws the
+ * registry's private id block from `GlobalConfig`.
+ */
 export function createMarketRegistry(
   client: PredictClient,
   tx: Transaction,
   params: CreateMarketRegistryParams,
 ): Transaction {
   tx.moveCall({
-    target: `${resolvePackageId(client, params.packageId)}::waterx_prediction::create_market_registry`,
+    target: `${resolvePackageId(client, params.packageId)}::waterx_prediction::create_market_registry_in_block`,
     typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
-    arguments: [objectArg(tx, params.adminCap)],
+    arguments: [
+      tx.object(resolveGlobalConfig(client, params.globalConfig)),
+      objectArg(tx, params.adminCap),
+    ],
   });
   return tx;
 }

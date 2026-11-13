@@ -449,6 +449,20 @@ const STATE_DEPENDENT_ABORT_LOCATIONS: readonly string[] = [
 ];
 
 /**
+ * The same state-dependent aborts as {@link STATE_DEPENDENT_ABORT_CODES}, under the
+ * constant names the contract's clever errors report (`MoveAbort … 'EInvalidSize': …`).
+ * A clever abort carries neither the bare numeric code nor the old `err_*` function in
+ * its location, so these are matched against the failure message.
+ */
+const STATE_DEPENDENT_ABORT_NAMES: readonly string[] = [
+  "EExceedMaxLeverage",
+  "EInvalidSize",
+  "EInsufficientCollateral",
+  "EPositionFlipNotSupported",
+  "EInvalidCollateralType",
+];
+
+/**
  * Inspect a simulate result without triggering dump / stderr side effects.
  * Returns a skip reason if the result is a FailedTransaction whose MoveAbort
  * matches a known shared-chain state-dependent pattern; otherwise null.
@@ -471,6 +485,11 @@ export function stateDependentSimulateSkipReason(result: unknown): string | null
   const locText = serializeSimulateResultForDebug(meta.moveAbortLocation ?? null);
   if (STATE_DEPENDENT_ABORT_LOCATIONS.some((l) => locText.includes(l))) {
     return `state-dependent location ${locText}: ${meta.message.split("\n")[0] ?? meta.message}`;
+  }
+
+  const name = STATE_DEPENDENT_ABORT_NAMES.find((n) => meta.message.includes(`'${n}'`));
+  if (name) {
+    return `state-dependent abort ${name}: ${meta.message.split("\n")[0] ?? meta.message}`;
   }
 
   return null;
