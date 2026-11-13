@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { waterxConfigUrlFromEnv } from "../../../scripts/waterx-config-url.ts";
 import { waterxConfigUrlFromRoot } from "../../../src/config.ts";
 
-const ROOT = "https://staging-v2.waterx-config.pages.dev";
+const ROOT = "https://staging.waterx-config.pages.dev";
 
 describe("waterxConfigUrlFromRoot (public)", () => {
   it("composes ${root}/${network}.json for either network spelling", () => {
@@ -41,7 +41,7 @@ describe("waterxConfigUrlFromRoot (public)", () => {
 
   it("rejects non-https schemes", () => {
     expect(() =>
-      waterxConfigUrlFromRoot("http://staging-v2.waterx-config.pages.dev", "TESTNET"),
+      waterxConfigUrlFromRoot("http://staging.waterx-config.pages.dev", "TESTNET"),
     ).toThrow(/must use https/);
     expect(() => waterxConfigUrlFromRoot("file:///tmp/config", "TESTNET")).toThrow(
       /must use https/,
@@ -62,7 +62,7 @@ describe("waterxConfigUrlFromRoot (public)", () => {
     expect(() => waterxConfigUrlFromRoot(`${ROOT}?ref=x`, "TESTNET")).toThrow(/query string/);
     expect(() => waterxConfigUrlFromRoot(`${ROOT}#x`, "TESTNET")).toThrow(/query string/);
     expect(() => waterxConfigUrlFromRoot("  ", "TESTNET")).toThrow(/empty config root/);
-    expect(() => waterxConfigUrlFromRoot("staging-v2.waterx-config.pages.dev", "TESTNET")).toThrow(
+    expect(() => waterxConfigUrlFromRoot("staging.waterx-config.pages.dev", "TESTNET")).toThrow(
       /is not a URL/,
     );
     expect(() => waterxConfigUrlFromRoot(ROOT, "DEVNET" as never)).toThrow(/unknown network/);

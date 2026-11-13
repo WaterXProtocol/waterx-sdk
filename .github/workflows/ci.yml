@@ -207,7 +207,7 @@ jobs:
           WATERX_E2E_NETWORK: testnet
           # `WATERX_CONFIG_URL` is a CDN ROOT; the harness appends `/<network>.json`.
           # Override via the repo variable (a full document URL is rejected).
-          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev' }}
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging.waterx-config.pages.dev' }}
         run: pnpm exec vitest run --project e2e --reporter=dot --reporter=junit --outputFile=test-results-e2e.xml
       - name: Test report (e2e)
         uses: dorny/test-reporter@4a2e97665d5fa767581ef38eca97b9694bd4eef4 # v2
@@ -243,7 +243,7 @@ jobs:
           NODE_NO_WARNINGS: "1"
           # `WATERX_CONFIG_URL` is a CDN ROOT; the harness appends `/<network>.json`.
           # Override via the repo variable (a full document URL is rejected).
-          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev' }}
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging.waterx-config.pages.dev' }}
         run: pnpm exec vitest run --project predict-e2e --reporter=dot --reporter=junit --outputFile=test-results-predict-e2e.xml
       - name: Test report (predict-e2e)
         uses: dorny/test-reporter@4a2e97665d5fa767581ef38eca97b9694bd4eef4 # v2
@@ -288,7 +288,7 @@ jobs:
           # `loadConfig` (and smoke-remote step 0) has no built-in default; supply the
           # `WATERX_CONFIG_URL` is a CDN ROOT serving schema_version 2 documents (override
           # via the repo variable; a full document URL is rejected).
-          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging-v2.waterx-config.pages.dev' }}
+          WATERX_CONFIG_URL: ${{ vars.WATERX_CONFIG_URL || 'https://staging.waterx-config.pages.dev' }}
         run: pnpm smoke:chain:dry
 
   trivy:

@@ -46,19 +46,20 @@ const client = await WaterXClient.create({
 ```
 
 **`waterxConfigUrl`** points at the canonical
-[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) document, which must be
+[`waterx-config`](https://github.com/WaterXProtocol/waterx-config) document
+(production: `https://config.waterx.app/<network>.json`, `testnet` or `mainnet`), which must be
 the consolidated `schema_version: 2` shape — the SDK parses it strictly and rejects a
 legacy per-package file at `create()`. It is fetched
 as-is — the SDK appends no `<network>.json` and no git ref. Your app reads the env var;
 the SDK never does. When your env holds a config CDN ROOT (the fleet's
-`WATERX_CONFIG_URL` convention, e.g. `https://staging-v2.waterx-config.pages.dev`), compose
+`WATERX_CONFIG_URL` convention; production is `https://config.waterx.app`), compose
 the document URL with the exported helper instead of by hand:
 
 ```ts
 import { waterxConfigUrlFromRoot } from "@waterx/sdk"; // also on /config, /perp, /prediction
 
 const waterxConfigUrl = waterxConfigUrlFromRoot(process.env.WATERX_CONFIG_URL, "TESTNET");
-// → https://staging-v2.waterx-config.pages.dev/testnet.json
+// → https://config.waterx.app/testnet.json
 ```
 
 It strips trailing slashes and THROWS for a full document URL (`…/testnet.json`, the old
