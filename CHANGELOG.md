@@ -154,6 +154,13 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
 
 ### Fixed
 
+- **`createMarketRegistry` (prediction admin) builds a call that can succeed again.** The
+  contract retired `waterx_prediction::create_market_registry` — the published entrypoint
+  now aborts `EDeprecated` (28) — in favour of `create_market_registry_in_block`, which
+  draws the registry's private id block from `GlobalConfig`. The builder targets the new
+  entrypoint and passes `GlobalConfig` first (from the config document, or the new optional
+  `globalConfig` param); call sites are unchanged.
+
 - **A quote-center route outage is no longer swallowed by the second skip
   predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
   exhausted route ladder, but the e2e suites call `skipIfOracleFetchUnavailable`

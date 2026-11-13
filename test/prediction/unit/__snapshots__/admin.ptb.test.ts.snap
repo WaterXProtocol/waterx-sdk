@@ -56,8 +56,9 @@ exports[`admin PTB builders > createMarketRegistry 1`] = `
   {
     "argumentKinds": [
       "Input",
+      "Input",
     ],
-    "function": "create_market_registry",
+    "function": "create_market_registry_in_block",
     "module": "waterx_prediction",
     "package": "0x99be07b27dbbd846eec72213f0ec221b3e7d38c8bfdee3cbf578b9bfa5df3481",
     "typeArguments": [
