@@ -83,6 +83,15 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
 - `ws` is an optional `peerDependency` (`^8.18`), devDependency for the loopback stream server
   the tests run against (#101).
 
+### Changed
+
+- **The production config root is `https://config.waterx.app`.** It now serves the
+  `schema_version: 2` shape, so the README, `AGENTS.md`, `.env.example`, the shipped
+  integration skill and the pre-v2 rejection error name it instead of the outdated `main-v2`
+  mirror. The staging root is now `https://staging.waterx-config.pages.dev`, replacing
+  `staging-v2` in the same places and as the CI fallback. `waterxConfigUrl` is still required;
+  only the error's wording changes at runtime (#103).
+
 ### Deprecated
 
 - **`readQuoteCenterPrices` and `readLazerPrices` for price READS.** Each reads ONE LEG of the
@@ -153,6 +162,13 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   unsuppliable and the assert throws `OracleWeightCoverageError` (#99).
 
 ### Fixed
+
+- **`createMarketRegistry` (prediction admin) builds a call that can succeed again.** The
+  contract retired `waterx_prediction::create_market_registry` — the published entrypoint
+  now aborts `EDeprecated` (28) — in favour of `create_market_registry_in_block`, which
+  draws the registry's private id block from `GlobalConfig`. The builder targets the new
+  entrypoint and passes `GlobalConfig` first (from the config document, or the new optional
+  `globalConfig` param); call sites are unchanged (#105).
 
 - **A quote-center route outage is no longer swallowed by the second skip
   predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
