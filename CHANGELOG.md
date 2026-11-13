@@ -159,7 +159,7 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   now aborts `EDeprecated` (28) — in favour of `create_market_registry_in_block`, which
   draws the registry's private id block from `GlobalConfig`. The builder targets the new
   entrypoint and passes `GlobalConfig` first (from the config document, or the new optional
-  `globalConfig` param); call sites are unchanged.
+  `globalConfig` param); call sites are unchanged (#105).
 
 - **A quote-center route outage is no longer swallowed by the second skip
   predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
