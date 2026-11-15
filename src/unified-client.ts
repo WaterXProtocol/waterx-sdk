@@ -71,6 +71,7 @@ import {
   type BuildBatchClaimTxParams,
   type BuildPlaceOrderTxParams,
 } from "./prediction/tx-builders.ts";
+import * as predVoucher from "./prediction/voucher.ts";
 
 /**
  * Exports from the spread builder/view modules that are NOT client-first — their
@@ -147,7 +148,14 @@ const perpOps = {
   ...perpTx,
   ...perpFetch,
 };
-const predictOps = { ...predAccountSpecific, ...predAdmin, ...predOps, ...predFetch, ...predGift };
+const predictOps = {
+  ...predAccountSpecific,
+  ...predAdmin,
+  ...predOps,
+  ...predFetch,
+  ...predGift,
+  ...predVoucher,
+};
 
 /** Account namespace exposed as `client.account` — generic wxa + credit + custody, perp-backed. */
 export type AccountModule = ClientBound<typeof accountOps, PerpClient>;

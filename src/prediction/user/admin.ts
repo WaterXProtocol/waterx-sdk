@@ -31,3 +31,13 @@ export type {
   SetMinReserveParams,
   SetOrderCancelCooldownParams,
 } from "../admin.ts";
+
+export {
+  grantVoucher,
+  revokeVoucher,
+  setVoucherGrantBudget,
+  setVoucherPaused,
+  addVoucherGranter,
+  removeVoucherGranter,
+} from "../voucher.ts";
+export type { GrantVoucherParams, VoucherAdminParams, VoucherGranterParams } from "../voucher.ts";

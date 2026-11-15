@@ -22,6 +22,8 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
 
 ### Added
 
+- Legacy Predict Voucher order, ledger/settlement views, granter and AdminCap builders; regenerated #171 event and view bindings (PR pending).
+
 - Regenerated legacy perp ABI from contract #167 as merged (`9607947`); exported
   `ExecutionQueuedBcs` / `OrderRejectedByKeeperBcs` schemas. On v4 a market order
   needs the permission of its operation (open / increase / decrease / close) instead

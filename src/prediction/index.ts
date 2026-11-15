@@ -205,3 +205,7 @@ export * as predictionPositionCalls from "../generated/waterx_prediction/positio
 export * as predictionVersionCalls from "../generated/waterx_prediction/version.ts";
 export * as predictionViewCalls from "../generated/waterx_prediction/view.ts";
 export * as predictionCalls from "../generated/waterx_prediction/waterx_prediction.ts";
+
+export * from "./voucher.ts";
+export * as predictionVoucherCalls from "../generated/waterx_prediction/voucher.ts";
+export * as predictionEventTypes from "../generated/waterx_prediction/events.ts";

@@ -8,7 +8,7 @@ export interface PackageVersionOptions {
     ];
 }
 export function packageVersion(options: PackageVersionOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'version',

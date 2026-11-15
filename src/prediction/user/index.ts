@@ -49,3 +49,6 @@ export type {
 } from "../prediction.ts";
 
 export * as gift from "./gift.ts";
+
+export { placeOrderWithVoucher, buildPlaceVoucherOrderTx } from "../voucher.ts";
+export type { PlaceVoucherOrderParams } from "../voucher.ts";

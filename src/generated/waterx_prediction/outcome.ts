@@ -3,7 +3,7 @@
  **************************************************************/
 import { MoveEnum, normalizeMoveArguments } from '../utils/index.ts';
 import { type Transaction, type TransactionArgument } from '@mysten/sui/transactions';
-const $moduleName = '@waterx/prediction::outcome';
+const $moduleName = '@local-pkg/waterx_prediction::outcome';
 export const Outcome = new MoveEnum({ name: `${$moduleName}::Outcome`, fields: {
         No: null,
         Yes: null,
@@ -15,7 +15,7 @@ export interface NoOptions {
     ];
 }
 export function no(options: NoOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'outcome',
@@ -28,7 +28,7 @@ export interface YesOptions {
     ];
 }
 export function yes(options: YesOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'outcome',
@@ -41,7 +41,7 @@ export interface InvalidOptions {
     ];
 }
 export function invalid(options: InvalidOptions = {}) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'outcome',
@@ -58,7 +58,7 @@ export interface IsNoOptions {
     ];
 }
 export function isNo(options: IsNoOptions) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -80,7 +80,7 @@ export interface IsYesOptions {
     ];
 }
 export function isYes(options: IsYesOptions) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -102,7 +102,7 @@ export interface IsInvalidOptions {
     ];
 }
 export function isInvalid(options: IsInvalidOptions) {
-    const packageAddress = options.package ?? '@waterx/prediction';
+    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
