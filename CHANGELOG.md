@@ -22,7 +22,7 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
 
 ### Added
 
-- Legacy Predict Voucher order, ledger/settlement views, granter and AdminCap builders; regenerated #171 event and view bindings (PR pending).
+- Legacy Predict Voucher order, ledger/settlement views, granter and AdminCap builders; regenerated #171 event and view bindings ([#106](https://github.com/WaterXProtocol/waterx-sdk/pull/106)).
 
 - Regenerated legacy perp ABI from contract #167 as merged (`9607947`); exported
   `ExecutionQueuedBcs` / `OrderRejectedByKeeperBcs` schemas. On v4 a market order
