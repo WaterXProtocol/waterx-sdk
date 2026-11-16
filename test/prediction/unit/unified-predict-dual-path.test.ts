@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as predAdmin from "../../../src/prediction/admin.ts";
 import * as predFetch from "../../../src/prediction/fetch.ts";
 import * as predOps from "../../../src/prediction/prediction.ts";
+import * as predVoucher from "../../../src/prediction/voucher.ts";
 import { Client } from "../../../src/sdk.ts";
 import { assertDualPathTxCase } from "../../helpers/unified-dual-path.ts";
 import { createMockPredictClient } from "../helpers/mock-client.ts";
@@ -40,6 +41,7 @@ const expectedPredictPtbBuilders = [
   ...PREDICT_SPECIFIC_ACCOUNT_OPS,
   ...fnNames(predAdmin),
   ...fnNames(predOps),
+  ...fnNames(predVoucher).filter((name) => !/^(get|is)/.test(name)),
 ].filter((n) => !NON_CLIENT_FIRST.has(n));
 
 describe("unified Client — prediction dual-path PTB equivalence", () => {

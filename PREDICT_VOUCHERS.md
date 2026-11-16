@@ -45,3 +45,30 @@ the latest call target or initial package. Persist markers before transient orde
 Before any voucher traffic, disable ALL older Predict logical versions on shared state,
 upgrade the independent Gift version gate, verify Broker/settlement targets, and deploy the
 source-aware indexer/backend. Unit tests here are offline ABI/BCS tests, not a live fill/settlement proof.
+
+## Regression coverage and optional chain verification
+
+Offline tests cover USD/SUI/DEEP/WAL registry and credit-type routing, exact u64 values above
+`Number.MAX_SAFE_INTEGER`, all Voucher builders and reads through `client.predict`, and all 13
+event schemas against independently assembled BCS bytes (including winning, losing and INVALID
+settlement fields). Post-build tests exercise the emitted ESM and CJS public entry points.
+
+`test/prediction/integration/voucher.lifecycle.test.ts` is disabled by default. To run it manually,
+set `E2E_VOUCHER_INTEGRATION=1`, `WATERX_E2E_NETWORK=testnet`, `WATERX_CONFIG_URL`,
+`SUI_PRIVATE_KEY`, `E2E_ACCOUNT_ID`, and optionally `E2E_KEEPER_PRIVATE_KEY` and
+`E2E_SETTLEMENT_ASSET` (USD/SUI/DEEP/WAL), then run:
+
+```sh
+pnpm exec vitest run --project predict-integration test/prediction/integration/voucher.lifecycle.test.ts
+```
+
+Use a dedicated, idle Account owned by the signer with at least 40 raw Voucher credit units
+already granted, no reservations, and an existing registered Keeper signer. The registry must
+have enough cash above its minimum reserve, and GlobalConfig must allow only logical version 8.
+The suite refuses mainnet and never creates/funds accounts, issues vouchers, changes roles or
+updates version gates. It creates isolated market IDs and submits real transactions only after
+explicit opt-in. Reserve/fill/cancel and win/loss/INVALID claim assertions read the actual ledger
+and transaction events; transaction-local events supply order/position IDs. An uncertain write
+is not automatically resubmitted: inspect its digest/state before rerunning, especially after a
+failure leaves a reservation. This uses manual authorized Keeper fill/resolve calls, not automatic
+Broker or venue execution, and passing offline tests does not prove deployed service compatibility.

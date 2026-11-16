@@ -8,7 +8,12 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { bcs } from "@mysten/sui/bcs";
+import { describe, expect, it, vi } from "vitest";
+
+import { minimalPlaceOrderParams, PTB_DUMMY } from "../prediction/fixtures/ptb-params.ts";
+import { VOUCHER_ASSETS, voucherConfig } from "../prediction/fixtures/voucher-config.ts";
+import { listMoveCalls } from "../prediction/helpers/ptb.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(import.meta.url);
@@ -28,6 +33,65 @@ async function importExport(subpath: string): Promise<unknown> {
   if (!target) throw new Error(`missing exports[${JSON.stringify(subpath)}].import.default`);
   return import(pathToFileURL(join(repoRoot, target)).href);
 }
+
+describe.each(["ESM", "CJS"] as const)("Voucher package consumers (%s)", (format) => {
+  it.each(VOUCHER_ASSETS)("builds and reads %s via the emitted public facade", async (asset) => {
+    type Prediction = typeof import("../../src/prediction/index.ts");
+    type Root = typeof import("../../src/sdk.ts");
+    const prediction = (
+      format === "ESM" ? await importExport("./prediction") : require("@waterx/sdk/prediction")
+    ) as Prediction;
+    const root = (format === "ESM" ? await importExport(".") : require("@waterx/sdk")) as Root;
+    const client = new prediction.PredictClient("TESTNET", voucherConfig(), { settlement: asset });
+    const facade = root.WaterXClient.fromClients({} as never, client).predict;
+    const raw = 9_007_199_254_740_993n;
+    const params = { ...minimalPlaceOrderParams(client), maxSpend: raw };
+    const direct = await prediction.buildPlaceVoucherOrderTx(client, params);
+    const bound = await facade.buildPlaceVoucherOrderTx(params);
+    expect(bound.getData()).toEqual(direct.getData());
+    const calls = listMoveCalls(bound);
+    expect(calls.map((call) => call.function)).toEqual([
+      "request",
+      "selection_yes",
+      "place_order_with_voucher",
+    ]);
+    expect(calls.at(-1)?.typeArguments).toEqual([client.settlementCoinType()]);
+    const data = bound.getData();
+    const amount = data.commands.at(-1)?.MoveCall?.arguments[5];
+    if (amount?.$kind !== "Input") throw new Error("Expected stake input");
+    const pure = data.inputs[amount.Input]?.Pure;
+    if (!pure) throw new Error("Expected u64 stake");
+    expect(bcs.u64().parse(Buffer.from(pure.bytes, "base64"))).toBe(raw.toString());
+    const simulate = vi.spyOn(client, "simulate").mockResolvedValue({
+      commandResults: [
+        {
+          returnValues: [
+            {
+              bcs: prediction.predictionViewCalls.VoucherAccountView.serialize({
+                market_registry_id: client.marketRegistry(),
+                settlement_coin_type: { name: client.settlementCoinType() },
+                account_id: PTB_DUMMY.accountId,
+                available: raw,
+                reserved: 1n,
+                paused: false,
+              }).toBytes(),
+            },
+          ],
+        },
+      ],
+    } as Awaited<ReturnType<typeof client.simulate>>);
+    try {
+      expect(await facade.getVoucherAccount({ accountId: PTB_DUMMY.accountId })).toMatchObject({
+        available: raw,
+        reserved: 1n,
+        settlementCoinType: client.settlementCoinType(),
+        marketRegistryId: client.marketRegistry(),
+      });
+    } finally {
+      simulate.mockRestore();
+    }
+  });
+});
 
 describe("package.json prediction subpath exports (post-build, ESM)", () => {
   it("@waterx/sdk/prediction/user resolves to user/index.js", async () => {
