@@ -41,7 +41,9 @@ describe.skipIf(!enabled)("Voucher lifecycle (real testnet; explicit opt-in)", (
     accountId = configuredAccount;
     expect(await getAccountIds(client, { owner: owner.toSuiAddress() })).toContain(accountId);
     expect(await isKeeper(client, { keeper: keeper.toSuiAddress() })).toBe(true);
-    expect(await getAllowedVersions(client)).toContain(8);
+    // Exact set on purpose: voucher traffic requires every older logical version disabled, and a
+    // newer one alongside v8 would mean this suite validates an obsolete package.
+    expect(await getAllowedVersions(client)).toEqual([8]);
     const credit = await getVoucherAccount(client, { accountId });
     expect(credit.paused).toBe(false);
     expect(credit.reserved).toBe(0n);

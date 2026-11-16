@@ -73,7 +73,7 @@ pnpm exec vitest run --project predict-integration test/prediction/integration/v
 
 Use a dedicated, idle Account owned by the signer with at least 40 raw Voucher credit units
 already granted, no reservations, and an existing registered Keeper signer. The registry must
-have enough cash above its minimum reserve, and GlobalConfig must allow logical version 8.
+have enough cash above its minimum reserve, and GlobalConfig must allow only logical version 8.
 The suite refuses mainnet and never creates/funds accounts, issues vouchers, changes roles or
 updates version gates. It creates isolated market IDs and submits real transactions only after
 explicit opt-in. Reserve/fill/cancel and win/loss/INVALID claim assertions read the actual ledger
