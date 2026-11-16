@@ -1,8 +1,9 @@
 /**
  * `candles/frame.ts` — the quote-center live candle plane's WIRE CONTRACT
  * (`model::LiveCandleFrame`, `v: 1`): the frame type, its one parser, the
- * per-(symbol, tf) order, and {@link LiveCandleBook}, the small reducer that
- * applies the order and the `void` tombstone for a consumer.
+ * per-(symbol, tf) order, {@link candlePointToFrame} (a REST `include_open`
+ * point as a frame), and {@link LiveCandleBook}, the small reducer that applies
+ * the order, the `void` tombstone and reconnect resync for a consumer.
  *
  * WHAT A FRAME IS. The bar IN FLIGHT for one (symbol, tf) bucket, as the
  * quote-center's leader folds it from the same inputs its ClickHouse rollup
@@ -14,8 +15,22 @@
  * THE ORDER. Per (symbol, tf) frames are totally ordered by
  * `(bucket_ms, state === "closed", updated_at_ms)` — the quote-center's own
  * `LiveCandleFrame::order_key`. A relay may SKIP frames (coalescing, lag, a
- * gateway stream ending), never reorder them; a reconnect's snapshot re-sends
- * the current frame, which is the same key (a `duplicate`).
+ * gateway stream ending), never reorder them.
+ *
+ * THE SNAPSHOT IS NOT GUARANTEED — SEED FROM REST. The quote-service sends the
+ * current frame of every matching pair when a stream is opened, but the
+ * gateway shares ONE upstream per path + query: a client that joins an
+ * upstream another client already opened gets live frames only, so a quiet
+ * pair stays empty until its next frame. Seed every (re)connect from REST
+ * `GET /v1/candles/{symbol}?tf=…&include_open=true` through
+ * {@link candlePointToFrame}.
+ *
+ * A MISSED `void` IS NEVER RE-SENT. The quote-center serves a tombstone
+ * neither in a snapshot nor from REST, so one lost to a disconnect or a lagged
+ * relay would leave a withdrawn bar live forever. Hence
+ * {@link LiveCandleBook.markSuspect}: on each (re)connect, every `open` bar of
+ * the reconnected tickers is hidden until something re-asserts it (a REST seed
+ * point or a stream frame of the same bucket, or any newer frame).
  *
  * `void` IS A TOMBSTONE. The plane withdraws its live bar for that bucket (a
  * new leader could not vouch for it): drop the bar and read REST. It orders
@@ -97,7 +112,7 @@ export const CANDLE_DROP_REASONS = [
   "unsolicited",
   /** Stream only: a frame ordered BELOW the last delivered one for its (symbol, tf). */
   "out_of_order",
-  /** Stream only: the same order key as the last delivered frame for its (symbol, tf) — a reconnect's snapshot replay. */
+  /** Stream only: the same order key as the last delivered frame for its (symbol, tf), on the same connection (the first equal frame on a NEW connection is delivered — see `openCandleStream`'s guard). */
   "duplicate",
 ] as const;
 export type CandleDropReason = (typeof CANDLE_DROP_REASONS)[number];
@@ -201,53 +216,147 @@ export function liveCandleKey(symbol: string, tf: CandleTimeframe): string {
   return `${symbol}\u0000${tf}`;
 }
 
-/** What {@link LiveCandleBook.apply} did with a frame. */
-export type LiveCandleApplyResult = "applied" | "voided" | "stale";
+/**
+ * One point of REST `GET /v1/candles/{symbol}?tf=…&include_open=true`
+ * (`model::CandlePoint`). `state` / `source` are present ONLY on the live bars
+ * `include_open` appends; a ClickHouse-rolled bar omits both.
+ */
+export interface CandlePoint {
+  timestamp_ms: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  count: number;
+  state?: string;
+  source?: string;
+}
 
 /**
- * The newest live bar per (symbol, tf), with the order and `void` applied:
+ * A REST `include_open` LIVE point as a {@link LiveCandleFrame}, so a seed can
+ * be merged through {@link LiveCandleBook}; `undefined` for a rolled point (no
+ * `state` — it is history, not a live bar) or anything out of contract.
  *
- *   - a frame ordered at or below the pair's last one is `stale` (ignored);
- *   - a `void` frame is `voided`: {@link bar} answers `undefined` for the pair
- *     until a newer `open` / `closed` frame arrives — read that bucket from REST;
- *   - anything else is `applied` and becomes the pair's bar.
+ * `updated_at_ms` is `0`, never the local clock: REST does not carry the
+ * leader's production time, and a local `Date.now()` running ahead of the
+ * leader would make every real stream frame of that bucket look older than
+ * the seed. With `0`, any stream frame of the bucket supersedes the seed,
+ * while the seed still re-asserts a suspect bar of its bucket
+ * ({@link LiveCandleBook.markSuspect}). `count` maps to `tick_count`.
+ */
+export function candlePointToFrame(
+  point: CandlePoint,
+  symbol: string,
+  tf: CandleTimeframe,
+  nowMs: number = Date.now(),
+): LiveCandleFrame | undefined {
+  if (point.state === undefined) return undefined;
+  const frame = parseLiveCandleFrame(
+    {
+      v: 1,
+      symbol,
+      tf,
+      bucket_ms: point.timestamp_ms,
+      open: point.open,
+      high: point.high,
+      low: point.low,
+      close: point.close,
+      tick_count: point.count,
+      state: point.state,
+      source: point.source,
+      updated_at_ms: 0,
+    },
+    nowMs,
+  );
+  return typeof frame === "string" || frame.state === "void" ? undefined : frame;
+}
+
+/** What {@link LiveCandleBook.apply} did with a frame. */
+export type LiveCandleApplyResult = "applied" | "voided" | "reasserted" | "stale";
+
+/**
+ * The newest live bar per (symbol, tf), with the order, `void` and reconnect
+ * resync applied:
+ *
+ *   - a frame ordered above the pair's last one is `applied` and becomes the
+ *     pair's bar (a `void` frame is `voided`: {@link bar} answers `undefined`
+ *     for the pair until a newer `open` / `closed` frame arrives — read that
+ *     bucket from REST);
+ *   - a frame of the SAME bucket as a suspect bar (see {@link markSuspect}),
+ *     not newer than it, is `reasserted`: the bar is shown again, unchanged;
+ *   - anything else is `stale` (ignored).
  *
  * The stream already drops out-of-order frames; the book re-checks so frames
- * from several sources (a REST `include_open` seed, a second stream) can be
- * merged through it. It never ages bars out — a `closed` bar stays the pair's
- * bar until a newer frame replaces it; deciding when a bar is too old to show
- * (and refetching closed buckets from REST, which wins) is the consumer's.
+ * from several sources (a REST `include_open` seed via
+ * {@link candlePointToFrame}, a second stream) can be merged through it. It
+ * never ages bars out — a `closed` bar stays the pair's bar until a newer
+ * frame replaces it; deciding when a bar is too old to show (and refetching
+ * closed buckets from REST, which wins) is the consumer's.
  */
 export class LiveCandleBook {
   private readonly last = new Map<string, LiveCandleFrame>();
+  /** Pairs whose `open` bar awaits re-assertion after a reconnect. */
+  private readonly suspect = new Set<string>();
 
   apply(frame: LiveCandleFrame): LiveCandleApplyResult {
     const key = liveCandleKey(frame.symbol, frame.tf);
     const prev = this.last.get(key);
-    if (prev !== undefined && compareLiveCandleFrames(frame, prev) <= 0) return "stale";
+    if (prev !== undefined && compareLiveCandleFrames(frame, prev) <= 0) {
+      if (this.suspect.has(key) && frame.bucket_ms === prev.bucket_ms && frame.state !== "void") {
+        this.suspect.delete(key);
+        return "reasserted";
+      }
+      return "stale";
+    }
     // The tombstone is KEPT as the pair's last frame: it is the watermark an
     // older replayed `open` frame of the withdrawn bucket must not get past.
     this.last.set(key, frame);
+    this.suspect.delete(key);
     return frame.state === "void" ? "voided" : "applied";
   }
 
-  /** The pair's current live bar, or `undefined` when there is none or it was voided. */
-  bar(symbol: string, tf: CandleTimeframe): LiveCandleFrame | undefined {
-    const frame = this.last.get(liveCandleKey(symbol, tf));
-    return frame === undefined || frame.state === "void" ? undefined : frame;
+  /**
+   * Hide every `open` bar of `tickers` (every ticker when omitted) until it is
+   * re-asserted — by a REST seed point or stream frame of the same bucket, or
+   * replaced by any newer frame. Call it when a stream shard (re)connects
+   * (`onConnection` `opened`, with that shard's tickers), BEFORE seeding: a
+   * `void` the outage swallowed is never re-sent, so a bar nothing re-asserts
+   * is treated as withdrawn. `closed` bars are final and stay.
+   */
+  markSuspect(tickers?: readonly string[]): void {
+    const only = tickers === undefined ? undefined : new Set(tickers);
+    for (const [key, frame] of this.last) {
+      if (frame.state === "open" && (only === undefined || only.has(frame.symbol))) {
+        this.suspect.add(key);
+      }
+    }
   }
 
-  /** Every pair's current (non-voided) live bar. */
+  /** The pair's current live bar, or `undefined` when there is none, it was voided, or it is suspect. */
+  bar(symbol: string, tf: CandleTimeframe): LiveCandleFrame | undefined {
+    const key = liveCandleKey(symbol, tf);
+    const frame = this.last.get(key);
+    return frame === undefined || frame.state === "void" || this.suspect.has(key)
+      ? undefined
+      : frame;
+  }
+
+  /** Every pair's current live bar (neither voided nor suspect). */
   bars(): LiveCandleFrame[] {
-    return [...this.last.values()].filter((frame) => frame.state !== "void");
+    return [...this.last.entries()]
+      .filter(([key, frame]) => frame.state !== "void" && !this.suspect.has(key))
+      .map(([, frame]) => frame);
   }
 
   /** Forget a pair (e.g. after its bucket was refetched from REST). */
   delete(symbol: string, tf: CandleTimeframe): void {
-    this.last.delete(liveCandleKey(symbol, tf));
+    const key = liveCandleKey(symbol, tf);
+    this.last.delete(key);
+    this.suspect.delete(key);
   }
 
   clear(): void {
     this.last.clear();
+    this.suspect.clear();
   }
 }

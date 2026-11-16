@@ -9,6 +9,7 @@ import {
   CANDLE_MAX_FUTURE_DRIFT_MS,
   CANDLE_TIMEFRAME_MS,
   CANDLE_TIMEFRAMES,
+  candlePointToFrame,
   compareLiveCandleFrames,
   LiveCandleBook,
   parseLiveCandleFrame,
@@ -146,11 +147,116 @@ describe("LiveCandleBook", () => {
   });
 });
 
+describe("candlePointToFrame — a REST include_open point as a frame", () => {
+  const point = {
+    timestamp_ms: BUCKET_5M,
+    open: 1,
+    high: 3,
+    low: 0.5,
+    close: 2,
+    count: 7,
+    state: "open",
+    source: "bbo",
+  };
+
+  it("maps count → tick_count and sets updated_at_ms 0, so any stream frame of the bucket supersedes it", () => {
+    const frame = candlePointToFrame(point, "BTCUSD", "5m", NOW);
+    expect(frame).toEqual({
+      v: 1,
+      symbol: "BTCUSD",
+      tf: "5m",
+      bucket_ms: BUCKET_5M,
+      open: 1,
+      high: 3,
+      low: 0.5,
+      close: 2,
+      tick_count: 7,
+      state: "open",
+      source: "bbo",
+      updated_at_ms: 0,
+    });
+    const book = new LiveCandleBook();
+    book.apply(frame!);
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 1 }))).toBe("applied");
+    // ...and a seed arriving AFTER a stream frame of its bucket cannot regress it.
+    expect(book.apply(frame!)).toBe("stale");
+    expect(book.bar("BTCUSD", "5m")?.updated_at_ms).toBe(BUCKET_5M + 1);
+  });
+
+  it("a rolled point (no state), a void, or an out-of-contract point is undefined", () => {
+    const { state: _state, source: _source, ...rolled } = point;
+    expect(candlePointToFrame(rolled, "BTCUSD", "5m", NOW)).toBeUndefined();
+    expect(candlePointToFrame({ ...point, state: "void" }, "BTCUSD", "5m", NOW)).toBeUndefined();
+    expect(candlePointToFrame({ ...point, low: 9 }, "BTCUSD", "5m", NOW)).toBeUndefined();
+    expect(candlePointToFrame(point, "BTCUSD", "1h", NOW)).toBeUndefined(); // off the 1h grid
+  });
+});
+
+describe("LiveCandleBook.markSuspect — a void lost to an outage is never re-sent", () => {
+  it("hides open bars until re-asserted by the same bucket (seed or stream) or replaced", () => {
+    const book = new LiveCandleBook();
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 })); // BTCUSD 5m open
+    book.apply(parsed({ symbol: "ETHUSD", updated_at_ms: BUCKET_5M + 10 })); // ETHUSD 5m open
+    book.apply(parsed({ tf: "1m", state: "closed", updated_at_ms: BUCKET_5M + 10 })); // closed
+
+    book.markSuspect(["BTCUSD"]);
+    expect(book.bar("BTCUSD", "5m")).toBeUndefined();
+    expect(book.bar("BTCUSD", "1m")?.state).toBe("closed"); // closed bars are final
+    expect(book.bar("ETHUSD", "5m")).toBeDefined(); // another shard's ticker
+    expect(book.bars()).toHaveLength(2);
+
+    // A REST seed point of the same bucket re-asserts it (unchanged).
+    const seed = candlePointToFrame(
+      {
+        timestamp_ms: BUCKET_5M,
+        open: 1,
+        high: 1,
+        low: 1,
+        close: 1,
+        count: 1,
+        state: "open",
+        source: "canonical",
+      },
+      "BTCUSD",
+      "5m",
+      NOW,
+    )!;
+    expect(book.apply(seed)).toBe("reasserted");
+    expect(book.bar("BTCUSD", "5m")?.updated_at_ms).toBe(BUCKET_5M + 10);
+  });
+
+  it("a bar nothing re-asserts stays hidden; an older bucket does not re-assert; a newer frame replaces", () => {
+    const book = new LiveCandleBook();
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }));
+    book.markSuspect();
+    expect(
+      book.apply(
+        parsed({ state: "closed", bucket_ms: BUCKET_5M - 300_000, updated_at_ms: BUCKET_5M }),
+      ),
+    ).toBe("stale");
+    expect(book.bar("BTCUSD", "5m")).toBeUndefined();
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 20 }))).toBe("applied");
+    expect(book.bar("BTCUSD", "5m")?.updated_at_ms).toBe(BUCKET_5M + 20);
+  });
+
+  it("a void does not re-assert, and delete/clear drop the suspect mark", () => {
+    const book = new LiveCandleBook();
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }));
+    book.markSuspect();
+    expect(book.apply(parsed({ state: "void", updated_at_ms: BUCKET_5M + 5 }))).toBe("stale");
+    expect(book.bar("BTCUSD", "5m")).toBeUndefined();
+    book.delete("BTCUSD", "5m");
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 1 }));
+    expect(book.bar("BTCUSD", "5m")).toBeDefined();
+  });
+});
+
 describe("the public surface", () => {
   it("@waterx/sdk/oracle re-exports the candle plane", () => {
     expect(oracle.openCandleStream).toBeTypeOf("function");
     expect(oracle.parseLiveCandleFrame).toBe(parseLiveCandleFrame);
     expect(oracle.LiveCandleBook).toBe(LiveCandleBook);
+    expect(oracle.candlePointToFrame).toBe(candlePointToFrame);
     expect(oracle.CANDLE_STREAM_ROUTE).toBe("v1/candles/stream");
   });
 });

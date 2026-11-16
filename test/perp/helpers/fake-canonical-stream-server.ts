@@ -106,6 +106,10 @@ export async function startFakeCanonicalStreamServer(
   };
 
   server.on("upgrade", (req, socket, head) => {
+    // The client destroys a refused handshake's request (`ws` "unexpected-response"),
+    // which can RST this socket mid-write: an ECONNRESET here is the client's
+    // business, not an uncaught error in the test run.
+    socket.on("error", () => {});
     const url = new URL(req.url ?? "/", "http://localhost");
     fake.connects.push({
       path: url.pathname,

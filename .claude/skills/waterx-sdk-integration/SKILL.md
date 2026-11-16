@@ -217,8 +217,10 @@ and `readLazerPrices` read one LEG each and are deprecated for price reads.
 **Live candles** (the bar still forming) come from `openCandleStream({ endpoint, tickers,
 timeframes?, onFrame: (frame, shard) => … })` in `@waterx/sdk/oracle`; apply frames through
 `LiveCandleBook` (it handles the order and the `void` tombstone — drop that bucket's bar and
-read REST). Watch `snapshot().shards[i].lastDeliveredAt` per shard and `reconnectNow(i)` a
-silent one. See "Live candles" in `node_modules/@waterx/sdk/README.md`.
+read REST). The stream may send NO snapshot (the gateway shares upstreams), so on every
+`opened` event call `book.markSuspect(event.tickers)` and seed from REST
+`/v1/candles/{symbol}?tf=…&include_open=true` through `candlePointToFrame`. Watch
+`snapshot().shards[i].lastDeliveredAt` per shard and `reconnectNow(i)` a silent one. See "Live candles" in `node_modules/@waterx/sdk/README.md`.
 
 ## Red flags
 

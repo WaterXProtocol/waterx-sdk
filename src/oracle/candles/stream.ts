@@ -14,16 +14,30 @@
  * (`candle_tf_filter` in its `api.rs`); an unknown entry is a 400 (code 10005),
  * so timeframes are validated here, at open, instead of being retried into
  * forever. The client always sends both fields: the server reads an omitted
- * `symbols` as EVERY symbol, so an empty ticker list throws rather than
- * subscribing the world. Unknown symbols are skipped by the server (their pair
- * simply never sends a frame).
+ * `symbols` as EVERY symbol (and answers an all-empty list such as `symbols=,`
+ * with a 400, code 10002), so an empty ticker list throws rather than
+ * subscribing the world or retrying a 400. Tickers are trimmed, as the server
+ * trims each entry, so `" BTCUSD"` subscribes the pair it names AND matches
+ * its frames. Unknown symbols are skipped by the server (their pair simply
+ * never sends a frame).
+ *
+ * NO SNAPSHOT GUARANTEE. The quote-service sends the current frame of every
+ * matching pair when a stream opens, but the gateway shares ONE upstream per
+ * path + query, so a client that joins an upstream another client opened gets
+ * live frames only. Consumers seed from REST (`include_open=true`, via
+ * `candlePointToFrame`) on every `opened` event, and call
+ * `LiveCandleBook.markSuspect(event.tickers)` first: a `void` lost during the
+ * outage is never re-sent (see `frame.ts`).
  *
  * THE GUARD orders per (symbol, tf) on the plane's own key
  * (`compareLiveCandleFrames`): a frame ordered below the last delivered one is
- * `out_of_order`, an equal key a `duplicate` (the snapshot a reconnect re-sends
- * — the server dedups within ONE connection, not across them). The watermark
- * survives reconnects, as the canonical guard's does. `void` frames are
- * delivered: the consumer drops the bucket's bar (`LiveCandleBook` does it).
+ * `out_of_order` and an equal key on the SAME connection a `duplicate`. The
+ * watermark survives reconnects, as the canonical guard's does, with one
+ * exception: the FIRST frame of a pair on a new connection is delivered at an
+ * equal key — it is the server re-asserting that bar after the outage (what
+ * clears `LiveCandleBook`'s suspect mark), not a replay to suppress. `void`
+ * frames are delivered: the consumer drops the bucket's bar (`LiveCandleBook`
+ * does it).
  *
  * PER-SHARD STATUS. Each shard is an independent connection, and a shard can
  * go SILENT while the others are healthy (open but delivering nothing), which
@@ -76,6 +90,8 @@ export interface CandleConnectionEvent {
   reason?: string;
   shard: number;
   shardCount: number;
+  /** The shard's (trimmed, de-duplicated) tickers — what to `markSuspect` and re-seed on `opened`. */
+  tickers: readonly string[];
 }
 
 export interface CandleStreamOptions {
@@ -151,9 +167,15 @@ interface Attempt {
 
 type ShardEvent = Pick<CandleConnectionEvent, "type" | "reason">;
 
-/** De-duplicate (first occurrence wins, order kept), drop empties, split at the server's cap. */
+/** Per-connection guard state: the pairs this connection has already delivered or re-asserted. */
+interface ConnectionPairs {
+  attempt: Attempt | undefined;
+  seen: Set<string>;
+}
+
+/** Trim (as the server does), drop empties, de-duplicate (first occurrence wins, order kept), split at the server's cap. */
 function shardTickers(tickers: readonly string[]): string[][] {
-  const distinct = [...new Set(tickers.filter((t) => t !== ""))];
+  const distinct = [...new Set(tickers.map((t) => t.trim()).filter((t) => t !== ""))];
   const out: string[][] = [];
   for (let i = 0; i < distinct.length; i += CANDLE_MAX_SYMBOLS_PER_REQUEST) {
     out.push(distinct.slice(i, i + CANDLE_MAX_SYMBOLS_PER_REQUEST));
@@ -174,6 +196,8 @@ class CandleStreamShard {
   private readonly dropped: Record<CandleDropReason, number>;
   /** Last delivered frame per (symbol, tf) — the guard's watermark. */
   private readonly marks = new Map<string, LiveCandleFrame>();
+  /** Pairs the CURRENT connection has delivered — an equal key is a duplicate only within one connection. */
+  private connectionPairs: ConnectionPairs = { attempt: undefined, seen: new Set() };
   private readonly subscribed: ReadonlySet<string>;
   private readonly url: string;
   private readonly headers: Record<string, string> | undefined;
@@ -353,7 +377,12 @@ class CandleStreamShard {
   }
 
   private emit(event: ShardEvent): void {
-    this.options.onConnection?.({ ...event, shard: this.index, shardCount: this.shardCount });
+    this.options.onConnection?.({
+      ...event,
+      shard: this.index,
+      shardCount: this.shardCount,
+      tickers: this.tickers,
+    });
   }
 
   private scheduleReconnect(): void {
@@ -404,6 +433,10 @@ class CandleStreamShard {
     this.lastFrameAt = now;
 
     const key = liveCandleKey(frame.symbol, frame.tf);
+    if (this.connectionPairs.attempt !== attempt) {
+      this.connectionPairs = { attempt, seen: new Set() };
+    }
+    const firstOnConnection = !this.connectionPairs.seen.has(key);
     const prev = this.marks.get(key);
     if (prev !== undefined) {
       const order = compareLiveCandleFrames(frame, prev);
@@ -411,12 +444,13 @@ class CandleStreamShard {
         this.dropped.out_of_order++;
         return;
       }
-      if (order === 0) {
+      if (order === 0 && !firstOnConnection) {
         this.dropped.duplicate++;
         return;
       }
     }
     this.marks.set(key, frame);
+    this.connectionPairs.seen.add(key);
 
     if (attempt.frames === 0) this.fruitlessAttempts = 0;
     attempt.frames++;
@@ -428,8 +462,9 @@ class CandleStreamShard {
 
 /**
  * WebSocket `GET /v1/candles/stream?symbols=…&tf=…` — the quote-center's live
- * (in-flight) candle bars, a snapshot of the current bars first, then live
- * frames, ordered per (symbol, tf). More than `CANDLE_MAX_SYMBOLS_PER_REQUEST`
+ * (in-flight) candle bars, ordered per (symbol, tf). The server MAY send the
+ * current bars first; through the gateway it may not, so seed from REST
+ * `include_open=true` on every `opened` event (module header). More than `CANDLE_MAX_SYMBOLS_PER_REQUEST`
  * tickers shard into several connections behind the one handle; each shard
  * carries every requested timeframe. Connects immediately and keeps
  * reconnecting until `stop()`. Throws synchronously on no tickers, an unknown
@@ -439,7 +474,8 @@ class CandleStreamShard {
 export function openCandleStream(opts: CandleStreamOptions): CandleStreamHandle {
   const chunks = shardTickers(opts.tickers);
   if (chunks.length === 0) {
-    // The server reads an omitted/empty `symbols` as EVERY symbol.
+    // The server reads an OMITTED `symbols` as every symbol (and an all-empty
+    // list as a 400): there is no list to send.
     throw new Error("openCandleStream: at least one ticker is required");
   }
   const requested = opts.timeframes ?? CANDLE_TIMEFRAMES;

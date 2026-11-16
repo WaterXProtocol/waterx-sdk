@@ -31,7 +31,10 @@ interface Harness {
   events: CandleConnectionEvent[];
 }
 
-const FAST = { backoff: { initialMs: 10, maxMs: 40 }, handshakeTimeoutMs: 200 } as const;
+// The handshake budget is generous so a loaded CI runner cannot turn a slow open into a redial;
+// the timeout test passes its own short one.
+const FAST = { backoff: { initialMs: 10, maxMs: 40 }, handshakeTimeoutMs: 2_000 } as const;
+const SHORT_HANDSHAKE_MS = 200;
 const TICKERS = ["BTCUSD", "ETHUSD"] as const;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -90,7 +93,12 @@ describe("openCandleStream — connecting", () => {
       symbols: "BTCUSD,ETHUSD",
       tf: "1m,5m,15m,1h,4h,1d",
     });
-    expect(h.events[0]).toEqual({ type: "opened", shard: 0, shardCount: 1 });
+    expect(h.events[0]).toEqual({
+      type: "opened",
+      shard: 0,
+      shardCount: 1,
+      tickers: ["BTCUSD", "ETHUSD"],
+    });
     expect(h.stream.snapshot().connected).toBe(true);
     expect(h.stream.shardCount).toBe(1);
   });
@@ -120,7 +128,7 @@ describe("openCandleStream — connecting", () => {
 
   it.each([
     ["no tickers", () => open("http://qc.example", {}, []), /at least one ticker/],
-    ["only empty tickers", () => open("http://qc.example", {}, ["", ""]), /at least one ticker/],
+    ["only empty tickers", () => open("http://qc.example", {}, ["", " "]), /at least one ticker/],
     [
       "no timeframes",
       () => open("http://qc.example", { timeframes: [] }),
@@ -218,16 +226,34 @@ describe("openCandleStream — frames", () => {
     await until(() => h.frames.length === 1, "binary frame decoded");
   });
 
-  it("the watermark survives a reconnect: the new connection's snapshot replay is a duplicate", async () => {
+  it("across a reconnect: the first equal frame per pair is delivered (a re-assertion), a second is a duplicate, an older one out_of_order", async () => {
     const h = await connected();
-    server!.send(rawLiveCandleFrame());
-    await until(() => h.frames.length === 1, "frame");
+    const U = BUCKET_5M + 100_000;
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U }));
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U })); // same connection ⇒ duplicate
+    await until(() => h.stream.snapshot().droppedByReason.duplicate === 1, "same-connection dup");
 
     server!.closeClients(1012, "restart");
     await until(() => opened(h) === 2, "reconnected");
-    server!.send(rawLiveCandleFrame()); // the snapshot the server re-sends
-    await until(() => h.stream.snapshot().droppedByReason.duplicate === 1, "replay dropped");
-    expect(h.frames).toHaveLength(1);
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U })); // the new connection's snapshot
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U })); // re-sent again ⇒ duplicate
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U - 1 })); // older ⇒ out_of_order
+    await until(() => h.stream.snapshot().droppedByReason.out_of_order === 1, "older dropped");
+
+    expect(h.frames).toHaveLength(2);
+    expect(h.stream.snapshot().droppedByReason).toMatchObject({ duplicate: 2, out_of_order: 1 });
+  });
+
+  it("tickers are trimmed like the server trims them, so their frames are not unsolicited", async () => {
+    server = await startServer();
+    const h = open(server.endpoint, {}, [" BTCUSD", "BTCUSD ", "  "]);
+    await until(() => opened(h) === 1, "opened");
+    expect(server.connects[0]!.symbols).toBe("BTCUSD");
+    expect(h.events[0]!.tickers).toEqual(["BTCUSD"]);
+
+    server.send(rawLiveCandleFrame());
+    await until(() => h.frames.length === 1, "frame delivered");
+    expect(h.stream.snapshot().droppedByReason.unsolicited).toBe(0);
   });
 });
 
@@ -321,6 +347,7 @@ describe("openCandleStream — connection lifecycle", () => {
       reason: "code=1012 frames=1 restart",
       shard: 0,
       shardCount: 1,
+      tickers: ["BTCUSD", "ETHUSD"],
     });
   });
 
@@ -355,12 +382,12 @@ describe("openCandleStream — connection lifecycle", () => {
 
   it("a handshake that never completes times out, fails, and redials", async () => {
     server = await startServer("hang");
-    const h = open(server.endpoint);
+    const h = open(server.endpoint, { handshakeTimeoutMs: SHORT_HANDSHAKE_MS });
 
     await until(() => h.events.length >= 1, "timeout failure");
     expect(h.events[0]).toMatchObject({
       type: "failed",
-      reason: `handshake timed out after ${String(FAST.handshakeTimeoutMs)}ms`,
+      reason: `handshake timed out after ${String(SHORT_HANDSHAKE_MS)}ms`,
     });
     await server.waitForConnect(2);
   });
@@ -385,17 +412,20 @@ describe("openCandleStream — connection lifecycle", () => {
   });
 
   it("a connection that delivered a frame resets the backoff: the redial after it is prompt", async () => {
+    // Wide enough apart that scheduler noise on a loaded runner cannot blur them:
+    // after five fruitless attempts an un-reset delay would be ≥ 800 ms, a reset one ~50 ms.
+    const backoff = { initialMs: 50, maxMs: 5_000 };
     server = await startServer("404");
-    const h = open(server.endpoint);
-    await server.waitForConnect(3);
+    const h = open(server.endpoint, { backoff });
+    await server.waitForConnect(5, 5_000);
     server.mode = "serve";
-    await until(() => opened(h) >= 1, "finally opened");
+    await until(() => opened(h) >= 1, "finally opened", 5_000);
     server.send(rawLiveCandleFrame());
     await until(() => h.frames.length === 1, "frame");
 
     const before = Date.now();
     server.closeClients(1000, "bye");
-    await until(() => opened(h) >= 2, "prompt redial");
-    expect(Date.now() - before).toBeLessThan(FAST.backoff.maxMs * 4);
+    await until(() => opened(h) >= 2, "prompt redial", 5_000);
+    expect(Date.now() - before).toBeLessThan(500);
   });
 });

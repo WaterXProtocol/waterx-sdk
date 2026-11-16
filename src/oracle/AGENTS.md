@@ -76,6 +76,10 @@ file, not from any barrel) and mirrors its state machine; a transport fix lands 
 subscribes and reports: ONE `symbols` and ONE comma-joined `tf` field per connection (the quote-center 400s a
 repeated field and an unknown tf, and reads an omitted `symbols` as every symbol — so empty tickers and unknown
 timeframes throw at open), the guard orders per (symbol, tf) on `compareLiveCandleFrames` (the quote-center's
-`order_key`) and drops an equal key as `duplicate`, and `snapshot().shards` / `reconnectNow(shard)` expose each
-shard for a consumer's idle watchdog. `void` frames are delivered; `LiveCandleBook` applies them. Tests:
+`order_key`) and drops an equal key as `duplicate` within one connection (the first equal frame per pair on a
+new connection is delivered as a re-assertion), and `snapshot().shards` / `reconnectNow(shard)` expose each
+shard for a consumer's idle watchdog. `void` frames are delivered; `LiveCandleBook` applies them. Never promise
+a snapshot: the gateway shares one upstream per path + query, so a joining client gets none, and a missed `void`
+is never re-sent — consumers seed from REST `include_open` (`candlePointToFrame`, `updated_at_ms: 0`) on every
+`opened` after `LiveCandleBook.markSuspect`. Tests:
 `test/perp/unit/oracle-candle-{frame,stream}.test.ts`, on the canonical suite's loopback fake.
