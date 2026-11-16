@@ -1,14 +1,15 @@
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
+import { normalizeStructTag } from "@mysten/sui/utils";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   PositionSettlementView,
   VoucherAccountView,
 } from "../../../src/generated/waterx_prediction/view.ts";
+import { buildPlaceVoucherOrderTx } from "../../../src/prediction/tx-builders.ts";
 import {
   addVoucherGranter,
-  buildPlaceVoucherOrderTx,
   getPositionSettlement,
   getVoucherAccount,
   grantVoucher,
@@ -43,6 +44,8 @@ describe("legacy Predict vouchers", () => {
     expect(() => placeOrderWithVoucher(client, new Transaction(), receiverOverride)).toThrow(
       "receiver",
     );
+    const unsetReceiver = { ...params, receiverAccountId: undefined };
+    expect(() => placeOrderWithVoucher(client, new Transaction(), unsetReceiver)).not.toThrow();
   });
   it("grant uses AccountRequest authorization; admin operations use the cap and exact ABI", () => {
     const tx = new Transaction();
@@ -67,7 +70,8 @@ describe("legacy Predict vouchers", () => {
       result(
         VoucherAccountView.serialize({
           market_registry_id: client.marketRegistry(),
-          settlement_coin_type: { name: client.settlementCoinType() },
+          // On-chain `TypeName.name` carries no `0x` prefix.
+          settlement_coin_type: { name: normalizeStructTag(client.settlementCoinType()).slice(2) },
           account_id: "0x123",
           available: "9007199254740993",
           reserved: "2",
@@ -75,9 +79,9 @@ describe("legacy Predict vouchers", () => {
         }).toBytes(),
       ) as Awaited<ReturnType<typeof client.simulate>>,
     );
-    expect((await getVoucherAccount(client, { accountId: "0x123" })).available).toBe(
-      9007199254740993n,
-    );
+    const account = await getVoucherAccount(client, { accountId: "0x123" });
+    expect(account.available).toBe(9007199254740993n);
+    expect(account.settlementCoinType).toBe(normalizeStructTag(client.settlementCoinType()));
     spy.mockRestore();
   });
   it.each([

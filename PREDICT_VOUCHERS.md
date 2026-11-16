@@ -11,6 +11,9 @@ metadata, not the backing coin decimals. Every builder only constructs a PTB; th
 Use `getVoucherAccount` for available/reserved/paused and `getPositionSettlement` for live
 position gross payout, actual cash payout and restored voucher credit. Values are bigint.
 An unavailable/deleted view throws; it must never be interpreted as a cash-funded position.
+While the market is unresolved, `getPositionSettlement` returns `0n` for all three amounts, the same
+as a settled loss: check the market outcome before treating zeros as final.
+`getVoucherAccount().settlementCoinType` is normalized (`0x`-prefixed), matching the config type strings.
 A config package's upgrade `version` does not identify the Move logical version or Voucher capability.
 
 Management builders: `grantVoucher` (granter AccountRequest + allowlist, additive),
@@ -22,14 +25,14 @@ No issuer signer, campaign API, expiry or issuance batch is invented by this SDK
 
 ## Lifecycle
 
-| Operation | Voucher credit | Actual cash |
-| --- | --- | --- |
-| Place | Available -> reserved | No debit |
-| Fill | Cost consumed, unused reservation released; order finalized | Platform funds execution |
-| Cancel | Reservation released | No refund |
-| Winning claim | Spent | max(shares - cost, 0) |
-| Losing claim | Spent | 0 |
-| INVALID claim | Cost restored | 0 |
+| Operation     | Voucher credit                                              | Actual cash              |
+| ------------- | ----------------------------------------------------------- | ------------------------ |
+| Place         | Available -> reserved                                       | No debit                 |
+| Fill          | Cost consumed, unused reservation released; order finalized | Platform funds execution |
+| Cancel        | Reservation released                                        | No refund                |
+| Winning claim | Spent                                                       | max(shares - cost, 0)    |
+| Losing claim  | Spent                                                       | 0                        |
+| INVALID claim | Cost restored                                               | 0                        |
 
 Existing cancel, fill, resolve, claim and force-claim builders retain their ABI: the contract
 branches on the funding marker. Same-account splits retain the source and conserve cost/shares.
@@ -70,11 +73,11 @@ pnpm exec vitest run --project predict-integration test/prediction/integration/v
 
 Use a dedicated, idle Account owned by the signer with at least 40 raw Voucher credit units
 already granted, no reservations, and an existing registered Keeper signer. The registry must
-have enough cash above its minimum reserve, and GlobalConfig must allow only logical version 8.
+have enough cash above its minimum reserve, and GlobalConfig must allow logical version 8.
 The suite refuses mainnet and never creates/funds accounts, issues vouchers, changes roles or
 updates version gates. It creates isolated market IDs and submits real transactions only after
 explicit opt-in. Reserve/fill/cancel and win/loss/INVALID claim assertions read the actual ledger
 and transaction events; transaction-local events supply order/position IDs. An uncertain write
-is not automatically resubmitted: inspect its digest/state before rerunning, especially after a
-failure leaves a reservation. This uses manual authorized Keeper fill/resolve calls, not automatic
+is not automatically resubmitted: inspect its digest/state before rerunning. A failed case makes one
+best-effort cancel of its still-live order; if that also fails, a reservation remains to clear by hand. This uses manual authorized Keeper fill/resolve calls, not automatic
 Broker or venue execution, and passing offline tests does not prove deployed service compatibility.

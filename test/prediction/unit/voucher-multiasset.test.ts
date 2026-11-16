@@ -8,6 +8,7 @@ import {
   VoucherAccountView,
 } from "../../../src/generated/waterx_prediction/view.ts";
 import { PredictClient } from "../../../src/prediction/client.ts";
+import { buildPlaceVoucherOrderTx } from "../../../src/prediction/tx-builders.ts";
 import * as voucher from "../../../src/prediction/voucher.ts";
 import { WaterXClient } from "../../../src/unified-client.ts";
 import { assertDualPathTxCase } from "../../helpers/unified-dual-path.ts";
@@ -147,7 +148,7 @@ it("honours explicit non-default registry/type overrides on voucher builds and r
     marketRegistry: client.marketRegistry("WAL"),
     settlementCoinType: client.settlementCoinType("WAL"),
   };
-  const tx = await voucher.buildPlaceVoucherOrderTx(client, {
+  const tx = await buildPlaceVoucherOrderTx(client, {
     ...minimalPlaceOrderParams(client),
     ...target,
   });

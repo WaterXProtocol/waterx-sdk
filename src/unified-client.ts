@@ -66,6 +66,7 @@ import * as predFetch from "./prediction/fetch.ts";
 import * as predGift from "./prediction/gift.ts";
 import * as predOps from "./prediction/prediction.ts";
 import {
+  buildPlaceVoucherOrderTx,
   buildBatchClaimTx as buildPredictBatchClaimTx,
   buildPlaceOrderTx as buildPredictPlaceOrderTx,
   type BuildBatchClaimTxParams,
@@ -155,6 +156,7 @@ const predictOps = {
   ...predFetch,
   ...predGift,
   ...predVoucher,
+  buildPlaceVoucherOrderTx,
 };
 
 /** Account namespace exposed as `client.account` — generic wxa + credit + custody, perp-backed. */

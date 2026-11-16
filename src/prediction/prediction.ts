@@ -18,6 +18,7 @@ import {
   idArg,
   marketIdArg,
   objectArg,
+  placeOrderArguments,
   resolveAccountRegistry,
   resolveGlobalConfig,
   resolveMarketRegistry,
@@ -86,25 +87,14 @@ export function placeOrder(
 ): Transaction {
   const pkg = resolvePackageId(client, params.packageId);
   const senderRequest = createAccountRequest(client, tx, params);
-  const receiverAccountId = params.receiverAccountId ?? params.accountId;
   tx.moveCall({
     target: `${pkg}::waterx_prediction::place_order`,
     typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
-    arguments: [
-      tx.object(resolveGlobalConfig(client, params.globalConfig)),
-      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
-      senderRequest,
-      idArg(tx, params.accountId),
-      idArg(tx, receiverAccountId),
-      tx.pure.u64(toBigInt(params.maxSpend)),
-      marketIdArg(tx, params.marketId),
-      selectionArg(client, tx, params.selection, params.packageId),
-      tx.pure.u64(toBigInt(params.minShares)),
-      tx.pure.u64(toBigInt(params.priceCapBps)),
-      tx.pure.u64(toBigInt(params.expiryTs)),
-      clockArg(tx),
-    ],
+    arguments: placeOrderArguments(client, tx, params, {
+      request: senderRequest,
+      selection: selectionArg(client, tx, params.selection, params.packageId),
+      receiver: params.receiverAccountId ?? params.accountId,
+    }),
   });
   return tx;
 }

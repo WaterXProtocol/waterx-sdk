@@ -1,5 +1,6 @@
 /** Voucher builders participate in the same free-function/facade equivalence registry as cash builders. */
 import type { PredictClient } from "../../../../src/prediction/client.ts";
+import { buildPlaceVoucherOrderTx } from "../../../../src/prediction/tx-builders.ts";
 import * as voucher from "../../../../src/prediction/voucher.ts";
 import { minimalPlaceOrderParams, PTB_DUMMY } from "../../fixtures/ptb-params.ts";
 import { caseMutate, type PredictDualPathCase } from "./predict-dual-path-shared.ts";
@@ -19,7 +20,7 @@ export function predictVoucherDualPathCases(client: PredictClient): PredictDualP
     ),
     {
       name: "buildPlaceVoucherOrderTx",
-      buildLegacy: (c) => voucher.buildPlaceVoucherOrderTx(c, place),
+      buildLegacy: (c) => buildPlaceVoucherOrderTx(c, place),
       buildFacade: (p) => p.buildPlaceVoucherOrderTx(place),
     },
     caseMutate(

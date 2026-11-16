@@ -268,3 +268,5 @@ These live in the SDK repository, not in the npm package:
 - Architecture and contract surface (the repository root and its agent instruction file): https://github.com/WaterXProtocol/waterx-sdk
 
 In the package: the authoritative export lists are `dist/src/perp/index.d.ts` and `dist/src/prediction/index.d.ts`.
+Prediction voucher orders (`client.predict.placeOrderWithVoucher`), their lifecycle and the indexing rules are in
+`node_modules/@waterx/sdk/PREDICT_VOUCHERS.md`.

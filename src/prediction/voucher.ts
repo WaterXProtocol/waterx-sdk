@@ -3,6 +3,7 @@
  */
 import { bcs } from "@mysten/sui/bcs";
 import { Transaction } from "@mysten/sui/transactions";
+import { normalizeStructTag } from "@mysten/sui/utils";
 
 import {
   VoucherAccountView as AccountBcs,
@@ -16,8 +17,8 @@ import {
   clockArg,
   createAccountRequest,
   idArg,
-  marketIdArg,
   objectArg,
+  placeOrderArguments,
   resolveAccountRegistry,
   resolveGlobalConfig,
   resolveMarketRegistry,
@@ -33,35 +34,19 @@ export function placeOrderWithVoucher(
   tx: Transaction,
   params: PlaceVoucherOrderParams,
 ): Transaction {
-  if ("receiverAccountId" in params) throw new Error("Voucher orders cannot override the receiver");
+  // An explicit `undefined` is "not set", as in the cash `placeOrder`.
+  if ((params as { receiverAccountId?: unknown }).receiverAccountId !== undefined)
+    throw new Error("Voucher orders cannot override the receiver");
   const request = createAccountRequest(client, tx, params);
   tx.moveCall({
     target: `${resolvePackageId(client, params.packageId)}::waterx_prediction::place_order_with_voucher`,
     typeArguments: [resolveSettlementCoinType(client, params.settlementCoinType)],
-    arguments: [
-      tx.object(resolveGlobalConfig(client, params.globalConfig)),
-      tx.object(resolveMarketRegistry(client, params.marketRegistry)),
-      tx.object(resolveAccountRegistry(client, params.accountRegistry)),
+    arguments: placeOrderArguments(client, tx, params, {
       request,
-      idArg(tx, params.accountId),
-      tx.pure.u64(toBigInt(params.maxSpend)),
-      marketIdArg(tx, params.marketId),
-      selectionArg(client, tx, params.selection, params.packageId),
-      tx.pure.u64(toBigInt(params.minShares)),
-      tx.pure.u64(toBigInt(params.priceCapBps)),
-      tx.pure.u64(toBigInt(params.expiryTs)),
-      clockArg(tx),
-    ],
+      selection: selectionArg(client, tx, params.selection, params.packageId),
+    }),
   });
   return tx;
-}
-/** High-level voucher build intentionally has no cash client or consolidate option. */
-export async function buildPlaceVoucherOrderTx(
-  client: PredictClient,
-  params: PlaceVoucherOrderParams & { tx?: Transaction },
-): Promise<Transaction> {
-  const { tx = new Transaction(), ...order } = params;
-  return placeOrderWithVoucher(client, tx, order);
 }
 export interface VoucherAccountView {
   marketRegistryId: string;
@@ -94,14 +79,19 @@ export async function getVoucherAccount(
   const v = AccountBcs.parse(extractReturnBytes(await client.simulate(tx)));
   return {
     marketRegistryId: v.market_registry_id,
-    settlementCoinType: v.settlement_coin_type.name,
+    // On-chain `TypeName.name` has no `0x` prefix; return the same form as the config type strings.
+    settlementCoinType: normalizeStructTag(v.settlement_coin_type.name),
     accountId: v.account_id,
     available: BigInt(v.available),
     reserved: BigInt(v.reserved),
     paused: v.paused,
   };
 }
-/** Only live positions exist in this view. Missing/deleted positions throw, never default to cash. */
+/**
+ * Only live positions exist in this view. Missing/deleted positions throw, never default to cash.
+ * While the market is unresolved every payout field is `0n`, exactly as for a settled loss: check the
+ * market outcome before treating zeros as a final result.
+ */
 export async function getPositionSettlement(
   client: PredictClient,
   params: ViewBaseParams & { positionId: bigint | number | string },

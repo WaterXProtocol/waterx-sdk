@@ -125,7 +125,7 @@ export type {
   TransferPositionParams,
 } from "./prediction.ts";
 
-export { buildBatchClaimTx, buildPlaceOrderTx } from "./tx-builders.ts";
+export { buildBatchClaimTx, buildPlaceOrderTx, buildPlaceVoucherOrderTx } from "./tx-builders.ts";
 export type {
   BuildBatchClaimTxParams,
   BuildPlaceOrderTxParams,

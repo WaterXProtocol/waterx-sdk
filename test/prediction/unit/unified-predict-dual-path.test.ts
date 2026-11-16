@@ -37,11 +37,21 @@ const PREDICT_SPECIFIC_ACCOUNT_OPS = [
   "allowPredictionProtocolAsset",
   "disallowPredictionProtocolAsset",
 ];
+// Voucher reads simulate instead of building a PTB. Listed by name so a new voucher export is held
+// to the dual-path bar unless it is added here on purpose.
+const VOUCHER_READS = new Set([
+  "getVoucherAccount",
+  "getPositionSettlement",
+  "getVoucherGrantBudget",
+  "getVoucherGranters",
+  "isVoucherOrder",
+  "isVoucherPosition",
+]);
 const expectedPredictPtbBuilders = [
   ...PREDICT_SPECIFIC_ACCOUNT_OPS,
   ...fnNames(predAdmin),
   ...fnNames(predOps),
-  ...fnNames(predVoucher).filter((name) => !/^(get|is)/.test(name)),
+  ...fnNames(predVoucher).filter((name) => !VOUCHER_READS.has(name)),
 ].filter((n) => !NON_CLIENT_FIRST.has(n));
 
 describe("unified Client — prediction dual-path PTB equivalence", () => {

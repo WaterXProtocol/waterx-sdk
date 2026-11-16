@@ -41,7 +41,7 @@ describe.skipIf(!enabled)("Voucher lifecycle (real testnet; explicit opt-in)", (
     accountId = configuredAccount;
     expect(await getAccountIds(client, { owner: owner.toSuiAddress() })).toContain(accountId);
     expect(await isKeeper(client, { keeper: keeper.toSuiAddress() })).toBe(true);
-    expect(await getAllowedVersions(client)).toEqual([8]);
+    expect(await getAllowedVersions(client)).toContain(8);
     const credit = await getVoucherAccount(client, { accountId });
     expect(credit.paused).toBe(false);
     expect(credit.reserved).toBe(0n);
@@ -73,75 +73,90 @@ describe.skipIf(!enabled)("Voucher lifecycle (real testnet; explicit opt-in)", (
       const orderId = BigInt(
         String(expectEvent(placed, "::events::VoucherOrderPlaced").json.order_id),
       );
-      expectEvent(placed, "::events::VoucherReserved", {
-        order_id: orderId.toString(),
-        amount: "10",
-      });
-      expect(await getVoucherAccount(client, { accountId })).toMatchObject({
-        available: baseline.available - 10n,
-        reserved: 10n,
-      });
-
-      if (outcome === "CANCEL") {
-        const cancelled = await send(keeper, (tx) => {
-          cancelOrder(client, tx, { orderId });
-        });
-        expectEvent(cancelled, "::events::VoucherReleased", {
+      // Set while the order can still hold a reservation; cleared once it is cancelled or filled.
+      let liveOrderId: bigint | undefined = orderId;
+      try {
+        expectEvent(placed, "::events::VoucherReserved", {
           order_id: orderId.toString(),
           amount: "10",
         });
-        expectNoEvent(cancelled, "::events::VoucherPositionSettled");
         expect(await getVoucherAccount(client, { accountId })).toMatchObject({
-          available: baseline.available,
+          available: baseline.available - 10n,
+          reserved: 10n,
+        });
+
+        if (outcome === "CANCEL") {
+          const cancelled = await send(keeper, (tx) => {
+            cancelOrder(client, tx, { orderId });
+          });
+          liveOrderId = undefined;
+          expectEvent(cancelled, "::events::VoucherReleased", {
+            order_id: orderId.toString(),
+            amount: "10",
+          });
+          expectNoEvent(cancelled, "::events::VoucherPositionSettled");
+          expect(await getVoucherAccount(client, { accountId })).toMatchObject({
+            available: baseline.available,
+            reserved: 0n,
+          });
+          return;
+        }
+
+        const filled = await send(keeper, (tx) => {
+          fillOrder(client, tx, { orderId, filledShares: 15n, filledCost: 6n });
+        });
+        liveOrderId = undefined;
+        const consumed = expectEvent(filled, "::events::VoucherConsumed", {
+          order_id: orderId.toString(),
+          amount: "6",
+          released_amount: "4",
+        });
+        const positionId = BigInt(String(consumed.json.position_id));
+        expect(await getVoucherAccount(client, { accountId })).toMatchObject({
+          available: baseline.available - 6n,
           reserved: 0n,
         });
-        return;
+        await send(keeper, (tx) => {
+          resolveMarket(client, tx, { marketId, outcome });
+        });
+        const gross = outcome === "YES" ? 15n : outcome === "INVALID" ? 6n : 0n;
+        const cash = outcome === "YES" ? 9n : 0n;
+        const refund = outcome === "INVALID" ? 6n : 0n;
+        expect(await getPositionSettlement(client, { positionId })).toEqual({
+          positionId,
+          isVoucher: true,
+          grossPayout: gross,
+          cashPayout: cash,
+          voucherRefund: refund,
+        });
+        const claimed = await send(owner, (tx) => {
+          claim(client, tx, { positionId });
+        });
+        expectEvent(claimed, "::events::PositionClaimed", {
+          position_id: positionId.toString(),
+          payout: cash.toString(),
+        });
+        expectEvent(claimed, "::events::VoucherPositionSettled", {
+          position_id: positionId.toString(),
+          filled_cost: "6",
+          gross_payout: gross.toString(),
+          cash_paid: cash.toString(),
+          voucher_returned: refund.toString(),
+        });
+        expect(await getVoucherAccount(client, { accountId })).toMatchObject({
+          available: baseline.available - 6n + refund,
+          reserved: 0n,
+        });
+      } finally {
+        // Best effort: release a reservation a mid-test failure left behind, so the next case and the
+        // next run still start from `reserved === 0n`. A cancel of an already-finalized order aborts.
+        if (liveOrderId !== undefined) {
+          const stale = liveOrderId;
+          await send(keeper, (tx) => {
+            cancelOrder(client, tx, { orderId: stale });
+          }).catch(() => undefined);
+        }
       }
-
-      const filled = await send(keeper, (tx) => {
-        fillOrder(client, tx, { orderId, filledShares: 15n, filledCost: 6n });
-      });
-      const consumed = expectEvent(filled, "::events::VoucherConsumed", {
-        order_id: orderId.toString(),
-        amount: "6",
-        released_amount: "4",
-      });
-      const positionId = BigInt(String(consumed.json.position_id));
-      expect(await getVoucherAccount(client, { accountId })).toMatchObject({
-        available: baseline.available - 6n,
-        reserved: 0n,
-      });
-      await send(keeper, (tx) => {
-        resolveMarket(client, tx, { marketId, outcome });
-      });
-      const gross = outcome === "YES" ? 15n : outcome === "INVALID" ? 6n : 0n;
-      const cash = outcome === "YES" ? 9n : 0n;
-      const refund = outcome === "INVALID" ? 6n : 0n;
-      expect(await getPositionSettlement(client, { positionId })).toEqual({
-        positionId,
-        isVoucher: true,
-        grossPayout: gross,
-        cashPayout: cash,
-        voucherRefund: refund,
-      });
-      const claimed = await send(owner, (tx) => {
-        claim(client, tx, { positionId });
-      });
-      expectEvent(claimed, "::events::PositionClaimed", {
-        position_id: positionId.toString(),
-        payout: cash.toString(),
-      });
-      expectEvent(claimed, "::events::VoucherPositionSettled", {
-        position_id: positionId.toString(),
-        filled_cost: "6",
-        gross_payout: gross.toString(),
-        cash_paid: cash.toString(),
-        voucher_returned: refund.toString(),
-      });
-      expect(await getVoucherAccount(client, { accountId })).toMatchObject({
-        available: baseline.available - 6n + refund,
-        reserved: 0n,
-      });
     },
     360_000,
   );

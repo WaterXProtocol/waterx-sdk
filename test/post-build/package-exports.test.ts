@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { bcs } from "@mysten/sui/bcs";
+import { normalizeStructTag } from "@mysten/sui/utils";
 import { describe, expect, it, vi } from "vitest";
 
 import { minimalPlaceOrderParams, PTB_DUMMY } from "../prediction/fixtures/ptb-params.ts";
@@ -87,7 +88,9 @@ describe.each(["ESM", "CJS"] as const)("Voucher package consumers (%s)", (format
             {
               bcs: prediction.predictionViewCalls.VoucherAccountView.serialize({
                 market_registry_id: client.marketRegistry(),
-                settlement_coin_type: { name: client.settlementCoinType() },
+                settlement_coin_type: {
+                  name: normalizeStructTag(client.settlementCoinType()).slice(2),
+                },
                 account_id: PTB_DUMMY.accountId,
                 available: raw,
                 reserved: 1n,
@@ -102,7 +105,7 @@ describe.each(["ESM", "CJS"] as const)("Voucher package consumers (%s)", (format
       expect(await facade.getVoucherAccount({ accountId: PTB_DUMMY.accountId })).toMatchObject({
         available: raw,
         reserved: 1n,
-        settlementCoinType: client.settlementCoinType(),
+        settlementCoinType: normalizeStructTag(client.settlementCoinType()),
         marketRegistryId: client.marketRegistry(),
       });
     } finally {
