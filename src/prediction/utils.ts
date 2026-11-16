@@ -7,6 +7,7 @@ import {
 import { toU64 } from "../utils/validate.ts";
 import type { PredictClient } from "./client.ts";
 import { CLOCK_OBJECT_ID } from "./constants.ts";
+import type { PlaceOrderParams } from "./prediction.ts";
 import type {
   AccountIdentityParams,
   IdArgument,
@@ -133,6 +134,33 @@ export function createAccountRequest(
     arguments: [objectArg(tx, params.bucketAccount)],
   });
   return request;
+}
+
+/**
+ * Arguments shared by `place_order` and `place_order_with_voucher`. The voucher entrypoint takes no
+ * receiver, so `receiver` is left out there.
+ */
+export function placeOrderArguments(
+  client: PredictClient,
+  tx: Transaction,
+  params: Omit<PlaceOrderParams, "receiverAccountId">,
+  call: { request: TransactionArgument; selection: TransactionArgument; receiver?: IdArgument },
+): TransactionArgument[] {
+  return [
+    tx.object(resolveGlobalConfig(client, params.globalConfig)),
+    tx.object(resolveMarketRegistry(client, params.marketRegistry)),
+    tx.object(resolveAccountRegistry(client, params.accountRegistry)),
+    call.request,
+    idArg(tx, params.accountId),
+    ...(call.receiver === undefined ? [] : [idArg(tx, call.receiver)]),
+    tx.pure.u64(toBigInt(params.maxSpend)),
+    marketIdArg(tx, params.marketId),
+    call.selection,
+    tx.pure.u64(toBigInt(params.minShares)),
+    tx.pure.u64(toBigInt(params.priceCapBps)),
+    tx.pure.u64(toBigInt(params.expiryTs)),
+    clockArg(tx),
+  ];
 }
 
 /** Coerces on-chain `vector<u8>` shapes used in view decoding. */

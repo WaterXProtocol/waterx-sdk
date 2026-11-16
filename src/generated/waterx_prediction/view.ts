@@ -4,10 +4,26 @@
 import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
+import * as type_name from './deps/std/type_name.ts';
 import * as order_1 from './order.ts';
 import * as position_1 from './position.ts';
 import * as outcome from './outcome.ts';
 const $moduleName = '@waterx/prediction::view';
+export const VoucherAccountView = new MoveStruct({ name: `${$moduleName}::VoucherAccountView`, fields: {
+        market_registry_id: bcs.Address,
+        settlement_coin_type: type_name.TypeName,
+        account_id: bcs.Address,
+        available: bcs.u64(),
+        reserved: bcs.u64(),
+        paused: bcs.bool()
+    } });
+export const PositionSettlementView = new MoveStruct({ name: `${$moduleName}::PositionSettlementView`, fields: {
+        position_id: bcs.u64(),
+        is_voucher: bcs.bool(),
+        gross_payout: bcs.u64(),
+        cash_payout: bcs.u64(),
+        voucher_refund: bcs.u64()
+    } });
 export const RegistryView = new MoveStruct({ name: `${$moduleName}::RegistryView`, fields: {
         balance: bcs.u64(),
         min_reserve: bcs.u64(),
@@ -73,6 +89,64 @@ export const AccountDataView = new MoveStruct({ name: `${$moduleName}::AccountDa
         position_front: bcs.option(bcs.u64()),
         position_back: bcs.option(bcs.u64())
     } });
+export interface VoucherAccountArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+}
+export interface VoucherAccountOptions {
+    package?: string;
+    arguments: VoucherAccountArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function voucherAccount(options: VoucherAccountOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "accountId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'view',
+        function: 'voucher_account',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PositionSettlementArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface PositionSettlementOptions {
+    package?: string;
+    arguments: PositionSettlementArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function positionSettlement(options: PositionSettlementOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'view',
+        function: 'position_settlement',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface RegistryArguments {
     marketRegistry: RawTransactionArgument<string>;
 }
@@ -315,6 +389,139 @@ export function resolvedMarketCursor(options: ResolvedMarketCursorOptions) {
         package: packageAddress,
         module: 'view',
         function: 'resolved_market_cursor',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface UnresolvedMarketsArguments {
+    marketRegistry: RawTransactionArgument<string>;
+}
+export interface UnresolvedMarketsOptions {
+    package?: string;
+    arguments: UnresolvedMarketsArguments | [
+        marketRegistry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Every unresolved (active / still-open) market's `MarketView`, in table order. */
+export function unresolvedMarkets(options: UnresolvedMarketsOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'view',
+        function: 'unresolved_markets',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface UnresolvedMarketsPageArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    start: RawTransactionArgument<number | bigint | null>;
+    limit: RawTransactionArgument<number | bigint>;
+}
+export interface UnresolvedMarketsPageOptions {
+    package?: string;
+    arguments: UnresolvedMarketsPageArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        start: RawTransactionArgument<number | bigint | null>,
+        limit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** One page of unresolved markets, plus the cursor for the next page. */
+export function unresolvedMarketsPage(options: UnresolvedMarketsPageOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        '0x1::option::Option<u64>',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "start", "limit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'view',
+        function: 'unresolved_markets_page',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface ResolvedMarketsPageArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    start: RawTransactionArgument<number | bigint | null>;
+    limit: RawTransactionArgument<number | bigint>;
+}
+export interface ResolvedMarketsPageOptions {
+    package?: string;
+    arguments: ResolvedMarketsPageArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        start: RawTransactionArgument<number | bigint | null>,
+        limit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * One page of resolved markets, plus the cursor for the next page. Resolved
+ * markets accumulate over time, so this is paginated only.
+ */
+export function resolvedMarketsPage(options: ResolvedMarketsPageOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        '0x1::option::Option<u64>',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "start", "limit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'view',
+        function: 'resolved_markets_page',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PositionsPageArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    start: RawTransactionArgument<number | bigint | null>;
+    limit: RawTransactionArgument<number | bigint>;
+}
+export interface PositionsPageOptions {
+    package?: string;
+    arguments: PositionsPageArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        start: RawTransactionArgument<number | bigint | null>,
+        limit: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * One page of live positions (registry-wide), plus the cursor for the next page.
+ * The registry only retains open / pending-close positions — claimed and closed
+ * positions are dropped — so this walks current exposure only.
+ */
+export function positionsPage(options: PositionsPageOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        '0x1::option::Option<u64>',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "start", "limit"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'view',
+        function: 'positions_page',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

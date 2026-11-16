@@ -21,6 +21,7 @@ import {
 } from "./prediction.ts";
 import type { IdArgument } from "./types.ts";
 import { resolveSettlementCoinType } from "./utils.ts";
+import { placeOrderWithVoucher, type PlaceVoucherOrderParams } from "./voucher.ts";
 
 export interface PredictCommonBuildOpts {
   tx?: Transaction;
@@ -93,6 +94,18 @@ export async function buildPlaceOrderTx(
   );
   placeOrder(predictClient, tx, stripPlaceOrderParams(params));
   return tx;
+}
+
+/**
+ * {@link placeOrderWithVoucher} in one PTB. Voucher orders spend no cash, so there is no account
+ * client and no consolidate option.
+ */
+export async function buildPlaceVoucherOrderTx(
+  client: PredictClient,
+  params: PlaceVoucherOrderParams & { tx?: Transaction },
+): Promise<Transaction> {
+  const { tx = new Transaction(), ...order } = params;
+  return placeOrderWithVoucher(client, tx, order);
 }
 
 /**

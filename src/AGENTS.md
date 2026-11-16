@@ -68,7 +68,7 @@ src/
   `custody_vault::burn`; CREDIT redemption routes through the withdraw queue in `account/funding/credit.ts`
   (`routeWormhole` / `routeNative` → `requestCreditWithdraw` → `enqueueWithdrawal`; keeper drain
   `executeWithdrawal{Wormhole,Native}` needs the executor allowlist).
-- **`perp/config-view.ts`** (`PerpConfigView`) holds the document lookups that *do* something — a keyed-map
+- **`perp/config-view.ts`** (`PerpConfigView`) holds the document lookups that _do_ something — a keyed-map
   read with a throwing miss (`getMarket`, `getAggregator`, `getPoolTokenType`, `getNativeAsset`,
   `getRewarders`) or a derived identifier (`wlpType`, `creditType`, `isConstantTicker`). Pure, no gRPC. A
   plain block read stays `client.config.objects.*` at the call site.
@@ -90,6 +90,11 @@ src/
 - **`prediction/tx-builders.ts`** — async `buildPlaceOrderTx` / `buildBatchClaimTx` with the same optional
   pre-sweep (needs `PerpClient` + `PredictClient`; the umbrella wraps them as `buildPredictPlaceOrderTx` /
   `buildPredictBatchClaimTx`). The sync `placeOrder` / `batchClaim` in `prediction.ts` do not sweep.
+  `buildPlaceVoucherOrderTx` lives here too but takes only the `PredictClient`: a voucher order spends no cash.
+- **`prediction/voucher.ts`** — voucher credit in the legacy prediction registry: the sync
+  `placeOrderWithVoucher` and grant/admin builders, plus the simulate-backed reads. `place_order` and
+  `place_order_with_voucher` share `placeOrderArguments` (`prediction/utils.ts`). Consumer guide: the root
+  `PREDICT_VOUCHERS.md`, shipped in the package.
 - **`generated/`** — never hand-edit; rerun `pnpm codegen` after Move ABI changes. The prediction line
   imports from here too. `scripts/fix-generated-imports.ts` normalizes paths post-codegen and annotates the
   MoveStructs that embed a MoveEnum with `: MoveStruct<any, any>` to dodge TS2883.

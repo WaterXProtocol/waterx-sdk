@@ -172,6 +172,7 @@
     "dist",
     ".claude/skills/waterx-sdk-integration/SKILL.md",
     "SKILLS.md",
+    "PREDICT_VOUCHERS.md",
     "LICENSE",
     "package.json"
   ],

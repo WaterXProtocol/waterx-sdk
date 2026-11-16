@@ -90,8 +90,12 @@ export interface CreateMarketRegistryOptions {
     ];
 }
 /**
- * Admin-only: spin up the shared market registry object for coin type `T`. All
- * markets for this coin type should settle through this object.
+ * Deprecated — use `create_market_registry_in_block`, which assigns the registry a
+ * private id block so its ids cannot collide with another registry's inside the
+ * shared per-account index (see `ID_BLOCK_BITS`). This signature is frozen by
+ * Sui's upgrade compatibility rules, so it is retired by aborting. `T` is unused
+ * now that the body aborts, but the published signature is frozen and cannot drop
+ * it.
  */
 export function createMarketRegistry(options: CreateMarketRegistryOptions) {
     const packageAddress = options.package ?? '@waterx/prediction';
@@ -103,6 +107,86 @@ export function createMarketRegistry(options: CreateMarketRegistryOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'create_market_registry',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface CreateMarketRegistryInBlockArguments {
+    globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface CreateMarketRegistryInBlockOptions {
+    package?: string;
+    arguments: CreateMarketRegistryInBlockArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin-only: spin up the shared market registry object for coin type `T`. All
+ * markets for this coin type should settle through this object.
+ *
+ * Draws a private id block from `global_config`, so every `order_id` /
+ * `position_id` / `market_key` this registry issues is globally unique across
+ * registries — see `ID_BLOCK_BITS`.
+ */
+export function createMarketRegistryInBlock(options: CreateMarketRegistryInBlockOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'create_market_registry_in_block',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RebaseRegistryIdsArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    globalConfig: RawTransactionArgument<string>;
+    _: RawTransactionArgument<string>;
+}
+export interface RebaseRegistryIdsOptions {
+    package?: string;
+    arguments: RebaseRegistryIdsArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        globalConfig: RawTransactionArgument<string>,
+        _: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Admin-only: move a pristine registry onto its own id block.
+ *
+ * Covers registries created by the deprecated `create_market_registry`, which
+ * started every counter at 0 and so shared an id space with every other registry.
+ * Only callable while the registry has never issued an id — all three counters at
+ * 0 and no order, position or market recorded — which makes the call provably
+ * non-destructive: nothing on chain is yet keyed by the old ids. A registry that
+ * has already been rebased fails the `== 0` check, so a block is assigned at most
+ * once.
+ */
+export function rebaseRegistryIds(options: RebaseRegistryIdsOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "globalConfig", "_"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'rebase_registry_ids',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -168,6 +252,67 @@ export function placeOrder(options: PlaceOrderOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'place_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PlaceOrderWithVoucherArguments {
+    globalConfig: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
+    accountId: RawTransactionArgument<string>;
+    maxSpend: RawTransactionArgument<number | bigint>;
+    marketId: RawTransactionArgument<Array<number>>;
+    selection: TransactionArgument;
+    minShares: RawTransactionArgument<number | bigint>;
+    priceCap: RawTransactionArgument<number | bigint>;
+    expiryTs: RawTransactionArgument<number | bigint>;
+}
+export interface PlaceOrderWithVoucherOptions {
+    package?: string;
+    arguments: PlaceOrderWithVoucherArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
+        accountId: RawTransactionArgument<string>,
+        maxSpend: RawTransactionArgument<number | bigint>,
+        marketId: RawTransactionArgument<Array<number>>,
+        selection: TransactionArgument,
+        minShares: RawTransactionArgument<number | bigint>,
+        priceCap: RawTransactionArgument<number | bigint>,
+        expiryTs: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Voucher-backed open: reserve credit and create an ordinary order atomically. No
+ * account debit or settlement-pool deposit; the platform funds venue execution.
+ */
+export function placeOrderWithVoucher(options: PlaceOrderWithVoucherOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        '0x2::object::ID',
+        'u64',
+        'vector<u8>',
+        null,
+        'u64',
+        'u64',
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "accountId", "maxSpend", "marketId", "selection", "minShares", "priceCap", "expiryTs"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'place_order_with_voucher',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -476,7 +621,9 @@ export interface SplitPositionOptions {
 /**
  * Account-backed partial transfer. Splits an open position into two normal
  * positions: the source keeps the remainder and the recipient receives a new
- * independent position with proportional cost basis.
+ * independent position with proportional cost basis. This remains available after
+ * resolution: splitting conserves shares and cost exactly, while the additional
+ * position increments `unclaimed_count` because it must be claimed independently.
  */
 export function splitPosition(options: SplitPositionOptions) {
     const packageAddress = options.package ?? '@waterx/prediction';
@@ -495,6 +642,162 @@ export function splitPosition(options: SplitPositionOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'split_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface GrantVoucherArguments {
+    globalConfig: RawTransactionArgument<string>;
+    granterRequest: TransactionArgument;
+    marketRegistry: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    amount: RawTransactionArgument<number | bigint>;
+}
+export interface GrantVoucherOptions {
+    package?: string;
+    arguments: GrantVoucherArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        granterRequest: TransactionArgument,
+        marketRegistry: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        amount: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Issuing credit moves no cash. Callers handle duplicate issuance off-chain. Gated
+ * by the voucher-granter allowlist and the package version, and bounded by the
+ * registry's admin-set grant budget.
+ */
+export function grantVoucher(options: GrantVoucherOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        '0x2::object::ID',
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "granterRequest", "marketRegistry", "wxaRegistry", "accountId", "amount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'grant_voucher',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SetVoucherGrantBudgetArguments {
+    _: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    grantBudget: RawTransactionArgument<number | bigint>;
+}
+export interface SetVoucherGrantBudgetOptions {
+    package?: string;
+    arguments: SetVoucherGrantBudgetArguments | [
+        _: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        grantBudget: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Sets the credit granters may still issue on this registry. It replaces the
+ * remaining budget rather than adding to it; 0 stops issuance.
+ */
+export function setVoucherGrantBudget(options: SetVoucherGrantBudgetOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["_", "marketRegistry", "grantBudget"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'set_voucher_grant_budget',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RevokeVoucherArguments {
+    _: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+    amount: RawTransactionArgument<number | bigint>;
+}
+export interface RevokeVoucherOptions {
+    package?: string;
+    arguments: RevokeVoucherArguments | [
+        _: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>,
+        amount: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Only available credit can be revoked; reservations and filled stakes are
+ * untouched.
+ */
+export function revokeVoucher(options: RevokeVoucherOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        '0x2::object::ID',
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["_", "marketRegistry", "accountId", "amount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'revoke_voucher',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface SetVoucherPausedArguments {
+    _: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    paused: RawTransactionArgument<boolean>;
+}
+export interface SetVoucherPausedOptions {
+    package?: string;
+    arguments: SetVoucherPausedArguments | [
+        _: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        paused: RawTransactionArgument<boolean>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Blocks new voucher bets only. Existing orders, refunds and claims keep working. */
+export function setVoucherPaused(options: SetVoucherPausedOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        'bool'
+    ] satisfies (string | null)[];
+    const parameterNames = ["_", "marketRegistry", "paused"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'set_voucher_paused',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -832,6 +1135,59 @@ export function depositSettlement(options: DepositSettlementOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface DepositSettlementFromAccountArguments {
+    globalConfig: RawTransactionArgument<string>;
+    marketRegistry: RawTransactionArgument<string>;
+    wxaRegistry: RawTransactionArgument<string>;
+    senderRequest: TransactionArgument;
+    accountId: RawTransactionArgument<string>;
+    amount: RawTransactionArgument<number | bigint>;
+}
+export interface DepositSettlementFromAccountOptions {
+    package?: string;
+    arguments: DepositSettlementFromAccountArguments | [
+        globalConfig: RawTransactionArgument<string>,
+        marketRegistry: RawTransactionArgument<string>,
+        wxaRegistry: RawTransactionArgument<string>,
+        senderRequest: TransactionArgument,
+        accountId: RawTransactionArgument<string>,
+        amount: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * Tops up the settlement pool from a wxa account's `T` balance instead of a raw
+ * `Coin<T>`. Credit-backed settlement assets (e.g. USD) are custodied inside wxa
+ * accounts and are never held as loose coins by an EOA/multisig, so this pulls the
+ * funds through the protocol's own `take<T, WaterXPrediction>` — the same path
+ * `place_order` uses. Not AdminCap-gated: anyone can supply liquidity, but only
+ * from an account they own. Owner-only (delegates excluded): donating account
+ * funds into the shared pool is irreversible for the account — the value returns
+ * only via winning positions or an admin withdrawal — so a phished delegate must
+ * not be able to burn the owner's balance this way.
+ */
+export function depositSettlementFromAccount(options: DepositSettlementFromAccountOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        null,
+        null,
+        null,
+        '0x2::object::ID',
+        'u64',
+        '0x2::clock::Clock'
+    ] satisfies (string | null)[];
+    const parameterNames = ["globalConfig", "marketRegistry", "wxaRegistry", "senderRequest", "accountId", "amount"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'deposit_settlement_from_account',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface AdminWithdrawArguments {
     _: RawTransactionArgument<string>;
     marketRegistry: RawTransactionArgument<string>;
@@ -1155,6 +1511,209 @@ export function unpauseMarket(options: UnpauseMarketOptions) {
         typeArguments: options.typeArguments
     });
 }
+export interface DeriveSettlementForTestingArguments {
+    outcome: TransactionArgument;
+    yesShares: RawTransactionArgument<number | bigint>;
+    yesCost: RawTransactionArgument<number | bigint>;
+    noShares: RawTransactionArgument<number | bigint>;
+    noCost: RawTransactionArgument<number | bigint>;
+}
+export interface DeriveSettlementForTestingOptions {
+    package?: string;
+    arguments: DeriveSettlementForTestingArguments | [
+        outcome: TransactionArgument,
+        yesShares: RawTransactionArgument<number | bigint>,
+        yesCost: RawTransactionArgument<number | bigint>,
+        noShares: RawTransactionArgument<number | bigint>,
+        noCost: RawTransactionArgument<number | bigint>
+    ];
+}
+export function deriveSettlementForTesting(options: DeriveSettlementForTestingOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64',
+        'u64',
+        'u64',
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["outcome", "yesShares", "yesCost", "noShares", "noCost"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'derive_settlement_for_testing',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface VoucherBalanceArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    accountId: RawTransactionArgument<string>;
+}
+export interface VoucherBalanceOptions {
+    package?: string;
+    arguments: VoucherBalanceArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        accountId: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function voucherBalance(options: VoucherBalanceOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        '0x2::object::ID'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "accountId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'voucher_balance',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface VoucherPausedArguments {
+    marketRegistry: RawTransactionArgument<string>;
+}
+export interface VoucherPausedOptions {
+    package?: string;
+    arguments: VoucherPausedArguments | [
+        marketRegistry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function voucherPaused(options: VoucherPausedOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'voucher_paused',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface VoucherGrantBudgetArguments {
+    marketRegistry: RawTransactionArgument<string>;
+}
+export interface VoucherGrantBudgetOptions {
+    package?: string;
+    arguments: VoucherGrantBudgetArguments | [
+        marketRegistry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function voucherGrantBudget(options: VoucherGrantBudgetOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'voucher_grant_budget',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface IsVoucherOrderArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    orderId: RawTransactionArgument<number | bigint>;
+}
+export interface IsVoucherOrderOptions {
+    package?: string;
+    arguments: IsVoucherOrderArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        orderId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function isVoucherOrder(options: IsVoucherOrderOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "orderId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'is_voucher_order',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface IsVoucherPositionArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface IsVoucherPositionOptions {
+    package?: string;
+    arguments: IsVoucherPositionArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function isVoucherPosition(options: IsVoucherPositionOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'is_voucher_position',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PositionVoucherRefundArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface PositionVoucherRefundOptions {
+    package?: string;
+    arguments: PositionVoucherRefundArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/** Voucher amount restored on INVALID, separate from position_payout's cash. */
+export function positionVoucherRefund(options: PositionVoucherRefundOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'position_voucher_refund',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
 export interface PositionStatusArguments {
     marketRegistry: RawTransactionArgument<string>;
     positionId: RawTransactionArgument<number | bigint>;
@@ -1285,6 +1844,7 @@ export interface PositionPayoutOptions {
         string
     ];
 }
+/** Actual cash claimable by this position, not its gross venue payout. */
 export function positionPayout(options: PositionPayoutOptions) {
     const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
@@ -1296,6 +1856,35 @@ export function positionPayout(options: PositionPayoutOptions) {
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'position_payout',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface PositionGrossPayoutArguments {
+    marketRegistry: RawTransactionArgument<string>;
+    positionId: RawTransactionArgument<number | bigint>;
+}
+export interface PositionGrossPayoutOptions {
+    package?: string;
+    arguments: PositionGrossPayoutArguments | [
+        marketRegistry: RawTransactionArgument<string>,
+        positionId: RawTransactionArgument<number | bigint>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+export function positionGrossPayout(options: PositionGrossPayoutOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null,
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry", "positionId"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'position_gross_payout',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });
@@ -1577,6 +2166,122 @@ export function marketRegistryOrderCancelCooldownMs(options: MarketRegistryOrder
         package: packageAddress,
         module: 'waterx_prediction',
         function: 'market_registry_order_cancel_cooldown_ms',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface IdBlockBitsOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+/** Bits reserved per registry for its private id space. See `ID_BLOCK_BITS`. */
+export function idBlockBits(options: IdBlockBitsOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'id_block_bits',
+    });
+}
+export interface IdBlockSizeOptions {
+    package?: string;
+    arguments?: [
+    ];
+}
+/** Number of ids in one registry's block. */
+export function idBlockSize(options: IdBlockSizeOptions = {}) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'id_block_size',
+    });
+}
+export interface IdBlockOfArguments {
+    id: RawTransactionArgument<number | bigint>;
+}
+export interface IdBlockOfOptions {
+    package?: string;
+    arguments: IdBlockOfArguments | [
+        id: RawTransactionArgument<number | bigint>
+    ];
+}
+/**
+ * Block index an `order_id` / `position_id` / `market_key` belongs to. Lets an
+ * off-chain client attribute an id from the registry-agnostic per-account index on
+ * `wxa::Account` back to the registry that issued it.
+ */
+export function idBlockOf(options: IdBlockOfOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        'u64'
+    ] satisfies (string | null)[];
+    const parameterNames = ["id"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'id_block_of',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+    });
+}
+export interface RegistryIdBlockArguments {
+    marketRegistry: RawTransactionArgument<string>;
+}
+export interface RegistryIdBlockOptions {
+    package?: string;
+    arguments: RegistryIdBlockArguments | [
+        marketRegistry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * The id block this registry allocates from. Every id it has issued and will issue
+ * satisfies `id_block_of(id) == registry_id_block(market_registry)`.
+ */
+export function registryIdBlock(options: RegistryIdBlockOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'registry_id_block',
+        arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
+        typeArguments: options.typeArguments
+    });
+}
+export interface RegistryIdBaseArguments {
+    marketRegistry: RawTransactionArgument<string>;
+}
+export interface RegistryIdBaseOptions {
+    package?: string;
+    arguments: RegistryIdBaseArguments | [
+        marketRegistry: RawTransactionArgument<string>
+    ];
+    typeArguments: [
+        string
+    ];
+}
+/**
+ * First id of this registry's block — the value all three counters started at.
+ * Every id the registry issues lies in
+ * `[registry_id_base, registry_id_base + id_block_size())`.
+ */
+export function registryIdBase(options: RegistryIdBaseOptions) {
+    const packageAddress = options.package ?? '@waterx/prediction';
+    const argumentsTypes = [
+        null
+    ] satisfies (string | null)[];
+    const parameterNames = ["marketRegistry"];
+    return (tx: Transaction) => tx.moveCall({
+        package: packageAddress,
+        module: 'waterx_prediction',
+        function: 'registry_id_base',
         arguments: normalizeMoveArguments(options.arguments, argumentsTypes, parameterNames),
         typeArguments: options.typeArguments
     });

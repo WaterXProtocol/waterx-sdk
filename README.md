@@ -415,3 +415,5 @@ pnpm build
 | `pnpm seed:testnet`              | Seed prediction testnet fixtures (needs `SUI_PRIVATE_KEY`)               |
 
 Tests are split per line under `test/perp/` and `test/prediction/`, each with `unit` / `e2e` / `integration` tiers. See the per-line `README.md` in each.
+
+Voucher integration: [legacy Predict voucher lifecycle and APIs](PREDICT_VOUCHERS.md).
