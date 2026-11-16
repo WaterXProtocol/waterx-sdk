@@ -35,6 +35,24 @@ async function importExport(subpath: string): Promise<unknown> {
 }
 
 describe.each(["ESM", "CJS"] as const)("Voucher package consumers (%s)", (format) => {
+  it("ships the configured prediction alias in event schemas and raw builder defaults", async () => {
+    const prediction = (
+      format === "ESM" ? await importExport("./prediction") : require("@waterx/sdk/prediction")
+    ) as typeof import("../../src/prediction/index.ts");
+    expect(prediction.predictionEventTypes.VoucherReserved.name).toBe(
+      "@waterx/prediction::events::VoucherReserved",
+    );
+    const client = new prediction.PredictClient("TESTNET", voucherConfig());
+    const tx = await prediction.buildPlaceVoucherOrderTx(client, minimalPlaceOrderParams(client));
+    const calls = vi.spyOn(tx, "moveCall");
+    prediction.predictionVersionCalls.packageVersion()(tx);
+    expect(calls).toHaveBeenLastCalledWith({
+      package: "@waterx/prediction",
+      module: "version",
+      function: "package_version",
+    });
+  });
+
   it.each(VOUCHER_ASSETS)("builds and reads %s via the emitted public facade", async (asset) => {
     type Prediction = typeof import("../../src/prediction/index.ts");
     type Root = typeof import("../../src/sdk.ts");

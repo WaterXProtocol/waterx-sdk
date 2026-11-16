@@ -24,6 +24,7 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
 
 - Legacy Predict Voucher order, ledger/settlement views, granter and AdminCap builders; regenerated #171 event and view bindings ([#106](https://github.com/WaterXProtocol/waterx-sdk/pull/106)).
   Regression coverage includes four settlement assets, exact raw u64 amounts, public facade and emitted ESM/CJS consumers, independent event BCS fixtures, and an opt-in testnet lifecycle suite (not run by CI).
+  Generated prediction bindings retain the configured `@waterx/prediction` alias, with regression coverage for schema names and default/explicit package targets.
 
 - Regenerated legacy perp ABI from contract #167 as merged (`9607947`); exported
   `ExecutionQueuedBcs` / `OrderRejectedByKeeperBcs` schemas. On v4 a market order

@@ -8,7 +8,7 @@ import * as balance from './deps/sui/balance.ts';
 import * as table from './deps/sui/table.ts';
 import * as linked_table from './deps/bucket_v2_framework/linked_table.ts';
 import * as outcome from './outcome.ts';
-const $moduleName = '@local-pkg/waterx_prediction::waterx_prediction';
+const $moduleName = '@waterx/prediction::waterx_prediction';
 export const MarketRegistry = new MoveStruct({ name: `${$moduleName}::MarketRegistry<phantom T>`, fields: {
         id: bcs.Address,
         /** One shared settlement pool for all markets using coin type `T`. */
@@ -98,7 +98,7 @@ export interface CreateMarketRegistryOptions {
  * it.
  */
 export function createMarketRegistry(options: CreateMarketRegistryOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -134,7 +134,7 @@ export interface CreateMarketRegistryInBlockOptions {
  * registries — see `ID_BLOCK_BITS`.
  */
 export function createMarketRegistryInBlock(options: CreateMarketRegistryInBlockOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null
@@ -176,7 +176,7 @@ export interface RebaseRegistryIdsOptions {
  * once.
  */
 export function rebaseRegistryIds(options: RebaseRegistryIdsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -231,7 +231,7 @@ export interface PlaceOrderOptions {
  * the filled position to `receiver_account_id`.
  */
 export function placeOrder(options: PlaceOrderOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -293,7 +293,7 @@ export interface PlaceOrderWithVoucherOptions {
  * account debit or settlement-pool deposit; the platform funds venue execution.
  */
 export function placeOrderWithVoucher(options: PlaceOrderWithVoucherOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -342,7 +342,7 @@ export interface SelfCancelOrderOptions {
  * waterx_account stored balance.
  */
 export function selfCancelOrder(options: SelfCancelOrderOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -382,7 +382,7 @@ export interface ClaimOptions {
 }
 /** Account-backed claim. Payout is credited to the owning waterx_account balance. */
 export function claim(options: ClaimOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -431,7 +431,7 @@ export interface RequestCloseOptions {
  * if the market has already resolved.
  */
 export function requestClose(options: RequestCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -486,7 +486,7 @@ export interface RequestPartialCloseOptions {
  * for the new position. Returns the new PendingClose position id.
  */
 export function requestPartialClose(options: RequestPartialCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -529,7 +529,7 @@ export interface SelfCancelCloseOptions {
 }
 /** Account-backed PendingClose rescue. Reverts the position to Open. */
 export function selfCancelClose(options: SelfCancelCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -575,7 +575,7 @@ export interface TransferPositionOptions {
  * the recipient account.
  */
 export function transferPosition(options: TransferPositionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -626,7 +626,7 @@ export interface SplitPositionOptions {
  * position increments `unclaimed_count` because it must be claimed independently.
  */
 export function splitPosition(options: SplitPositionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -674,7 +674,7 @@ export interface GrantVoucherOptions {
  * registry's admin-set grant budget.
  */
 export function grantVoucher(options: GrantVoucherOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -714,7 +714,7 @@ export interface SetVoucherGrantBudgetOptions {
  * remaining budget rather than adding to it; 0 stops issuance.
  */
 export function setVoucherGrantBudget(options: SetVoucherGrantBudgetOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -752,7 +752,7 @@ export interface RevokeVoucherOptions {
  * untouched.
  */
 export function revokeVoucher(options: RevokeVoucherOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -787,7 +787,7 @@ export interface SetVoucherPausedOptions {
 }
 /** Blocks new voucher bets only. Existing orders, refunds and claims keep working. */
 export function setVoucherPaused(options: SetVoucherPausedOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -838,7 +838,7 @@ export interface AdminPlaceOrderForOptions {
  * `waterx_account`.
  */
 export function adminPlaceOrderFor(options: AdminPlaceOrderForOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -891,7 +891,7 @@ export interface FillOrderOptions {
  * a new independent position id is allocated.
  */
 export function fillOrder(options: FillOrderOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -937,7 +937,7 @@ export interface CancelOrderOptions {
  * waterx_account.
  */
 export function cancelOrder(options: CancelOrderOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -983,7 +983,7 @@ export interface ConfirmCloseOptions {
  * close confirmation. Proceeds are credited to the owning waterx_account.
  */
 export function confirmClose(options: ConfirmCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1028,7 +1028,7 @@ export interface CancelCloseOptions {
  * are intact.
  */
 export function cancelClose(options: CancelCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1085,7 +1085,7 @@ export interface ForceClaimOptions {
  * position belongs to a waterx_account.
  */
 export function forceClaim(options: ForceClaimOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1120,7 +1120,7 @@ export interface DepositSettlementOptions {
     ];
 }
 export function depositSettlement(options: DepositSettlementOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1169,7 +1169,7 @@ export interface DepositSettlementFromAccountOptions {
  * not be able to burn the owner's balance this way.
  */
 export function depositSettlementFromAccount(options: DepositSettlementFromAccountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1213,7 +1213,7 @@ export interface AdminWithdrawOptions {
  * accidental drains.
  */
 export function adminWithdraw(options: AdminWithdrawOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1252,7 +1252,7 @@ export interface SetMinReserveOptions {
  * funds).
  */
 export function setMinReserve(options: SetMinReserveOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1288,7 +1288,7 @@ export interface SetOrderCancelCooldownMsOptions {
  * and close orders. Existing orders keep their stored self-cancel time.
  */
 export function setOrderCancelCooldownMs(options: SetOrderCancelCooldownMsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1325,7 +1325,7 @@ export interface ResolveMarketOptions {
 }
 /** Keeper records the market outcome. Aborts if already resolved. */
 export function resolveMarket(options: ResolveMarketOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1372,7 +1372,7 @@ export interface SetPriceSettlementOptions {
  * field on the registry; re-calling overwrites (until resolved).
  */
 export function setPriceSettlement(options: SetPriceSettlementOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1422,7 +1422,7 @@ export interface ResolveWithOracleOptions {
  * market is already resolved.
  */
 export function resolveWithOracle(options: ResolveWithOracleOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1462,7 +1462,7 @@ export interface PauseMarketOptions {
  * `MarketCreated { by_admin: true }` before `MarketPaused`.
  */
 export function pauseMarket(options: PauseMarketOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1496,7 +1496,7 @@ export interface UnpauseMarketOptions {
 }
 /** Admin re-enables opens for a previously paused market. */
 export function unpauseMarket(options: UnpauseMarketOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -1529,7 +1529,7 @@ export interface DeriveSettlementForTestingOptions {
     ];
 }
 export function deriveSettlementForTesting(options: DeriveSettlementForTestingOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64',
@@ -1560,7 +1560,7 @@ export interface VoucherBalanceOptions {
     ];
 }
 export function voucherBalance(options: VoucherBalanceOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         '0x2::object::ID'
@@ -1587,7 +1587,7 @@ export interface VoucherPausedOptions {
     ];
 }
 export function voucherPaused(options: VoucherPausedOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -1613,7 +1613,7 @@ export interface VoucherGrantBudgetOptions {
     ];
 }
 export function voucherGrantBudget(options: VoucherGrantBudgetOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -1641,7 +1641,7 @@ export interface IsVoucherOrderOptions {
     ];
 }
 export function isVoucherOrder(options: IsVoucherOrderOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1670,7 +1670,7 @@ export interface IsVoucherPositionOptions {
     ];
 }
 export function isVoucherPosition(options: IsVoucherPositionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1700,7 +1700,7 @@ export interface PositionVoucherRefundOptions {
 }
 /** Voucher amount restored on INVALID, separate from position_payout's cash. */
 export function positionVoucherRefund(options: PositionVoucherRefundOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1729,7 +1729,7 @@ export interface PositionStatusOptions {
     ];
 }
 export function positionStatus(options: PositionStatusOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1758,7 +1758,7 @@ export interface PositionAccountIdOptions {
     ];
 }
 export function positionAccountId(options: PositionAccountIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1787,7 +1787,7 @@ export interface PositionMarketIdOptions {
     ];
 }
 export function positionMarketId(options: PositionMarketIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1816,7 +1816,7 @@ export interface PositionSelectionOptions {
     ];
 }
 export function positionSelection(options: PositionSelectionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1846,7 +1846,7 @@ export interface PositionPayoutOptions {
 }
 /** Actual cash claimable by this position, not its gross venue payout. */
 export function positionPayout(options: PositionPayoutOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1875,7 +1875,7 @@ export interface PositionGrossPayoutOptions {
     ];
 }
 export function positionGrossPayout(options: PositionGrossPayoutOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1904,7 +1904,7 @@ export interface PositionFilledOptions {
     ];
 }
 export function positionFilled(options: PositionFilledOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1933,7 +1933,7 @@ export interface PositionOpenedTsOptions {
     ];
 }
 export function positionOpenedTs(options: PositionOpenedTsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1962,7 +1962,7 @@ export interface PositionCloseExpiryOptions {
     ];
 }
 export function positionCloseExpiry(options: PositionCloseExpiryOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -1991,7 +1991,7 @@ export interface PositionCloseOrderIdOptions {
     ];
 }
 export function positionCloseOrderId(options: PositionCloseOrderIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2020,7 +2020,7 @@ export interface PositionCloseSelfCancelAfterTsOptions {
     ];
 }
 export function positionCloseSelfCancelAfterTs(options: PositionCloseSelfCancelAfterTsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2049,7 +2049,7 @@ export interface PositionCloseMinProceedsOptions {
     ];
 }
 export function positionCloseMinProceeds(options: PositionCloseMinProceedsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2078,7 +2078,7 @@ export interface PositionExistsOptions {
     ];
 }
 export function positionExists(options: PositionExistsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2105,7 +2105,7 @@ export interface MarketRegistryBalanceOptions {
     ];
 }
 export function marketRegistryBalance(options: MarketRegistryBalanceOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2131,7 +2131,7 @@ export interface MarketRegistryMinReserveOptions {
     ];
 }
 export function marketRegistryMinReserve(options: MarketRegistryMinReserveOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2157,7 +2157,7 @@ export interface MarketRegistryOrderCancelCooldownMsOptions {
     ];
 }
 export function marketRegistryOrderCancelCooldownMs(options: MarketRegistryOrderCancelCooldownMsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2177,7 +2177,7 @@ export interface IdBlockBitsOptions {
 }
 /** Bits reserved per registry for its private id space. See `ID_BLOCK_BITS`. */
 export function idBlockBits(options: IdBlockBitsOptions = {}) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'waterx_prediction',
@@ -2191,7 +2191,7 @@ export interface IdBlockSizeOptions {
 }
 /** Number of ids in one registry's block. */
 export function idBlockSize(options: IdBlockSizeOptions = {}) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     return (tx: Transaction) => tx.moveCall({
         package: packageAddress,
         module: 'waterx_prediction',
@@ -2213,7 +2213,7 @@ export interface IdBlockOfOptions {
  * `wxa::Account` back to the registry that issued it.
  */
 export function idBlockOf(options: IdBlockOfOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         'u64'
     ] satisfies (string | null)[];
@@ -2242,7 +2242,7 @@ export interface RegistryIdBlockOptions {
  * satisfies `id_block_of(id) == registry_id_block(market_registry)`.
  */
 export function registryIdBlock(options: RegistryIdBlockOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2273,7 +2273,7 @@ export interface RegistryIdBaseOptions {
  * `[registry_id_base, registry_id_base + id_block_size())`.
  */
 export function registryIdBase(options: RegistryIdBaseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2299,7 +2299,7 @@ export interface NextOrderIdOptions {
     ];
 }
 export function nextOrderId(options: NextOrderIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2325,7 +2325,7 @@ export interface NextPositionIdOptions {
     ];
 }
 export function nextPositionId(options: NextPositionIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2353,7 +2353,7 @@ export interface PositionIdForOrderOptions {
     ];
 }
 export function positionIdForOrder(options: PositionIdForOrderOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2382,7 +2382,7 @@ export interface IsMarketResolvedOptions {
     ];
 }
 export function isMarketResolved(options: IsMarketResolvedOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -2411,7 +2411,7 @@ export interface IsMarketPausedOptions {
     ];
 }
 export function isMarketPaused(options: IsMarketPausedOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -2440,7 +2440,7 @@ export interface IsMarketPausedByKeyOptions {
     ];
 }
 export function isMarketPausedByKey(options: IsMarketPausedByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2469,7 +2469,7 @@ export interface MarketExistsOptions {
     ];
 }
 export function marketExists(options: MarketExistsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -2499,7 +2499,7 @@ export interface MarketOutcomeOptions {
 }
 /** Aborts if the market is unresolved or doesn't exist. */
 export function marketOutcome(options: MarketOutcomeOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -2528,7 +2528,7 @@ export interface MarketOutcomeByKeyOptions {
     ];
 }
 export function marketOutcomeByKey(options: MarketOutcomeByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2557,7 +2557,7 @@ export interface MarketUnclaimedCountOptions {
     ];
 }
 export function marketUnclaimedCount(options: MarketUnclaimedCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -2586,7 +2586,7 @@ export interface MarketExposureOptions {
     ];
 }
 export function marketExposure(options: MarketExposureOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -2613,7 +2613,7 @@ export interface OrdersOptions {
     ];
 }
 export function orders(options: OrdersOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2639,7 +2639,7 @@ export interface OrderCountOptions {
     ];
 }
 export function orderCount(options: OrderCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2667,7 +2667,7 @@ export interface OrderKeyAtOptions {
     ];
 }
 export function orderKeyAt(options: OrderKeyAtOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2694,7 +2694,7 @@ export interface OrderFrontOptions {
     ];
 }
 export function orderFront(options: OrderFrontOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2720,7 +2720,7 @@ export interface OrderBackOptions {
     ];
 }
 export function orderBack(options: OrderBackOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -2748,7 +2748,7 @@ export interface OrderNextOptions {
     ];
 }
 export function orderNext(options: OrderNextOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2777,7 +2777,7 @@ export interface OrderPrevOptions {
     ];
 }
 export function orderPrev(options: OrderPrevOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2806,7 +2806,7 @@ export interface OrderExistsOptions {
     ];
 }
 export function orderExists(options: OrderExistsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2835,7 +2835,7 @@ export interface OrderIdOptions {
     ];
 }
 export function orderId(options: OrderIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2864,7 +2864,7 @@ export interface OrderKindOptions {
     ];
 }
 export function orderKind(options: OrderKindOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2893,7 +2893,7 @@ export interface OrderAccountIdOptions {
     ];
 }
 export function orderAccountId(options: OrderAccountIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2922,7 +2922,7 @@ export interface OrderReceiverAccountIdOptions {
     ];
 }
 export function orderReceiverAccountId(options: OrderReceiverAccountIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2951,7 +2951,7 @@ export interface OrderMarketIdOptions {
     ];
 }
 export function orderMarketId(options: OrderMarketIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -2980,7 +2980,7 @@ export interface OrderSelectionOptions {
     ];
 }
 export function orderSelection(options: OrderSelectionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3009,7 +3009,7 @@ export interface OrderPositionIdOptions {
     ];
 }
 export function orderPositionId(options: OrderPositionIdOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3038,7 +3038,7 @@ export interface OrderMaxSpendOptions {
     ];
 }
 export function orderMaxSpend(options: OrderMaxSpendOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3067,7 +3067,7 @@ export interface OrderMinSharesOptions {
     ];
 }
 export function orderMinShares(options: OrderMinSharesOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3096,7 +3096,7 @@ export interface OrderPriceCapOptions {
     ];
 }
 export function orderPriceCap(options: OrderPriceCapOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3125,7 +3125,7 @@ export interface OrderMinProceedsOptions {
     ];
 }
 export function orderMinProceeds(options: OrderMinProceedsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3154,7 +3154,7 @@ export interface OrderExpiryOptions {
     ];
 }
 export function orderExpiry(options: OrderExpiryOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3183,7 +3183,7 @@ export interface OrderSelfCancelAfterTsOptions {
     ];
 }
 export function orderSelfCancelAfterTs(options: OrderSelfCancelAfterTsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3212,7 +3212,7 @@ export interface OrderCreatedTsOptions {
     ];
 }
 export function orderCreatedTs(options: OrderCreatedTsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3241,7 +3241,7 @@ export interface OrderIsByAdminOptions {
     ];
 }
 export function orderIsByAdmin(options: OrderIsByAdminOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3268,7 +3268,7 @@ export interface PositionsOptions {
     ];
 }
 export function positions(options: PositionsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3294,7 +3294,7 @@ export interface PositionCountOptions {
     ];
 }
 export function positionCount(options: PositionCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3322,7 +3322,7 @@ export interface PositionKeyAtOptions {
     ];
 }
 export function positionKeyAt(options: PositionKeyAtOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3349,7 +3349,7 @@ export interface PositionFrontOptions {
     ];
 }
 export function positionFront(options: PositionFrontOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3375,7 +3375,7 @@ export interface PositionBackOptions {
     ];
 }
 export function positionBack(options: PositionBackOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3403,7 +3403,7 @@ export interface PositionNextOptions {
     ];
 }
 export function positionNext(options: PositionNextOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3432,7 +3432,7 @@ export interface PositionPrevOptions {
     ];
 }
 export function positionPrev(options: PositionPrevOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3459,7 +3459,7 @@ export interface MarketCountOptions {
     ];
 }
 export function marketCount(options: MarketCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3487,7 +3487,7 @@ export interface MarketKeyOptions {
     ];
 }
 export function marketKey(options: MarketKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'vector<u8>'
@@ -3521,7 +3521,7 @@ export interface MarketKeyAtOptions {
  * traversal.
  */
 export function marketKeyAt(options: MarketKeyAtOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3550,7 +3550,7 @@ export interface MarketIdByKeyOptions {
     ];
 }
 export function marketIdByKey(options: MarketIdByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3579,7 +3579,7 @@ export interface MarketExistsByKeyOptions {
     ];
 }
 export function marketExistsByKey(options: MarketExistsByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3608,7 +3608,7 @@ export interface MarketIsResolvedByKeyOptions {
     ];
 }
 export function marketIsResolvedByKey(options: MarketIsResolvedByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3637,7 +3637,7 @@ export interface MarketUnclaimedCountByKeyOptions {
     ];
 }
 export function marketUnclaimedCountByKey(options: MarketUnclaimedCountByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3666,7 +3666,7 @@ export interface MarketExposureByKeyOptions {
     ];
 }
 export function marketExposureByKey(options: MarketExposureByKeyOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3693,7 +3693,7 @@ export interface UnresolvedMarketsOptions {
     ];
 }
 export function unresolvedMarkets(options: UnresolvedMarketsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3719,7 +3719,7 @@ export interface ResolvedMarketsOptions {
     ];
 }
 export function resolvedMarkets(options: ResolvedMarketsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3745,7 +3745,7 @@ export interface UnresolvedMarketCountOptions {
     ];
 }
 export function unresolvedMarketCount(options: UnresolvedMarketCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3771,7 +3771,7 @@ export interface ResolvedMarketCountOptions {
     ];
 }
 export function resolvedMarketCount(options: ResolvedMarketCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3797,7 +3797,7 @@ export interface UnresolvedMarketFrontOptions {
     ];
 }
 export function unresolvedMarketFront(options: UnresolvedMarketFrontOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3823,7 +3823,7 @@ export interface UnresolvedMarketBackOptions {
     ];
 }
 export function unresolvedMarketBack(options: UnresolvedMarketBackOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3849,7 +3849,7 @@ export interface ResolvedMarketFrontOptions {
     ];
 }
 export function resolvedMarketFront(options: ResolvedMarketFrontOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3875,7 +3875,7 @@ export interface ResolvedMarketBackOptions {
     ];
 }
 export function resolvedMarketBack(options: ResolvedMarketBackOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -3903,7 +3903,7 @@ export interface UnresolvedMarketNextOptions {
     ];
 }
 export function unresolvedMarketNext(options: UnresolvedMarketNextOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3932,7 +3932,7 @@ export interface UnresolvedMarketPrevOptions {
     ];
 }
 export function unresolvedMarketPrev(options: UnresolvedMarketPrevOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3961,7 +3961,7 @@ export interface ResolvedMarketNextOptions {
     ];
 }
 export function resolvedMarketNext(options: ResolvedMarketNextOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -3990,7 +3990,7 @@ export interface ResolvedMarketPrevOptions {
     ];
 }
 export function resolvedMarketPrev(options: ResolvedMarketPrevOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'u64'
@@ -4014,7 +4014,7 @@ export interface StatusIsOpenOptions {
     ];
 }
 export function statusIsOpen(options: StatusIsOpenOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -4036,7 +4036,7 @@ export interface StatusIsPendingCloseOptions {
     ];
 }
 export function statusIsPendingClose(options: StatusIsPendingCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -4058,7 +4058,7 @@ export interface OrderKindIsOpenOptions {
     ];
 }
 export function orderKindIsOpen(options: OrderKindIsOpenOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -4080,7 +4080,7 @@ export interface OrderKindIsCloseOptions {
     ];
 }
 export function orderKindIsClose(options: OrderKindIsCloseOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

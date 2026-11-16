@@ -11,7 +11,7 @@
 import { MoveStruct } from '../utils/index.ts';
 import { bcs } from '@mysten/sui/bcs';
 import * as table from './deps/sui/table.ts';
-const $moduleName = '@local-pkg/waterx_prediction::voucher';
+const $moduleName = '@waterx/prediction::voucher';
 export const LedgerKey = new MoveStruct({ name: `${$moduleName}::LedgerKey`, fields: {
         dummy_field: bcs.bool()
     } });

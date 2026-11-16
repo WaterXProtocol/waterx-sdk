@@ -5,7 +5,7 @@ import { MoveStruct, normalizeMoveArguments, type RawTransactionArgument } from 
 import { bcs } from '@mysten/sui/bcs';
 import { type Transaction } from '@mysten/sui/transactions';
 import * as vec_set from './deps/sui/vec_set.ts';
-const $moduleName = '@local-pkg/waterx_prediction::global_config';
+const $moduleName = '@waterx/prediction::global_config';
 export const TransferOperatorsKey = new MoveStruct({ name: `${$moduleName}::TransferOperatorsKey`, fields: {
         dummy_field: bcs.bool()
     } });
@@ -31,7 +31,7 @@ export interface AssertVersionOptions {
     ];
 }
 export function assertVersion(options: AssertVersionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -57,7 +57,7 @@ export interface AllowVersionOptions {
     ];
 }
 export function allowVersion(options: AllowVersionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -85,7 +85,7 @@ export interface DisallowVersionOptions {
     ];
 }
 export function disallowVersion(options: DisallowVersionOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -109,7 +109,7 @@ export interface AllowedVersionsOptions {
     ];
 }
 export function allowedVersions(options: AllowedVersionsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -136,7 +136,7 @@ export interface AddKeeperOptions {
 }
 /** Admin configures which backend addresses may settle external order work. */
 export function addKeeper(options: AddKeeperOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -165,7 +165,7 @@ export interface RemoveKeeperOptions {
 }
 /** Admin removes a backend keeper. */
 export function removeKeeper(options: RemoveKeeperOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -191,7 +191,7 @@ export interface IsKeeperOptions {
     ];
 }
 export function isKeeper(options: IsKeeperOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'address'
@@ -214,7 +214,7 @@ export interface KeeperCountOptions {
     ];
 }
 export function keeperCount(options: KeeperCountOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -236,7 +236,7 @@ export interface KeeperAddressesOptions {
     ];
 }
 export function keeperAddresses(options: KeeperAddressesOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -266,7 +266,7 @@ export interface AddTransferOperatorOptions {
  * delegate. Lazily creates the operator set DF on first add.
  */
 export function addTransferOperator(options: AddTransferOperatorOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -295,7 +295,7 @@ export interface RemoveTransferOperatorOptions {
 }
 /** Admin removes a whitelisted transfer operator. */
 export function removeTransferOperator(options: RemoveTransferOperatorOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -321,7 +321,7 @@ export interface IsTransferOperatorOptions {
     ];
 }
 export function isTransferOperator(options: IsTransferOperatorOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'address'
@@ -344,7 +344,7 @@ export interface TransferOperatorsOptions {
     ];
 }
 export function transferOperators(options: TransferOperatorsOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -374,7 +374,7 @@ export interface AddVoucherGranterOptions {
  * granter set DF on first add.
  */
 export function addVoucherGranter(options: AddVoucherGranterOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -403,7 +403,7 @@ export interface RemoveVoucherGranterOptions {
 }
 /** Admin removes a whitelisted voucher granter. */
 export function removeVoucherGranter(options: RemoveVoucherGranterOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         null,
@@ -429,7 +429,7 @@ export interface IsVoucherGranterOptions {
     ];
 }
 export function isVoucherGranter(options: IsVoucherGranterOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null,
         'address'
@@ -452,7 +452,7 @@ export interface VoucherGrantersOptions {
     ];
 }
 export function voucherGranters(options: VoucherGrantersOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];
@@ -478,7 +478,7 @@ export interface NextRegistryBlockIndexOptions {
  * `rebase_registry_ids` call will assign.
  */
 export function nextRegistryBlockIndex(options: NextRegistryBlockIndexOptions) {
-    const packageAddress = options.package ?? '@local-pkg/waterx_prediction';
+    const packageAddress = options.package ?? '@waterx/prediction';
     const argumentsTypes = [
         null
     ] satisfies (string | null)[];

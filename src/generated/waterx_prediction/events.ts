@@ -6,7 +6,7 @@ import { bcs } from '@mysten/sui/bcs';
 import * as position from './position.ts';
 import * as outcome from './outcome.ts';
 import * as type_name from './deps/std/type_name.ts';
-const $moduleName = '@local-pkg/waterx_prediction::events';
+const $moduleName = '@waterx/prediction::events';
 export const KeeperAdded = new MoveStruct({ name: `${$moduleName}::KeeperAdded`, fields: {
         global_config_id: bcs.Address,
         keeper: bcs.Address

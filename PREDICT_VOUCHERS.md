@@ -53,6 +53,12 @@ Offline tests cover USD/SUI/DEEP/WAL registry and credit-type routing, exact u64
 event schemas against independently assembled BCS bytes (including winning, losing and INVALID
 settlement fields). Post-build tests exercise the emitted ESM and CJS public entry points.
 
+Regenerate bindings with the repository's `pnpm codegen` configuration, which names this package
+`@waterx/prediction`. Passing a bare local contract path as a positional argument to
+`sui-ts-codegen generate` overrides that configuration with an `@local-pkg/...` alias. The alias
+regression test covers generated schema names and default/explicit package targets; keep the
+configured alias when generating only the prediction package as well.
+
 `test/prediction/integration/voucher.lifecycle.test.ts` is disabled by default. To run it manually,
 set `E2E_VOUCHER_INTEGRATION=1`, `WATERX_E2E_NETWORK=testnet`, `WATERX_CONFIG_URL`,
 `SUI_PRIVATE_KEY`, `E2E_ACCOUNT_ID`, and optionally `E2E_KEEPER_PRIVATE_KEY` and
