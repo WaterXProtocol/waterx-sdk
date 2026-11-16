@@ -16,9 +16,20 @@ from the version number alone.
 
 ## [Unreleased]
 
-_MINOR: additive — the canonical price reader (`readCanonicalPrices`, `openCanonicalStream`,
-`CanonicalQuote`), an OPTIONAL peer dependency on `ws` (loaded by dynamic import only when a
-stream is opened with `headers`), and two `@deprecated` tags. V4-specific builder changes are described below; v3 behaviour is retained._
+## [7.0.0] - 2026-11-16
+
+_MAJOR: the SDK is aligned with perp contract v4 (queued execution, waterx-contract #167) and
+gains the legacy Predict Voucher surface (waterx-contract #171). Nothing changes for a
+deployment whose config document still pins `packages.waterx_perp.version` 3; the BREAKING
+changes take effect once it pins `>= 4`. (1) A market order (`triggerPrice: undefined`) is
+authorized by the operation it performs (`PERM_OPEN_POSITION` / `PERM_INCREASE_POSITION` /
+`PERM_DECREASE_POSITION` / `PERM_CLOSE_POSITION`), not by `PERM_PLACE_ORDER` — a delegate
+holding only the latter aborts `EUnauthorized`. (2) Close / increase / decrease submit linked
+market orders a keeper executes: a confirmed submission is not a fill. (3)
+`increasePositionRequest` rejects an explicit `orderId`. (4) The generated `waterx_perp`
+bindings are regenerated, so direct callers of the generated code must recheck signatures.
+Details in [v4 integration notes](PERP_V4_INTEGRATION.md) and
+[Predict vouchers](PREDICT_VOUCHERS.md)._
 
 ### Added
 
@@ -31,6 +42,37 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
   needs the permission of its operation (open / increase / decrease / close) instead
   of `PERM_PLACE_ORDER` — widen delegate permissions before the cutover. See
   [v4 integration notes](PERP_V4_INTEGRATION.md) ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
+
+### Changed
+
+- V4 order/position-intent builders skip the unnecessary Oracle prelude; collateral
+  operations and v3 builds retain their refresh. Explicit increase `orderId` is
+  rejected on v4, where the queue allocates it ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
+
+- **The production config root is `https://config.waterx.app`.** It now serves the
+  `schema_version: 2` shape, so the README, `AGENTS.md`, `.env.example`, the shipped
+  integration skill and the pre-v2 rejection error name it instead of the outdated `main-v2`
+  mirror. The staging root is now `https://staging.waterx-config.pages.dev`, replacing
+  `staging-v2` in the same places and as the CI fallback. `waterxConfigUrl` is still required;
+  only the error's wording changes at runtime (#103).
+
+### Fixed
+
+- **`createMarketRegistry` (prediction admin) builds a call that can succeed again.** The
+  contract retired `waterx_prediction::create_market_registry` — the published entrypoint
+  now aborts `EDeprecated` (28) — in favour of `create_market_registry_in_block`, which
+  draws the registry's private id block from `GlobalConfig`. The builder targets the new
+  entrypoint and passes `GlobalConfig` first (from the config document, or the new optional
+  `globalConfig` param); call sites are unchanged (#105).
+
+## [6.1.1] - 2026-10-08
+
+_MINOR, published 2026-10-08 and never tagged: additive — the canonical price reader
+(`readCanonicalPrices`, `openCanonicalStream`, `CanonicalQuote`), an OPTIONAL peer dependency
+on `ws` (loaded by dynamic import only when a stream is opened with `headers`), and two
+`@deprecated` tags. No breaking change._
+
+### Added
 
 - **The canonical price reader** — `@waterx/sdk/oracle/canonical`, re-exported from
   `@waterx/sdk/oracle` and (the two entry points + types) from the root. What goes on chain as
@@ -87,15 +129,6 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
 - `ws` is an optional `peerDependency` (`^8.18`), devDependency for the loopback stream server
   the tests run against (#101).
 
-### Changed
-
-- **The production config root is `https://config.waterx.app`.** It now serves the
-  `schema_version: 2` shape, so the README, `AGENTS.md`, `.env.example`, the shipped
-  integration skill and the pre-v2 rejection error name it instead of the outdated `main-v2`
-  mirror. The staging root is now `https://staging.waterx-config.pages.dev`, replacing
-  `staging-v2` in the same places and as the CI fallback. `waterxConfigUrl` is still required;
-  only the error's wording changes at runtime (#103).
-
 ### Deprecated
 
 - **`readQuoteCenterPrices` and `readLazerPrices` for price READS.** Each reads ONE LEG of the
@@ -104,11 +137,9 @@ stream is opened with `headers`), and two `@deprecated` tags. V4-specific builde
   the tx-build leg fetchers (`fetchWaterxUpdateData`, `pullWaterxQuotes`,
   `PythLazerRule.fetchUpdateData`) are not deprecated (#101).
 
-<!-- The entries below shipped in 6.1.0 (npm publish 2026-10-01T03:19:46Z, bump commit
-285035a) but the changelog was never cut. Before the next release, move them under
-`## [6.1.0] - 2026-10-01` per the release flow in CLAUDE.md. -->
+## [6.1.0] - 2026-10-01
 
-_6.1.0 — MINOR: one additive public export, `waterxConfigUrlFromRoot`. No existing export, type or
+_MINOR, published 2026-10-01 and never tagged: one additive public export, `waterxConfigUrlFromRoot`. No existing export, type or
 runtime behaviour changes beyond one fix: `fetchWaterxSignedLeaves` now THROWS when a leaf
 chunk after the first reports the route unavailable, instead of returning `unavailable` and
 escalating to the envelope (#96). `waterxConfigUrl` still takes a COMPLETE document URL. The
@@ -130,10 +161,6 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   the post-build export tests (ESM + CJS on all four entries) (#99).
 
 ### Changed
-
-- V4 order/position-intent builders skip the unnecessary Oracle prelude; collateral
-  operations and v3 builds retain their refresh. Explicit increase `orderId` is
-  rejected on v4, where the queue allocates it ([#104](https://github.com/WaterXProtocol/waterx-sdk/pull/104)).
 
 - **Repo harnesses: `WATERX_CONFIG_URL` is a CDN ROOT only.** `scripts/waterx-config-url.ts`
   now composes through `waterxConfigUrlFromRoot`, so a legacy `…/<network>.json` value THROWS
@@ -166,13 +193,6 @@ repo's own harnesses (scripts, examples, e2e helpers — not published) now REJE
   unsuppliable and the assert throws `OracleWeightCoverageError` (#99).
 
 ### Fixed
-
-- **`createMarketRegistry` (prediction admin) builds a call that can succeed again.** The
-  contract retired `waterx_prediction::create_market_registry` — the published entrypoint
-  now aborts `EDeprecated` (28) — in favour of `create_market_registry_in_block`, which
-  draws the registry's private id block from `GlobalConfig`. The builder targets the new
-  entrypoint and passes `GlobalConfig` first (from the config document, or the new optional
-  `globalConfig` param); call sites are unchanged (#105).
 
 - **A quote-center route outage is no longer swallowed by the second skip
   predicate.** #94 taught `isOracleTransientFailureMessage` to refuse an
