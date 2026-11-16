@@ -133,17 +133,19 @@ export interface CanonicalStreamHandle {
   };
 }
 
-const DEFAULT_INITIAL_MS = 1_000;
-const DEFAULT_MAX_MS = 30_000;
-const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
+// The transport constants and helpers below are exported for `../candles/stream.ts`,
+// which shares this transport; `../canonical.ts` does not re-export them.
+export const DEFAULT_INITIAL_MS = 1_000;
+export const DEFAULT_MAX_MS = 30_000;
+export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 /** Caps the exponent so `2 ** n` cannot overflow into Infinity on a long outage. */
 const MAX_BACKOFF_EXPONENT = 10;
 /** Fraction of the computed delay added as jitter. See {@link canonicalReconnectDelayMs}. */
 const JITTER_FRACTION = 0.2;
 /** WHATWG + `ws` agree: `readyState === 1` is OPEN. */
-const OPEN = 1;
+export const OPEN = 1;
 /** Endpoint scheme → stream scheme. TLS is preserved, never downgraded. */
-const WS_SCHEME_BY_PROTOCOL: Readonly<Record<string, "ws:" | "wss:">> = {
+export const WS_SCHEME_BY_PROTOCOL: Readonly<Record<string, "ws:" | "wss:">> = {
   "https:": "wss:",
   "wss:": "wss:",
   "http:": "ws:",
@@ -182,7 +184,7 @@ export function canonicalReconnectDelayMs(
  * `WebSocket` and by `ws` (whose EventTarget facade speaks the same four
  * events). The two optional members are `ws`-only and feature-detected.
  */
-interface SocketLike {
+export interface SocketLike {
   readonly readyState: number;
   binaryType?: string;
   addEventListener(type: "open", listener: () => void): void;
@@ -213,7 +215,7 @@ interface Attempt {
 }
 
 /** The optional `ws` peer could not be loaded — permanent, so the stream stops instead of retrying into it. */
-class WsPeerUnavailableError extends Error {
+export class WsPeerUnavailableError extends Error {
   constructor(cause: unknown) {
     super(
       `cannot load the optional peer dependency "ws", which a stream opened with \`headers\` ` +
@@ -225,7 +227,7 @@ class WsPeerUnavailableError extends Error {
 }
 
 /** Load the optional `ws` peer (tests mock the module to prove the missing-peer path). */
-async function loadWs(): Promise<new (url: string, opts: object) => SocketLike> {
+export async function loadWs(): Promise<new (url: string, opts: object) => SocketLike> {
   let mod: { WebSocket?: unknown; default?: unknown };
   try {
     mod = (await import(
@@ -244,14 +246,14 @@ async function loadWs(): Promise<new (url: string, opts: object) => SocketLike> 
 const textDecoder = new TextDecoder();
 
 /** A frame's payload as text, or `undefined` for a shape this client does not decode (a `Blob`). */
-function frameText(data: unknown): string | undefined {
+export function frameText(data: unknown): string | undefined {
   if (typeof data === "string") return data;
   if (data instanceof ArrayBuffer) return textDecoder.decode(data);
   if (ArrayBuffer.isView(data)) return textDecoder.decode(data);
   return undefined;
 }
 
-function errorText(event: unknown): string {
+export function errorText(event: unknown): string {
   if (event instanceof Error) return event.message;
   if (typeof event === "object" && event !== null) {
     const e = event as { message?: unknown; error?: unknown };

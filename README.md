@@ -320,6 +320,44 @@ stream.stop();
 - **`headers` need the optional peer `ws`.** The WHATWG `WebSocket` cannot send handshake headers, so a stream opened with `headers` loads `ws` by dynamic import (`pnpm add ws`); without it, one `failed` event names the fix and the stream stops. Without `headers` the client dials the global `WebSocket` (Node ≥ 22, browsers) and the SDK stays dependency-free. The import is deliberately opaque to bundlers (webpack / Turbopack / Vite ignore comments on a variable specifier), so a browser or Next.js build that only uses `readCanonicalPrices` is never asked to resolve `ws`. `ws` is also the only transport that exposes a refused handshake's HTTP status. The endpoint may be `http(s)://` or `ws(s)://`; TLS is never downgraded.
 - `*_scaled` fields are u64s and come back as exact decimal **strings**; `price` / `confidence` are display floats.
 
+### Live candles: the bar in flight
+
+The quote-center's **live candle plane** serves the bar that is still forming (and the just-closed one) for `1m 5m 15m 1h 4h 1d`, folded from the same inputs its ClickHouse rollup persists. `openCandleStream` is its client, on the same transport as `openCanonicalStream` (same `headers` / `ws` peer rule, backoff, handshake timeout and lifecycle vocabulary):
+
+```ts
+import { LiveCandleBook, openCandleStream } from "@waterx/sdk/oracle";
+
+const book = new LiveCandleBook();
+const candles = openCandleStream({
+  endpoint, // the quote-center base URL, as for the canonical stream
+  tickers: ["BTCUSD", "ETHUSD"],
+  timeframes: ["1m", "5m"], // default: all six, on ONE connection per ≤32-ticker shard
+  onFrame: (frame, shard) => {
+    if (book.apply(frame) === "voided") refetchFromRest(frame.symbol, frame.tf, frame.bucket_ms);
+    // book.bar("BTCUSD", "1m") → the current live bar, or undefined (none / voided)
+  },
+  onConnection: (e) => log.info(e), // { type, reason?, shard, shardCount }
+  headers: { "X-Internal-Key": key }, // optional — needs the `ws` peer, as above
+});
+
+// Per-shard watchdog: a shard can go silent while the others are healthy.
+setInterval(() => {
+  for (const s of candles.snapshot().shards) {
+    const idleSince = s.lastDeliveredAt ?? s.connectedAt;
+    if (s.connected && idleSince !== undefined && Date.now() - idleSince > IDLE_BUDGET_MS) {
+      candles.reconnectNow(s.shard);
+    }
+  }
+}, 10_000);
+```
+
+- **Frames** (`LiveCandleFrame`): `{ v: 1, symbol, tf, bucket_ms, open, high, low, close, tick_count, state: "open" | "closed" | "void", source: "canonical" | "bbo", updated_at_ms }`. Each is a FULL snapshot of its bar. `tick_count` is coverage, never volume. On subscribe the server first sends the current frame of every matching pair.
+- **Order.** Per (symbol, tf) frames are ordered by `(bucket_ms, state === "closed", updated_at_ms)` (`compareLiveCandleFrames`). The client drops a frame below the last delivered one (`out_of_order`) and an equal one (`duplicate` — the snapshot a reconnect re-sends); the watermark survives reconnects.
+- **`void` is a tombstone**: the plane withdrew that bucket's live bar. Drop it and read the bucket from REST (`LiveCandleBook` keeps the tombstone so an older replay cannot bring the bar back). Prices on a `void` frame are `0`.
+- **REST wins for closed buckets.** A live bar, `closed` included, is provisional until the rollup persists it; refetch closed buckets from `GET /v1/candles/{symbol}`.
+- **Query.** Exactly one `symbols` and one `tf` field, each comma-joined (a repeated field is a 400). An unknown timeframe or an empty ticker list throws at open (the server reads an omitted `symbols` as every symbol). Unknown symbols are skipped by the server.
+- **Per-shard status.** `snapshot()` aggregates (`connected` only when every shard is) and lists `shards[]` with each shard's `tickers`, `connected`, `connectedAt`, `lastFrameAt` (activity), `lastDeliveredAt` (delivery), `framesAccepted` and `droppedByReason`. The SDK sets no idle budget: a shard whose markets are all out of session legitimately sends nothing.
+
 ### Adding an oracle source (runbook)
 
 Every source plugs in the same way — routing is driven **only** by what the deployment config wires (never a config `enabled` flag, never `process.env`):

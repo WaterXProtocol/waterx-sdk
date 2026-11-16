@@ -82,6 +82,7 @@ src/
   (`assertOracleWriteCoverage`, `servableTickers`, `missingOracleCredentials`), `weight-coverage.ts`
   (`assertOracleWeightCoverage`, reads the on-chain aggregators), `served-tickers.ts`, `update-fetch.ts`,
   `canonical.ts` + `canonical/{frame,read,stream}.ts` (THE price read — see `src/oracle/AGENTS.md`),
+  `candles.ts` + `candles/{frame,stream}.ts` (the live candle plane, on the canonical stream's transport),
   `quote-center-error.ts` (the quote-center error contract shared by the leaf fetch and the canonical reads),
   `read-plane.ts` + `read-prices.ts` (the per-LEG lazer / quote-center readers, `@deprecated` for price
   reads), `schedule.ts` (Pyth market hours,

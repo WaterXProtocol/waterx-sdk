@@ -1,6 +1,7 @@
 /**
  * A REAL WebSocket server on a loopback port standing in for the quote-center's
- * `/v1/canonical/stream`. Reconnect, the ordering guard and frame validation
+ * `/v1/canonical/stream` (or, with `route`, another stream such as
+ * `/v1/candles/stream`). Reconnect, the ordering guard and frame validation
  * are transport behaviour, and a mocked socket would only certify the mock —
  * the same reasoning as the backend's `quote-center-price-stream.spec.ts`,
  * whose fake this ports. `ws` is a devDependency for exactly this: Node ships a
@@ -15,6 +16,7 @@ import { CANONICAL_STREAM_ROUTE } from "../../../src/oracle/canonical/frame.ts";
 export interface FakeConnect {
   path: string;
   symbols: string | null;
+  tf: string | null;
   headers: IncomingHttpHeaders;
 }
 
@@ -42,9 +44,6 @@ export interface FakeCanonicalStreamServer {
   close(): Promise<void>;
 }
 
-/** Derived from the module under test, so a route edit cannot leave the fake serving the old path. */
-const STREAM_PATH = `/${CANONICAL_STREAM_ROUTE}`;
-
 /** Poll `predicate` every 5 ms until it holds, or fail naming `what` after `timeoutMs`. */
 export async function until(
   predicate: () => boolean,
@@ -60,7 +59,10 @@ export async function until(
 
 export async function startFakeCanonicalStreamServer(
   mode: FakeCanonicalStreamServer["mode"] = "serve",
+  route: string = CANONICAL_STREAM_ROUTE,
 ): Promise<FakeCanonicalStreamServer> {
+  // Derived from the module under test, so a route edit cannot leave the fake serving the old path.
+  const STREAM_PATH = `/${route}`;
   const wss = new WebSocketServer({ noServer: true });
   const hung: Duplex[] = [];
   const server: Server = createServer((_req, res) => {
@@ -108,6 +110,7 @@ export async function startFakeCanonicalStreamServer(
     fake.connects.push({
       path: url.pathname,
       symbols: url.searchParams.get("symbols"),
+      tf: url.searchParams.get("tf"),
       headers: req.headers,
     });
     if (fake.mode === "hang") {

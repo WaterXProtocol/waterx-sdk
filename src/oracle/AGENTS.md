@@ -68,3 +68,14 @@ frontend code against them, so add only optional fields and never change a shape
   dynamic import; everything else dials the global `WebSocket`. The redial is scheduled before
   `onConnection` runs. Its tests run against a real loopback `ws` server
   (`test/perp/helpers/fake-canonical-stream-server.ts`).
+
+## Live candles ride the canonical transport
+
+`openCandleStream` (`candles/stream.ts`) reuses `canonical/stream.ts`'s transport helpers (exported from that
+file, not from any barrel) and mirrors its state machine; a transport fix lands in both. It differs in what it
+subscribes and reports: ONE `symbols` and ONE comma-joined `tf` field per connection (the quote-center 400s a
+repeated field and an unknown tf, and reads an omitted `symbols` as every symbol — so empty tickers and unknown
+timeframes throw at open), the guard orders per (symbol, tf) on `compareLiveCandleFrames` (the quote-center's
+`order_key`) and drops an equal key as `duplicate`, and `snapshot().shards` / `reconnectNow(shard)` expose each
+shard for a consumer's idle watchdog. `void` frames are delivered; `LiveCandleBook` applies them. Tests:
+`test/perp/unit/oracle-candle-{frame,stream}.test.ts`, on the canonical suite's loopback fake.

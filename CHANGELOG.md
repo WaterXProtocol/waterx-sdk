@@ -16,6 +16,10 @@ from the version number alone.
 
 ## [Unreleased]
 
+### Added
+
+- `openCandleStream` (`@waterx/sdk/oracle`, `@waterx/sdk/oracle/candles`): the quote-center live candle plane's WebSocket client (`GET /v1/candles/stream?symbols=&tf=`) on the canonical stream's transport — `X-Internal-Key` via `headers`, ≤32-ticker shards each carrying every requested timeframe, 1 s → 30 s jittered backoff reset on delivery, handshake timeout, a per-(symbol, tf) ordering guard, and per-shard status (`snapshot().shards`, `reconnectNow(shard)`) for a per-shard idle watchdog. Also `LiveCandleFrame`, `parseLiveCandleFrame`, `compareLiveCandleFrames` and `LiveCandleBook` (order + `void` tombstone). The canonical stream's transport helpers are now exported from `oracle/canonical/stream.ts` for it (not from any barrel) ([#PR](https://github.com/WaterXProtocol/waterx-sdk/pull/PR)).
+
 ## [7.0.0] - 2026-11-16
 
 _MAJOR: the SDK is aligned with perp contract v4 (queued execution, waterx-contract #167) and
