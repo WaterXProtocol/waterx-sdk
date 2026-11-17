@@ -130,6 +130,11 @@ describe("openCandleStream — connecting", () => {
     ["no tickers", () => open("http://qc.example", {}, []), /at least one ticker/],
     ["only empty tickers", () => open("http://qc.example", {}, ["", " "]), /at least one ticker/],
     [
+      "a ticker containing a comma (an unsplit env value)",
+      () => open("http://qc.example", {}, ["BTCUSD,ETHUSD"]),
+      /ticker "BTCUSD,ETHUSD" contains a comma/,
+    ],
+    [
       "no timeframes",
       () => open("http://qc.example", { timeframes: [] }),
       /at least one timeframe/,
@@ -244,6 +249,21 @@ describe("openCandleStream — frames", () => {
     expect(h.stream.snapshot().droppedByReason).toMatchObject({ duplicate: 2, out_of_order: 1 });
   });
 
+  it("a new leader's void stamped BEHIND the bar it withdraws is delivered, and the bar's old frames stay out", async () => {
+    const h = await connected();
+    const U = BUCKET_5M + 100_000;
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U }));
+    server!.send(rawLiveCandleFrame({ state: "void", updated_at_ms: U - 500 })); // clock behind
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U - 100 })); // the old leader's bar, replayed
+    server!.send(rawLiveCandleFrame({ updated_at_ms: U + 1 })); // the new leader, caught up
+    await until(() => h.frames.length === 3, "three delivered");
+
+    expect(
+      h.frames.map(({ frame }) => `${frame.state}:${String(frame.updated_at_ms - U)}`),
+    ).toEqual(["open:0", "void:-500", "open:1"]);
+    expect(h.stream.snapshot().droppedByReason.out_of_order).toBe(1);
+  });
+
   it("tickers are trimmed like the server trims them, so their frames are not unsolicited", async () => {
     server = await startServer();
     const h = open(server.endpoint, {}, [" BTCUSD", "BTCUSD ", "  "]);
@@ -329,6 +349,113 @@ describe("openCandleStream — more than CANDLE_MAX_SYMBOLS_PER_REQUEST tickers 
     expect(snap.shards.filter((s) => !s.connected)).toHaveLength(1);
     server.mode = "serve";
     await until(() => h.stream.snapshot().connected, "shard redialled");
+  });
+});
+
+describe("openCandleStream — watchdog signal, quiet shards and reconnectNow", () => {
+  type Listener = (event: unknown) => void;
+  interface HalfOpen {
+    readyState: number;
+    listeners: Map<string, Listener[]>;
+    fire(type: string, event?: unknown): void;
+  }
+  /** WHATWG-shaped sockets whose close() is never answered — a half-open peer. */
+  function stubHalfOpenSockets(): { sockets: HalfOpen[] } {
+    const sockets: HalfOpen[] = [];
+    class HalfOpenSocket implements HalfOpen {
+      readyState = 0;
+      listeners = new Map<string, Listener[]>();
+      constructor() {
+        sockets.push(this);
+      }
+      addEventListener(type: string, listener: Listener): void {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+      }
+      close(): void {
+        this.readyState = 2; // CLOSING, forever: no `close` event will come
+      }
+      fire(type: string, event: unknown = {}): void {
+        for (const listener of this.listeners.get(type) ?? []) listener(event);
+      }
+    }
+    vi.stubGlobal("WebSocket", HalfOpenSocket);
+    return { sockets };
+  }
+
+  it("reconnectNow() redials even when the socket never answers close() (global WebSocket, half-open peer)", async () => {
+    const { sockets } = stubHalfOpenSockets();
+    const h = open("http://qc.example");
+    await until(() => (sockets[0]?.listeners.size ?? 0) > 0, "listeners attached");
+    sockets[0]!.readyState = 1;
+    sockets[0]!.fire("open");
+
+    h.stream.reconnectNow();
+
+    expect(h.events.at(-1)).toMatchObject({ type: "closed", reason: "reconnectNow frames=0" });
+    await until(() => sockets.length === 2, "a second dial without any close event");
+    // The abandoned socket's late events are ignored.
+    sockets[0]!.fire("close", { code: 1006, reason: "" });
+    expect(h.events.filter((e) => e.type === "closed")).toHaveLength(1);
+  });
+
+  it("reconnectNow() during the handshake fails the attempt and redials", async () => {
+    const { sockets } = stubHalfOpenSockets();
+    const h = open("http://qc.example");
+    await until(() => (sockets[0]?.listeners.size ?? 0) > 0, "listeners attached");
+    h.stream.reconnectNow();
+    expect(h.events).toEqual([
+      expect.objectContaining({ type: "failed", reason: "reconnectNow before open" }),
+    ]);
+    await until(() => sockets.length === 2, "redialled");
+  });
+
+  it("idleSince is the CURRENT connection's: a fresh quiet connection is not judged by the last connection's delivery", async () => {
+    const h = await connected();
+    const first = h.stream.snapshot().shards[0]!;
+    expect(first.idleSince).toBe(first.connectedAt);
+
+    server!.send(rawLiveCandleFrame());
+    await until(() => h.frames.length === 1, "frame");
+    const delivered = h.stream.snapshot().shards[0]!;
+    expect(delivered.idleSince).toBe(delivered.lastDeliveredAt);
+
+    await sleep(30);
+    h.stream.reconnectNow();
+    expect(h.stream.snapshot().shards[0]!.idleSince).toBeUndefined(); // down: nothing to watch
+    await until(() => opened(h) === 2, "reconnected");
+    const fresh = h.stream.snapshot().shards[0]!;
+    // lastDeliveredAt still names the OLD connection's delivery; idleSince does not.
+    expect(fresh.lastDeliveredAt).toBe(delivered.lastDeliveredAt);
+    expect(fresh.idleSince).toBe(fresh.connectedAt);
+    expect(fresh.idleSince!).toBeGreaterThan(delivered.lastDeliveredAt!);
+  });
+
+  it("a quiet connection that stayed open is not fruitless: redials stay at the initial delay", async () => {
+    const backoff = { initialMs: 20, maxMs: 5_000, quietHealthyAfterMs: 50 };
+    server = await startServer();
+    const h = open(server.endpoint, { backoff });
+    for (let i = 1; i <= 5; i++) {
+      await until(() => opened(h) === i, `open ${String(i)}`, 5_000);
+      await sleep(80); // longer than quietHealthyAfterMs, and nothing delivered
+      server.closeClients(1000, "idle recycle");
+    }
+    const before = Date.now();
+    await until(() => opened(h) === 6, "sixth open", 5_000);
+    // Five fruitless attempts would have waited ≥ 320 ms; a healthy quiet one waits ~20 ms.
+    expect(Date.now() - before).toBeLessThan(250);
+  });
+
+  it("a connection dropped right after opening, having delivered nothing, still backs off", async () => {
+    const backoff = { initialMs: 20, maxMs: 5_000, quietHealthyAfterMs: 60_000 };
+    server = await startServer();
+    const h = open(server.endpoint, { backoff });
+    for (let i = 1; i <= 5; i++) {
+      await until(() => opened(h) === i, `open ${String(i)}`, 5_000);
+      server.closeClients(1000, "go away");
+    }
+    const before = Date.now();
+    await until(() => opened(h) === 6, "sixth open", 5_000);
+    expect(Date.now() - before).toBeGreaterThanOrEqual(300); // 20 × 2^4 = 320 ms, minus timer slack
   });
 });
 

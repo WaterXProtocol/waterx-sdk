@@ -2,11 +2,10 @@
  * `candles/stream.ts` — `openCandleStream`, the live read of the quote-center's
  * live candle plane: WebSocket `GET /v1/candles/stream?symbols=A,B&tf=1m,5m`,
  * one connection per ≤32-ticker shard, every requested timeframe on each.
- * The transport is `openCanonicalStream`'s (`../canonical/stream.ts`) — the
- * same `ws`-iff-`headers` dial, capped jittered backoff reset by DELIVERY,
- * handshake timeout, `stop` / `reconnectNow`, the same lifecycle vocabulary —
- * and the helpers are shared with it, so read that header for the transport
- * rules. What differs is below. `frame.ts` has the wire contract.
+ * Each shard's connection (dial, `ws`-iff-`headers`, capped jittered backoff,
+ * handshake timeout, `stop` / `reconnectNow`) is `../stream-connection.ts`,
+ * shared with `openCanonicalStream`. What is the candle stream's own is below.
+ * `frame.ts` has the wire contract.
  *
  * THE QUERY. Exactly ONE `symbols` and ONE `tf` field, each comma-joined: the
  * quote-center's extractor refuses a repeated field (a plain-text 400 at the
@@ -18,66 +17,68 @@
  * with a 400, code 10002), so an empty ticker list throws rather than
  * subscribing the world or retrying a 400. Tickers are trimmed, as the server
  * trims each entry, so `" BTCUSD"` subscribes the pair it names AND matches
- * its frames. Unknown symbols are skipped by the server (their pair simply
- * never sends a frame).
+ * its frames. A ticker containing a comma throws: the server would split it
+ * into several symbols (past the 32 cap, even), none of which would match the
+ * one string this client subscribed. Unknown symbols are skipped by the server
+ * (their pair simply never sends a frame).
  *
  * NO SNAPSHOT GUARANTEE. The quote-service sends the current frame of every
  * matching pair when a stream opens, but the gateway shares ONE upstream per
  * path + query, so a client that joins an upstream another client opened gets
- * live frames only. Consumers seed from REST (`include_open=true`, via
- * `candlePointToFrame`) on every `opened` event, and call
- * `LiveCandleBook.markSuspect(event.tickers)` first: a `void` lost during the
+ * live frames only. Consumers call `LiveCandleBook.markSuspect(event.tickers)`
+ * and then `seedLiveCandles` on every `opened` event: a `void` lost during the
  * outage is never re-sent (see `frame.ts`).
  *
- * THE GUARD orders per (symbol, tf) on the plane's own key
- * (`compareLiveCandleFrames`): a frame ordered below the last delivered one is
- * `out_of_order` and an equal key on the SAME connection a `duplicate`. The
- * watermark survives reconnects, as the canonical guard's does, with one
- * exception: the FIRST frame of a pair on a new connection is delivered at an
- * equal key — it is the server re-asserting that bar after the outage (what
- * clears `LiveCandleBook`'s suspect mark), not a replay to suppress. `void`
- * frames are delivered: the consumer drops the bucket's bar (`LiveCandleBook`
- * does it).
+ * THE GUARD orders per (symbol, tf) on the plane's own key through
+ * `supersedesLiveCandleMark`: a frame that does not supersede the last
+ * delivered one is `out_of_order`, or `duplicate` at an equal key on the SAME
+ * connection. The watermark survives reconnects, with one exception: the FIRST
+ * frame of a pair on a new connection is delivered at an equal key — it is the
+ * server re-sending that bar after the outage (what a consumer passes to
+ * `LiveCandleBook.apply` as fresh evidence), not a replay to suppress. `void`
+ * frames are delivered, and a `void` supersedes an `open` frame of its bucket
+ * whatever its `updated_at_ms`: the tombstone comes from a NEW leader, whose
+ * clock may be behind the old one's.
+ *
+ * QUIET IS NOT FAILURE. A shard whose markets are all out of session — or
+ * that joined a shared upstream with no snapshot — legitimately delivers
+ * nothing. A connection that stayed open `backoff.quietHealthyAfterMs`
+ * (default 10 s) therefore does not count towards the backoff when it ends,
+ * so a quiet shard keeps redialling at the initial delay rather than climbing
+ * to the cap and being up to 30 s late when its market reopens. (The canonical
+ * stream keeps the stricter rule: every evaluation is a frame there.)
  *
  * PER-SHARD STATUS. Each shard is an independent connection, and a shard can
  * go SILENT while the others are healthy (open but delivering nothing), which
  * an aggregate `connected` / `lastFrameAt` hides. So `snapshot().shards` lists
- * every shard — its tickers, `connected`, `connectedAt`, `lastFrameAt`
- * (activity), `lastDeliveredAt` (delivery), counters — and
- * `reconnectNow(shard)` redials one shard alone: a consumer's watchdog compares
- * `lastDeliveredAt ?? connectedAt` per shard against its own idle budget and
- * redials the silent one. The SDK sets no idle budget itself: a shard whose
- * markets are all out of session legitimately sends nothing (no ticks, no bar).
- * Lifecycle events carry `shard` / `shardCount` as fields rather than the
- * canonical stream's `reason: "shard i/n"` prefix.
+ * every shard — its tickers, `connected`, `connectedAt`, `idleSince`,
+ * `lastFrameAt` (activity), `lastDeliveredAt` (delivery), counters — and
+ * `reconnectNow(shard)` redials one shard alone. A watchdog compares
+ * `Date.now() - shard.idleSince` against its own budget: `idleSince` is the
+ * later of the CURRENT connection's open and its last delivery, and is absent
+ * while the shard is down — so a fresh connection is never judged by the
+ * previous connection's last delivery (which `lastDeliveredAt`, kept across
+ * reconnects, would do). The SDK sets no idle budget itself: a quiet shard is
+ * not a broken one, and each redial costs the consumer a `markSuspect` + seed.
+ * Lifecycle events carry `shard` / `shardCount` / `tickers` as fields rather
+ * than the canonical stream's `reason: "shard i/n"` prefix.
  *
  * No SSE, as the canonical client: the quote-center serves SSE on a plain GET,
  * but every consumer of this client dials WebSocket.
  */
 
-import {
-  canonicalReconnectDelayMs,
-  DEFAULT_HANDSHAKE_TIMEOUT_MS,
-  DEFAULT_INITIAL_MS,
-  DEFAULT_MAX_MS,
-  errorText,
-  frameText,
-  loadWs,
-  OPEN,
-  WS_SCHEME_BY_PROTOCOL,
-  WsPeerUnavailableError,
-  type SocketLike,
-} from "../canonical/stream.ts";
-import { joinEndpointPath } from "../update-fetch.ts";
+import { chunkCanonicalTickers } from "../canonical/frame.ts";
+import { frameText, StreamConnection, type StreamMessageContext } from "../stream-connection.ts";
 import {
   CANDLE_DROP_REASONS,
-  CANDLE_MAX_SYMBOLS_PER_REQUEST,
   CANDLE_STREAM_ROUTE,
   CANDLE_TIMEFRAMES,
   compareLiveCandleFrames,
   isCandleTimeframe,
   liveCandleKey,
+  nextLiveCandleMark,
   parseLiveCandleFrame,
+  supersedesLiveCandleMark,
   type CandleDropReason,
   type CandleTimeframe,
   type LiveCandleFrame,
@@ -86,7 +87,10 @@ import {
 /** A lifecycle event. `shard` is the 0-based shard index (always `0` on an unsharded stream). */
 export interface CandleConnectionEvent {
   type: "opened" | "closed" | "failed";
-  /** As the canonical stream's: `closed` → `code=<n> frames=<delivered> <server reason>`; `failed` → the cause. */
+  /**
+   * As the canonical stream's: `closed` → `code=<n> frames=<delivered> <server reason>`
+   * (or `reconnectNow frames=<delivered>` after `reconnectNow`); `failed` → the cause.
+   */
   reason?: string;
   shard: number;
   shardCount: number;
@@ -97,7 +101,7 @@ export interface CandleConnectionEvent {
 export interface CandleStreamOptions {
   /** Quote-center http(s) (or ws(s)) base URL; the ws(s) URL is derived from it, a proxy base path preserved. */
   endpoint: string;
-  /** The tickers to subscribe (`BTCUSD`). De-duplicated, then sharded at 32. At least one. */
+  /** The tickers to subscribe (`BTCUSD`). Trimmed, de-duplicated, then sharded at 32. At least one; none may contain a comma. */
   tickers: readonly string[];
   /** The timeframes to subscribe on every shard. Default: all of {@link CANDLE_TIMEFRAMES}. */
   timeframes?: readonly CandleTimeframe[];
@@ -106,8 +110,13 @@ export interface CandleStreamOptions {
   /** Every DELIVERED frame (`void` included), with the 0-based index of the shard that carried it. */
   onFrame: (frame: LiveCandleFrame, shard: number) => void;
   onConnection?: (event: CandleConnectionEvent) => void;
-  /** Default 1 s doubling to 30 s (20% proportional jitter); reset by the first frame a connection delivers. */
-  backoff?: { initialMs?: number; maxMs?: number };
+  /**
+   * Default 1 s doubling to 30 s (20% proportional jitter) over consecutive
+   * fruitless connections. A connection is fruitful when it delivered a frame,
+   * or stayed open at least `quietHealthyAfterMs` (default 10 000) — see
+   * "QUIET IS NOT FAILURE" in the module header.
+   */
+  backoff?: { initialMs?: number; maxMs?: number; quietHealthyAfterMs?: number };
   /** Abort a handshake that produced neither `open` nor an HTTP error within this budget. Default 10 000. */
   handshakeTimeoutMs?: number;
 }
@@ -120,9 +129,15 @@ export interface CandleShardSnapshot {
   connected: boolean;
   /** Epoch ms the CURRENT connection opened; absent while not connected. */
   connectedAt?: number;
-  /** Epoch ms of the last parsed, subscribed frame (delivered or dropped by the guard) — socket activity. */
+  /**
+   * THE WATCHDOG SIGNAL: epoch ms since which the CURRENT connection has
+   * delivered nothing — the later of its open and its last delivery. Absent
+   * while not connected (a down shard is redialling already).
+   */
+  idleSince?: number;
+  /** Epoch ms of the last parsed, subscribed frame (delivered or dropped by the guard) — socket activity. Survives reconnects. */
   lastFrameAt?: number;
-  /** Epoch ms of the last frame DELIVERED to `onFrame` — the idle signal a watchdog compares. */
+  /** Epoch ms of the last frame DELIVERED to `onFrame`, on ANY connection — a diagnostic; watch `idleSince`. */
   lastDeliveredAt?: number;
   /** Frames delivered to `onFrame` since start. */
   framesAccepted: number;
@@ -149,47 +164,32 @@ export interface CandleStreamHandle {
   /** Tears every socket down and cancels pending redials. No callback fires after it returns. Idempotent. */
   stop(): void;
   /**
-   * Drops a socket so the normal reconnect path redials it: shard `shard`
-   * only, or every shard when omitted. No-op when stopped or out of range.
+   * Ends a connection now so the normal reconnect path redials it: shard
+   * `shard` only, or every shard when omitted. The attempt is settled at once
+   * (it does not wait for a close event a half-open peer would never send).
+   * No-op when stopped or out of range.
    */
   reconnectNow(shard?: number): void;
   snapshot(): CandleStreamSnapshot;
 }
 
-/** One connection attempt. `settled` makes the first terminal event the only one that counts. */
-interface Attempt {
-  socket: SocketLike | undefined;
-  opened: boolean;
-  settled: boolean;
-  frames: number;
-  handshakeTimer: ReturnType<typeof setTimeout> | undefined;
-}
+const DEFAULT_QUIET_HEALTHY_AFTER_MS = 10_000;
 
-type ShardEvent = Pick<CandleConnectionEvent, "type" | "reason">;
-
-/** Per-connection guard state: the pairs this connection has already delivered or re-asserted. */
-interface ConnectionPairs {
-  attempt: Attempt | undefined;
-  seen: Set<string>;
-}
-
-/** Trim (as the server does), drop empties, de-duplicate (first occurrence wins, order kept), split at the server's cap. */
+/** Trim (as the server does), drop empties, refuse commas, then de-duplicate and split at the server's cap. */
 function shardTickers(tickers: readonly string[]): string[][] {
-  const distinct = [...new Set(tickers.map((t) => t.trim()).filter((t) => t !== ""))];
-  const out: string[][] = [];
-  for (let i = 0; i < distinct.length; i += CANDLE_MAX_SYMBOLS_PER_REQUEST) {
-    out.push(distinct.slice(i, i + CANDLE_MAX_SYMBOLS_PER_REQUEST));
+  const trimmed = tickers.map((t) => t.trim()).filter((t) => t !== "");
+  for (const ticker of trimmed) {
+    if (ticker.includes(",")) {
+      throw new Error(
+        `openCandleStream: ticker ${JSON.stringify(ticker)} contains a comma — pass each ticker as its own array entry`,
+      );
+    }
   }
-  return out;
+  return chunkCanonicalTickers(trimmed);
 }
 
-/** ONE connection over at most `CANDLE_MAX_SYMBOLS_PER_REQUEST` tickers × the requested timeframes. */
+/** ONE connection over at most 32 tickers × the requested timeframes: the guard and the counters. */
 class CandleStreamShard {
-  private attempt: Attempt | undefined;
-  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-  private stopped = false;
-  private fruitlessAttempts = 0;
-  private connectedAt: number | undefined;
   private lastFrameAt: number | undefined;
   private lastDeliveredAt: number | undefined;
   private framesAccepted = 0;
@@ -197,13 +197,9 @@ class CandleStreamShard {
   /** Last delivered frame per (symbol, tf) — the guard's watermark. */
   private readonly marks = new Map<string, LiveCandleFrame>();
   /** Pairs the CURRENT connection has delivered — an equal key is a duplicate only within one connection. */
-  private connectionPairs: ConnectionPairs = { attempt: undefined, seen: new Set() };
+  private pairsSeen: { connection: number; keys: Set<string> } = { connection: 0, keys: new Set() };
   private readonly subscribed: ReadonlySet<string>;
-  private readonly url: string;
-  private readonly headers: Record<string, string> | undefined;
-  private readonly initialMs: number;
-  private readonly maxMs: number;
-  private readonly handshakeTimeoutMs: number;
+  private readonly connection: StreamConnection;
 
   constructor(
     private readonly options: CandleStreamOptions,
@@ -213,63 +209,54 @@ class CandleStreamShard {
     private readonly shardCount: number,
   ) {
     this.subscribed = new Set(tickers);
-    const url = joinEndpointPath(options.endpoint, CANDLE_STREAM_ROUTE);
-    const scheme = WS_SCHEME_BY_PROTOCOL[url.protocol];
-    if (scheme === undefined) {
-      throw new Error(`openCandleStream: endpoint must be http(s) or ws(s), got ${url.protocol}//`);
-    }
-    url.protocol = scheme;
-    url.searchParams.set("symbols", tickers.join(","));
-    url.searchParams.set("tf", [...timeframes].join(","));
-    this.url = url.toString();
-    const headers = options.headers;
-    this.headers = headers && Object.keys(headers).length > 0 ? headers : undefined;
-    this.initialMs = options.backoff?.initialMs ?? DEFAULT_INITIAL_MS;
-    this.maxMs = options.backoff?.maxMs ?? DEFAULT_MAX_MS;
-    this.handshakeTimeoutMs = options.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
     this.dropped = Object.fromEntries(CANDLE_DROP_REASONS.map((r) => [r, 0])) as Record<
       CandleDropReason,
       number
     >;
-    if (!this.headers && typeof globalThis.WebSocket !== "function") {
-      throw new Error(
-        "openCandleStream: no WebSocket implementation — this runtime has no global " +
-          "WebSocket (Node ≥ 22 or a browser), and only a stream opened with `headers` dials " +
-          'the optional peer dependency "ws" instead',
-      );
-    }
+    this.connection = new StreamConnection({
+      caller: "openCandleStream",
+      endpoint: options.endpoint,
+      route: CANDLE_STREAM_ROUTE,
+      query: { symbols: tickers.join(","), tf: [...timeframes].join(",") },
+      headers: options.headers,
+      backoff: options.backoff,
+      handshakeTimeoutMs: options.handshakeTimeoutMs,
+      quietHealthyAfterMs: options.backoff?.quietHealthyAfterMs ?? DEFAULT_QUIET_HEALTHY_AFTER_MS,
+      onEvent: (event) =>
+        this.options.onConnection?.({
+          ...event,
+          shard: this.index,
+          shardCount: this.shardCount,
+          tickers: this.tickers,
+        }),
+      onMessage: (data, context) => this.handleFrame(data, context),
+    });
   }
 
   start(): void {
-    void this.connect();
+    this.connection.start();
   }
 
   stop(): void {
-    this.stopped = true;
-    if (this.reconnectTimer !== undefined) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = undefined;
-    }
-    const attempt = this.attempt;
-    this.attempt = undefined;
-    this.connectedAt = undefined;
-    if (attempt !== undefined) this.teardown(attempt);
+    this.connection.stop();
   }
 
   reconnectNow(): void {
-    if (this.stopped) return;
-    const attempt = this.attempt;
-    if (attempt === undefined || attempt.settled || attempt.socket === undefined) return;
-    this.dropSocket(attempt);
+    this.connection.reconnectNow();
   }
 
   snapshot(): CandleShardSnapshot {
-    const connected = this.attempt?.opened === true && this.attempt.socket?.readyState === OPEN;
+    const connectedAt = this.connection.connectedAt;
+    // A delivery on an EARLIER connection is older than this connection's open,
+    // so the max is the current connection's own idle start.
+    const idleSince =
+      connectedAt === undefined ? undefined : Math.max(connectedAt, this.lastDeliveredAt ?? 0);
     return {
       shard: this.index,
       tickers: this.tickers,
-      connected,
-      ...(connected && this.connectedAt !== undefined ? { connectedAt: this.connectedAt } : {}),
+      connected: connectedAt !== undefined,
+      ...(connectedAt !== undefined ? { connectedAt } : {}),
+      ...(idleSince !== undefined ? { idleSince } : {}),
       ...(this.lastFrameAt !== undefined ? { lastFrameAt: this.lastFrameAt } : {}),
       ...(this.lastDeliveredAt !== undefined ? { lastDeliveredAt: this.lastDeliveredAt } : {}),
       framesAccepted: this.framesAccepted,
@@ -277,148 +264,7 @@ class CandleStreamShard {
     };
   }
 
-  private async connect(): Promise<void> {
-    if (this.stopped) return;
-    const attempt: Attempt = {
-      socket: undefined,
-      opened: false,
-      settled: false,
-      frames: 0,
-      handshakeTimer: undefined,
-    };
-    this.attempt = attempt;
-
-    let socket: SocketLike;
-    try {
-      socket = await this.dial();
-    } catch (err) {
-      if (attempt.settled) return;
-      this.settle(attempt, { type: "failed", reason: errorText(err) });
-      if (err instanceof WsPeerUnavailableError) this.stop();
-      return;
-    }
-    if (attempt.settled) {
-      socket.close();
-      return;
-    }
-    attempt.socket = socket;
-
-    attempt.handshakeTimer = setTimeout(() => {
-      attempt.handshakeTimer = undefined;
-      this.settle(attempt, {
-        type: "failed",
-        reason: `handshake timed out after ${String(this.handshakeTimeoutMs)}ms`,
-      });
-    }, this.handshakeTimeoutMs);
-
-    socket.addEventListener("open", () => {
-      if (attempt.settled) return;
-      attempt.opened = true;
-      this.connectedAt = Date.now();
-      this.clearHandshakeTimer(attempt);
-      this.emit({ type: "opened" });
-    });
-    socket.addEventListener("message", (event) => {
-      if (attempt.settled) return;
-      this.handleFrame(attempt, event.data);
-    });
-    socket.on?.("unexpected-response", (req, res) => {
-      const status = res.statusCode;
-      res.resume();
-      req.destroy();
-      this.settle(attempt, { type: "failed", reason: `handshake answered HTTP ${String(status)}` });
-    });
-    socket.addEventListener("error", (event) => {
-      if (attempt.opened) return;
-      this.settle(attempt, { type: "failed", reason: errorText(event) });
-    });
-    socket.addEventListener("close", (event) => {
-      if (attempt.opened) {
-        const reason = event.reason === "" ? "" : ` ${event.reason}`;
-        this.settle(attempt, {
-          type: "closed",
-          reason: `code=${String(event.code)} frames=${String(attempt.frames)}${reason}`,
-        });
-        return;
-      }
-      this.settle(attempt, {
-        type: "failed",
-        reason: `closed before open (code ${String(event.code)})`,
-      });
-    });
-  }
-
-  private async dial(): Promise<SocketLike> {
-    let socket: SocketLike;
-    if (this.headers) {
-      const Ws = await loadWs();
-      socket = new Ws(this.url, {
-        headers: this.headers,
-        handshakeTimeout: this.handshakeTimeoutMs,
-      });
-    } else {
-      socket = new globalThis.WebSocket(this.url) as unknown as SocketLike;
-    }
-    socket.binaryType = "arraybuffer";
-    return socket;
-  }
-
-  private settle(attempt: Attempt, event: ShardEvent): void {
-    if (attempt.settled) return;
-    if (this.attempt === attempt) {
-      this.attempt = undefined;
-      this.connectedAt = undefined;
-    }
-    this.teardown(attempt);
-    if (attempt.frames === 0) this.fruitlessAttempts++;
-    // Redial BEFORE the consumer hears about it (see the canonical stream).
-    this.scheduleReconnect();
-    this.emit(event);
-  }
-
-  private emit(event: ShardEvent): void {
-    this.options.onConnection?.({
-      ...event,
-      shard: this.index,
-      shardCount: this.shardCount,
-      tickers: this.tickers,
-    });
-  }
-
-  private scheduleReconnect(): void {
-    if (this.stopped || this.reconnectTimer !== undefined) return;
-    const delay = canonicalReconnectDelayMs(this.fruitlessAttempts, this.initialMs, this.maxMs);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = undefined;
-      void this.connect();
-    }, delay);
-  }
-
-  private clearHandshakeTimer(attempt: Attempt): void {
-    if (attempt.handshakeTimer !== undefined) {
-      clearTimeout(attempt.handshakeTimer);
-      attempt.handshakeTimer = undefined;
-    }
-  }
-
-  private teardown(attempt: Attempt): void {
-    attempt.settled = true;
-    this.clearHandshakeTimer(attempt);
-    this.dropSocket(attempt);
-  }
-
-  private dropSocket(attempt: Attempt): void {
-    const socket = attempt.socket;
-    if (socket === undefined) return;
-    try {
-      if (socket.terminate) socket.terminate();
-      else socket.close();
-    } catch {
-      /* already gone */
-    }
-  }
-
-  private handleFrame(attempt: Attempt, data: unknown): void {
+  private handleFrame(data: unknown, context: StreamMessageContext): void {
     const now = Date.now();
     const text = frameText(data);
     const frame = text === undefined ? "malformed" : parseLiveCandleFrame(text, now);
@@ -432,28 +278,27 @@ class CandleStreamShard {
     }
     this.lastFrameAt = now;
 
+    // THE GUARD — see the module header.
     const key = liveCandleKey(frame.symbol, frame.tf);
-    if (this.connectionPairs.attempt !== attempt) {
-      this.connectionPairs = { attempt, seen: new Set() };
+    if (this.pairsSeen.connection !== context.connection) {
+      this.pairsSeen = { connection: context.connection, keys: new Set() };
     }
-    const firstOnConnection = !this.connectionPairs.seen.has(key);
     const prev = this.marks.get(key);
-    if (prev !== undefined) {
-      const order = compareLiveCandleFrames(frame, prev);
-      if (order < 0) {
+    if (prev !== undefined && !supersedesLiveCandleMark(frame, prev)) {
+      const equal = compareLiveCandleFrames(frame, prev) === 0;
+      if (!equal) {
         this.dropped.out_of_order++;
         return;
       }
-      if (order === 0 && !firstOnConnection) {
+      if (this.pairsSeen.keys.has(key)) {
         this.dropped.duplicate++;
         return;
       }
     }
-    this.marks.set(key, frame);
-    this.connectionPairs.seen.add(key);
+    this.marks.set(key, nextLiveCandleMark(frame, prev));
+    this.pairsSeen.keys.add(key);
 
-    if (attempt.frames === 0) this.fruitlessAttempts = 0;
-    attempt.frames++;
+    context.delivering();
     this.framesAccepted++;
     this.lastDeliveredAt = now;
     this.options.onFrame(frame, this.index);
@@ -464,10 +309,11 @@ class CandleStreamShard {
  * WebSocket `GET /v1/candles/stream?symbols=…&tf=…` — the quote-center's live
  * (in-flight) candle bars, ordered per (symbol, tf). The server MAY send the
  * current bars first; through the gateway it may not, so seed from REST
- * `include_open=true` on every `opened` event (module header). More than `CANDLE_MAX_SYMBOLS_PER_REQUEST`
- * tickers shard into several connections behind the one handle; each shard
- * carries every requested timeframe. Connects immediately and keeps
- * reconnecting until `stop()`. Throws synchronously on no tickers, an unknown
+ * (`seedLiveCandles`) on every `opened` event (module header). More than
+ * `CANDLE_MAX_SYMBOLS_PER_REQUEST` tickers shard into several connections
+ * behind the one handle; each shard carries every requested timeframe.
+ * Connects immediately and keeps reconnecting until `stop()`. Throws
+ * synchronously on no tickers, a ticker containing a comma, an unknown
  * timeframe, a non-http(s)/ws(s) endpoint, or nothing to dial with (no global
  * `WebSocket` and no `headers`). See the module header.
  */
