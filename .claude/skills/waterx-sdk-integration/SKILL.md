@@ -216,12 +216,14 @@ and `readLazerPrices` read one LEG each and are deprecated for price reads.
 
 **Live candles** (the bar still forming) come from `openCandleStream({ endpoint, tickers,
 timeframes?, onFrame: (frame, shard) => … })` in `@waterx/sdk/oracle`; apply frames through
-`LiveCandleBook` (it handles the order and the `void` tombstone — drop that bucket's bar and
-read REST). The stream may send NO snapshot (the gateway shares upstreams), so on every
-`opened` event call `book.markSuspect(event.tickers)` and seed from REST
-`/v1/candles/{symbol}?tf=…&from=…&to=…&include_open=true` through `candlePointToFrame`, with
-`from` / `to` from `candleSeedWindow(tf)` (a wider window can return no live bar). Watch
-`snapshot().shards[i].lastDeliveredAt` per shard and `reconnectNow(i)` a silent one. See "Live candles" in `node_modules/@waterx/sdk/README.md`.
+`LiveCandleBook` with `book.apply(frame, { observedAtMs: Date.now() })` (it handles the order
+and the `void` tombstone — drop that bucket's bar and read REST). The stream may send NO
+snapshot (the gateway shares upstreams) and never re-sends a missed `void`, so on every
+`opened` event call `book.markSuspect(event.tickers)` and then
+`seedLiveCandles({ endpoint, tickers: event.tickers, timeframes, book })` — do not hand-roll
+the REST seed (a wide window returns no live bar; a cached response is not evidence). For a
+watchdog compare `Date.now() - snapshot().shards[i].idleSince` (not `lastDeliveredAt`) and
+`reconnectNow(i)` a silent shard. See "Live candles" in `node_modules/@waterx/sdk/README.md`.
 
 ## Red flags
 
