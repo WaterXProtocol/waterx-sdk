@@ -13,7 +13,9 @@ import {
   candleSeedWindow,
   compareLiveCandleFrames,
   LiveCandleBook,
+  nextLiveCandleMark,
   parseLiveCandleFrame,
+  supersedesLiveCandleMark,
   type LiveCandleFrame,
 } from "../../../src/oracle/candles/frame.ts";
 import * as oracle from "../../../src/oracle/index.ts";
@@ -60,6 +62,14 @@ describe("parseLiveCandleFrame", () => {
     ["a zero open", rawLiveCandleFrame({ open: 0 })],
     ["a NaN-ish close", rawLiveCandleFrame({ close: null })],
     ["low above high", rawLiveCandleFrame({ low: 90_000 })],
+    ["open above high", rawLiveCandleFrame({ open: 83_011 })],
+    ["open below low", rawLiveCandleFrame({ open: 82_989 })],
+    ["close above high", rawLiveCandleFrame({ close: 500_000 })],
+    ["close below low", rawLiveCandleFrame({ close: 1 })],
+    [
+      "the review's example (open 100, high 90, low 80, close 500)",
+      rawLiveCandleFrame({ open: 100, high: 90, low: 80, close: 500 }),
+    ],
   ])("%s is malformed", (_what, input) => {
     expect(parseLiveCandleFrame(input, NOW)).toBe("malformed");
   });
@@ -83,6 +93,9 @@ describe("parseLiveCandleFrame", () => {
   it("tick_count is a diagnostic: missing or invalid reads 0", () => {
     expect(parsed({ tick_count: undefined }).tick_count).toBe(0);
     expect(parsed({ tick_count: -3 }).tick_count).toBe(0);
+    expect(parsed({ tick_count: 1.5 }).tick_count).toBe(0);
+    expect(parsed({ tick_count: "7" }).tick_count).toBe(0);
+    expect(parsed({ open: 82990, close: 83010.1 }).open).toBe(82990); // the bounds are inclusive
   });
 
   it("every served timeframe is accepted on its own grid", () => {
@@ -116,12 +129,12 @@ describe("compareLiveCandleFrames — (bucket_ms, closed, updated_at_ms)", () =>
 describe("LiveCandleBook", () => {
   it("keeps the newest bar per (symbol, tf); older and equal frames are stale", () => {
     const book = new LiveCandleBook();
-    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 10, close: 1 }))).toBe("applied");
-    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 5, close: 2 }))).toBe("stale");
-    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 10, close: 3 }))).toBe("stale");
-    expect(book.apply(parsed({ tf: "1m", bucket_ms: BUCKET_5M, close: 4 }))).toBe("applied");
-    expect(book.bar("BTCUSD", "5m")?.close).toBe(1);
-    expect(book.bar("BTCUSD", "1m")?.close).toBe(4);
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 10, close: 83001 }))).toBe("applied");
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 5, close: 83002 }))).toBe("stale");
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 10, close: 83003 }))).toBe("stale");
+    expect(book.apply(parsed({ tf: "1m", bucket_ms: BUCKET_5M, close: 83004 }))).toBe("applied");
+    expect(book.bar("BTCUSD", "5m")?.close).toBe(83001);
+    expect(book.bar("BTCUSD", "1m")?.close).toBe(83004);
     expect(book.bars()).toHaveLength(2);
   });
 
@@ -207,36 +220,67 @@ describe("candleSeedWindow", () => {
   });
 });
 
+describe("a void from a new leader whose clock is behind (updated_at_ms is per-leader)", () => {
+  it("supersedes an open frame of its bucket whatever its updated_at_ms; the watermark does not move back", () => {
+    const book = new LiveCandleBook();
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 100 }));
+    const tombstone = parsed({ state: "void", updated_at_ms: BUCKET_5M + 90 });
+    expect(supersedesLiveCandleMark(tombstone, parsed({ updated_at_ms: BUCKET_5M + 100 }))).toBe(
+      true,
+    );
+    expect(book.apply(tombstone)).toBe("voided");
+    expect(book.bar("BTCUSD", "5m")).toBeUndefined();
+    // The withdrawn bar's own frames (old leader, stamped up to +100) cannot get past it...
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 95 }))).toBe("stale");
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 100 }))).toBe("stale");
+    // ...and the new leader's bar shows once its clock passes the old watermark.
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 101 }))).toBe("applied");
+  });
+
+  it("does not supersede a closed bar, another bucket's bar, or an equal/newer void", () => {
+    const closed = parsed({ state: "closed", updated_at_ms: BUCKET_5M + 100 });
+    const tombstone = parsed({ state: "void", updated_at_ms: BUCKET_5M + 90 });
+    expect(supersedesLiveCandleMark(tombstone, closed)).toBe(false);
+    const nextBucket = parsed({
+      bucket_ms: BUCKET_5M + 300_000,
+      updated_at_ms: BUCKET_5M + 300_001,
+    });
+    expect(supersedesLiveCandleMark(tombstone, nextBucket)).toBe(false);
+    expect(supersedesLiveCandleMark(tombstone, tombstone)).toBe(false);
+    expect(nextLiveCandleMark(tombstone, parsed({ updated_at_ms: BUCKET_5M + 100 }))).toMatchObject(
+      { state: "void", updated_at_ms: BUCKET_5M + 100 },
+    );
+    expect(nextLiveCandleMark(tombstone, undefined)).toBe(tombstone);
+  });
+});
+
 describe("LiveCandleBook.markSuspect — a void lost to an outage is never re-sent", () => {
-  it("hides open bars until re-asserted by the same bucket (seed or stream) or replaced", () => {
+  const MARK = NOW;
+  const seedPoint = {
+    timestamp_ms: BUCKET_5M,
+    open: 1,
+    high: 1,
+    low: 1,
+    close: 1,
+    count: 1,
+    state: "open",
+    source: "canonical",
+  };
+  const seed = () => candlePointToFrame(seedPoint, "BTCUSD", "5m", NOW)!;
+
+  it("hides open bars; a seed observed AFTER the mark re-asserts with its own values", () => {
     const book = new LiveCandleBook();
     book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 })); // BTCUSD 5m open
     book.apply(parsed({ symbol: "ETHUSD", updated_at_ms: BUCKET_5M + 10 })); // ETHUSD 5m open
     book.apply(parsed({ tf: "1m", state: "closed", updated_at_ms: BUCKET_5M + 10 })); // closed
 
-    book.markSuspect(["BTCUSD"]);
+    book.markSuspect(["BTCUSD"], MARK);
     expect(book.bar("BTCUSD", "5m")).toBeUndefined();
     expect(book.bar("BTCUSD", "1m")?.state).toBe("closed"); // closed bars are final
     expect(book.bar("ETHUSD", "5m")).toBeDefined(); // another shard's ticker
     expect(book.bars()).toHaveLength(2);
 
-    // A REST seed point of the same bucket re-asserts it (unchanged).
-    const seed = candlePointToFrame(
-      {
-        timestamp_ms: BUCKET_5M,
-        open: 1,
-        high: 1,
-        low: 1,
-        close: 1,
-        count: 1,
-        state: "open",
-        source: "canonical",
-      },
-      "BTCUSD",
-      "5m",
-      NOW,
-    )!;
-    expect(book.apply(seed)).toBe("reasserted");
+    expect(book.apply(seed(), { observedAtMs: MARK + 1 })).toBe("reasserted");
     // The bar shows the SEED's values (the server's current bar)...
     expect(book.bar("BTCUSD", "5m")).toMatchObject({
       open: 1,
@@ -248,18 +292,48 @@ describe("LiveCandleBook.markSuspect — a void lost to an outage is never re-se
       updated_at_ms: BUCKET_5M + 10,
     });
     // so a later, OLDER stream frame of the bucket is still dropped.
-    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 5, close: 99 }))).toBe("stale");
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 5, close: 83009 }))).toBe("stale");
     expect(book.bar("BTCUSD", "5m")?.close).toBe(1);
     expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 11 }))).toBe("applied");
+  });
+
+  it("STALE evidence never clears the mark: no evidence, evidence from before the mark, an older-stamped frame", () => {
+    const book = new LiveCandleBook();
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }));
+    book.markSuspect(undefined, MARK);
+
+    expect(book.apply(seed())).toBe("stale"); // nothing says when it was observed
+    expect(book.apply(seed(), { observedAtMs: MARK - 1 })).toBe("stale"); // a cached response
+    // A lagging stream frame: really produced BEFORE the bar we hold.
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 9 }), { observedAtMs: MARK + 5 })).toBe(
+      "stale",
+    );
+    expect(book.bar("BTCUSD", "5m")).toBeUndefined();
+
+    // Re-marking moves the bar forward: evidence must be newer than the LATEST mark.
+    book.markSuspect(undefined, MARK + 100);
+    expect(book.apply(seed(), { observedAtMs: MARK + 50 })).toBe("stale");
+    expect(book.apply(seed(), { observedAtMs: MARK + 100 })).toBe("reasserted");
+  });
+
+  it("the bar's own key re-sent on the new connection, with evidence, re-asserts", () => {
+    const book = new LiveCandleBook();
+    book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }));
+    book.markSuspect(undefined, MARK);
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }), { observedAtMs: MARK + 1 })).toBe(
+      "reasserted",
+    );
+    expect(book.bar("BTCUSD", "5m")?.updated_at_ms).toBe(BUCKET_5M + 10);
   });
 
   it("a bar nothing re-asserts stays hidden; an older bucket does not re-assert; a newer frame replaces", () => {
     const book = new LiveCandleBook();
     book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }));
-    book.markSuspect();
+    book.markSuspect(undefined, MARK);
     expect(
       book.apply(
         parsed({ state: "closed", bucket_ms: BUCKET_5M - 300_000, updated_at_ms: BUCKET_5M }),
+        { observedAtMs: MARK + 1 },
       ),
     ).toBe("stale");
     expect(book.bar("BTCUSD", "5m")).toBeUndefined();
@@ -267,11 +341,12 @@ describe("LiveCandleBook.markSuspect — a void lost to an outage is never re-se
     expect(book.bar("BTCUSD", "5m")?.updated_at_ms).toBe(BUCKET_5M + 20);
   });
 
-  it("a void does not re-assert, and delete/clear drop the suspect mark", () => {
+  it("a void withdraws a suspect bar for good, and delete drops the suspect mark", () => {
     const book = new LiveCandleBook();
     book.apply(parsed({ updated_at_ms: BUCKET_5M + 10 }));
-    book.markSuspect();
-    expect(book.apply(parsed({ state: "void", updated_at_ms: BUCKET_5M + 5 }))).toBe("stale");
+    book.markSuspect(undefined, MARK);
+    expect(book.apply(parsed({ state: "void", updated_at_ms: BUCKET_5M + 5 }))).toBe("voided");
+    expect(book.apply(seed(), { observedAtMs: MARK + 1 })).toBe("stale"); // nothing left to re-assert
     expect(book.bar("BTCUSD", "5m")).toBeUndefined();
     book.delete("BTCUSD", "5m");
     book.apply(parsed({ updated_at_ms: BUCKET_5M + 1 }));
@@ -285,6 +360,7 @@ describe("the public surface", () => {
     expect(oracle.parseLiveCandleFrame).toBe(parseLiveCandleFrame);
     expect(oracle.LiveCandleBook).toBe(LiveCandleBook);
     expect(oracle.candlePointToFrame).toBe(candlePointToFrame);
+    expect(oracle.seedLiveCandles).toBeTypeOf("function");
     expect(oracle.CANDLE_STREAM_ROUTE).toBe("v1/candles/stream");
   });
 });

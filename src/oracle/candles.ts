@@ -4,11 +4,11 @@
  * `@waterx/sdk/oracle/candles`; `@waterx/sdk/oracle` re-exports all of it.
  *
  *   - `openCandleStream`     — live: WebSocket `GET /v1/candles/stream?symbols=&tf=`.
+ *   - `seedLiveCandles`      — the REST `include_open=true` seed every (re)connect needs (the
+ *                              gateway may send no snapshot; a missed `void` is never re-sent).
  *   - `LiveCandleBook`       — the per-(symbol, tf) newest bar with the order, `void` and
- *                              reconnect resync (`markSuspect`) applied.
- *   - `candlePointToFrame`   — a REST `include_open=true` live point as a frame, for the seed
- *                              every (re)connect needs (the gateway may send no snapshot);
- *                              `candleSeedWindow` is the `from` / `to` to ask REST for.
+ *                              reconnect resync (`markSuspect` + fresh evidence) applied.
+ *   - `candlePointToFrame` / `candleSeedWindow` — the seed's building blocks.
  *   - `parseLiveCandleFrame` / `compareLiveCandleFrames` + the constants — the shared wire
  *     contract, for consumers that pin it in their own tests or merge a REST seed.
  *
@@ -31,17 +31,22 @@ export {
   compareLiveCandleFrames,
   isCandleTimeframe,
   liveCandleKey,
+  nextLiveCandleMark,
   parseLiveCandleFrame,
+  supersedesLiveCandleMark,
 } from "./candles/frame.ts";
 export type {
   CandleDropReason,
   CandlePoint,
   CandleTimeframe,
   LiveCandleApplyResult,
+  LiveCandleEvidence,
   LiveCandleFrame,
   LiveCandleSource,
   LiveCandleState,
 } from "./candles/frame.ts";
+export { CANDLES_ROUTE, seedLiveCandles } from "./candles/seed.ts";
+export type { SeedLiveCandlesOptions, SeedLiveCandlesResult } from "./candles/seed.ts";
 export { openCandleStream } from "./candles/stream.ts";
 export type {
   CandleConnectionEvent,
