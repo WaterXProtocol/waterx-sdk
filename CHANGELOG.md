@@ -16,6 +16,14 @@ from the version number alone.
 
 ## [Unreleased]
 
+### Added
+
+- `openCandleStream` (`@waterx/sdk/oracle`, `@waterx/sdk/oracle/candles`): the quote-center live candle plane's WebSocket client (`GET /v1/candles/stream?symbols=&tf=`) — `X-Internal-Key` via `headers`, ≤32-ticker shards each carrying every requested timeframe, 1 s → 30 s jittered backoff (a connection that delivered a frame or stayed open 10 s is not fruitless), handshake timeout, a per-(symbol, tf) ordering guard, and per-shard status (`snapshot().shards[i].idleSince`, `reconnectNow(shard)`) for a per-shard idle watchdog. With it: `seedLiveCandles` (the REST `include_open=true` seed every (re)connect needs — the gateway's shared upstreams send no snapshot and a missed `void` is never re-sent), `LiveCandleBook` (order, `void` tombstone, `markSuspect` + evidence-based re-assertion), `LiveCandleFrame`, `parseLiveCandleFrame`, `compareLiveCandleFrames` / `supersedesLiveCandleMark`, `candlePointToFrame` and `candleSeedWindow` ([#107](https://github.com/WaterXProtocol/waterx-sdk/pull/107)).
+
+### Changed
+
+- `openCanonicalStream` now runs on a connection class shared with `openCandleStream` (`src/oracle/stream-connection.ts`, internal). Its options, handle, events and backoff rule are unchanged, with one fix: `reconnectNow()` ends the attempt itself and schedules the redial (`closed`, reason `reconnectNow frames=<n>`) instead of waiting for the socket's close event, which a half-open peer never sends on the global `WebSocket` — the shard used to stay dead ([#107](https://github.com/WaterXProtocol/waterx-sdk/pull/107)).
+
 ## [7.0.0] - 2026-11-16
 
 _MAJOR: the SDK is aligned with perp contract v4 (queued execution, waterx-contract #167) and

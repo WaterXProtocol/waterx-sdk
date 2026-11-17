@@ -320,6 +320,61 @@ stream.stop();
 - **`headers` need the optional peer `ws`.** The WHATWG `WebSocket` cannot send handshake headers, so a stream opened with `headers` loads `ws` by dynamic import (`pnpm add ws`); without it, one `failed` event names the fix and the stream stops. Without `headers` the client dials the global `WebSocket` (Node ≥ 22, browsers) and the SDK stays dependency-free. The import is deliberately opaque to bundlers (webpack / Turbopack / Vite ignore comments on a variable specifier), so a browser or Next.js build that only uses `readCanonicalPrices` is never asked to resolve `ws`. `ws` is also the only transport that exposes a refused handshake's HTTP status. The endpoint may be `http(s)://` or `ws(s)://`; TLS is never downgraded.
 - `*_scaled` fields are u64s and come back as exact decimal **strings**; `price` / `confidence` are display floats.
 
+### Live candles: the bar in flight
+
+The quote-center's **live candle plane** serves the bar that is still forming (and the just-closed one) for `1m 5m 15m 1h 4h 1d`, folded from the same inputs its ClickHouse rollup persists. `openCandleStream` is its client, on the same connection code as `openCanonicalStream` (same `headers` / `ws` peer rule, backoff shape, handshake timeout and lifecycle vocabulary). Seed from REST on every (re)connect — the stream alone does not guarantee you the current bars:
+
+```ts
+import { LiveCandleBook, openCandleStream, seedLiveCandles } from "@waterx/sdk/oracle";
+import type { CandleTimeframe } from "@waterx/sdk/oracle";
+
+const timeframes: CandleTimeframe[] = ["1m", "5m"];
+const headers = { "X-Internal-Key": key }; // optional — the stream needs the `ws` peer for it, as above
+const book = new LiveCandleBook();
+
+const candles = openCandleStream({
+  endpoint, // the quote-center base URL, as for the canonical stream
+  tickers: ["BTCUSD", "ETHUSD"],
+  timeframes, // default: all six, on ONE connection per ≤32-ticker shard
+  headers,
+  onFrame: (frame) => {
+    // `observedAtMs`: this frame was just received, so it may re-assert a suspect bar.
+    const outcome = book.apply(frame, { observedAtMs: Date.now() });
+    if (outcome === "voided") refetchFromRest(frame.symbol, frame.tf, frame.bucket_ms);
+    // book.bar("BTCUSD", "1m") → the current live bar, or undefined (none / voided / suspect)
+  },
+  onConnection: (e) => {
+    // { type, reason?, shard, shardCount, tickers }
+    if (e.type !== "opened") return;
+    book.markSuspect(e.tickers); // a `void` missed while down is never re-sent
+    // Never rejects; failed requests are listed, and their bars stay hidden until the stream replaces them.
+    void seedLiveCandles({ endpoint, tickers: e.tickers, timeframes, book, headers }).then((r) => {
+      if (r.failures.length > 0) log.warn(r.failures);
+    });
+  },
+});
+
+// Per-shard watchdog: a shard can go silent while the others are healthy.
+setInterval(() => {
+  for (const s of candles.snapshot().shards) {
+    // `idleSince` is absent while the shard is down, and restarts with every new connection.
+    if (s.idleSince !== undefined && Date.now() - s.idleSince > IDLE_BUDGET_MS) {
+      candles.reconnectNow(s.shard);
+    }
+  }
+}, 10_000);
+```
+
+- **Frames** (`LiveCandleFrame`): `{ v: 1, symbol, tf, bucket_ms, open, high, low, close, tick_count, state: "open" | "closed" | "void", source: "canonical" | "bbo", updated_at_ms }`. Each is a FULL snapshot of its bar. `tick_count` is coverage, never volume. A frame whose prices are not positive and finite, whose `low > high`, or whose `open` / `close` lie outside `[low, high]` is dropped as `malformed`.
+- **The snapshot is not guaranteed.** The quote-service sends the current frame of every matching pair when a stream opens, but the gateway shares one upstream per path + query, so a client that joins an upstream another client already opened gets live frames only, and a quiet pair stays empty until its next frame. `seedLiveCandles` fills that in from REST `GET /v1/candles/{symbol}?tf=…&include_open=true`: one request per (ticker, timeframe) over `candleSeedWindow(tf)` (the previous and the current bucket — a wide window returns rolled points oldest-first up to `limit` and no live bar), `Cache-Control: no-cache`, 8 in flight (`concurrency`), each point mapped by `candlePointToFrame` (`count` → `tick_count`, `updated_at_ms: 0` so any stream frame of the bucket supersedes the seed).
+- **A missed `void` is never re-sent** — neither a snapshot nor REST serves tombstones. `book.markSuspect(tickers)` on each `opened` hides every `open` bar of those tickers until a newer frame replaces it, or a frame of the same bucket passed with **evidence** re-asserts it: `apply(frame, { observedAtMs })`, where `observedAtMs` (when the frame was received, or the seed request sent, minus the response's `Age`) is at or after the mark. Then `apply` returns `"reasserted"` and the bar takes that frame's OHLC, keeping its own `updated_at_ms` as the watermark. Without evidence, with evidence from before the mark, or with an older-stamped frame, the bar stays hidden. `closed` bars are final and are not marked. Residual risk: the evidence is the caller's word — a cache that ignores `no-cache` and sends no `Age` can re-assert a withdrawn bar.
+- **Order.** Per (symbol, tf) frames are ordered by `(bucket_ms, state === "closed", updated_at_ms)` (`compareLiveCandleFrames`). The client drops a frame below the last delivered one (`out_of_order`; the watermark survives reconnects) and an equal one on the same connection (`duplicate`). The first equal frame of a pair on a NEW connection is delivered: it is the server re-sending the bar.
+- **`void` is a tombstone**: the plane withdrew that bucket's live bar. Drop it and read the bucket from REST. Prices on a `void` frame are `0`. A `void` supersedes an `open` frame of its bucket whatever its `updated_at_ms` — it comes from a new leader, whose clock may be behind the old one's — and the pair's watermark does not move back, so the withdrawn bar's older frames cannot return (the new leader's frames of that bucket show once its clock passes the old stamp).
+- **REST wins for closed buckets.** A live bar, `closed` included, is provisional until the rollup persists it; refetch closed buckets from `GET /v1/candles/{symbol}`.
+- **Query.** Exactly one `symbols` and one `tf` field, each comma-joined (a repeated field is a 400). Tickers are trimmed, as the server trims them. An unknown timeframe, an empty ticker list or a ticker containing a comma throws at open (the server reads an omitted `symbols` as every symbol, and would split a comma-joined entry into symbols this client never subscribed). Unknown symbols are skipped by the server.
+- **Quiet is not failure.** A shard whose markets are out of session delivers nothing. A connection that stayed open `backoff.quietHealthyAfterMs` (default 10 s) does not count towards the backoff, so a quiet shard redials at the initial delay rather than up to 30 s late.
+- **Per-shard status.** `snapshot()` aggregates (`connected` only when every shard is) and lists `shards[]` with each shard's `tickers`, `connected`, `connectedAt`, `idleSince` (the watchdog signal: the later of the current connection's open and its last delivery), `lastFrameAt` (activity), `lastDeliveredAt` (delivery on any connection — it survives reconnects, so do not watch it), `framesAccepted` and `droppedByReason`. `reconnectNow(shard?)` ends the connection at once (`closed`, reason `reconnectNow frames=<n>`). The SDK sets no idle budget: each redial costs a `markSuspect` and a seed.
+
 ### Adding an oracle source (runbook)
 
 Every source plugs in the same way — routing is driven **only** by what the deployment config wires (never a config `enabled` flag, never `process.env`):

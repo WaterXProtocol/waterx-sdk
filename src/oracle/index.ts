@@ -13,6 +13,8 @@
  *   - `canonical.ts` (+ `canonical/*`) — THE price read: the quote-center's canonical
  *                             plane (off-chain replica of the on-chain weighted aggregate),
  *                             REST seed + WebSocket stream.
+ *   - `candles.ts` (+ `candles/*`) — the live candle plane's in-flight bars (WebSocket
+ *                             stream + the per-(symbol, tf) order / `void` reducer).
  *   - `read-plane.ts` / `read-prices.ts` — per-source READ plans + their LEG executors
  *                             (deprecated for price reads — see `canonical.ts`).
  *   - `validate.ts`         — consumers' boot-time coverage/credential asserts.
@@ -60,6 +62,10 @@ export { deriveOracleSources } from "./source-list.ts";
 // (`readCanonicalPrices`, `openCanonicalStream`, `CanonicalQuote`); the rest is
 // the shared wire contract for consumers' own tests.
 export * from "./canonical.ts";
+
+// The live candle plane: the quote-center's in-flight OHLC bars, on the same
+// transport as the canonical stream (`openCandleStream`, `LiveCandleFrame`).
+export * from "./candles.ts";
 
 // The quote-center's error contract (numeric code table, body parser, the
 // shared 404 classifier) — one home for the leaf fetch and the canonical reads.

@@ -214,6 +214,17 @@ Every requested ticker is a key; a quote with `status !== "ok"` means "no fresh 
 carries a `reason` — mark the ticker stale, never read its `price`. `readQuoteCenterPrices`
 and `readLazerPrices` read one LEG each and are deprecated for price reads.
 
+**Live candles** (the bar still forming) come from `openCandleStream({ endpoint, tickers,
+timeframes?, onFrame: (frame, shard) => … })` in `@waterx/sdk/oracle`; apply frames through
+`LiveCandleBook` with `book.apply(frame, { observedAtMs: Date.now() })` (it handles the order
+and the `void` tombstone — drop that bucket's bar and read REST). The stream may send NO
+snapshot (the gateway shares upstreams) and never re-sends a missed `void`, so on every
+`opened` event call `book.markSuspect(event.tickers)` and then
+`seedLiveCandles({ endpoint, tickers: event.tickers, timeframes, book })` — do not hand-roll
+the REST seed (a wide window returns no live bar; a cached response is not evidence). For a
+watchdog compare `Date.now() - snapshot().shards[i].idleSince` (not `lastDeliveredAt`) and
+`reconnectNow(i)` a silent shard. See "Live candles" in `node_modules/@waterx/sdk/README.md`.
+
 ## Red flags
 
 Stop if you catch yourself doing any of these:

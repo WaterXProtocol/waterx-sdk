@@ -68,3 +68,31 @@ frontend code against them, so add only optional fields and never change a shape
   dynamic import; everything else dials the global `WebSocket`. The redial is scheduled before
   `onConnection` runs. Its tests run against a real loopback `ws` server
   (`test/perp/helpers/fake-canonical-stream-server.ts`).
+- The connection itself — dial, redial, backoff, handshake timeout, `reconnectNow` — is `stream-connection.ts`
+  (`StreamConnection`, internal: no barrel exports it), shared with `openCandleStream`; a stream module keeps
+  only its frames, guard, counters and event shape. `reconnectNow` settles the attempt itself (`closed`,
+  reason `reconnectNow frames=<n>`) instead of waiting for a close event a half-open peer never sends.
+
+## Live candles: the same connection, a different contract
+
+`openCandleStream` (`candles/stream.ts`) runs each shard on the shared `StreamConnection`. What is its own:
+
+- **Query.** ONE `symbols` and ONE comma-joined `tf` field per connection (the quote-center 400s a repeated
+  field and an unknown tf, and reads an omitted `symbols` as every symbol). Tickers are trimmed and chunked by
+  `chunkCanonicalTickers`; empty tickers, a ticker containing a comma and unknown timeframes throw at open.
+- **Guard.** Per (symbol, tf) through `supersedesLiveCandleMark`: the quote-center's `order_key`, plus a `void`
+  superseding an `open` frame of its bucket whatever its `updated_at_ms` (the tombstone comes from a NEW
+  leader; `updated_at_ms` is per-leader). `nextLiveCandleMark` keeps the watermark from moving back. An equal
+  key is `duplicate` within one connection; the first equal frame per pair on a new connection is delivered.
+- **Backoff.** A connection that stayed open `backoff.quietHealthyAfterMs` (10 s) is not fruitless even with
+  no frame: quiet candle shards are normal. The canonical stream does not set it.
+- **Status.** `snapshot().shards[i].idleSince` (the current connection's open or last delivery, absent while
+  down) is the watchdog signal — never `lastDeliveredAt`, which survives reconnects. `reconnectNow(shard)`.
+- **No snapshot, no re-sent `void`.** The gateway shares one upstream per path + query, so a joining client
+  gets no snapshot, and a tombstone is never re-sent. On every `opened`: `LiveCandleBook.markSuspect(tickers)`,
+  then `seedLiveCandles` (`candles/seed.ts`: two-bucket `candleSeedWindow`, `Cache-Control: no-cache`, bounded
+  concurrency, never rejects). A suspect bar is re-asserted only by a frame passed to `apply` with `evidence`
+  observed at or after the mark — ordering alone is never evidence (a seed has `updated_at_ms: 0`).
+- **Naming.** SDK-facing parameters say `ticker`; only the wire field `LiveCandleFrame.symbol` says `symbol`.
+
+Tests: `test/perp/unit/oracle-candle-{frame,stream,seed}.test.ts`, on the canonical suite's loopback fake.

@@ -545,6 +545,37 @@ describe("openCanonicalStream — connection lifecycle", () => {
     expect(server.connects).toHaveLength(2);
   });
 
+  it("reconnectNow() redials even when the socket never answers close() (global WebSocket, half-open peer)", async () => {
+    type Listener = (event: unknown) => void;
+    const sockets: HalfOpenSocket[] = [];
+    class HalfOpenSocket {
+      readyState = 0;
+      listeners = new Map<string, Listener[]>();
+      constructor() {
+        sockets.push(this);
+      }
+      addEventListener(type: string, listener: Listener): void {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+      }
+      close(): void {
+        this.readyState = 2; // CLOSING, forever: no `close` event will come
+      }
+      fire(type: string, event: unknown = {}): void {
+        for (const listener of this.listeners.get(type) ?? []) listener(event);
+      }
+    }
+    vi.stubGlobal("WebSocket", HalfOpenSocket);
+    const h = open("http://qc.example");
+    await until(() => (sockets[0]?.listeners.size ?? 0) > 0, "listeners attached");
+    sockets[0]!.readyState = 1;
+    sockets[0]!.fire("open");
+
+    h.stream.reconnectNow();
+
+    expect(h.events.at(-1)).toEqual({ type: "closed", reason: "reconnectNow frames=0" });
+    await until(() => sockets.length === 2, "a second dial without any close event");
+  });
+
   it("a connection that delivered a frame resets the backoff: the redial after it is prompt", async () => {
     server = await startFakeCanonicalStreamServer("404");
     const h = open(server.endpoint);
