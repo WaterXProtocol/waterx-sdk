@@ -219,7 +219,8 @@ timeframes?, onFrame: (frame, shard) => … })` in `@waterx/sdk/oracle`; apply f
 `LiveCandleBook` (it handles the order and the `void` tombstone — drop that bucket's bar and
 read REST). The stream may send NO snapshot (the gateway shares upstreams), so on every
 `opened` event call `book.markSuspect(event.tickers)` and seed from REST
-`/v1/candles/{symbol}?tf=…&include_open=true` through `candlePointToFrame`. Watch
+`/v1/candles/{symbol}?tf=…&from=…&to=…&include_open=true` through `candlePointToFrame`, with
+`from` / `to` from `candleSeedWindow(tf)` (a wider window can return no live bar). Watch
 `snapshot().shards[i].lastDeliveredAt` per shard and `reconnectNow(i)` a silent one. See "Live candles" in `node_modules/@waterx/sdk/README.md`.
 
 ## Red flags

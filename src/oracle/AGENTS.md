@@ -80,6 +80,7 @@ timeframes throw at open), the guard orders per (symbol, tf) on `compareLiveCand
 new connection is delivered as a re-assertion), and `snapshot().shards` / `reconnectNow(shard)` expose each
 shard for a consumer's idle watchdog. `void` frames are delivered; `LiveCandleBook` applies them. Never promise
 a snapshot: the gateway shares one upstream per path + query, so a joining client gets none, and a missed `void`
-is never re-sent — consumers seed from REST `include_open` (`candlePointToFrame`, `updated_at_ms: 0`) on every
+is never re-sent — consumers seed from REST `include_open` (`candlePointToFrame`, `updated_at_ms: 0`, over `candleSeedWindow(tf)` — a wide window fills `limit` with the
+oldest rolled bars and gets no live bar) on every
 `opened` after `LiveCandleBook.markSuspect`. Tests:
 `test/perp/unit/oracle-candle-{frame,stream}.test.ts`, on the canonical suite's loopback fake.

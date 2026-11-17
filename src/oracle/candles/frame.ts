@@ -23,7 +23,7 @@
  * upstream another client already opened gets live frames only, so a quiet
  * pair stays empty until its next frame. Seed every (re)connect from REST
  * `GET /v1/candles/{symbol}?tf=…&include_open=true` through
- * {@link candlePointToFrame}.
+ * {@link candlePointToFrame}, over {@link candleSeedWindow}.
  *
  * A MISSED `void` IS NEVER RE-SENT. The quote-center serves a tombstone
  * neither in a snapshot nor from REST, so one lost to a disconnect or a lagged
@@ -271,6 +271,25 @@ export function candlePointToFrame(
   return typeof frame === "string" || frame.state === "void" ? undefined : frame;
 }
 
+/**
+ * The `from` / `to` (unix ms) to seed one timeframe with: REST
+ * `GET /v1/candles/{symbol}?tf=…&from=…&to=…&include_open=true`. The window is
+ * the previous bucket and the current one, so the answer holds at most two
+ * rolled points plus the live bars.
+ *
+ * Do NOT seed with a wide window: the route returns rolled points OLDEST first
+ * up to `limit` (default 1000) and appends the live bars only when fewer rolled
+ * points than `limit` came back — a day of 1m bars for a 24/7 pair is the 1000
+ * oldest minutes and no live bar at all.
+ */
+export function candleSeedWindow(
+  tf: CandleTimeframe,
+  nowMs: number = Date.now(),
+): { from: number; to: number } {
+  const width = CANDLE_TIMEFRAME_MS[tf];
+  return { from: Math.floor(nowMs / width) * width - width, to: nowMs };
+}
+
 /** What {@link LiveCandleBook.apply} did with a frame. */
 export type LiveCandleApplyResult = "applied" | "voided" | "reasserted" | "stale";
 
@@ -283,7 +302,9 @@ export type LiveCandleApplyResult = "applied" | "voided" | "reasserted" | "stale
  *     for the pair until a newer `open` / `closed` frame arrives — read that
  *     bucket from REST);
  *   - a frame of the SAME bucket as a suspect bar (see {@link markSuspect}),
- *     not newer than it, is `reasserted`: the bar is shown again, unchanged;
+ *     not newer than it, is `reasserted`: the bar is shown again with the
+ *     frame's OHLC / `tick_count` / `source` (the server's current values),
+ *     keeping its own `updated_at_ms` as the ordering watermark;
  *   - anything else is `stale` (ignored).
  *
  * The stream already drops out-of-order frames; the book re-checks so frames
@@ -304,6 +325,12 @@ export class LiveCandleBook {
     if (prev !== undefined && compareLiveCandleFrames(frame, prev) <= 0) {
       if (this.suspect.has(key) && frame.bucket_ms === prev.bucket_ms && frame.state !== "void") {
         this.suspect.delete(key);
+        // The re-asserting frame is the server's CURRENT bar: show its values,
+        // not the pre-outage ones. The watermark stays `prev`'s, so a seed
+        // (`updated_at_ms: 0`) cannot lower it and let an older frame back in.
+        if (frame.state === prev.state) {
+          this.last.set(key, { ...frame, updated_at_ms: prev.updated_at_ms });
+        }
         return "reasserted";
       }
       return "stale";

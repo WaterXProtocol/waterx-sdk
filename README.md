@@ -325,17 +325,22 @@ stream.stop();
 The quote-center's **live candle plane** serves the bar that is still forming (and the just-closed one) for `1m 5m 15m 1h 4h 1d`, folded from the same inputs its ClickHouse rollup persists. `openCandleStream` is its client, on the same transport as `openCanonicalStream` (same `headers` / `ws` peer rule, backoff, handshake timeout and lifecycle vocabulary). Seed from REST on every (re)connect — the stream alone does not guarantee you the current bars:
 
 ```ts
-import { candlePointToFrame, LiveCandleBook, openCandleStream } from "@waterx/sdk/oracle";
+import {
+  candlePointToFrame,
+  candleSeedWindow,
+  LiveCandleBook,
+  openCandleStream,
+} from "@waterx/sdk/oracle";
 import type { CandlePoint, CandleTimeframe } from "@waterx/sdk/oracle";
 
 const TIMEFRAMES: CandleTimeframe[] = ["1m", "5m"];
 const book = new LiveCandleBook();
 
 async function seed(tickers: readonly string[]) {
-  const from = Date.now() - 86_400_000; // covers the open bucket of every tf up to 1d
   for (const ticker of tickers) {
     for (const tf of TIMEFRAMES) {
-      const url = `${endpoint}/v1/candles/${ticker}?tf=${tf}&from=${from}&to=${Date.now()}&include_open=true`;
+      const { from, to } = candleSeedWindow(tf); // the previous + current bucket only — see below
+      const url = `${endpoint}/v1/candles/${ticker}?tf=${tf}&from=${from}&to=${to}&include_open=true`;
       const points = (await (await fetch(url)).json()) as CandlePoint[];
       for (const point of points) {
         const frame = candlePointToFrame(point, ticker, tf); // undefined for rolled (history) points
@@ -375,8 +380,8 @@ setInterval(() => {
 ```
 
 - **Frames** (`LiveCandleFrame`): `{ v: 1, symbol, tf, bucket_ms, open, high, low, close, tick_count, state: "open" | "closed" | "void", source: "canonical" | "bbo", updated_at_ms }`. Each is a FULL snapshot of its bar. `tick_count` is coverage, never volume.
-- **The snapshot is not guaranteed.** The quote-service sends the current frame of every matching pair when a stream opens, but the gateway shares one upstream per path + query, so a client that joins an upstream another client already opened gets live frames only, and a quiet pair stays empty until its next frame. Seed every `opened` from REST `GET /v1/candles/{symbol}?tf=…&include_open=true`, mapped through `candlePointToFrame` (it maps `count` → `tick_count` and sets `updated_at_ms: 0`, never the local clock, so any stream frame of the bucket supersedes the seed).
-- **A missed `void` is never re-sent** — neither a snapshot nor REST serves tombstones. `book.markSuspect(tickers)` on each `opened` hides every `open` bar of those tickers until a REST point or stream frame of the same bucket re-asserts it (`apply` → `"reasserted"`) or a newer frame replaces it; a bar nothing re-asserts stays hidden. `closed` bars are final and are not marked.
+- **The snapshot is not guaranteed.** The quote-service sends the current frame of every matching pair when a stream opens, but the gateway shares one upstream per path + query, so a client that joins an upstream another client already opened gets live frames only, and a quiet pair stays empty until its next frame. Seed every `opened` from REST `GET /v1/candles/{symbol}?tf=…&include_open=true`, mapped through `candlePointToFrame` (it maps `count` → `tick_count` and sets `updated_at_ms: 0`, never the local clock, so any stream frame of the bucket supersedes the seed). Ask for `candleSeedWindow(tf)` — the previous and the current bucket — never a wide window: the route returns rolled points oldest-first up to `limit` (default 1000) and appends the live bars only when fewer rolled points than `limit` came back, so a day of 1m bars for a 24/7 pair comes back with no live bar.
+- **A missed `void` is never re-sent** — neither a snapshot nor REST serves tombstones. `book.markSuspect(tickers)` on each `opened` hides every `open` bar of those tickers until a REST point or stream frame of the same bucket re-asserts it (`apply` → `"reasserted"`; the bar takes the re-asserting frame's OHLC and keeps its own `updated_at_ms` as the watermark) or a newer frame replaces it; a bar nothing re-asserts stays hidden. `closed` bars are final and are not marked.
 - **Order.** Per (symbol, tf) frames are ordered by `(bucket_ms, state === "closed", updated_at_ms)` (`compareLiveCandleFrames`). The client drops a frame below the last delivered one (`out_of_order`; the watermark survives reconnects) and an equal one on the same connection (`duplicate`). The first equal frame of a pair on a NEW connection is delivered: it is the server re-asserting the bar.
 - **`void` is a tombstone**: the plane withdrew that bucket's live bar. Drop it and read the bucket from REST (`LiveCandleBook` keeps the tombstone so an older replay cannot bring the bar back). Prices on a `void` frame are `0`.
 - **REST wins for closed buckets.** A live bar, `closed` included, is provisional until the rollup persists it; refetch closed buckets from `GET /v1/candles/{symbol}`.

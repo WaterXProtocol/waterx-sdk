@@ -7,7 +7,8 @@
  *   - `LiveCandleBook`       — the per-(symbol, tf) newest bar with the order, `void` and
  *                              reconnect resync (`markSuspect`) applied.
  *   - `candlePointToFrame`   — a REST `include_open=true` live point as a frame, for the seed
- *                              every (re)connect needs (the gateway may send no snapshot).
+ *                              every (re)connect needs (the gateway may send no snapshot);
+ *                              `candleSeedWindow` is the `from` / `to` to ask REST for.
  *   - `parseLiveCandleFrame` / `compareLiveCandleFrames` + the constants — the shared wire
  *     contract, for consumers that pin it in their own tests or merge a REST seed.
  *
@@ -26,6 +27,7 @@ export {
   LIVE_CANDLE_STATES,
   LiveCandleBook,
   candlePointToFrame,
+  candleSeedWindow,
   compareLiveCandleFrames,
   isCandleTimeframe,
   liveCandleKey,

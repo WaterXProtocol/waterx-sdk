@@ -10,6 +10,7 @@ import {
   CANDLE_TIMEFRAME_MS,
   CANDLE_TIMEFRAMES,
   candlePointToFrame,
+  candleSeedWindow,
   compareLiveCandleFrames,
   LiveCandleBook,
   parseLiveCandleFrame,
@@ -192,6 +193,20 @@ describe("candlePointToFrame — a REST include_open point as a frame", () => {
   });
 });
 
+describe("candleSeedWindow", () => {
+  it("is the previous and the current bucket of the timeframe, up to now", () => {
+    const now = BUCKET_5M + 123_456;
+    expect(candleSeedWindow("5m", now)).toEqual({ from: BUCKET_5M - 300_000, to: now });
+    expect(candleSeedWindow("1m", now)).toEqual({ from: BUCKET_5M + 60_000, to: now });
+    for (const tf of CANDLE_TIMEFRAMES) {
+      const { from, to } = candleSeedWindow(tf, now);
+      expect(from % CANDLE_TIMEFRAME_MS[tf]).toBe(0);
+      expect(to - from).toBeLessThan(2 * CANDLE_TIMEFRAME_MS[tf]);
+      expect(to - from).toBeGreaterThanOrEqual(CANDLE_TIMEFRAME_MS[tf]);
+    }
+  });
+});
+
 describe("LiveCandleBook.markSuspect — a void lost to an outage is never re-sent", () => {
   it("hides open bars until re-asserted by the same bucket (seed or stream) or replaced", () => {
     const book = new LiveCandleBook();
@@ -222,7 +237,20 @@ describe("LiveCandleBook.markSuspect — a void lost to an outage is never re-se
       NOW,
     )!;
     expect(book.apply(seed)).toBe("reasserted");
-    expect(book.bar("BTCUSD", "5m")?.updated_at_ms).toBe(BUCKET_5M + 10);
+    // The bar shows the SEED's values (the server's current bar)...
+    expect(book.bar("BTCUSD", "5m")).toMatchObject({
+      open: 1,
+      high: 1,
+      low: 1,
+      close: 1,
+      tick_count: 1,
+      // ...but keeps its own watermark: the seed's updated_at_ms 0 did not lower it,
+      updated_at_ms: BUCKET_5M + 10,
+    });
+    // so a later, OLDER stream frame of the bucket is still dropped.
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 5, close: 99 }))).toBe("stale");
+    expect(book.bar("BTCUSD", "5m")?.close).toBe(1);
+    expect(book.apply(parsed({ updated_at_ms: BUCKET_5M + 11 }))).toBe("applied");
   });
 
   it("a bar nothing re-asserts stays hidden; an older bucket does not re-assert; a newer frame replaces", () => {
